@@ -238,9 +238,29 @@ def reset_data():
 
 def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
     """
-    Executa a leitura direta do TRBOnet One via UIAutomation,
-    consolida os dados preservando a escala do PowerON e sincroniza no Supabase.
+    Executa a leitura direta do TRBOnet One via UIAutomation (quando em Windows Local)
+    ou sincroniza com a nuvem Supabase (quando em ambiente Vercel / Cloud).
     """
+    is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+
+    # Se estiver na Vercel (servidor na nuvem sem GUI Windows), sincroniza com a nuvem Supabase
+    if is_cloud:
+        latest_cloud = fetch_latest_snapshot_from_supabase()
+        if latest_cloud.get("status") == "success" and latest_cloud.get("data"):
+            data_manager.load_from_snapshot(latest_cloud["data"])
+            return {
+                "status": "success",
+                "message": "Dados sincronizados com a Nuvem Supabase! (A captura de tela do TRBOnet One ocorre na estação local Windows).",
+                "data": latest_cloud["data"]
+            }
+        else:
+            return {
+                "status": "warning",
+                "message": "Ambiente Nuvem Vercel: A captura direta da janela do TRBOnet One requer execução na estação local Windows onde o programa está aberto.",
+                "data": data_manager.consolidate_data()
+            }
+
+    # Ambiente Local Windows: Executa a leitura da tela do TRBOnet One via UIAutomation
     try:
         # 1. Hidrata PowerON da nuvem se não estiver em memória local
         if not data_manager.poweron_teams:
@@ -253,7 +273,7 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
         if not radios:
             return {
                 "status": "warning",
-                "message": "Nenhum rádio encontrado ou TRBOnet One fechado.",
+                "message": "Nenhum rádio encontrado ou janela do TRBOnet One fechada no Windows.",
                 "data": data_manager.consolidate_data()
             }
 
