@@ -422,30 +422,108 @@ def update_data():
 
 def read_uploaded_dataframe(file_storage):
     """
-    Lê um arquivo enviado via upload suportando UTF-16, UTF-8 com BOM, Latin1, TSV, CSV e Excel.
+    Lê um arquivo enviado via upload suportando UTF-16, UTF-8 com BOM, Latin1, TSV, CSV e Excel (.xlsx/.xls).
+    Inclui fallback seguro em Python puro caso bibliotecas externas falhem.
     """
-    import pandas as pd
-    filename = file_storage.filename.lower()
+    filename = (file_storage.filename or '').lower()
+    file_storage.seek(0)
     content = file_storage.read()
     
-    if filename.endswith('.xlsx') or filename.endswith('.xls'):
-        return pd.read_excel(io.BytesIO(content))
+    # 1. Tenta leitura de arquivos Excel
+    if filename.endswith(('.xlsx', '.xls')):
+        try:
+            import pandas as pd
+            return pd.read_excel(io.BytesIO(content))
+        except Exception as e:
+            print(f"[WARN] Falha ao ler Excel com pandas: {e}")
+
+    # 2. Tenta leitura de arquivos de texto / CSV / TSV com pandas
+    try:
+        import pandas as pd
+        for enc in ['utf-16', 'utf-8-sig', 'utf-8', 'latin1', 'cp1252', 'iso-8859-1']:
+            for sep in ['\t', ';', ',', None]:
+                try:
+                    bio = io.BytesIO(content)
+                    if sep is None:
+                        df = pd.read_csv(bio, sep=None, engine='python', encoding=enc, on_bad_lines='skip')
+                    else:
+                        df = pd.read_csv(bio, sep=sep, encoding=enc, on_bad_lines='skip')
+                    if df is not None and len(df.columns) >= 1:
+                        return df
+                except Exception:
+                    pass
+    except Exception as err_pd:
+        print(f"[WARN] Pandas indisponível ou com erro: {err_pd}")
+
+    # 3. Fallback em Python Puro (sem dependência de pandas)
+    text_content = None
+    for enc in ['utf-16', 'utf-8-sig', 'utf-8', 'latin1', 'cp1252', 'iso-8859-1']:
+        try:
+            text_content = content.decode(enc)
+            break
+        except Exception:
+            continue
+
+    if not text_content:
+        text_content = content.decode('latin1', errors='ignore')
+
+    lines = [line.strip() for line in text_content.splitlines() if line.strip()]
+    if not lines:
+        raise ValueError("Arquivo de texto vazio.")
+
+    # Detectar delimitador (tab, ponto-e-vírgula ou vírgula)
+    first_line = lines[0]
+    sep = '\t' if '\t' in first_line else (';' if ';' in first_line else ',')
     
-    # Tentar múltiplos encodings e separadores para CSV / TSV
-    for enc in ['utf-16', 'utf-8-sig', 'utf-8', 'latin1', 'cp1252']:
-        for sep in ['\t', ';', ',', None]:
-            try:
-                bio = io.BytesIO(content)
-                if sep is None:
-                    df = pd.read_csv(bio, sep=None, engine='python', encoding=enc)
-                else:
-                    df = pd.read_csv(bio, sep=sep, encoding=enc)
-                if len(df.columns) >= 1:
-                    return df
-            except Exception:
-                pass
-                
-    return pd.read_csv(io.BytesIO(content), sep=None, engine='python', encoding='latin1')
+    import csv
+    reader = csv.reader(lines, delimiter=sep)
+    rows = list(reader)
+    if not rows:
+        raise ValueError("Nenhum registro encontrado no arquivo.")
+
+    headers = [str(h).strip() for h in rows[0]]
+    data_rows = rows[1:]
+
+    # Converte para DataFrame se pandas estiver disponível, senão constrói dicionário
+    try:
+        import pandas as pd
+        return pd.DataFrame(data_rows, columns=headers)
+    except Exception:
+        # Mini wrapper com suporte a .columns, iterrows() e indexação
+        class SimpleDF:
+            def __init__(self, data, columns):
+                self.columns = columns
+                self._data = data
+            def iterrows(self):
+                for idx, row in enumerate(self._data):
+                    row_dict = {col: (row[i] if i < len(row) else '') for i, col in enumerate(self.columns)}
+                    yield idx, row_dict
+            def __getitem__(self, col):
+                if col in self.columns:
+                    col_idx = self.columns.index(col)
+                    return SimpleSeries([r[col_idx] if col_idx < len(r) else '' for r in self._data])
+                return SimpleSeries([])
+
+        class SimpleSeries:
+            def __init__(self, items):
+                self._items = items
+            def dropna(self):
+                return self
+            def astype(self, _):
+                return self
+            @property
+            def str(self):
+                return self
+            def strip(self):
+                return self
+            def upper(self):
+                return self
+            def unique(self):
+                return self
+            def tolist(self):
+                return [str(x).strip().upper() for x in self._items if str(x).strip()]
+
+        return SimpleDF(data_rows, headers)
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -460,14 +538,13 @@ def upload_file():
             "message": "Acesso Restrito: É necessário efetuar login no Cadeado para importar planilhas."
         }), 401
 
-    import pandas as pd
     if 'file' not in request.files:
         return jsonify({"status": "error", "message": "Nenhum arquivo enviado."}), 400
 
     file = request.files['file']
     dataset_type = request.form.get('type', 'poweron') # 'poweron' ou 'trbonet'
 
-    if file.filename == '':
+    if not file or file.filename == '':
         return jsonify({"status": "error", "message": "Nome de arquivo vazio."}), 400
 
     try:
@@ -486,26 +563,42 @@ def upload_file():
 
             # Regra 1: Somente equipes com LOGOFF vazio / nulo (ainda logadas)
             col_logoff = [c for c in df.columns if str(c).strip().upper() == 'LOGOFF']
-            if col_logoff:
-                lo_col = col_logoff[0]
-                df_logadas = df[
-                    df[lo_col].isna() | 
-                    df[lo_col].astype(str).str.strip().isin(['', 'nan', 'NaT', 'None', '-', '0'])
-                ].copy()
-            else:
-                df_logadas = df.copy()
-
-            # Regra 2: Obter data e hora da última equipe logada na coluna LOGIN (maior timestamp)
             col_login = [c for c in df.columns if str(c).strip().upper() == 'LOGIN']
-            if col_login and not df[col_login[0]].dropna().empty:
-                dt_series = pd.to_datetime(df[col_login[0]].dropna(), format='%d/%m/%Y %H:%M:%S', errors='coerce')
-                if dt_series.isna().all():
-                    dt_series = pd.to_datetime(df[col_login[0]].dropna(), errors='coerce')
-                max_login_dt = dt_series.max()
-                if pd.notnull(max_login_dt):
-                    data_manager.last_poweron_login = max_login_dt.strftime("%d/%m/%Y %H:%M:%S")
 
-            extracted_teams = sorted(df_logadas[eq_col].dropna().astype(str).str.strip().str.upper().unique().tolist())
+            raw_teams = []
+            max_login_dt = None
+
+            for _, row in df.iterrows():
+                # Validação de LOGOFF
+                if col_logoff:
+                    val_lo = str(row.get(col_logoff[0], '')).strip().lower()
+                    if val_lo not in ['', 'nan', 'nat', 'none', '-', '0']:
+                        continue # Equipe já deslogou
+
+                # Extração do maior LOGIN
+                if col_login:
+                    val_li = str(row.get(col_login[0], '')).strip()
+                    if val_li and val_li.lower() not in ['', 'nan', 'nat', 'none', '-']:
+                        try:
+                            dt = datetime.strptime(val_li, '%d/%m/%Y %H:%M:%S')
+                            if not max_login_dt or dt > max_login_dt:
+                                max_login_dt = dt
+                        except Exception:
+                            try:
+                                dt = datetime.strptime(val_li, '%Y-%m-%d %H:%M:%S')
+                                if not max_login_dt or dt > max_login_dt:
+                                    max_login_dt = dt
+                            except Exception:
+                                pass
+
+                team_val = str(row.get(eq_col, '')).strip().upper()
+                if team_val and team_val != 'NAN':
+                    raw_teams.append(team_val)
+
+            if max_login_dt:
+                data_manager.last_poweron_login = max_login_dt.strftime("%d/%m/%Y %H:%M:%S")
+
+            extracted_teams = sorted(list(set(raw_teams)))
             # Regra 3: Filtrar ESTRITAMENTE as 14 bases oficiais
             extracted_teams = [
                 t for t in extracted_teams 
@@ -535,11 +628,11 @@ def upload_file():
             
             trbo_dict = {}
             for _, row in df.iterrows():
-                code = str(row[eq_col]).strip().upper()
+                code = str(row.get(eq_col, '')).strip().upper()
                 if len(code) >= 4 and code[:3] in data_manager.official_bases:
                     has_gps = True
                     if gps_col:
-                        val = str(row[gps_col]).lower().strip()
+                        val = str(row.get(gps_col, '')).lower().strip()
                         has_gps = val in ['true', '1', 'sim', 's', 'yes', 'y', 'ok']
                     trbo_dict[code] = {
                         "id": str(row.get('id', code)),
@@ -567,6 +660,7 @@ def upload_file():
             "data": consolidated
         })
     except Exception as e:
+        print(f"[UPLOAD ERROR] {e}")
         return jsonify({"status": "error", "message": f"Erro no processamento do arquivo: {str(e)}"}), 500
 
 @app.route('/api/export/csv', methods=['GET'])
