@@ -7,7 +7,6 @@ from flask import Flask, render_template, jsonify, request, send_file, make_resp
 import io
 import os
 import csv
-import pandas as pd
 from datetime import datetime
 from data_manager import data_manager
 from supabase_client import push_snapshot_to_supabase, fetch_latest_snapshot_from_supabase
@@ -192,6 +191,7 @@ def read_uploaded_dataframe(file_storage):
     """
     Lê um arquivo enviado via upload suportando UTF-16, UTF-8 com BOM, Latin1, TSV, CSV e Excel.
     """
+    import pandas as pd
     filename = file_storage.filename.lower()
     content = file_storage.read()
     
