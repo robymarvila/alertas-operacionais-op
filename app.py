@@ -3,7 +3,7 @@ Servidor Flask - Painel Operacional PowerON vs TRBOnet
 Fornece rotas web, APIs RESTful para sincronização em tempo real e upload de arquivos.
 """
 
-from flask import Flask, render_template, jsonify, request, send_file, make_response
+from flask import Flask, render_template, jsonify, request, send_file, make_response, send_from_directory
 import io
 import os
 import csv
@@ -25,6 +25,11 @@ app.config['JSON_SORT_KEYS'] = False
 def index():
     """Renderiza a página principal do dashboard."""
     return render_template('index.html')
+
+@app.route('/static/<path:filename>')
+def custom_static(filename):
+    """Serve arquivos estáticos com suporte completo ao ambiente Vercel Serverless."""
+    return send_from_directory(os.path.join(BASE_DIR, 'static'), filename)
 
 @app.route('/favicon.ico')
 def favicon():
