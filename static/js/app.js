@@ -1491,6 +1491,58 @@ function toggleExportMenu() {
     if (menu) menu.classList.toggle('active');
 }
 
+function exportLiveTeamsCSV() {
+    const teams = appState.teams || [];
+    if (!teams || teams.length === 0) {
+        showToast('Nenhum dado operacional disponível para exportação no momento.', 'warning');
+        return;
+    }
+
+    const summary = appState.summary || {};
+    const lastPwLogin = summary.last_poweron_login || '--';
+    const lastTrboSync = summary.last_trbonet_sync || '--';
+
+    let csv = '\uFEFF'; // UTF-8 BOM para o Microsoft Excel abrir com acentuação perfeita
+    csv += 'Equipe;Base;Prefixo;Regiao;Status_Operacional;Categoria;Escala_PowerON;Conexao_TRBOnet;Sinal_GPS;Radio_ID;Canal;Ultimo_Sinal_TRBOnet;Ultimo_Login_PowerON;Diagnostico_CCO\n';
+
+    teams.forEach(t => {
+        const code = (t.code || '').replace(/"/g, '""');
+        const base = (t.base || '').replace(/"/g, '""');
+        const prefix = (t.prefix || '').replace(/"/g, '""');
+        const region = (t.region || '').replace(/"/g, '""');
+        const statusLabel = (t.status_label || t.status_code || '').replace(/"/g, '""');
+        const category = (t.status_category || '').replace(/"/g, '""');
+        const poweron = t.poweron ? 'SIM (ESCALADA)' : 'NAO (FORA DA ESCALA)';
+        const trbonet = t.trbonet ? 'SIM (CONECTADO)' : 'NAO (DESCONECTADO)';
+        const gps = t.gps ? 'SIM (COM GPS)' : 'NAO (SEM GPS)';
+        const radioId = (t.radio_id || '--').replace(/"/g, '""');
+        const channel = (t.channel || '--').replace(/"/g, '""');
+        const lastSignal = (t.last_signal || lastTrboSync || '--').replace(/"/g, '""');
+        const lastLogin = (t.login_time || lastPwLogin || '--').replace(/"/g, '""');
+        const details = (t.details_text || '').replace(/"/g, '""');
+
+        csv += `"${code}";"${base}";"${prefix}";"${region}";"${statusLabel}";"${category}";"${poweron}";"${trbonet}";"${gps}";"${radioId}";"${channel}";"${lastSignal}";"${lastLogin}";"${details}"\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '_').slice(0, 15);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Alertas_Operacionais_PowerON_vs_TRBOnet_${timestamp}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    const exportMenu = document.getElementById('exportMenu');
+    if (exportMenu) exportMenu.classList.remove('active');
+
+    showToast(`Planilha Excel exportada com sucesso (${teams.length} equipes)!`, 'success');
+}
+
+window.exportLiveTeamsCSV = exportLiveTeamsCSV;
+
 document.addEventListener('click', (e) => {
     const exportBtn = document.getElementById('btnExport');
     const exportMenu = document.getElementById('exportMenu');
@@ -2200,9 +2252,12 @@ function exportAuditTableCSV() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
     showToast('Relatório de auditoria exportado com sucesso!', 'success');
 }
+
+window.exportAuditTableCSV = exportAuditTableCSV;
 
 // ==========================================================================
 // MÓDULO DE AUTENTICAÇÃO E CONTROLE DE ACESSO (E2EE)
