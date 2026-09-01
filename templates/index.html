@@ -10,9 +10,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
-    <!-- Lucide Icons & Chart.js -->
+    <!-- Lucide Icons, Chart.js & SheetJS (Excel .xlsx) -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/static/css/dashboard.css">
@@ -284,8 +285,11 @@
                                 <i data-lucide="chevron-down" style="width: 14px;"></i>
                             </button>
                             <div class="dropdown-menu" id="exportMenu">
+                                <button class="dropdown-item" onclick="exportLiveTeamsExcel()">
+                                    <i data-lucide="file-spreadsheet" class="text-emerald"></i> Planilha Excel (.xlsx)
+                                </button>
                                 <button class="dropdown-item" onclick="exportLiveTeamsCSV()">
-                                    <i data-lucide="file-spreadsheet"></i> Planilha CSV / Excel
+                                    <i data-lucide="file-text" class="text-cyan"></i> Arquivo CSV (.csv)
                                 </button>
                                 <button class="dropdown-item" onclick="window.print()">
                                     <i data-lucide="printer"></i> Imprimir / Salvar PDF
@@ -852,9 +856,9 @@
                             <i data-lucide="refresh-cw" id="btnAuditRefreshIcon"></i>
                             <span>Buscar</span>
                         </button>
-                        <button class="btn btn-secondary btn-with-icon" onclick="exportAuditTableCSV()" title="Exportar dados filtrados para CSV/Excel">
-                            <i data-lucide="download"></i>
-                            <span>Exportar</span>
+                        <button class="btn btn-secondary btn-with-icon" onclick="exportAuditTableExcel()" title="Exportar dados filtrados para Planilha Excel (.xlsx)">
+                            <i data-lucide="file-spreadsheet" class="text-emerald"></i>
+                            <span>Exportar Excel</span>
                         </button>
                     </div>
                 </div>

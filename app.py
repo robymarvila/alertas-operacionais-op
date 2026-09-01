@@ -663,6 +663,111 @@ def upload_file():
         print(f"[UPLOAD ERROR] {e}")
         return jsonify({"status": "error", "message": f"Erro no processamento do arquivo: {str(e)}"}), 500
 
+@app.route('/api/export/excel', methods=['GET'])
+def export_excel():
+    """Gera e faz download de planilha nativa Excel (.xlsx) com 100% das equipes cruzadas."""
+    if not data_manager.poweron_teams or not data_manager.trbonet_teams:
+        latest_cloud = fetch_latest_snapshot_from_supabase()
+        if latest_cloud.get("status") == "success" and latest_cloud.get("data"):
+            data_manager.load_from_snapshot(latest_cloud["data"])
+
+    data = data_manager.consolidate_data()
+    teams = data.get("teams", [])
+    summary = data.get("summary", {})
+
+    rows = []
+    for t in teams:
+        rows.append({
+            "Código Equipe": t.get("code", ""),
+            "Base Operacional": t.get("base", ""),
+            "Sigla Base": t.get("prefix", ""),
+            "Região / Empresa": t.get("region", ""),
+            "Status de Conformidade": t.get("status_label") or t.get("status_code", ""),
+            "Escala PowerON": "SIM (ESCALADA)" if t.get("poweron") else "NÃO (FORA DA ESCALA)",
+            "Conexão TRBOnet": "ONLINE (CONECTADO)" if t.get("trbonet") else "DESCONECTADO",
+            "Sinal GPS": "COM SINAL GPS" if t.get("gps") else "SEM SINAL GPS",
+            "ID do Rádio": t.get("radio_id") or "--",
+            "Canal TRBOnet": t.get("channel") or "--",
+            "Último Sinal Registrado": t.get("last_signal") or "--",
+            "Horário Login PowerON": t.get("login_time") or summary.get("last_poweron_login") or "--",
+            "Diagnóstico CCO": t.get("details_text", "")
+        })
+
+    import pandas as pd
+    df = pd.DataFrame(rows)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Painel_Operacional_CCO')
+
+    output.seek(0)
+    filename = f"Alertas_Operacionais_PowerON_vs_TRBOnet_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename
+    )
+
+@app.route('/api/export/audit_excel', methods=['GET'])
+def export_audit_excel():
+    """Gera e faz download de planilha nativa Excel (.xlsx) da auditoria."""
+    date_ref = request.args.get("date")
+    base_code = request.args.get("base")
+    mode = request.args.get("mode", "daily")
+
+    if mode == "daily":
+        res = fetch_daily_audit_summary(date_ref=date_ref, base_code=base_code)
+        data_list = res.get("data", []) if res.get("status") == "success" else []
+        rows = []
+        for i in data_list:
+            rows.append({
+                "Data": i.get("date_ref", date_ref or "Hoje"),
+                "Equipe": i.get("team_code", ""),
+                "Base": i.get("base_code", ""),
+                "Região": i.get("region", ""),
+                "Escala PowerON": "SIM" if i.get("was_in_poweron") else "NÃO",
+                "Conectou TRBOnet": "SIM" if i.get("was_online_trbonet") else "NÃO",
+                "Coletas Online": i.get("times_seen_online", 0),
+                "Total Coletas": i.get("total_sync_checks", 0),
+                "Uptime (%)": f"{i.get('uptime_percentage', 0)}%",
+                "Primeiro Sinal": i.get("first_seen_online", "--"),
+                "Último Sinal": i.get("last_seen_online", "--")
+            })
+    else:
+        res = fetch_audit_logs(date_ref=date_ref, base_code=base_code, limit=5000)
+        data_list = res.get("data", []) if res.get("status") == "success" else []
+        rows = []
+        for i in data_list:
+            rows.append({
+                "Data e Hora Coleta": i.get("captured_at", ""),
+                "Data Ref": i.get("date_ref", ""),
+                "Equipe": i.get("team_code", ""),
+                "Base": i.get("base_code", ""),
+                "Região": i.get("region", ""),
+                "Status": i.get("status", ""),
+                "PowerON": "SIM" if i.get("in_poweron") else "NÃO",
+                "TRBOnet": "SIM" if i.get("in_trbonet") else "NÃO",
+                "GPS": "SIM" if i.get("has_gps") else "NÃO",
+                "ID Rádio": i.get("radio_id", ""),
+                "Canal": i.get("channel", ""),
+                "Último Sinal": i.get("last_signal", "")
+            })
+
+    import pandas as pd
+    df = pd.DataFrame(rows)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Auditoria_CCO')
+
+    output.seek(0)
+    filename = f"Auditoria_TRBOnet_PowerON_{(date_ref or 'Hoje')}_{mode}.xlsx"
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename
+    )
+
 @app.route('/api/export/csv', methods=['GET'])
 def export_csv():
     """Gera e faz download de relatório consolidado em CSV com 100% das equipes cruzadas."""

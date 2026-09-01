@@ -1491,6 +1491,58 @@ function toggleExportMenu() {
     if (menu) menu.classList.toggle('active');
 }
 
+function exportLiveTeamsExcel() {
+    const teams = appState.teams || [];
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '_').slice(0, 15);
+    const filename = `Alertas_Operacionais_PowerON_vs_TRBOnet_${timestamp}.xlsx`;
+
+    // 1. Tenta geração client-side instantânea via SheetJS
+    if (window.XLSX && teams.length > 0) {
+        try {
+            const summary = appState.summary || {};
+            const lastPwLogin = summary.last_poweron_login || '--';
+            const lastTrboSync = summary.last_trbonet_sync || '--';
+
+            const rows = teams.map(t => ({
+                "Código Equipe": t.code || '',
+                "Base Operacional": t.base || '',
+                "Sigla Base": t.prefix || '',
+                "Região / Empresa": t.region || '',
+                "Status de Conformidade": t.status_label || t.status_code || '',
+                "Escala PowerON": t.poweron ? 'SIM (ESCALADA)' : 'NÃO (FORA DA ESCALA)',
+                "Conexão TRBOnet": t.trbonet ? 'ONLINE (CONECTADO)' : 'DESCONECTADO',
+                "Sinal GPS": t.gps ? 'COM SINAL GPS' : 'SEM SINAL GPS',
+                "ID do Rádio": t.radio_id || '--',
+                "Canal TRBOnet": t.channel || '--',
+                "Último Sinal Registrado": t.last_signal || lastTrboSync || '--',
+                "Horário Login PowerON": t.login_time || lastPwLogin || '--',
+                "Diagnóstico CCO": t.details_text || ''
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Painel_Operacional_CCO");
+            XLSX.writeFile(wb, filename);
+
+            const exportMenu = document.getElementById('exportMenu');
+            if (exportMenu) exportMenu.classList.remove('active');
+
+            showToast(`Planilha Excel (.xlsx) exportada com sucesso (${teams.length} equipes)!`, 'success');
+            return;
+        } catch (err) {
+            console.warn('Falha na exportação client-side via SheetJS, redirecionando para backend:', err);
+        }
+    }
+
+    // 2. Fallback via rota backend
+    const exportMenu = document.getElementById('exportMenu');
+    if (exportMenu) exportMenu.classList.remove('active');
+    window.location.href = '/api/export/excel';
+    showToast('Download da Planilha Excel (.xlsx) iniciado!', 'success');
+}
+
+window.exportLiveTeamsExcel = exportLiveTeamsExcel;
+
 function exportLiveTeamsCSV() {
     const teams = appState.teams || [];
     if (!teams || teams.length === 0) {
@@ -1538,7 +1590,7 @@ function exportLiveTeamsCSV() {
     const exportMenu = document.getElementById('exportMenu');
     if (exportMenu) exportMenu.classList.remove('active');
 
-    showToast(`Planilha Excel exportada com sucesso (${teams.length} equipes)!`, 'success');
+    showToast(`Arquivo CSV exportado com sucesso (${teams.length} equipes)!`, 'success');
 }
 
 window.exportLiveTeamsCSV = exportLiveTeamsCSV;
@@ -2222,6 +2274,66 @@ function debounceAuditSearch() {
 /**
  * Exporta a tabela filtrada atual para um arquivo CSV estruturado.
  */
+function exportAuditTableExcel() {
+    const list = auditState.filteredData;
+    const dateVal = document.getElementById('auditFilterDate')?.value || 'hoje';
+    const filename = `Auditoria_TRBOnet_PowerON_${dateVal}_${auditState.mode}.xlsx`;
+
+    // 1. Tenta geração client-side instantânea via SheetJS
+    if (window.XLSX && list && list.length > 0) {
+        try {
+            let rows = [];
+            if (auditState.mode === 'daily') {
+                rows = list.map(i => ({
+                    "Data": i.date_ref || dateVal,
+                    "Equipe": i.team_code || '',
+                    "Base": i.base_code || '',
+                    "Região": i.region || '',
+                    "Escala PowerON": i.was_in_poweron ? 'SIM' : 'NÃO',
+                    "Conectou TRBOnet": i.was_online_trbonet ? 'SIM' : 'NÃO',
+                    "Coletas Online": i.times_seen_online || 0,
+                    "Total Coletas": i.total_sync_checks || 0,
+                    "Uptime (%)": `${i.uptime_percentage || 0}%`,
+                    "Primeiro Sinal": i.first_seen_online || '--',
+                    "Último Sinal": i.last_seen_online || '--'
+                }));
+            } else {
+                rows = list.map(i => ({
+                    "Data e Hora Coleta": i.captured_at || '',
+                    "Data Ref": i.date_ref || '',
+                    "Equipe": i.team_code || '',
+                    "Base": i.base_code || '',
+                    "Região": i.region || '',
+                    "Status": i.status || '',
+                    "PowerON": i.in_poweron ? 'SIM' : 'NÃO',
+                    "TRBOnet": i.in_trbonet ? 'SIM' : 'NÃO',
+                    "GPS": i.has_gps ? 'SIM' : 'NÃO',
+                    "ID Rádio": i.radio_id || '',
+                    "Canal": i.channel || '',
+                    "Último Sinal": i.last_signal || ''
+                }));
+            }
+
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Auditoria_CCO");
+            XLSX.writeFile(wb, filename);
+
+            showToast(`Relatório de auditoria (.xlsx) exportado com sucesso (${list.length} registros)!`, 'success');
+            return;
+        } catch (err) {
+            console.warn('Falha na exportação client-side de auditoria, usando rota backend:', err);
+        }
+    }
+
+    // 2. Fallback via backend endpoint
+    const baseVal = document.getElementById('auditFilterBase')?.value || 'ALL';
+    window.location.href = `/api/export/audit_excel?date=${encodeURIComponent(dateVal)}&base=${encodeURIComponent(baseVal)}&mode=${auditState.mode}`;
+    showToast('Download da Planilha de Auditoria (.xlsx) iniciado!', 'success');
+}
+
+window.exportAuditTableExcel = exportAuditTableExcel;
+
 function exportAuditTableCSV() {
     const list = auditState.filteredData;
     if (!list || list.length === 0) {
