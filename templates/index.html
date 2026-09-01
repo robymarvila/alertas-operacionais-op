@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alertas Operacionais OP - PowerON vs TRBOnet | CCO</title>
+    
+    <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons & Chart.js -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body class="theme-dark">
+
+<div class="app-wrapper">
+    <!-- Ambient Background Glows -->
+    <div class="ambient-glow glow-top-left"></div>
+    <div class="ambient-glow glow-top-right"></div>
+    <div class="ambient-glow glow-bottom-center"></div>
+
+    <!-- Main Container -->
+    <main class="dashboard-content">
+
+        <!-- ================================================================= -->
+        <!-- TELA INICIAL: HUB DE MÓDULOS CCO (PORTAL MULTI-MÓDULOS)           -->
+        <!-- ================================================================= -->
+        <div id="portalHubView" class="portal-hub-container">
+            
+            <!-- Hero Banner CCO -->
+            <div class="hub-hero-banner glass-card">
+                <div class="hub-hero-content">
+                    <div class="hub-pill-badge">
+                        <span class="pulse-dot"></span>
+                        <span>ONLINE - MONITORAMENTO</span>
+                    </div>
+                    <h2 class="hub-hero-title">Módulos de Monitoramento</h2>
+                    <p class="hub-hero-desc">
+                        Ambiente unificado para monitoramento das equipes e Ferramentas Operacionais - CCO e Operação
+                    </p>
+                </div>
+
+                <div class="hub-header-actions-group">
+                    <!-- Relógio CCO -->
+                    <div class="header-clock-pill">
+                        <i data-lucide="clock" class="mini-icon text-cyan"></i>
+                        <span id="digitalClock" class="clock-digits">--:--:--</span>
+                        <span id="digitalDate" class="date-digits">--/--/----</span>
+                    </div>
+
+                    <!-- Botão Seletor de Tema (Claro / Escuro) -->
+                    <button class="btn-theme-toggle" id="btnThemeToggle" onclick="toggleTheme()" title="Alternar entre Tema Claro e Tema Escuro">
+                        <div class="theme-icon-wrap" id="themeIconWrap">
+                            <i data-lucide="sun" id="iconThemeSun" class="theme-icon-sun"></i>
+                            <i data-lucide="moon" id="iconThemeMoon" class="theme-icon-moon"></i>
+                        </div>
+                        <span id="themeToggleText" class="theme-toggle-label">Modo Claro</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grid de Módulos do Sistema -->
+            <div class="hub-modules-section">
+                <div class="hub-modules-grid single-module-grid">
+
+                    <!-- CARD 1: STATUS TRBOnet (MÓDULO ATIVO PRINCIPAL) -->
+                    <div class="module-card module-card-active glass-card" onclick="navigateToView('module')">
+                        <div class="module-card-glow"></div>
+                        <div class="module-card-top">
+                            <div class="module-card-icon-box icon-emerald-box">
+                                <i data-lucide="radio" class="pulse-icon"></i>
+                            </div>
+                            <span class="module-status-badge badge-active">
+                                <span class="badge-dot dot-emerald"></span> ATIVO & CONCILIANDO
+                            </span>
+                        </div>
+
+                        <div class="module-card-body">
+                            <h4 class="module-title">STATUS TRBOnet</h4>
+                            <p class="module-subtitle-desc">Auditoria e Conciliação Cruzada: Escala PowerON × Telemetria GPS TRBOnet One</p>
+
+                            <!-- Horários de Sincronização em Destaque -->
+                            <div class="module-sync-grid">
+                                <div class="module-sync-item">
+                                    <div class="sync-label-row">
+                                        <span class="dot-sm dot-trbonet"></span>
+                                        <strong>TRBOnet:</strong>
+                                    </div>
+                                    <span class="sync-val" id="hubCardSyncTrbonet">--/--/---- --:--:--</span>
+                                </div>
+                                <div class="module-sync-item">
+                                    <div class="sync-label-row">
+                                        <span class="dot-sm dot-poweron"></span>
+                                        <strong>PowerON:</strong>
+                                    </div>
+                                    <span class="sync-val" id="hubCardSyncPoweron">--/--/---- --:--:--</span>
+                                </div>
+                            </div>
+
+                            <!-- Mini Métricas do Módulo -->
+                            <div class="module-mini-kpis">
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Conformidade</span>
+                                    <strong class="mini-kpi-val text-emerald" id="hubMiniCompliance">--%</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Rádios TRBOnet</span>
+                                    <strong class="mini-kpi-val text-cyan" id="hubMiniTrbonet">--</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Escala PowerON</span>
+                                    <strong class="mini-kpi-val text-blue" id="hubMiniPoweron">--</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Offline</span>
+                                    <strong class="mini-kpi-val text-rose" id="hubMiniOffline">--</strong>
+                                </div>
+                            </div>
+
+                            <!-- Barra de Conformidade -->
+                            <div class="module-progress-wrap">
+                                <div class="module-progress-header">
+                                    <span>Índice de Conciliação em Tempo Real</span>
+                                    <span id="hubMiniProgressRate">0%</span>
+                                </div>
+                                <div class="module-progress-bar-bg">
+                                    <div class="module-progress-bar-fill" id="hubMiniProgressBar" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="module-card-footer">
+                            <span class="module-access-btn">
+                                <span>Acessar STATUS TRBOnet X PowerON</span>
+                                <i data-lucide="arrow-right"></i>
+                            </span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- MÓDULO 1: AUDITORIA OPERACIONAL POWERON X TRBONET (CONTAINER)     -->
+        <!-- ================================================================= -->
+        <div id="moduleAuditView" class="module-view-container" style="display: none;">
+
+            <!-- Header do Módulo Operacional -->
+            <header class="main-header glass-card" id="moduleMainHeader" style="margin-bottom: 20px;">
+                <div class="header-left">
+                    <button class="btn-back-hub" id="btnBackToHub" onclick="navigateToView('hub')" title="Voltar ao Hub Central de Módulos">
+                        <i data-lucide="arrow-left"></i>
+                        <span>Hub Central</span>
+                    </button>
+
+                    <div class="brand-badge" onclick="navigateToView('hub')" style="cursor: pointer;" title="Ir para o Hub de Módulos CCO">
+                        <div class="brand-logo-icon">
+                            <i data-lucide="radio" class="pulse-icon"></i>
+                        </div>
+                        <div class="brand-info">
+                            <div class="brand-title-row">
+                                <h1>STATUS TRBOnet X PowerON</h1>
+                            </div>
+                            <p class="brand-subtitle">Auditoria e Conciliação: <strong>PowerON</strong> (Escala) × <strong>TRBOnet</strong> (Rádios / GPS)</p>
+                        </div>
+                    </div>
+
+                    <!-- Indicadores de Última Atualização no Lado Esquerdo -->
+                    <div class="header-sync-dual-box" id="headerSyncBox">
+                        <div class="sync-source-pill source-trbonet" title="Data e Hora da Última Captura de Rádios TRBOnet">
+                            <div class="source-header">
+                                <span class="source-dot dot-trbonet"></span>
+                                <strong class="source-name">TRBOnet:</strong>
+                            </div>
+                            <span class="source-time" id="headerSyncTrbonet">--/--/---- --:--:--</span>
+                        </div>
+
+                        <div class="sync-source-pill source-poweron" title="Data e Hora do Último Login Registrado na Coluna LOGIN do PowerON">
+                            <div class="source-header">
+                                <span class="source-dot dot-poweron"></span>
+                                <strong class="source-name">PowerON:</strong>
+                            </div>
+                            <span class="source-time" id="headerSyncPoweron">--/--/---- --:--:--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navegação entre Janelas / Abas do Módulo Ativo -->
+                <div class="header-nav-tabs" id="moduleNavTabs">
+                    <button class="nav-tab-btn active" id="tabBtnLive" onclick="switchMainTab('live')">
+                        <i data-lucide="activity"></i>
+                        <span>Operação ao Vivo</span>
+                        <span class="tab-badge-live" id="navLiveBadge">0</span>
+                    </button>
+                    <button class="nav-tab-btn" id="tabBtnDashboard" onclick="switchMainTab('dashboard')">
+                        <i data-lucide="layout-dashboard"></i>
+                        <span>Dashboard & Indicadores</span>
+                    </button>
+                </div>
+
+                <div class="header-right">
+                    <!-- Relógio e Tema dentro do Módulo -->
+                    <div class="module-header-tools" id="moduleHeaderTools">
+                        <div class="header-clock-pill">
+                            <i data-lucide="clock" class="mini-icon text-cyan"></i>
+                            <span id="digitalClockModule" class="clock-digits">--:--:--</span>
+                        </div>
+                        <button class="btn-theme-toggle" id="btnThemeToggleModule" onclick="toggleTheme()" title="Alternar entre Tema Claro e Tema Escuro">
+                            <div class="theme-icon-wrap">
+                                <i data-lucide="sun" class="theme-icon-sun"></i>
+                                <i data-lucide="moon" class="theme-icon-moon"></i>
+                            </div>
+                        </button>
+                    </div>
+
+                    <!-- Ações Rápidas Organizadas no Lado Direito (No Módulo) -->
+                    <div class="header-actions" id="moduleHeaderActions">
+                        <!-- Temporizador Circular de Auto-refresh (2 Minutos) -->
+                        <div class="auto-refresh-control" title="Auto-refresh automático a cada 2 minutos">
+                            <svg class="progress-ring" width="36" height="36">
+                                <circle class="progress-ring__circle-bg" stroke="rgba(255,255,255,0.1)" stroke-width="3" fill="transparent" r="15" cx="18" cy="18"/>
+                                <circle class="progress-ring__circle" id="timerProgressCircle" stroke="#00f2fe" stroke-width="3" stroke-dasharray="94.2" stroke-dashoffset="0" fill="transparent" r="15" cx="18" cy="18"/>
+                            </svg>
+                            <span class="timer-seconds" id="timerSeconds">2:00</span>
+                        </div>
+
+                        <!-- 1. Ler TRBOnet -->
+                        <button class="btn btn-primary btn-with-icon" id="btnLiveCapture" title="Capturar Rádios ao Vivo da tela do TRBOnet One" onclick="captureTRBOnetLive()">
+                            <i data-lucide="radio" id="liveCaptureIcon"></i>
+                            <span>Ler TRBOnet</span>
+                        </button>
+
+                        <!-- 2. Ler PowerON -->
+                        <button class="btn btn-secondary btn-with-icon" id="btnSyncPowerOn" title="Sincronizar Arquivo Calendário do PowerON" onclick="syncPowerOnCalendar()">
+                            <i data-lucide="clipboard-check" id="syncPowerOnIcon"></i>
+                            <span>Ler PowerON</span>
+                        </button>
+
+                        <!-- 3. Sincronizar Painel -->
+                        <button class="btn btn-secondary btn-with-icon" id="btnRefresh" title="Sincronizar Painel" onclick="manualRefresh()">
+                            <i data-lucide="refresh-cw" id="refreshIcon"></i>
+                            <span>Sincronizar</span>
+                        </button>
+
+                        <!-- 4. Importar Planilha / Dados -->
+                        <button class="btn btn-secondary btn-with-icon" id="btnUploadModal" title="Importar Planilha / Dados" onclick="openModal('uploadModal')">
+                            <i data-lucide="upload-cloud"></i>
+                            <span>Importar</span>
+                        </button>
+
+                        <!-- 5. Exportar -->
+                        <div class="dropdown">
+                            <button class="btn btn-secondary btn-with-icon" id="btnExport" onclick="toggleExportMenu()">
+                                <i data-lucide="download"></i>
+                                <span>Exportar</span>
+                                <i data-lucide="chevron-down" style="width: 14px;"></i>
+                            </button>
+                            <div class="dropdown-menu" id="exportMenu">
+                                <a href="/api/export/csv" class="dropdown-item" download>
+                                    <i data-lucide="file-spreadsheet"></i> Planilha CSV / Excel
+                                </a>
+                                <button class="dropdown-item" onclick="window.print()">
+                                    <i data-lucide="printer"></i> Imprimir / Salvar PDF
+                                </button>
+                                <button class="dropdown-item" onclick="copySummaryToClipboard()">
+                                    <i data-lucide="copy"></i> Copiar Resumo Executivo
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 6. Tela Cheia -->
+                        <button class="btn btn-secondary btn-with-icon" id="btnFullscreen" title="Alternar Modo Tela Cheia (Wallboard)" onclick="toggleFullscreen()">
+                            <i data-lucide="maximize" id="fullscreenIcon"></i>
+                            <span>Tela Cheia</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- ABA 1: OPERAÇÃO AO VIVO (VISÃO EM TEMPO REAL) -->
+            <div id="tabViewLive" class="tab-pane active">
+
+                <!-- Barra de Escopo e Filtro Rápido dos KPIs -->
+                <div class="kpi-scope-bar glass-card" id="kpiScopeBar">
+                <div class="kpi-scope-info">
+                    <span class="kpi-scope-dot" id="kpiScopeDot"></span>
+                    <span class="kpi-scope-label">INDICADORES DE DESEMPENHO:</span>
+                    <strong class="kpi-scope-text" id="kpiScopeText">Todas as Regiões e Bases (Visão Global Consolidada)</strong>
+                </div>
+                <div class="kpi-quick-regions">
+                    <span class="quick-region-label">Região:</span>
+                    <button class="btn-quick-region active" id="btnQuickRegAll" onclick="toggleRegionFilter('ALL', this)">🌍 Todas</button>
+                    <button class="btn-quick-region btn-reg-north" id="btnQuickRegNorth" onclick="toggleRegionFilter('NORTE', this)">🟢 Região Norte</button>
+                    <button class="btn-quick-region btn-reg-east" id="btnQuickRegEast" onclick="toggleRegionFilter('LESTE', this)">🔵 Região Leste</button>
+                    <button class="btn-quick-region btn-reg-other" id="btnQuickRegOther" onclick="toggleRegionFilter('OUTRAS', this)">🟡 Outras Bases</button>
+                </div>
+            </div>
+
+            <!-- Grid de KPIs & Resumo Executivo -->
+            <section class="kpi-section">
+                <!-- KPI 1: Equipes em PowerON -->
+                <div class="kpi-card glass-card">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrap icon-blue">
+                            <i data-lucide="clipboard-check"></i>
+                        </div>
+                        <span class="kpi-category">ESCALA OPERACIONAL</span>
+                    </div>
+                    <div class="kpi-body">
+                        <div class="kpi-metric-row">
+                            <h2 class="kpi-number" id="kpi-poweron">0</h2>
+                            <span class="kpi-unit">equipes</span>
+                        </div>
+                        <p class="kpi-label">Logadas no PowerON</p>
+                    </div>
+                    <div class="kpi-footer">
+                        <span class="kpi-subtext"><i data-lucide="users" class="mini-icon"></i> Total em escala ativa</span>
+                    </div>
+                    <div class="card-accent-bar bar-blue"></div>
+                </div>
+
+                <!-- KPI 2: Online no TRBOnet -->
+                <div class="kpi-card glass-card">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrap icon-green">
+                            <i data-lucide="radio"></i>
+                        </div>
+                        <span class="kpi-category">TRANSMISSÃO DE RÁDIO</span>
+                    </div>
+                    <div class="kpi-body">
+                        <div class="kpi-metric-row">
+                            <h2 class="kpi-number text-emerald" id="kpi-online">0</h2>
+                            <span class="kpi-unit">rádios</span>
+                        </div>
+                        <p class="kpi-label">Online no TRBOnet</p>
+                    </div>
+                    <div class="kpi-footer">
+                        <div class="gps-split-pills">
+                            <span class="sub-pill pill-gps" title="Rádios com telemetria GPS ativa"><i data-lucide="navigation" class="mini-icon"></i> <strong id="kpi-gps-count">0</strong> Com GPS</span>
+                            <span class="sub-pill pill-nogps" title="Rádios conectados sem GPS"><i data-lucide="radio-tower" class="mini-icon"></i> <strong id="kpi-nogps-count">0</strong> Sem GPS</span>
+                        </div>
+                    </div>
+                    <div class="card-accent-bar bar-green"></div>
+                </div>
+
+                <!-- KPI 3: Offline no TRBOnet (Crítico) -->
+                <div class="kpi-card glass-card kpi-card-alert" id="cardOfflineAlert">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrap icon-rose">
+                            <i data-lucide="shield-alert"></i>
+                        </div>
+                        <span class="kpi-category text-rose">DISCREPÂNCIA CRÍTICA</span>
+                    </div>
+                    <div class="kpi-body">
+                        <div class="kpi-metric-row">
+                            <h2 class="kpi-number text-rose" id="kpi-offline">0</h2>
+                            <span class="kpi-unit text-rose">equipes</span>
+                        </div>
+                        <p class="kpi-label">Offline no TRBOnet</p>
+                    </div>
+                    <div class="kpi-footer">
+                        <span class="kpi-subtext text-rose-light"><i data-lucide="alert-triangle" class="mini-icon"></i> Na escala, porém rádio desligado</span>
+                    </div>
+                    <div class="card-accent-bar bar-rose"></div>
+                </div>
+
+                <!-- KPI 4: Apenas no TRBOnet (Aviso) -->
+                <div class="kpi-card glass-card">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrap icon-amber">
+                            <i data-lucide="help-circle"></i>
+                        </div>
+                        <span class="kpi-category text-amber">SEM ESCALA POWERON</span>
+                    </div>
+                    <div class="kpi-body">
+                        <div class="kpi-metric-row">
+                            <h2 class="kpi-number text-amber" id="kpi-trbo-only">0</h2>
+                            <span class="kpi-unit text-amber">rádios</span>
+                        </div>
+                        <p class="kpi-label">Apenas no TRBOnet</p>
+                    </div>
+                    <div class="kpi-footer">
+                        <span class="kpi-subtext text-amber-light"><i data-lucide="info" class="mini-icon"></i> Rádio ativo sem turno no PowerON</span>
+                    </div>
+                    <div class="card-accent-bar bar-amber"></div>
+                </div>
+
+                <!-- KPI 5: Taxa Global de Conformidade -->
+                <div class="kpi-card glass-card kpi-card-gauge">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrap icon-purple">
+                            <i data-lucide="activity"></i>
+                        </div>
+                        <span class="kpi-category">ÍNDICE DE CONFORMIDADE</span>
+                    </div>
+                    <div class="kpi-body gauge-body">
+                        <div class="gauge-display">
+                            <h2 class="kpi-number text-cyan" id="kpi-compliance-rate">0%</h2>
+                            <span class="gauge-status-badge" id="complianceBadge">AVALIANDO</span>
+                        </div>
+                        <div class="compliance-progress-wrap">
+                            <div class="compliance-progress-bar" id="complianceProgressBar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                    <div class="kpi-footer">
+                        <span class="kpi-subtext" id="complianceSubtext">Meta Operacional CCO: ≥ 90%</span>
+                    </div>
+                    <div class="card-accent-bar bar-cyan"></div>
+                </div>
+            </section>
+
+            <!-- Seção: Conformidade e Cobertura por Base Operacional (Agrupada por Região) -->
+            <section class="bases-section">
+                <div class="section-title-bar">
+                    <div class="section-title-left">
+                        <i data-lucide="map-pin" class="section-icon"></i>
+                        <h3>Conformidade e Cobertura por Base Operacional</h3>
+                    </div>
+                    <div class="section-title-right">
+                        <span class="section-hint"><i data-lucide="mouse-pointer" style="width: 13px;"></i> Clique nos títulos ou cards para marcar/desmarcar regiões e bases</span>
+                    </div>
+                </div>
+
+                <!-- Grupos Regionais Interativos -->
+                <div class="regional-bases-container">
+                    
+                    <!-- Bloco Região Norte -->
+                    <div class="region-group-block" id="blockRegionNorth">
+                        <div class="region-group-header" onclick="toggleRegionFilter('NORTE')" title="Clique para marcar/desmarcar todas as bases da Região Norte">
+                            <div class="region-title-wrap">
+                                <span class="region-indicator-dot dot-north"></span>
+                                <h4>Região Norte</h4>
+                            </div>
+                            <span class="region-count-badge" id="northBasesCountBadge">3 Bases Oficiais</span>
+                        </div>
+                        <div class="region-cards-row" id="northBasesGrid">
+                            <!-- Inserido dinamicamente: ENL (Fagundes), ECL (Cajati), EEL (Vila Medeiros) -->
+                        </div>
+                    </div>
+
+                    <!-- Bloco Região Leste -->
+                    <div class="region-group-block" id="blockRegionEast">
+                        <div class="region-group-header" onclick="toggleRegionFilter('LESTE')" title="Clique para marcar/desmarcar todas as bases da Região Leste">
+                            <div class="region-title-wrap">
+                                <span class="region-indicator-dot dot-east"></span>
+                                <h4>Região Leste</h4>
+                            </div>
+                            <span class="region-count-badge" id="eastBasesCountBadge">4 Bases Oficiais</span>
+                        </div>
+                        <div class="region-cards-row" id="eastBasesGrid">
+                            <!-- Inserido dinamicamente: EML (Monte Santo), EQL (Aricanduva), EVL (Catumbi), ESL (Santo André) -->
+                        </div>
+                    </div>
+
+                    <!-- Bloco Outras Bases -->
+                    <div class="region-group-block region-other-block" id="blockRegionOther">
+                        <div class="region-group-header" onclick="toggleRegionFilter('OUTRAS')" title="Clique para marcar/desmarcar as demais bases">
+                            <div class="region-title-wrap">
+                                <span class="region-indicator-dot dot-other"></span>
+                                <h4>Demais Regiões & Frotas</h4>
+                            </div>
+                            <span class="region-count-badge" id="otherBasesCountBadge">Outras Bases</span>
+                        </div>
+                        <div class="region-cards-row" id="otherBasesGrid">
+                            <!-- Card Especial Consolidado (Outras) -->
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Gaveta Expansível de Outras Bases (Exibida ao Clicar no Card Outras) -->
+                <div class="other-bases-drawer glass-card" id="otherBasesDrawer" style="display: none;">
+                    <div class="drawer-header">
+                        <div class="drawer-title-wrap">
+                            <i data-lucide="layers" class="text-cyan"></i>
+                            <div>
+                                <h5>Detalhamento das Demais Bases Operacionais</h5>
+                                <p class="drawer-sub">Bases e prefixos fora das regiões principais</p>
+                            </div>
+                        </div>
+                        <button class="btn-close-drawer" onclick="toggleOtherBasesDrawer(false)">
+                            <i data-lucide="x"></i>
+                        </button>
+                    </div>
+                    <div class="drawer-sub-grid" id="otherSubBasesGrid">
+                        <!-- Sub-bases renderizadas dinamicamente -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Barra de Controle, Pesquisa e Filtros Rápidos -->
+            <section class="controls-section glass-card">
+                <div class="controls-top-row">
+                    <!-- Campo de Pesquisa -->
+                    <div class="search-input-group">
+                        <i data-lucide="search" class="search-icon"></i>
+                        <input type="text" id="searchInput" class="search-field" placeholder="Buscar por código de equipe (ex: ECL121, ENL, 105) ou base..." oninput="handleSearchChange()">
+                        <button class="btn-clear-search" id="btnClearSearch" onclick="clearSearch()" style="display: none;">
+                            <i data-lucide="x"></i>
+                        </button>
+                    </div>
+
+                    <!-- Modos de Visualização & Ações -->
+                    <div class="view-mode-group">
+                        <span class="view-label">Modo:</span>
+                        <button class="btn-view-mode active" id="btnViewTable" onclick="setViewMode('table')" title="Modo Tabela Detalhada">
+                            <i data-lucide="table"></i>
+                            <span>Tabela</span>
+                        </button>
+                        <button class="btn-view-mode" id="btnViewCards" onclick="setViewMode('cards')" title="Modo Grid de Cartões">
+                            <i data-lucide="layout-grid"></i>
+                            <span>Cartões</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Linha de Filtros Rápidos -->
+                <div class="filter-pills-row">
+                    <!-- Filtro por Região -->
+                    <div class="filter-cluster">
+                        <span class="filter-cluster-label"><i data-lucide="compass" style="width: 13px;"></i> Região:</span>
+                        <div class="filter-chips" id="regionFiltersContainer">
+                            <button class="chip-filter active" data-region="ALL" onclick="toggleRegionFilter('ALL', this)">Todas</button>
+                            <button class="chip-filter chip-region-north" data-region="NORTE" onclick="toggleRegionFilter('NORTE', this)">🟢 Norte</button>
+                            <button class="chip-filter chip-region-east" data-region="LESTE" onclick="toggleRegionFilter('LESTE', this)">🔵 Leste</button>
+                            <button class="chip-filter chip-region-other" data-region="OUTRAS" onclick="toggleRegionFilter('OUTRAS', this)">🟡 Outras</button>
+                        </div>
+                    </div>
+
+                    <!-- Filtro por Base -->
+                    <div class="filter-cluster">
+                        <span class="filter-cluster-label"><i data-lucide="filter" style="width: 13px;"></i> Base:</span>
+                        <div class="filter-chips" id="baseFiltersContainer">
+                            <button class="chip-filter active" data-base="ALL" onclick="setBaseFilter('ALL', this)">Todas</button>
+                            <!-- Região Norte -->
+                            <button class="chip-filter" data-base="ENL" onclick="setBaseFilter('ENL', this)">Fagundes (ENL)</button>
+                            <button class="chip-filter" data-base="ECL" onclick="setBaseFilter('ECL', this)">Cajati (ECL)</button>
+                            <button class="chip-filter" data-base="EEL" onclick="setBaseFilter('EEL', this)">Vila Medeiros (EEL)</button>
+                            <!-- Região Leste -->
+                            <button class="chip-filter" data-base="EML" onclick="setBaseFilter('EML', this)">Monte Santo (EML)</button>
+                            <button class="chip-filter" data-base="EQL" onclick="setBaseFilter('EQL', this)">Aricanduva (EQL)</button>
+                            <button class="chip-filter" data-base="EVL" onclick="setBaseFilter('EVL', this)">Catumbi (EVL)</button>
+                            <button class="chip-filter" data-base="ESL" onclick="setBaseFilter('ESL', this)">Santo André (ESL)</button>
+                            <!-- Outras -->
+                            <button class="chip-filter" data-base="OUTRAS" onclick="setBaseFilter('OUTRAS', this)">(Outras)</button>
+                        </div>
+                    </div>
+
+                    <div class="filter-cluster">
+                        <span class="filter-cluster-label"><i data-lucide="check-circle-2" style="width: 13px;"></i> Status:</span>
+                        <div class="filter-chips">
+                            <button class="chip-filter active" data-status="ALL" onclick="setStatusFilter('ALL', this)">Todos (<span id="count-all">0</span>)</button>
+                            <button class="chip-filter chip-success" data-status="ONLINE" onclick="setStatusFilter('ONLINE', this)">Online (<span id="count-online">0</span>)</button>
+                            <button class="chip-filter chip-danger" data-status="OFFLINE" onclick="setStatusFilter('OFFLINE', this)">Offline Crítico (<span id="count-offline">0</span>)</button>
+                            <button class="chip-filter chip-warning" data-status="TRBO_ONLY" onclick="setStatusFilter('TRBO_ONLY', this)">Apenas TRBOnet (<span id="count-trbo-only">0</span>)</button>
+                            <button class="chip-filter chip-info" data-status="GPS_ONLY" onclick="setStatusFilter('GPS_ONLY', this)">Com GPS (<span id="count-gps">0</span>)</button>
+                        </div>
+                    </div>
+
+                    <div class="filter-cluster filter-cluster-action">
+                        <button class="btn-clear-filters-pill" onclick="clearAllFilters()" title="Redefinir todos os filtros e seleções">
+                            <i data-lucide="rotate-ccw"></i>
+                            <span>Limpar Filtros</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Container de Resultados: Tabela Principal -->
+            <section class="results-section" id="tableViewContainer">
+                <div class="table-card glass-card">
+                    <div class="table-header-info">
+                        <span class="results-counter" id="resultsCounter">Exibindo <strong>0</strong> de <strong>0</strong> equipes monitoradas</span>
+                        <span class="sorting-hint"><i data-lucide="arrow-up-down" style="width: 13px;"></i> Clique nas colunas para ordenar</span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table" id="mainTeamsTable">
+                            <thead>
+                                <tr>
+                                    <th onclick="sortTable('code')" class="sortable">Código Equipe <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                                    <th onclick="sortTable('base')" class="sortable">Base Operacional <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                                    <th onclick="sortTable('poweron')" class="sortable">Escala PowerON <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                                    <th onclick="sortTable('trbonet')" class="sortable">Rádio TRBOnet <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                                    <th onclick="sortTable('gps')" class="sortable">Sinal GPS <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                                    <th onclick="sortTable('status_code')" class="sortable">Status de Conformidade <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="teamsTableBody">
+                                <!-- Inserido dinamicamente via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Container de Resultados: Grid de Cards Alternativo -->
+            <section class="cards-view-section" id="cardsViewContainer" style="display: none;">
+                <div class="teams-cards-grid" id="teamsCardsGrid">
+                    <!-- Cards renderizados dinamicamente via JS -->
+                </div>
+            </section>
+
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- ABA 2: DASHBOARD ANALÍTICO & INDICADORES HISTÓRICOS -->
+        <!-- ================================================================= -->
+        <div id="tabViewDashboard" class="tab-pane" style="display: none;">
+
+            <!-- KPIs de Produtividade & Histórico -->
+            <section class="analytics-kpi-grid">
+                <div class="analytics-kpi-card glass-card">
+                    <div class="kpi-icon-wrap icon-cyan">
+                        <i data-lucide="clock"></i>
+                    </div>
+                    <div class="analytics-kpi-data">
+                        <span class="analytics-kpi-label">TEMPO MÉDIO CONECTADO</span>
+                        <h3 class="analytics-kpi-val" id="analyticsAvgOnlineTime">3h 45m</h3>
+                        <span class="analytics-kpi-sub">Soma dos períodos online na jornada</span>
+                    </div>
+                </div>
+
+                <div class="analytics-kpi-card glass-card">
+                    <div class="kpi-icon-wrap icon-rose">
+                        <i data-lucide="wifi-off"></i>
+                    </div>
+                    <div class="analytics-kpi-data">
+                        <span class="analytics-kpi-label">TOTAL DE QUEDAS / OFFLINE</span>
+                        <h3 class="analytics-kpi-val text-rose" id="analyticsTotalDrops">0</h3>
+                        <span class="analytics-kpi-sub">Falhas com escala ativa no PowerON</span>
+                    </div>
+                </div>
+
+                <div class="analytics-kpi-card glass-card">
+                    <div class="kpi-icon-wrap icon-emerald">
+                        <i data-lucide="percent"></i>
+                    </div>
+                    <div class="analytics-kpi-data">
+                        <span class="analytics-kpi-label">CONFORMIDADE POWERON × TRBONET</span>
+                        <h3 class="analytics-kpi-val text-emerald" id="analyticsGlobalCompliance">0%</h3>
+                        <span class="analytics-kpi-sub">Equipes em escala com rádio ativo</span>
+                    </div>
+                </div>
+
+                <div class="analytics-kpi-card glass-card">
+                    <div class="kpi-icon-wrap icon-purple">
+                        <i data-lucide="calendar-check"></i>
+                    </div>
+                    <div class="analytics-kpi-data">
+                        <span class="analytics-kpi-label">DIAS DE MONITORAMENTO</span>
+                        <h3 class="analytics-kpi-val text-purple" id="analyticsDaysLogged">Hoje</h3>
+                        <span class="analytics-kpi-sub">Histórico ativo consolidado</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Seção de Gráficos Analíticos -->
+            <section class="charts-section">
+                <div class="chart-card glass-card">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <i data-lucide="pie-chart" class="mini-icon text-cyan"></i>
+                            <h4>Distribuição Operacional dos Rádios</h4>
+                        </div>
+                        <span class="chart-badge">Visão Geral</span>
+                    </div>
+                    <div class="chart-canvas-container">
+                        <canvas id="statusDonutChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card glass-card">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <i data-lucide="bar-chart-3" class="mini-icon text-emerald"></i>
+                            <h4>Comparativo por Base: Escala PowerON vs Rádio TRBOnet</h4>
+                        </div>
+                        <span class="chart-badge">Por Base Operacional</span>
+                    </div>
+                    <div class="chart-canvas-container">
+                        <canvas id="basesBarChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tabela Analítica: Histórico e Telemetria Acumulada por Equipe -->
+            <section class="history-table-section">
+                <div class="table-card glass-card">
+                    <div class="history-table-header">
+                        <div class="history-table-title">
+                            <i data-lucide="history" class="text-cyan"></i>
+                            <div>
+                                <h4>Auditoria Histórica de Equipes</h4>
+                                <p class="table-subtitle">Histórico de logins no PowerON, tempo online no TRBOnet e registros de instabilidade</p>
+                            </div>
+                        </div>
+                        <div class="history-table-actions">
+                            <input type="text" id="historySearchInput" class="search-field history-search" placeholder="Filtrar histórico..." oninput="handleHistorySearch()">
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table history-data-table" id="historyTeamsTable">
+                            <thead>
+                                <tr>
+                                    <th>Código Equipe</th>
+                                    <th>Base / Região</th>
+                                    <th>Presença PowerON</th>
+                                    <th>Presença TRBOnet</th>
+                                    <th>Tempo Acumulado Online</th>
+                                    <th>Quedas (Offline em Escala)</th>
+                                    <th>% Conformidade</th>
+                                    <th>Status Atual</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <!-- Inserido dinamicamente via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+        <!-- FIM DO MÓDULO 1 (moduleAuditView) -->
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="main-footer glass-card" style="justify-content: center; text-align: center;">
+        <span>Power By Gestão de Operações - Gestão de Alta Performance</span>
+    </footer>
+</div>
+
+<!-- Modal: Detalhes da Equipe -->
+<div class="modal-backdrop" id="teamDetailModal">
+    <div class="modal-card glass-card">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <i data-lucide="radio" class="modal-icon text-cyan"></i>
+                <div>
+                    <h3 id="modalTeamCode">EQUIPE ---</h3>
+                    <p id="modalTeamBase" class="modal-subtitle">Base Operacional</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeModal('teamDetailModal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="team-diagnostic-banner" id="modalStatusBanner">
+                <div class="banner-icon-wrap" id="modalBannerIcon">
+                    <i data-lucide="check-circle-2"></i>
+                </div>
+                <div>
+                    <h4 id="modalStatusTitle">Status Operacional</h4>
+                    <p id="modalStatusDescription">Descrição detalhada</p>
+                </div>
+            </div>
+
+            <div class="telemetry-grid">
+                <div class="telemetry-item">
+                    <span class="telemetry-label">Status PowerON</span>
+                    <div class="telemetry-value" id="modalPowerOnStatus">--</div>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-label">Status TRBOnet</span>
+                    <div class="telemetry-value" id="modalTrboStatus">--</div>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-label">Sinal GPS</span>
+                    <div class="telemetry-value" id="modalGpsStatus">--</div>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-label">Último Sinal Registrado</span>
+                    <div class="telemetry-value" id="modalLastSignal">--</div>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-label">Tempo Acumulado Online</span>
+                    <div class="telemetry-value" id="modalOnlineTime">--</div>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-label">Ocorrências de Queda</span>
+                    <div class="telemetry-value" id="modalDropCount">--</div>
+                </div>
+            </div>
+
+            <div class="recommendation-box">
+                <h5><i data-lucide="lightbulb" class="mini-icon"></i> Ação Recomendada pelo CCO:</h5>
+                <p id="modalRecommendation">Nenhuma ação necessária.</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('teamDetailModal')">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Upload e Atualização de Dados -->
+<div class="modal-backdrop" id="uploadModal">
+    <div class="modal-card glass-card">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <i data-lucide="upload-cloud" class="modal-icon text-emerald"></i>
+                <div>
+                    <h3>Importar Planilha / Sincronizar Dados</h3>
+                    <p class="modal-subtitle">Carregue arquivos .xlsx ou .csv do PowerON ou TRBOnet</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeModal('uploadModal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="uploadForm" onsubmit="handleFileUpload(event)">
+                <div class="form-group">
+                    <label class="form-label">Tipo de Dados do Arquivo:</label>
+                    <div class="radio-toggle-group">
+                        <label class="radio-label">
+                            <input type="radio" name="uploadType" value="poweron" checked>
+                            <span>Equipes PowerON (Escala)</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="uploadType" value="trbonet">
+                            <span>Rádios TRBOnet (Online/GPS)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="dropzone" id="dropzoneBox" onclick="document.getElementById('fileInput').click()">
+                    <i data-lucide="file-up" class="dropzone-icon"></i>
+                    <p class="dropzone-title">Arraste seu arquivo Excel (.xlsx) ou CSV aqui</p>
+                    <p class="dropzone-sub">ou clique para selecionar do computador</p>
+                    <input type="file" id="fileInput" name="file" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleFileSelect(this)">
+                    <div id="selectedFileName" class="selected-file-pill" style="display: none;"></div>
+                </div>
+
+                <div class="modal-actions-bar">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('uploadModal')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitUpload">
+                        <i data-lucide="check"></i> Processar e Atualizar Painel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Notification Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Scripts -->
+<script src="/static/js/app.js"></script>
+
+</body>
+</html>
