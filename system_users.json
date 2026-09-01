@@ -1,0 +1,35 @@
+{
+  "00000000-0000-0000-0000-000000000001": {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "nome": "ADMINISTRADOR CCO",
+    "email": "admin@alpitelbrasil.com.br",
+    "matricula": "BR0000000000",
+    "password_hash": "pbkdf2:sha256:100000$c658f8b89c745b367d32c525f0e340a6$a7ebff0a451e59bc7adbe4c5ec70bb6aeecae1d556adbcab281229a43a0f7895",
+    "role": "admin",
+    "status": "approved",
+    "created_at": "2026-09-01T10:57:00.183029+00:00",
+    "last_login": null
+  },
+  "b70feec316ecf18d115bcaef5e812952": {
+    "id": "b70feec316ecf18d115bcaef5e812952",
+    "nome": "TESTE DA SILVA",
+    "email": "teste.teste@alpitelbrasil.com.br",
+    "matricula": "BR0123456789",
+    "password_hash": "pbkdf2:sha256:100000$d83a9a0abe2f41b7aaeee3b85b5a32e6$b70250be39c578af9867006d5033d260fa879fb4b5b2302b91c3c09430fa5605",
+    "role": "operator",
+    "status": "approved",
+    "created_at": "2026-09-01T08:10:24.581854",
+    "last_login": "2026-09-01T08:11:00.301570"
+  },
+  "b70feec3-16ec-f18d-115b-caef5e812952": {
+    "id": "b70feec3-16ec-f18d-115b-caef5e812952",
+    "nome": "TESTE DA SILVA",
+    "email": "teste.teste@alpitelbrasil.com.br",
+    "matricula": "BR0123456789",
+    "password_hash": "pbkdf2:sha256:100000$d83a9a0abe2f41b7aaeee3b85b5a32e6$b70250be39c578af9867006d5033d260fa879fb4b5b2302b91c3c09430fa5605",
+    "role": "operator",
+    "status": "approved",
+    "created_at": "2026-09-01T08:10:24.581854+00:00",
+    "last_login": null
+  }
+}

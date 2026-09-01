@@ -47,6 +47,14 @@
                 </div>
 
                 <div class="hub-header-actions-group">
+                    <!-- Botão de Autenticação / Cadeado no Hub Central -->
+                    <button class="btn-auth-lock locked" id="btnAuthHub" onclick="openAuthModal()" title="Autenticação e Desbloqueio Operacional">
+                        <div class="auth-lock-icon-wrap" id="authLockIconWrapHub">
+                            <i data-lucide="lock" id="authLockIconHub"></i>
+                        </div>
+                        <span id="authLockTextHub" class="auth-lock-label">Acesso Restrito</span>
+                    </button>
+
                     <!-- Relógio CCO -->
                     <div class="header-clock-pill">
                         <i data-lucide="clock" class="mini-icon text-cyan"></i>
@@ -203,6 +211,10 @@
                         <i data-lucide="layout-dashboard"></i>
                         <span>Dashboard & Indicadores</span>
                     </button>
+                    <button class="nav-tab-btn" id="tabBtnAudit" onclick="switchMainTab('audit')">
+                        <i data-lucide="history"></i>
+                        <span>Auditoria & Histórico</span>
+                    </button>
                 </div>
 
                 <div class="header-right">
@@ -231,28 +243,37 @@
                             <span class="timer-seconds" id="timerSeconds">2:00</span>
                         </div>
 
-                        <!-- 1. Ler TRBOnet -->
-                        <button class="btn btn-primary btn-with-icon" id="btnLiveCapture" title="Capturar Rádios ao Vivo da tela do TRBOnet One" onclick="captureTRBOnetLive()">
+                        <!-- 0. Botão de Autenticação / Cadeado no Módulo -->
+                        <button class="btn btn-secondary btn-with-icon btn-auth-lock locked" id="btnAuthModule" onclick="openAuthModal()" title="Autenticação e Desbloqueio Operacional">
+                            <i data-lucide="lock" id="authLockIconModule"></i>
+                            <span id="authLockTextModule">Bloqueado</span>
+                        </button>
+
+                        <!-- 1. Ler TRBOnet (Ação Especial Protegida) -->
+                        <button class="btn btn-primary btn-with-icon special-action locked-action" id="btnLiveCapture" title="Capturar Rádios ao Vivo da tela do TRBOnet One" onclick="handleRestrictedAction(captureTRBOnetLive)">
                             <i data-lucide="radio" id="liveCaptureIcon"></i>
                             <span>Ler TRBOnet</span>
+                            <span class="lock-mini-badge"><i data-lucide="lock"></i></span>
                         </button>
 
-                        <!-- 2. Ler PowerON -->
-                        <button class="btn btn-secondary btn-with-icon" id="btnSyncPowerOn" title="Sincronizar Arquivo Calendário do PowerON" onclick="syncPowerOnCalendar()">
+                        <!-- 2. Ler PowerON (Ação Especial Protegida) -->
+                        <button class="btn btn-secondary btn-with-icon special-action locked-action" id="btnSyncPowerOn" title="Sincronizar Arquivo Calendário do PowerON" onclick="handleRestrictedAction(syncPowerOnCalendar)">
                             <i data-lucide="clipboard-check" id="syncPowerOnIcon"></i>
                             <span>Ler PowerON</span>
+                            <span class="lock-mini-badge"><i data-lucide="lock"></i></span>
                         </button>
 
-                        <!-- 3. Sincronizar Painel -->
+                        <!-- 3. Sincronizar Painel (Livre para Leitura) -->
                         <button class="btn btn-secondary btn-with-icon" id="btnRefresh" title="Sincronizar Painel" onclick="manualRefresh()">
                             <i data-lucide="refresh-cw" id="refreshIcon"></i>
                             <span>Sincronizar</span>
                         </button>
 
-                        <!-- 4. Importar Planilha / Dados -->
-                        <button class="btn btn-secondary btn-with-icon" id="btnUploadModal" title="Importar Planilha / Dados" onclick="openModal('uploadModal')">
+                        <!-- 4. Importar Planilha / Dados (Ação Especial Protegida) -->
+                        <button class="btn btn-secondary btn-with-icon special-action locked-action" id="btnUploadModal" title="Importar Planilha / Dados" onclick="handleRestrictedAction(() => openModal('uploadModal'))">
                             <i data-lucide="upload-cloud"></i>
                             <span>Importar</span>
+                            <span class="lock-mini-badge"><i data-lucide="lock"></i></span>
                         </button>
 
                         <!-- 5. Exportar -->
@@ -263,9 +284,9 @@
                                 <i data-lucide="chevron-down" style="width: 14px;"></i>
                             </button>
                             <div class="dropdown-menu" id="exportMenu">
-                                <a href="/api/export/csv" class="dropdown-item" download>
+                                <button class="dropdown-item" onclick="exportLiveTeamsCSV()">
                                     <i data-lucide="file-spreadsheet"></i> Planilha CSV / Excel
-                                </a>
+                                </button>
                                 <button class="dropdown-item" onclick="window.print()">
                                     <i data-lucide="printer"></i> Imprimir / Salvar PDF
                                 </button>
@@ -296,10 +317,11 @@
                 </div>
                 <div class="kpi-quick-regions">
                     <span class="quick-region-label">Região:</span>
-                    <button class="btn-quick-region active" id="btnQuickRegAll" onclick="toggleRegionFilter('ALL', this)">🌍 Todas</button>
-                    <button class="btn-quick-region btn-reg-north" id="btnQuickRegNorth" onclick="toggleRegionFilter('NORTE', this)">🟢 Região Norte</button>
-                    <button class="btn-quick-region btn-reg-east" id="btnQuickRegEast" onclick="toggleRegionFilter('LESTE', this)">🔵 Região Leste</button>
-                    <button class="btn-quick-region btn-reg-other" id="btnQuickRegOther" onclick="toggleRegionFilter('OUTRAS', this)">🟡 Outras Bases</button>
+                    <button class="btn-quick-region active" id="btnQuickRegAll" data-region="ALL" onclick="toggleRegionFilter('ALL', this)">🌍 Todas</button>
+                    <button class="btn-quick-region btn-reg-north-alpitel" id="btnQuickRegNorthAlpitel" data-region="NORTE_ALPITEL" onclick="toggleRegionFilter('NORTE_ALPITEL', this)">🟢 Norte Alpitel</button>
+                    <button class="btn-quick-region btn-reg-north-propria" id="btnQuickRegNorthPropria" data-region="NORTE_PROPRIA" onclick="toggleRegionFilter('NORTE_PROPRIA', this)">🟣 Norte Própria</button>
+                    <button class="btn-quick-region btn-reg-east-alpitel" id="btnQuickRegEastAlpitel" data-region="LESTE_ALPITEL" onclick="toggleRegionFilter('LESTE_ALPITEL', this)">🔵 Leste Alpitel</button>
+                    <button class="btn-quick-region btn-reg-east-propria" id="btnQuickRegEastPropria" data-region="LESTE_PROPRIA" onclick="toggleRegionFilter('LESTE_PROPRIA', this)">🌸 Leste Própria</button>
                 </div>
             </div>
 
@@ -428,70 +450,65 @@
                     </div>
                 </div>
 
-                <!-- Grupos Regionais Interativos -->
-                <div class="regional-bases-container">
+                <!-- Grupos Regionais Interativos (14 Bases Oficiais) -->
+                <div class="regional-bases-container four-regions-grid">
                     
-                    <!-- Bloco Região Norte -->
-                    <div class="region-group-block" id="blockRegionNorth">
-                        <div class="region-group-header" onclick="toggleRegionFilter('NORTE')" title="Clique para marcar/desmarcar todas as bases da Região Norte">
+                    <!-- 1. Bloco Região Norte Alpitel -->
+                    <div class="region-group-block" id="blockRegionNorthAlpitel">
+                        <div class="region-group-header" onclick="toggleRegionFilter('NORTE_ALPITEL')" title="Clique para filtrar Região Norte Alpitel">
                             <div class="region-title-wrap">
-                                <span class="region-indicator-dot dot-north"></span>
-                                <h4>Região Norte</h4>
+                                <span class="region-indicator-dot dot-north-alpitel"></span>
+                                <h4>Região Norte Alpitel</h4>
                             </div>
-                            <span class="region-count-badge" id="northBasesCountBadge">3 Bases Oficiais</span>
+                            <span class="region-count-badge" id="northAlpitelBasesCountBadge">3 Bases</span>
                         </div>
-                        <div class="region-cards-row" id="northBasesGrid">
-                            <!-- Inserido dinamicamente: ENL (Fagundes), ECL (Cajati), EEL (Vila Medeiros) -->
+                        <div class="region-cards-row" id="northAlpitelBasesGrid">
+                            <!-- ENL (Fagundes Filho), ECL (Cajati), EEL (Vila Medeiros) -->
                         </div>
                     </div>
 
-                    <!-- Bloco Região Leste -->
-                    <div class="region-group-block" id="blockRegionEast">
-                        <div class="region-group-header" onclick="toggleRegionFilter('LESTE')" title="Clique para marcar/desmarcar todas as bases da Região Leste">
+                    <!-- 2. Bloco Região Leste Alpitel -->
+                    <div class="region-group-block" id="blockRegionEastAlpitel">
+                        <div class="region-group-header" onclick="toggleRegionFilter('LESTE_ALPITEL')" title="Clique para filtrar Região Leste Alpitel">
                             <div class="region-title-wrap">
-                                <span class="region-indicator-dot dot-east"></span>
-                                <h4>Região Leste</h4>
+                                <span class="region-indicator-dot dot-east-alpitel"></span>
+                                <h4>Região Leste Alpitel</h4>
                             </div>
-                            <span class="region-count-badge" id="eastBasesCountBadge">4 Bases Oficiais</span>
+                            <span class="region-count-badge" id="eastAlpitelBasesCountBadge">4 Bases</span>
                         </div>
-                        <div class="region-cards-row" id="eastBasesGrid">
-                            <!-- Inserido dinamicamente: EML (Monte Santo), EQL (Aricanduva), EVL (Catumbi), ESL (Santo André) -->
+                        <div class="region-cards-row" id="eastAlpitelBasesGrid">
+                            <!-- EML (Monte Santo), EQL (Aricanduva), EVL (Catumbi), ESL (Santo André) -->
                         </div>
                     </div>
 
-                    <!-- Bloco Outras Bases -->
-                    <div class="region-group-block region-other-block" id="blockRegionOther">
-                        <div class="region-group-header" onclick="toggleRegionFilter('OUTRAS')" title="Clique para marcar/desmarcar as demais bases">
+                    <!-- 3. Bloco Região Norte Própria -->
+                    <div class="region-group-block" id="blockRegionNorthPropria">
+                        <div class="region-group-header" onclick="toggleRegionFilter('NORTE_PROPRIA')" title="Clique para filtrar Região Norte Própria">
                             <div class="region-title-wrap">
-                                <span class="region-indicator-dot dot-other"></span>
-                                <h4>Demais Regiões & Frotas</h4>
+                                <span class="region-indicator-dot dot-north-propria"></span>
+                                <h4>Região Norte Própria</h4>
                             </div>
-                            <span class="region-count-badge" id="otherBasesCountBadge">Outras Bases</span>
+                            <span class="region-count-badge" id="northPropriaBasesCountBadge">3 Bases</span>
                         </div>
-                        <div class="region-cards-row" id="otherBasesGrid">
-                            <!-- Card Especial Consolidado (Outras) -->
+                        <div class="region-cards-row" id="northPropriaBasesGrid">
+                            <!-- ENA (Fagundes Filho), ECA (Cajati), EEA (Vila Medeiros) -->
                         </div>
                     </div>
 
-                </div>
-
-                <!-- Gaveta Expansível de Outras Bases (Exibida ao Clicar no Card Outras) -->
-                <div class="other-bases-drawer glass-card" id="otherBasesDrawer" style="display: none;">
-                    <div class="drawer-header">
-                        <div class="drawer-title-wrap">
-                            <i data-lucide="layers" class="text-cyan"></i>
-                            <div>
-                                <h5>Detalhamento das Demais Bases Operacionais</h5>
-                                <p class="drawer-sub">Bases e prefixos fora das regiões principais</p>
+                    <!-- 4. Bloco Região Leste Própria -->
+                    <div class="region-group-block" id="blockRegionEastPropria">
+                        <div class="region-group-header" onclick="toggleRegionFilter('LESTE_PROPRIA')" title="Clique para filtrar Região Leste Própria">
+                            <div class="region-title-wrap">
+                                <span class="region-indicator-dot dot-east-propria"></span>
+                                <h4>Região Leste Própria</h4>
                             </div>
+                            <span class="region-count-badge" id="eastPropriaBasesCountBadge">4 Bases</span>
                         </div>
-                        <button class="btn-close-drawer" onclick="toggleOtherBasesDrawer(false)">
-                            <i data-lucide="x"></i>
-                        </button>
+                        <div class="region-cards-row" id="eastPropriaBasesGrid">
+                            <!-- EMA (Monte Santo), EQA (Aricanduva), EVA (Catumbi), ESA (Santo André) -->
+                        </div>
                     </div>
-                    <div class="drawer-sub-grid" id="otherSubBasesGrid">
-                        <!-- Sub-bases renderizadas dinamicamente -->
-                    </div>
+
                 </div>
             </section>
 
@@ -501,7 +518,7 @@
                     <!-- Campo de Pesquisa -->
                     <div class="search-input-group">
                         <i data-lucide="search" class="search-icon"></i>
-                        <input type="text" id="searchInput" class="search-field" placeholder="Buscar por código de equipe (ex: ECL121, ENL, 105) ou base..." oninput="handleSearchChange()">
+                        <input type="text" id="searchInput" class="search-field" placeholder="Buscar equipe (ex: ENL100, ECL121, ENA, EMA) ou base..." oninput="handleSearchChange()">
                         <button class="btn-clear-search" id="btnClearSearch" onclick="clearSearch()" style="display: none;">
                             <i data-lucide="x"></i>
                         </button>
@@ -525,12 +542,13 @@
                 <div class="filter-pills-row">
                     <!-- Filtro por Região -->
                     <div class="filter-cluster">
-                        <span class="filter-cluster-label"><i data-lucide="compass" style="width: 13px;"></i> Região:</span>
+                        <span class="filter-cluster-label"><i data-lucide="compass" style="width: 13px;"></i> Região / Empresa:</span>
                         <div class="filter-chips" id="regionFiltersContainer">
-                            <button class="chip-filter active" data-region="ALL" onclick="toggleRegionFilter('ALL', this)">Todas</button>
-                            <button class="chip-filter chip-region-north" data-region="NORTE" onclick="toggleRegionFilter('NORTE', this)">🟢 Norte</button>
-                            <button class="chip-filter chip-region-east" data-region="LESTE" onclick="toggleRegionFilter('LESTE', this)">🔵 Leste</button>
-                            <button class="chip-filter chip-region-other" data-region="OUTRAS" onclick="toggleRegionFilter('OUTRAS', this)">🟡 Outras</button>
+                            <button class="chip-filter active" data-region="ALL" onclick="toggleRegionFilter('ALL', this)">🌍 Todas</button>
+                            <button class="chip-filter chip-region-north" data-region="NORTE_ALPITEL" onclick="toggleRegionFilter('NORTE_ALPITEL', this)">🟢 Região Norte Alpitel</button>
+                            <button class="chip-filter chip-region-north-propria" data-region="NORTE_PROPRIA" onclick="toggleRegionFilter('NORTE_PROPRIA', this)">🟣 Região Norte Própria</button>
+                            <button class="chip-filter chip-region-east" data-region="LESTE_ALPITEL" onclick="toggleRegionFilter('LESTE_ALPITEL', this)">🔵 Região Leste Alpitel</button>
+                            <button class="chip-filter chip-region-east-propria" data-region="LESTE_PROPRIA" onclick="toggleRegionFilter('LESTE_PROPRIA', this)">🌸 Região Leste Própria</button>
                         </div>
                     </div>
 
@@ -539,17 +557,24 @@
                         <span class="filter-cluster-label"><i data-lucide="filter" style="width: 13px;"></i> Base:</span>
                         <div class="filter-chips" id="baseFiltersContainer">
                             <button class="chip-filter active" data-base="ALL" onclick="setBaseFilter('ALL', this)">Todas</button>
-                            <!-- Região Norte -->
+                            <!-- Norte Alpitel -->
                             <button class="chip-filter" data-base="ENL" onclick="setBaseFilter('ENL', this)">Fagundes (ENL)</button>
                             <button class="chip-filter" data-base="ECL" onclick="setBaseFilter('ECL', this)">Cajati (ECL)</button>
-                            <button class="chip-filter" data-base="EEL" onclick="setBaseFilter('EEL', this)">Vila Medeiros (EEL)</button>
-                            <!-- Região Leste -->
-                            <button class="chip-filter" data-base="EML" onclick="setBaseFilter('EML', this)">Monte Santo (EML)</button>
+                            <button class="chip-filter" data-base="EEL" onclick="setBaseFilter('EEL', this)">V. Medeiros (EEL)</button>
+                            <!-- Leste Alpitel -->
+                            <button class="chip-filter" data-base="EML" onclick="setBaseFilter('EML', this)">M. Santo (EML)</button>
                             <button class="chip-filter" data-base="EQL" onclick="setBaseFilter('EQL', this)">Aricanduva (EQL)</button>
                             <button class="chip-filter" data-base="EVL" onclick="setBaseFilter('EVL', this)">Catumbi (EVL)</button>
-                            <button class="chip-filter" data-base="ESL" onclick="setBaseFilter('ESL', this)">Santo André (ESL)</button>
-                            <!-- Outras -->
-                            <button class="chip-filter" data-base="OUTRAS" onclick="setBaseFilter('OUTRAS', this)">(Outras)</button>
+                            <button class="chip-filter" data-base="ESL" onclick="setBaseFilter('ESL', this)">S. André (ESL)</button>
+                            <!-- Norte Própria -->
+                            <button class="chip-filter chip-propria" data-base="ENA" onclick="setBaseFilter('ENA', this)">Fagundes (ENA)</button>
+                            <button class="chip-filter chip-propria" data-base="ECA" onclick="setBaseFilter('ECA', this)">Cajati (ECA)</button>
+                            <button class="chip-filter chip-propria" data-base="EEA" onclick="setBaseFilter('EEA', this)">V. Medeiros (EEA)</button>
+                            <!-- Leste Própria -->
+                            <button class="chip-filter chip-propria" data-base="EMA" onclick="setBaseFilter('EMA', this)">M. Santo (EMA)</button>
+                            <button class="chip-filter chip-propria" data-base="EQA" onclick="setBaseFilter('EQA', this)">Aricanduva (EQA)</button>
+                            <button class="chip-filter chip-propria" data-base="EVA" onclick="setBaseFilter('EVA', this)">Catumbi (EVA)</button>
+                            <button class="chip-filter chip-propria" data-base="ESA" onclick="setBaseFilter('ESA', this)">S. André (ESA)</button>
                         </div>
                     </div>
 
@@ -731,6 +756,188 @@
             </section>
 
         </div>
+
+        <!-- ================================================================= -->
+        <!-- ABA 3: AUDITORIA & HISTÓRICO RELACIONAL (POSTGRESQL / SUPABASE)   -->
+        <!-- ================================================================= -->
+        <div id="tabViewAudit" class="tab-pane" style="display: none; flex-direction: column; gap: 20px;">
+            
+            <!-- Barra de Filtros de Auditoria Forense -->
+            <div class="audit-filter-bar glass-card">
+                <div class="audit-filter-top">
+                    <div class="audit-filter-title">
+                        <div class="audit-icon-box">
+                            <i data-lucide="shield-check" class="text-emerald"></i>
+                        </div>
+                        <div>
+                            <h4>Auditoria de Presença & Compliance Operacional</h4>
+                            <p>Rastreamento relacional de conexões no TRBOnet vs Escalas do PowerON</p>
+                        </div>
+                    </div>
+
+                    <!-- Seletor de Modo de Visão -->
+                    <div class="audit-mode-selector">
+                        <button class="btn-audit-mode active" id="btnAuditModeDaily" onclick="setAuditViewMode('daily')">
+                            <i data-lucide="calendar"></i>
+                            <span>Consolidado do Dia</span>
+                        </button>
+                        <button class="btn-audit-mode" id="btnAuditModeLogs" onclick="setAuditViewMode('logs')">
+                            <i data-lucide="list"></i>
+                            <span>Logs por Coleta</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="audit-filters-row">
+                    <!-- 1. Seletor de Data -->
+                    <div class="audit-input-group">
+                        <label><i data-lucide="calendar" class="mini-icon"></i> Data de Referência:</label>
+                        <input type="date" id="auditFilterDate" class="audit-date-input" onchange="loadAuditData()">
+                    </div>
+
+                    <!-- 2. Filtro de Base Operacional -->
+                    <div class="audit-input-group">
+                        <label><i data-lucide="map-pin" class="mini-icon"></i> Base Operacional:</label>
+                        <select id="auditFilterBase" class="audit-select-input" onchange="loadAuditData()">
+                            <option value="ALL">Todas as 14 Bases Oficiais</option>
+                            <optgroup label="Região Norte Alpitel">
+                                <option value="ENL">ENL - Base Fagundes Filho</option>
+                                <option value="ECL">ECL - Base Cajati</option>
+                                <option value="EEL">EEL - Base Vila Medeiros</option>
+                            </optgroup>
+                            <optgroup label="Região Leste Alpitel">
+                                <option value="EML">EML - Base Monte Santo</option>
+                                <option value="EQL">EQL - Base Aricanduva</option>
+                                <option value="EVL">EVL - Base Catumbi</option>
+                                <option value="ESL">ESL - Base Santo André</option>
+                            </optgroup>
+                            <optgroup label="Região Norte Própria">
+                                <option value="ENA">ENA - Base Fagundes Filho</option>
+                                <option value="ECA">ECA - Base Cajati</option>
+                                <option value="EEA">EEA - Base Vila Medeiros</option>
+                            </optgroup>
+                            <optgroup label="Região Leste Própria">
+                                <option value="EMA">EMA - Base Monte Santo</option>
+                                <option value="EQA">EQA - Base Aricanduva</option>
+                                <option value="EVA">EVA - Base Catumbi</option>
+                                <option value="ESA">ESA - Base Santo André</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <!-- 3. Filtro de Status -->
+                    <div class="audit-input-group">
+                        <label><i data-lucide="filter" class="mini-icon"></i> Status:</label>
+                        <select id="auditFilterStatus" class="audit-select-input" onchange="loadAuditData()">
+                            <option value="ALL">Todos os Status</option>
+                            <option value="CONFORME">Conforme (PowerON + TRBOnet)</option>
+                            <option value="APENAS_POWERON">Apenas no PowerON</option>
+                            <option value="APENAS_TRBONET">Apenas no TRBOnet</option>
+                            <option value="OFFLINE">Offline</option>
+                        </select>
+                    </div>
+
+                    <!-- 4. Busca por Código de Equipe -->
+                    <div class="audit-input-group audit-search-group">
+                        <label><i data-lucide="search" class="mini-icon"></i> Buscar Equipe:</label>
+                        <div class="audit-search-wrap">
+                            <input type="text" id="auditSearchTeam" placeholder="Ex: ENL100, ECL121..." class="audit-search-input" oninput="debounceAuditSearch()">
+                            <i data-lucide="search" class="audit-search-icon"></i>
+                        </div>
+                    </div>
+
+                    <!-- Botão de Recarregar & Exportar -->
+                    <div class="audit-actions-group">
+                        <button class="btn btn-primary btn-with-icon" onclick="loadAuditData()" title="Consultar dados no Supabase">
+                            <i data-lucide="refresh-cw" id="btnAuditRefreshIcon"></i>
+                            <span>Buscar</span>
+                        </button>
+                        <button class="btn btn-secondary btn-with-icon" onclick="exportAuditTableCSV()" title="Exportar dados filtrados para CSV/Excel">
+                            <i data-lucide="download"></i>
+                            <span>Exportar</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cards de KPIs de Auditoria do Período -->
+            <div class="audit-kpis-grid">
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon-wrap kpi-blue">
+                        <i data-lucide="users"></i>
+                    </div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Equipes Auditadas</span>
+                        <div class="kpi-value-row">
+                            <span class="kpi-number" id="auditKpiTotalTeams">--</span>
+                        </div>
+                        <span class="kpi-subtext" id="auditKpiTotalSubtitle">Na data selecionada</span>
+                    </div>
+                </div>
+
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon-wrap kpi-emerald">
+                        <i data-lucide="radio"></i>
+                    </div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Conectaram no TRBOnet</span>
+                        <div class="kpi-value-row">
+                            <span class="kpi-number text-emerald" id="auditKpiOnlineTeams">--</span>
+                        </div>
+                        <span class="kpi-subtext" id="auditKpiOnlinePercent">--% de presença no dia</span>
+                    </div>
+                </div>
+
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon-wrap kpi-cyan">
+                        <i data-lucide="activity"></i>
+                    </div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Uptime Médio de Conexão</span>
+                        <div class="kpi-value-row">
+                            <span class="kpi-number text-cyan" id="auditKpiUptime">--%</span>
+                        </div>
+                        <span class="kpi-subtext">Disponibilidade durante a escala</span>
+                    </div>
+                </div>
+
+                <div class="kpi-card glass-card">
+                    <div class="kpi-icon-wrap kpi-amber">
+                        <i data-lucide="database"></i>
+                    </div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Bateladas de Sincronização</span>
+                        <div class="kpi-value-row">
+                            <span class="kpi-number text-amber" id="auditKpiTotalBatches">--</span>
+                        </div>
+                        <span class="kpi-subtext">Coletas gravadas no Supabase</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabela de Auditoria Forense -->
+            <div class="history-table-card glass-card">
+                <div class="history-table-header">
+                    <div>
+                        <h4 id="auditTableTitle">Consolidado Diário de Auditoria</h4>
+                        <p id="auditTableSubtitle">Resumo de conexões e histórico por equipe na data selecionada</p>
+                    </div>
+                    <span class="history-count-badge" id="auditResultsCountBadge">0 registros</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="data-table" id="auditMainTable">
+                        <thead id="auditTableHeader">
+                            <!-- Inserido via JS dependendo do modo (Consolidado ou Logs) -->
+                        </thead>
+                        <tbody id="auditTableBody">
+                            <!-- Inserido via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
         <!-- FIM DO MÓDULO 1 (moduleAuditView) -->
         </div>
 
@@ -740,6 +947,32 @@
     <footer class="main-footer glass-card" style="justify-content: center; text-align: center;">
         <span>Power By Gestão de Operações - Gestão de Alta Performance</span>
     </footer>
+</div>
+
+<!-- Modal: Linha do Tempo da Equipe (Auditoria Forense) -->
+<div class="modal-backdrop" id="auditTimelineModal">
+    <div class="modal-card glass-card" style="max-width: 780px;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <i data-lucide="activity" class="modal-icon text-cyan"></i>
+                <div>
+                    <h3 id="timelineModalTeam">LINHA DO TEMPO: EQUIPE ---</h3>
+                    <p id="timelineModalSubtitle" class="modal-subtitle">Histórico de transmissões e status por coleta no dia</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeModal('auditTimelineModal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="max-height: 520px; overflow-y: auto;">
+            <div id="timelineEventsContainer" class="audit-timeline-stream">
+                <!-- Inserido dinamicamente via JS -->
+            </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; padding: 12px 20px;">
+            <button class="btn btn-secondary" onclick="closeModal('auditTimelineModal')">Fechar</button>
+        </div>
+    </div>
 </div>
 
 <!-- Modal: Detalhes da Equipe -->
@@ -852,6 +1085,164 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Autenticação, Cadastro e Gestão de Usuários (E2EE) -->
+<div class="modal-backdrop" id="authModal">
+    <div class="modal-card glass-card auth-modal-card">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" id="authModalIconBadge">
+                    <i data-lucide="shield-check" class="text-cyan"></i>
+                </div>
+                <div>
+                    <h3 id="authModalTitle">Controle de Acesso Operacional</h3>
+                    <p class="modal-subtitle" id="authModalSubtitle">Autenticação Corporativa CCO (Padrão E2EE)</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeModal('authModal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <!-- Abas do Modal de Autenticação -->
+        <div class="auth-modal-tabs" id="authModalTabs">
+            <button class="auth-tab-btn active" id="tabBtnLogin" onclick="switchAuthTab('login')">
+                <i data-lucide="log-in" class="mini-icon"></i> <span>Entrar</span>
+            </button>
+            <button class="auth-tab-btn" id="tabBtnRegister" onclick="switchAuthTab('register')">
+                <i data-lucide="user-plus" class="mini-icon"></i> <span>Solicitar Acesso</span>
+            </button>
+            <button class="auth-tab-btn admin-only-tab" id="tabBtnAdminUsers" onclick="switchAuthTab('admin_users')" style="display: none;">
+                <i data-lucide="users" class="mini-icon"></i> <span>Gerenciar Usuários</span>
+            </button>
+        </div>
+
+        <div class="modal-body auth-modal-body">
+            <!-- ABA 1: LOGIN -->
+            <div id="authPaneLogin" class="auth-tab-pane active">
+                <form id="formAuthLogin" onsubmit="handleLoginSubmit(event)">
+                    <div class="auth-notice-banner" id="authLoginNotice">
+                        <i data-lucide="lock" class="mini-icon"></i>
+                        <span>Insira sua <strong>Matrícula (BR0...)</strong> ou <strong>E-mail Corporativo</strong> e senha para desbloquear as funções operacionais.</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i data-lucide="user" class="mini-icon"></i> Matrícula ou E-mail:</label>
+                        <input type="text" id="loginIdentifier" class="form-input" placeholder="Ex: BR0144636617 ou seunome@alpitelbrasil.com.br" required autocomplete="username">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i data-lucide="key" class="mini-icon"></i> Senha:</label>
+                        <input type="password" id="loginPassword" class="form-input" placeholder="Digite sua senha..." required autocomplete="current-password">
+                    </div>
+
+                    <div class="auth-actions-bar">
+                        <button type="submit" class="btn btn-primary btn-block" id="btnSubmitLogin">
+                            <i data-lucide="unlock"></i> Entrar e Desbloquear Painel
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Informações da Sessão Ativa (quando logado) -->
+                <div id="authActiveSessionBox" style="display: none;" class="active-session-box">
+                    <div class="user-session-card">
+                        <div class="user-session-avatar">
+                            <i data-lucide="user-check"></i>
+                        </div>
+                        <div class="user-session-info">
+                            <h4 id="activeUserName">ADMINISTRADOR CCO</h4>
+                            <p id="activeUserEmail">admin@alpitelbrasil.com.br</p>
+                            <div class="user-session-meta">
+                                <span class="badge-tag badge-matricula" id="activeUserMatricula">BR0000000000</span>
+                                <span class="badge-tag badge-role" id="activeUserRole">ADMINISTRADOR</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="active-session-actions">
+                        <button class="btn btn-secondary" onclick="switchAuthTab('admin_users')" id="btnManageUsersShort" style="display: none;">
+                            <i data-lucide="users"></i> Gerenciar Usuários
+                        </button>
+                        <button class="btn btn-danger" onclick="handleLogout()">
+                            <i data-lucide="log-out"></i> Bloquear / Sair
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA 2: SOLICITAR ACESSO / CADASTRO -->
+            <div id="authPaneRegister" class="auth-tab-pane">
+                <form id="formAuthRegister" onsubmit="handleRegisterSubmit(event)">
+                    <div class="auth-notice-banner info-banner">
+                        <i data-lucide="info" class="mini-icon"></i>
+                        <span>O cadastro será validado e enviado para <strong>aprovação do Administrador CCO</strong>.</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i data-lucide="type" class="mini-icon"></i> Nome Completo:</label>
+                        <input type="text" id="regNome" class="form-input uppercase-input" placeholder="NOME DO COLABORADOR" required oninput="this.value = this.value.toUpperCase()">
+                        <small class="form-hint">O sistema converte automaticamente para letras maiúsculas.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i data-lucide="mail" class="mini-icon"></i> E-Mail Corporativo:</label>
+                        <input type="email" id="regEmail" class="form-input" placeholder="seunome@alpitelbrasil.com.br" required>
+                        <small class="form-hint">Obrigatório pertencer ao domínio <strong>@alpitelbrasil.com.br</strong></small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i data-lucide="id-card" class="mini-icon"></i> Matrícula Corporativa (BR0...):</label>
+                        <input type="text" id="regMatricula" class="form-input uppercase-input" placeholder="Ex: BR0144636617" maxlength="12" required oninput="this.value = this.value.toUpperCase()">
+                        <small class="form-hint">Padrão obrigatório: <strong>BR + 0 + 9 dígitos</strong> (12 caracteres).</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i data-lucide="lock" class="mini-icon"></i> Senha de Acesso:</label>
+                        <input type="password" id="regPassword" class="form-input" placeholder="Crie uma senha de acesso..." required minlength="4">
+                    </div>
+
+                    <div class="auth-actions-bar">
+                        <button type="submit" class="btn btn-primary btn-block" id="btnSubmitRegister">
+                            <i data-lucide="send"></i> Enviar Solicitação de Acesso
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ABA 3: GESTÃO DE USUÁRIOS (ADMINISTRADOR) -->
+            <div id="authPaneAdminUsers" class="auth-tab-pane">
+                <div class="admin-users-header">
+                    <div>
+                        <h4>Aprovações & Usuários Cadastrados</h4>
+                        <p>Aprove ou rejeite solicitações de acesso operacional</p>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="loadAdminUsersList()" title="Recarregar Lista">
+                        <i data-lucide="refresh-cw" id="iconReloadUsers"></i>
+                    </button>
+                </div>
+
+                <div class="admin-users-table-wrap">
+                    <table class="table-premium admin-users-table">
+                        <thead>
+                            <tr>
+                                <th>Colaborador</th>
+                                <th>Matrícula</th>
+                                <th>E-mail</th>
+                                <th>Perfil</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminUsersTableBody">
+                            <tr>
+                                <td colspan="6" class="text-center">Carregando usuários...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
