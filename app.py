@@ -181,6 +181,7 @@ def update_data():
             "status": "success",
             "message": f"Dados atualizados com sucesso via {source}!",
             "data": updated_data
+        })
     except Exception as e:
         return jsonify({
             "status": "error",
