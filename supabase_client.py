@@ -224,3 +224,71 @@ def fetch_team_timeline(team_code, date_ref=None):
             return {"status": "error", "message": response.text, "data": []}
     except Exception as e:
         return {"status": "error", "message": str(e), "data": []}
+
+# ==============================================================================
+# FILA DE COMANDOS REMOTOS (CLOUD -> AGENTE LOCAL WINDOWS)
+# ==============================================================================
+
+def create_sync_command(command_name: str, payload: dict = None) -> dict:
+    """Insere um comando na tabela 'system_commands' para ser executado pelo agente local Windows."""
+    try:
+        body = {
+            "command": command_name,
+            "status": "PENDING",
+            "payload": payload or {},
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        endpoint = f"{BASE_REST_URL}/system_commands"
+        resp = requests.post(endpoint, headers=get_headers(), json=body, timeout=5)
+        if resp.status_code in [200, 201]:
+            data = resp.json()
+            cmd_id = data[0].get("id") if isinstance(data, list) and data else None
+            return {"status": "success", "command_id": cmd_id}
+        return {"status": "error", "message": resp.text}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def get_pending_commands() -> list:
+    """Busca comandos pendentes aguardando execução pelo robô local."""
+    try:
+        endpoint = f"{BASE_REST_URL}/system_commands?status=eq.PENDING&order=created_at.asc&limit=5"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=5)
+        if resp.status_code == 200:
+            return resp.json() or []
+        return []
+    except Exception:
+        return []
+
+def update_command_status(command_id: str, status: str, result: dict = None) -> bool:
+    """Atualiza o status de um comando (PROCESSING, COMPLETED, ERROR)."""
+    try:
+        body = {
+            "status": status,
+            "result": result or {},
+            "updated_at": datetime.now().isoformat()
+        }
+        endpoint = f"{BASE_REST_URL}/system_commands?id=eq.{command_id}"
+        resp = requests.patch(endpoint, headers=get_headers(), json=body, timeout=5)
+        return resp.status_code in [200, 204]
+    except Exception:
+        return False
+
+def wait_for_command_completion(command_id: str, timeout_seconds: int = 10) -> dict:
+    """Aguarda até que o agente local execute o comando e grave o resultado no Supabase."""
+    import time
+    start_time = time.time()
+    while time.time() - start_time < timeout_seconds:
+        try:
+            endpoint = f"{BASE_REST_URL}/system_commands?id=eq.{command_id}&select=*"
+            resp = requests.get(endpoint, headers=get_headers(), timeout=4)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data and isinstance(data, list):
+                    cmd = data[0]
+                    if cmd.get("status") in ["COMPLETED", "ERROR"]:
+                        return cmd
+        except Exception:
+            pass
+        time.sleep(0.8)
+    return {"status": "TIMEOUT", "message": "O Agente Local não respondeu a tempo."}

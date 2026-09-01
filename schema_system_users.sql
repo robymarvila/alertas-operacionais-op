@@ -77,3 +77,34 @@ INSERT INTO public.system_users (
     password_hash = EXCLUDED.password_hash,
     role = 'admin',
     status = 'approved';
+
+-- ==============================================================================
+-- FILA DE COMANDOS REMOTOS (CLOUD VERCEL -> AGENTE LOCAL WINDOWS)
+-- TABELA: public.system_commands
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.system_commands (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    command TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'ERROR')),
+    payload JSONB DEFAULT '{}'::jsonb,
+    result JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_commands_status ON public.system_commands (status);
+CREATE INDEX IF NOT EXISTS idx_system_commands_created ON public.system_commands (created_at DESC);
+
+ALTER TABLE public.system_commands ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anon select system_commands" ON public.system_commands;
+CREATE POLICY "Allow anon select system_commands" ON public.system_commands FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert system_commands" ON public.system_commands;
+CREATE POLICY "Allow anon insert system_commands" ON public.system_commands FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update system_commands" ON public.system_commands;
+CREATE POLICY "Allow anon update system_commands" ON public.system_commands FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon delete system_commands" ON public.system_commands;
+CREATE POLICY "Allow anon delete system_commands" ON public.system_commands FOR DELETE TO anon, authenticated USING (true);

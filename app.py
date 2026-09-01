@@ -17,7 +17,11 @@ from supabase_client import (
     fetch_audit_logs,
     fetch_daily_audit_summary,
     fetch_team_timeline,
-    clear_all_supabase_data
+    clear_all_supabase_data,
+    create_sync_command,
+    get_pending_commands,
+    update_command_status,
+    wait_for_command_completion
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -243,20 +247,36 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
     """
     is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
 
-    # Se estiver na Vercel (servidor na nuvem sem GUI Windows), sincroniza com a nuvem Supabase
+    # Se estiver na Vercel (servidor na nuvem sem GUI Windows), despacha comando remoto para o Agente Local
     if is_cloud:
+        cmd_res = create_sync_command("CAPTURE_TRBONET", {"source": source_label})
+        if cmd_res.get("status") == "success" and cmd_res.get("command_id"):
+            cmd_id = cmd_res["command_id"]
+            finished_cmd = wait_for_command_completion(cmd_id, timeout_seconds=9)
+            if finished_cmd.get("status") == "COMPLETED":
+                latest_cloud = fetch_latest_snapshot_from_supabase()
+                if latest_cloud.get("status") == "success" and latest_cloud.get("data"):
+                    data_manager.load_from_snapshot(latest_cloud["data"])
+                    total_rads = latest_cloud["data"].get("summary", {}).get("total_trbonet", 0)
+                    return {
+                        "status": "success",
+                        "message": f"Agente Local Windows executou a captura com sucesso ({total_rads} rádios no TRBOnet One)!",
+                        "data": latest_cloud["data"]
+                    }
+
+        # Fallback: se o agente local não respondeu a tempo, exibe o último snapshot disponível
         latest_cloud = fetch_latest_snapshot_from_supabase()
         if latest_cloud.get("status") == "success" and latest_cloud.get("data"):
             data_manager.load_from_snapshot(latest_cloud["data"])
             return {
-                "status": "success",
-                "message": "Dados sincronizados com a Nuvem Supabase! (A captura de tela do TRBOnet One ocorre na estação local Windows).",
+                "status": "warning",
+                "message": "Solicitação enviada. Exibindo último snapshot em nuvem (mantenha o servidor local ativo no Windows).",
                 "data": latest_cloud["data"]
             }
         else:
             return {
                 "status": "warning",
-                "message": "Ambiente Nuvem Vercel: A captura direta da janela do TRBOnet One requer execução na estação local Windows onde o programa está aberto.",
+                "message": "Ambiente Nuvem Vercel: Aguardando inicialização do servidor local no Windows.",
                 "data": data_manager.consolidate_data()
             }
 
@@ -854,10 +874,51 @@ def trbonet_background_worker(interval_seconds=120):
             print(f"[BACKGROUND WORKER EXCEPTION] {err}")
         time.sleep(interval_seconds)
 
+def remote_command_listener_worker(poll_interval=2.5):
+    """
+    Worker que escuta a tabela 'system_commands' no Supabase.
+    Ao receber comandos de disparo da Nuvem Vercel (ex: 'CAPTURE_TRBONET'),
+    executa a captura do TRBOnet One imediatamente na tela local do Windows
+    e responde para a nuvem.
+    """
+    if os.name != 'nt' or os.environ.get("VERCEL"):
+        return
+
+    print(f"[REMOTE LISTENER] Escutando comandos remotos da nuvem a cada {poll_interval}s...")
+    time.sleep(5)
+    while True:
+        try:
+            pending = get_pending_commands()
+            for cmd in pending:
+                cmd_id = cmd.get("id")
+                cmd_name = cmd.get("command")
+                print(f"[REMOTE COMMAND RECEIVED] Executando comando {cmd_name} ({cmd_id})...")
+                update_command_status(cmd_id, "PROCESSING")
+
+                if cmd_name == "CAPTURE_TRBONET":
+                    res = execute_trbonet_sync(source_label="Disparo Remoto Solicitado na Nuvem")
+                    status = "COMPLETED" if res.get("status") == "success" else "ERROR"
+                    update_command_status(cmd_id, status, res)
+                elif cmd_name == "SYNC_POWERON":
+                    res = data_manager.carregar_arquivo_calendario_poweron()
+                    consolidated = data_manager.consolidate_data()
+                    try:
+                        push_snapshot_to_supabase(consolidated)
+                    except Exception:
+                        pass
+                    status = "COMPLETED" if res.get("status") == "success" else "ERROR"
+                    update_command_status(cmd_id, status, res)
+        except Exception:
+            pass
+        time.sleep(poll_interval)
+
 def start_background_jobs():
-    """Inicia a thread de captura periódica em segundo plano."""
-    bg_thread = threading.Thread(target=trbonet_background_worker, args=(120,), daemon=True)
-    bg_thread.start()
+    """Inicia threads de captura periódica e escuta de comandos remotos da nuvem."""
+    if os.name == 'nt' and not os.environ.get("VERCEL"):
+        bg_sync = threading.Thread(target=trbonet_background_worker, args=(120,), daemon=True)
+        bg_sync.start()
+        bg_listener = threading.Thread(target=remote_command_listener_worker, args=(2.5,), daemon=True)
+        bg_listener.start()
 
 if __name__ == '__main__':
     import sys
