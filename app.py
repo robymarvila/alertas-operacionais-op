@@ -1058,7 +1058,10 @@ def export_csv():
 @app.route('/api/delivery/data', methods=['GET'])
 def get_teams_data():
     """Retorna o estado consolidado das equipes entregues hoje (Ativas vs Total Acumulado)."""
-    if not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams:
+    is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+
+    # Em ambiente de nuvem (Vercel) ou se a memória local estiver vazia, hidrata sempre do Supabase
+    if is_cloud or (not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams):
         cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
         if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
             delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase")

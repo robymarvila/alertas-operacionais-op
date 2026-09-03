@@ -52,9 +52,9 @@ const appState = {
     sortField: 'code',
     sortAsc: true,
     
-    // Auto-refresh Timer (5 Minutos = 300 segundos)
-    refreshIntervalSeconds: 300,
-    secondsRemaining: 300,
+    // Auto-refresh Timer (2 Minutos = 120 segundos)
+    refreshIntervalSeconds: 120,
+    secondsRemaining: 120,
     timerId: null,
     isPaused: false,
     
@@ -84,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchDashboardData(false);
     loadDeliveryData(false);
     startAutoRefreshTimer();
+    startRealtimePoller(15000); // Polling em tempo real a cada 15 segundos
     sendTelemetryHeartbeat();
     setInterval(sendTelemetryHeartbeat, 60000);
 
@@ -112,14 +113,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Ao voltar para a aba do navegador, atualiza instantaneamente
+    // Ao voltar para a aba do navegador, atualiza instantaneamente todos os módulos
     window.addEventListener('focus', () => {
-        fetchDashboardData(false);
-        if (appState.currentMainTab === 'audit') {
-            loadAuditData(true);
-        }
-        if (appState.currentView === 'delivery') {
-            loadDeliveryData(true);
+        refreshAllRealtimeData(false);
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            refreshAllRealtimeData(false);
         }
     });
 });
@@ -314,6 +315,7 @@ function navigateToView(viewName) {
         document.documentElement.classList.add('route-hub');
     }
 
+    appState.currentView = viewName;
     const portalHub = document.getElementById('portalHubView');
     const moduleView = document.getElementById('moduleAuditView');
     const deliveryView = document.getElementById('moduleDeliveryView');
@@ -643,13 +645,50 @@ function startAutoRefreshTimer() {
 
         if (appState.secondsRemaining <= 0) {
             appState.secondsRemaining = appState.refreshIntervalSeconds;
-            fetchDashboardData(false);
-            if (appState.currentMainTab === 'audit') {
-                loadAuditData(true);
-            }
+            refreshAllRealtimeData(false);
         }
     }, 1000);
 }
+
+// Sincronização Unificada em Tempo Real de Todos os Módulos
+async function refreshAllRealtimeData(isManual = false) {
+    try {
+        await Promise.allSettled([
+            fetchDashboardData(isManual),
+            loadDeliveryData(isManual)
+        ]);
+        if (appState.currentMainTab === 'audit') {
+            loadAuditData(true);
+        }
+        updateHubCard();
+        updateDeliveryHubCard();
+    } catch (e) {
+        console.warn('[REALTIME] Erro no ciclo de atualização:', e);
+    }
+}
+
+// Poller Contínuo de Alta Frequência (Tempo Real a cada 15 segundos)
+let realTimePollerId = null;
+function startRealtimePoller(intervalMs = 15000) {
+    if (realTimePollerId) clearInterval(realTimePollerId);
+    realTimePollerId = setInterval(async () => {
+        // Não consome recursos se a aba estiver oculta ou o temporizador estiver pausado
+        if (document.hidden || appState.isPaused) return;
+
+        try {
+            await Promise.allSettled([
+                fetchDashboardData(false),
+                loadDeliveryData(false)
+            ]);
+            updateHubCard();
+            updateDeliveryHubCard();
+        } catch (err) {
+            // Silencioso em caso de micro-oscilações de rede
+        }
+    }, intervalMs);
+}
+
+window.refreshAllRealtimeData = refreshAllRealtimeData;
 
 // ==========================================================================
 // ATUALIZAÇÃO DOS KPIS E RESUMO EXECUTIVO (REATIVO AOS FILTROS REGIONAIS/BASES)
