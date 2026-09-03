@@ -82,14 +82,44 @@ document.addEventListener('DOMContentLoaded', () => {
     initDropzone();
     initAuth();
     fetchDashboardData(false);
+    loadDeliveryData(false);
     startAutoRefreshTimer();
-    navigateToView('hub');
+    sendTelemetryHeartbeat();
+    setInterval(sendTelemetryHeartbeat, 60000);
+
+    // Roteamento dinâmico por Hash da URL
+    const hash = window.location.hash.replace('#', '');
+    if (hash === 'delivery') {
+        navigateToView('delivery');
+    } else if (hash === 'module' || hash === 'trbonet') {
+        navigateToView('module');
+    } else if (hash === 'admin') {
+        navigateToView('admin');
+    } else {
+        navigateToView('hub');
+    }
+
+    window.addEventListener('hashchange', () => {
+        const currentHash = window.location.hash.replace('#', '');
+        if (currentHash === 'delivery') {
+            navigateToView('delivery');
+        } else if (currentHash === 'module' || currentHash === 'trbonet') {
+            navigateToView('module');
+        } else if (currentHash === 'admin') {
+            navigateToView('admin');
+        } else {
+            navigateToView('hub');
+        }
+    });
 
     // Ao voltar para a aba do navegador, atualiza instantaneamente
     window.addEventListener('focus', () => {
         fetchDashboardData(false);
         if (appState.currentMainTab === 'audit') {
             loadAuditData(true);
+        }
+        if (appState.currentView === 'delivery') {
+            loadDeliveryData(true);
         }
     });
 });
@@ -99,6 +129,122 @@ function initIcons() {
         lucide.createIcons();
     }
 }
+
+function initClock() {
+    function updateClock() {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('pt-BR', { hour12: false });
+        const dateStr = now.toLocaleDateString('pt-BR');
+
+        const elDigital = document.getElementById('digitalClock');
+        const elDate = document.getElementById('digitalDate');
+        const elDeliveryClock = document.getElementById('digitalClockDelivery');
+        const elModuleClock = document.getElementById('digitalClockModule');
+
+        if (elDigital) elDigital.textContent = timeStr;
+        if (elDate) elDate.textContent = dateStr;
+        if (elDeliveryClock) elDeliveryClock.textContent = timeStr;
+        if (elModuleClock) elModuleClock.textContent = timeStr;
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+}
+
+function initDropzone() {
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('poweronFileInput');
+    if (dropzone && fileInput) {
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handlePowerOnFileUpload(e.dataTransfer.files[0]);
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                handlePowerOnFileUpload(e.target.files[0]);
+            }
+        });
+    }
+}
+
+function initAuth() {
+    if (authState.token && authState.user) {
+        authState.isAuthenticated = true;
+    }
+    updateAuthUI();
+}
+
+function updateAuthUI() {
+    const isAuth = authState.isAuthenticated;
+    const user = authState.user;
+
+    const btns = [
+        { btn: document.getElementById('btnAuthHub'), icon: document.getElementById('authLockIconHub'), text: document.getElementById('authLockTextHub') },
+        { btn: document.getElementById('btnAuthModule'), icon: document.getElementById('authLockIconModule'), text: document.getElementById('authLockTextModule') },
+        { btn: document.getElementById('btnAuthDelivery'), icon: document.getElementById('authLockIconDelivery'), text: document.getElementById('authLockTextDelivery') }
+    ];
+
+    btns.forEach(item => {
+        if (item.btn) {
+            if (isAuth) {
+                item.btn.classList.remove('locked');
+                item.btn.classList.add('unlocked');
+                if (item.text) item.text.textContent = user ? user.nome.split(' ')[0] : 'Desbloqueado';
+                if (item.icon) item.icon.setAttribute('data-lucide', 'unlock');
+            } else {
+                item.btn.classList.remove('unlocked');
+                item.btn.classList.add('locked');
+                if (item.text) item.text.textContent = 'Bloqueado';
+                if (item.icon) item.icon.setAttribute('data-lucide', 'lock');
+            }
+        }
+    });
+
+    document.querySelectorAll('.locked-action').forEach(el => {
+        const lockBadge = el.querySelector('.lock-mini-badge');
+        if (isAuth) {
+            el.classList.remove('action-locked');
+            if (lockBadge) lockBadge.style.display = 'none';
+        } else {
+            el.classList.add('action-locked');
+            if (lockBadge) lockBadge.style.display = 'inline-flex';
+        }
+    });
+
+    initIcons();
+}
+
+function handleRestrictedAction(actionCallback) {
+    if (!authState.isAuthenticated) {
+        showToast('Ação restrita. Autentique-se com sua matrícula para continuar.', 'warning');
+        openAuthModal();
+        return;
+    }
+    if (typeof actionCallback === 'function') {
+        actionCallback();
+    }
+}
+
+function openAuthModal() {
+    const modal = document.getElementById('authModal');
+    if (modal) {
+        switchAuthTab('login');
+        modal.classList.add('active');
+        initIcons();
+    }
+}
+
+window.handleRestrictedAction = handleRestrictedAction;
+window.openAuthModal = openAuthModal;
 
 // ==========================================================================
 // GERENCIADOR DE TEMAS (MODO CLARO × MODO ESCURO)
@@ -133,6 +279,9 @@ function applyTheme(theme) {
     if (appState.currentMainTab === 'dashboard' && appState.donutChart) {
         setTimeout(renderCharts, 50);
     }
+    if (appState.currentView === 'delivery') {
+        setTimeout(renderDeliveryCharts, 50);
+    }
     initIcons();
 }
 
@@ -140,44 +289,56 @@ function applyTheme(theme) {
 // NAVEGAÇÃO ENTRE PORTAL HUB E MÓDULO OPERACIONAL
 // ==========================================================================
 function navigateToView(viewName) {
+    if (viewName === 'admin') {
+        if (!authState.isAuthenticated) {
+            showToast('Acesso Restrito: Autentique-se com sua matrícula e senha para acessar o Painel de Gerenciamento.', 'warning');
+            openAuthModal();
+            return;
+        }
+    }
+
     appState.currentView = viewName;
+    if (window.location.hash !== `#${viewName}`) {
+        window.history.replaceState(null, '', `#${viewName}`);
+    }
+
+    // Atualiza classes no elemento raiz HTML para consistência absoluta de CSS
+    document.documentElement.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin');
+    if (viewName === 'delivery') {
+        document.documentElement.classList.add('route-delivery');
+    } else if (viewName === 'module' || viewName === 'trbonet') {
+        document.documentElement.classList.add('route-module');
+    } else if (viewName === 'admin') {
+        document.documentElement.classList.add('route-admin');
+    } else {
+        document.documentElement.classList.add('route-hub');
+    }
 
     const portalHub = document.getElementById('portalHubView');
     const moduleView = document.getElementById('moduleAuditView');
-    const btnBackHub = document.getElementById('btnBackToHub');
-    const brandHub = document.getElementById('brandHubHeader');
-    const brandModule = document.getElementById('brandModuleHeader');
-    const headerSyncBox = document.getElementById('headerSyncBox');
-    const moduleNavTabs = document.getElementById('moduleNavTabs');
-    const moduleHeaderActions = document.getElementById('moduleHeaderActions');
-    const moduleHeaderTools = document.getElementById('moduleHeaderTools');
+    const deliveryView = document.getElementById('moduleDeliveryView');
+    const adminView = document.getElementById('systemAdminViewContainer');
+
+    if (portalHub) portalHub.style.display = (viewName === 'hub') ? 'flex' : 'none';
+    if (moduleView) moduleView.style.display = (viewName === 'module' || viewName === 'trbonet') ? 'flex' : 'none';
+    if (deliveryView) deliveryView.style.display = (viewName === 'delivery') ? 'flex' : 'none';
+    if (adminView) adminView.style.display = (viewName === 'admin') ? 'block' : 'none';
 
     if (viewName === 'hub') {
-        if (portalHub) portalHub.style.display = 'flex';
-        if (moduleView) moduleView.style.display = 'none';
-        if (btnBackHub) btnBackHub.style.display = 'none';
-        if (brandHub) brandHub.style.display = 'flex';
-        if (brandModule) brandModule.style.display = 'none';
-        if (headerSyncBox) headerSyncBox.style.display = 'none';
-        if (moduleNavTabs) moduleNavTabs.style.display = 'none';
-        if (moduleHeaderActions) moduleHeaderActions.style.display = 'none';
-        if (moduleHeaderTools) moduleHeaderTools.style.display = 'none';
         updateHubCard();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        updateDeliveryHubCard();
+    } else if (viewName === 'delivery') {
+        applyDeliveryFilters();
+        loadDeliveryData(false);
+    } else if (viewName === 'admin') {
+        switchAdminTab('engines');
+        loadAdminEngineStatus();
     } else {
-        if (portalHub) portalHub.style.display = 'none';
-        if (moduleView) moduleView.style.display = 'block';
-        if (btnBackHub) btnBackHub.style.display = 'inline-flex';
-        if (brandHub) brandHub.style.display = 'none';
-        if (brandModule) brandModule.style.display = 'flex';
-        if (headerSyncBox) headerSyncBox.style.display = 'flex';
-        if (moduleNavTabs) moduleNavTabs.style.display = 'flex';
-        if (moduleHeaderActions) moduleHeaderActions.style.display = 'flex';
-        if (moduleHeaderTools) moduleHeaderTools.style.display = 'flex';
         switchMainTab(appState.currentMainTab || 'live');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-    initIcons();
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setTimeout(initIcons, 50);
 }
 
 function updateHubCard() {
@@ -266,10 +427,12 @@ function initClock() {
         const clockEl = document.getElementById('digitalClock');
         const dateEl = document.getElementById('digitalDate');
         const clockModuleEl = document.getElementById('digitalClockModule');
+        const clockDeliveryEl = document.getElementById('digitalClockDelivery');
 
         if (clockEl) clockEl.textContent = timeStr;
         if (dateEl) dateEl.textContent = dateStr;
         if (clockModuleEl) clockModuleEl.textContent = timeStr;
+        if (clockDeliveryEl) clockDeliveryEl.textContent = timeStr;
     };
     updateTime();
     setInterval(updateTime, 1000);
@@ -2458,11 +2621,19 @@ function updateAuthUI() {
 
         if (adminTabBtn) adminTabBtn.style.display = isAdmin ? 'inline-flex' : 'none';
         if (manageShortBtn) manageShortBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+        const btnHubAdmin = document.getElementById('btnHubAdminPanel');
+        const btnGoToAdmin = document.getElementById('btnGoToAdminPanel');
+        if (btnHubAdmin) btnHubAdmin.style.display = 'inline-flex';
+        if (btnGoToAdmin) btnGoToAdmin.style.display = 'inline-flex';
     } else {
         if (loginForm) loginForm.style.display = 'block';
         if (activeBox) activeBox.style.display = 'none';
         if (adminTabBtn) adminTabBtn.style.display = 'none';
         if (manageShortBtn) manageShortBtn.style.display = 'none';
+        const btnHubAdmin = document.getElementById('btnHubAdminPanel');
+        const btnGoToAdmin = document.getElementById('btnGoToAdminPanel');
+        if (btnHubAdmin) btnHubAdmin.style.display = 'none';
+        if (btnGoToAdmin) btnGoToAdmin.style.display = 'none';
     }
 
     initIcons();
@@ -2628,14 +2799,15 @@ function handleLogout(showNotification = true) {
     authState.token = null;
     authState.user = null;
     authState.isAuthenticated = false;
-
     sessionStorage.removeItem('cco_auth_token');
     sessionStorage.removeItem('cco_auth_user');
-
     updateAuthUI();
     closeModal('authModal');
     if (showNotification) {
         showToast('Painel bloqueado com sucesso (Logout efetuado).', 'info');
+    }
+    if (appState.currentView === 'admin') {
+        navigateToView('hub');
     }
 }
 
@@ -2773,4 +2945,1820 @@ window.deleteUser = async function(userId, userName = '') {
         showToast(`Erro ao excluir usuário: ${err.message}`, 'danger');
     }
 };
+
+// ==============================================================================
+// MÓDULO 2: ENTREGA DE EQUIPES (ENEL SP) - CONTROLLER
+// ==============================================================================
+
+const DEFAULT_OFFICIAL_BASES = {
+    'ENL': { code: 'ENL', name: 'Base Fagundes Filho', company: 'Alpitel', region: 'Região Norte Alpitel' },
+    'ECL': { code: 'ECL', name: 'Base Cajati', company: 'Alpitel', region: 'Região Norte Alpitel' },
+    'EEL': { code: 'EEL', name: 'Base Vila Medeiros', company: 'Alpitel', region: 'Região Norte Alpitel' },
+    'EML': { code: 'EML', name: 'Base Monte Santo', company: 'Alpitel', region: 'Região Leste Alpitel' },
+    'EQL': { code: 'EQL', name: 'Base Aricanduva', company: 'Alpitel', region: 'Região Leste Alpitel' },
+    'EVL': { code: 'EVL', name: 'Base Catumbi', company: 'Alpitel', region: 'Região Leste Alpitel' },
+    'ESL': { code: 'ESL', name: 'Base Santo André', company: 'Alpitel', region: 'Região Leste Alpitel' },
+    'ENA': { code: 'ENA', name: 'Base Fagundes Filho', company: 'Própria', region: 'Região Norte Própria' },
+    'ECA': { code: 'ECA', name: 'Base Cajati', company: 'Própria', region: 'Região Norte Própria' },
+    'EEA': { code: 'EEA', name: 'Base Vila Medeiros', company: 'Própria', region: 'Região Norte Própria' },
+    'EMA': { code: 'EMA', name: 'Base Monte Santo', company: 'Própria', region: 'Região Leste Própria' },
+    'EQA': { code: 'EQA', name: 'Base Aricanduva', company: 'Própria', region: 'Região Leste Própria' },
+    'EVA': { code: 'EVA', name: 'Base Catumbi', company: 'Própria', region: 'Região Leste Própria' },
+    'ESA': { code: 'ESA', name: 'Base Santo André', company: 'Própria', region: 'Região Leste Própria' }
+};
+
+const deliveryState = {
+    currentScreen: 'online', // 'online' | 'history'
+    activeTeams: [],
+    dailyTotalTeams: [],
+    summaryActive: {},
+    summaryTotal: {},
+    intradayCurve: {},
+    geoGroups: {},
+    lastSync: '--:--:--',
+    filters: {
+        regions: new Set(),
+        bases: new Set(),
+        shifts: new Set(),
+        vehicles: new Set(),
+        search: ''
+    },
+    filteredTeams: [],
+    isTableCollapsed: true,
+    shiftChart: null,
+    fleetPieChart: null,
+    searchTimer: null,
+    historyMode: 'day',
+    historyDate: new Date().toISOString().split('T')[0],
+    historyMonth: new Date().toISOString().slice(0, 7),
+    historyDayData: null,
+    historyMonthData: null,
+    historyMonthlyChart: null,
+    datePickerInstance: null,
+    selectedAuditDates: [new Date().toISOString().split('T')[0]],
+    comparisonData: [],
+    comparisonChart: null
+};
+
+// Alternador de Telas (ONLINE vs AUDITORIA & HISTÓRICO)
+function switchDeliveryScreen(screenName) {
+    deliveryState.currentScreen = screenName;
+    const btnOnline = document.getElementById('btnSwitchOnline');
+    const btnHist = document.getElementById('btnSwitchHistory');
+    const scrOnline = document.getElementById('deliveryScreenOnline');
+    const scrHist = document.getElementById('deliveryScreenHistory');
+
+    if (screenName === 'online') {
+        if (btnOnline) btnOnline.classList.add('active');
+        if (btnHist) btnHist.classList.remove('active');
+        if (scrOnline) scrOnline.style.display = 'block';
+        if (scrHist) scrHist.style.display = 'none';
+        renderDeliveryCharts();
+    } else {
+        if (btnOnline) btnOnline.classList.remove('active');
+        if (btnHist) btnHist.classList.add('active');
+        if (scrOnline) scrOnline.style.display = 'none';
+        if (scrHist) scrHist.style.display = 'block';
+
+        // Inicializa seletores de data/mês
+        initHistoryDatePicker();
+        const monthInput = document.getElementById('histMonthInput');
+        if (monthInput && !monthInput.value) monthInput.value = deliveryState.historyMonth;
+
+        if (deliveryState.historyMode === 'day') {
+            if (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates.length > 1) {
+                loadComparisonAudit(deliveryState.selectedAuditDates);
+            } else {
+                const target = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates[0]) || deliveryState.historyDate;
+                loadDailyHistoryAudit(target);
+            }
+        } else {
+            loadMonthlyHistoryAudit();
+        }
+    }
+}
+
+// Carregamento de Dados ao Vivo (Módulo 2)
+async function loadDeliveryData(forceRefresh = false) {
+    const refreshBtn = document.getElementById('btnRefreshDelivery');
+    if (refreshBtn) refreshBtn.classList.add('loading-pulse');
+
+    try {
+        const resp = await fetch('/api/delivery/data');
+        const result = await resp.json();
+
+        if (result.status === 'success') {
+            deliveryState.activeTeams = result.active_teams || [];
+            deliveryState.dailyTotalTeams = result.daily_total_teams || [];
+            deliveryState.summaryActive = result.summary_active || {};
+            deliveryState.summaryTotal = result.summary_total || {};
+            deliveryState.intradayCurve = result.intraday_curve || {};
+            deliveryState.geoGroups = result.geo_groups || {};
+            deliveryState.lastSync = result.timestamp || '--:--:--';
+
+            applyDeliveryFilters();
+            updateDeliveryHubCard();
+
+            if (forceRefresh) {
+                showToast(`Entrega atualizada: ${deliveryState.activeTeams.length} ativas no momento (${deliveryState.dailyTotalTeams.length} acumuladas no dia)!`, 'success');
+            }
+        }
+    } catch (err) {
+        console.error('Falha ao sincronizar entrega de equipes:', err);
+    } finally {
+        if (refreshBtn) refreshBtn.classList.remove('loading-pulse');
+        initIcons();
+    }
+}
+
+// Atualização do Card do Hub Central
+function updateDeliveryHubCard() {
+    const activeTotal = deliveryState.activeTeams.length;
+    const dayTotal = deliveryState.dailyTotalTeams.length;
+    const sumActive = deliveryState.summaryActive || {};
+
+    const elActive = document.getElementById('hubDeliveryActiveCount');
+    const elTotal = document.getElementById('hubMiniDeliveredTotal');
+    const elCesto = document.getElementById('hubMiniCesto');
+    const elLeve = document.getElementById('hubMiniLeve');
+    const elPesado = document.getElementById('hubMiniPesado');
+    const elLastSync = document.getElementById('hubDeliveryLastSync');
+
+    if (elActive) elActive.textContent = `${activeTotal} em turno`;
+    if (elTotal) elTotal.textContent = dayTotal;
+    if (elCesto) elCesto.textContent = sumActive.cesto || 0;
+    if (elLeve) elLeve.textContent = sumActive.leve || 0;
+    if (elPesado) elPesado.textContent = sumActive.linhaviva_munck || 0;
+    if (elLastSync) elLastSync.textContent = deliveryState.lastSync || '--:--:--';
+}
+
+// Aplicação de Filtros Múltiplos (Regiões, Bases, Turnos, Frotas e Busca)
+function applyDeliveryFilters() {
+    const { regions, bases, shifts, vehicles, search } = deliveryState.filters;
+    const q = (search || '').trim().toUpperCase();
+
+    // A base de filtragem é o universo total acumulado no dia (Equipes TOTAL)
+    const sourceList = deliveryState.dailyTotalTeams.length > 0 
+        ? deliveryState.dailyTotalTeams 
+        : deliveryState.activeTeams;
+
+    // 1. Escopo de Turno, Frota e Busca (usado para alimentar os cards da Região Norte, Região Leste e Bases)
+    const scopeFiltered = sourceList.filter(t => {
+        // Filtro por Turnos Múltiplos
+        if (shifts.size > 0 && !shifts.has(t.shift_code)) return false;
+
+        // Filtro por Frota / Veículos Múltiplos
+        if (vehicles.size > 0) {
+            let matchVehicle = false;
+            for (const v of vehicles) {
+                if (v === 'Linha Viva + Munk') {
+                    if (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk') {
+                        matchVehicle = true;
+                        break;
+                    }
+                } else if (t.vehicle_type === v || t.unified_group === v) {
+                    matchVehicle = true;
+                    break;
+                }
+            }
+            if (!matchVehicle) return false;
+        }
+
+        // Filtro por Busca Textual
+        if (q) {
+            const matchCode = (t.team_code || '').toUpperCase().includes(q);
+            const matchBase = (t.base_name || '').toUpperCase().includes(q);
+            const matchDriver = (t.driver || '').toUpperCase().includes(q);
+            const matchPlate = (t.plate || '').toUpperCase().includes(q);
+            const matchType = (t.vehicle_type || '').toUpperCase().includes(q);
+            if (!matchCode && !matchBase && !matchDriver && !matchPlate && !matchType) return false;
+        }
+
+        return true;
+    });
+
+    // 2. Filtro Completo incluindo Regiões e Bases Múltiplas (para tabela e gráficos)
+    deliveryState.filteredTeams = scopeFiltered.filter(t => {
+        // Filtro por Região Múltipla
+        if (regions.size > 0 && !regions.has(t.geo)) return false;
+
+        // Filtro por Base Múltipla
+        if (bases.size > 0) {
+            const bDisp = t.base_display || t.base_name;
+            if (!bases.has(bDisp) && !bases.has(t.base_name)) return false;
+        }
+
+        return true;
+    });
+
+    renderDeliveryKPIs();
+    renderGroupedBasesMetrics(scopeFiltered);
+    renderDeliveryCharts();
+    renderDeliveryTable();
+}
+
+// Renderização dos KPIs do Deck Superior
+function renderDeliveryKPIs() {
+    const activeList = deliveryState.activeTeams;
+    const totalDayList = deliveryState.dailyTotalTeams;
+
+    const elHeroActive = document.getElementById('delHeroActive');
+    const elHeroTotalDay = document.getElementById('delHeroTotalDay');
+
+    if (elHeroActive) elHeroActive.textContent = activeList.length;
+    if (elHeroTotalDay) elHeroTotalDay.textContent = totalDayList.length;
+
+    // Métricas por tipo de veículo (Ativas vs Total Dia)
+    const sumActive = deliveryState.summaryActive || {};
+    const sumTotal = deliveryState.summaryTotal || {};
+
+    const elCestoAct = document.getElementById('delFleetCestoActive');
+    const elCestoTot = document.getElementById('delFleetCestoTotal');
+    if (elCestoAct) elCestoAct.textContent = sumActive.cesto || 0;
+    if (elCestoTot) elCestoTot.textContent = sumTotal.cesto || 0;
+
+    const elLeveAct = document.getElementById('delFleetLeveActive');
+    const elLeveTot = document.getElementById('delFleetLeveTotal');
+    if (elLeveAct) elLeveAct.textContent = sumActive.leve || 0;
+    if (elLeveTot) elLeveTot.textContent = sumTotal.leve || 0;
+
+    const elMotoAct = document.getElementById('delFleetMotoActive');
+    const elMotoTot = document.getElementById('delFleetMotoTotal');
+    if (elMotoAct) elMotoAct.textContent = sumActive.moto || 0;
+    if (elMotoTot) elMotoTot.textContent = sumTotal.moto || 0;
+
+    const elPesadoAct = document.getElementById('delFleetPesadoActive');
+    const elPesadoTot = document.getElementById('delFleetPesadoTotal');
+    if (elPesadoAct) elPesadoAct.textContent = sumActive.linhaviva_munck || 0;
+    if (elPesadoTot) elPesadoTot.textContent = sumTotal.linhaviva_munck || 0;
+}
+
+// Cálculo Dinâmico e Reativo dos Cards de Regiões e Bases
+function computeRegionalBreakdown(teamList) {
+    const list = teamList || [];
+    const breakdown = {
+        regiao_norte: {
+            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
+            bases: {
+                'Base Fagundes Filho': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
+                'Base Cajati': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
+                'Base Vila Medeiros': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 }
+            }
+        },
+        regiao_leste: {
+            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
+            bases: {
+                'Base Monte Santo': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
+                'Base Aricanduva': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
+                'Base Catumbi': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
+                'Base Santo André': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 }
+            }
+        }
+    };
+
+    const normalizeBase = (name, code) => {
+        const n = String(name || '').trim().toLowerCase();
+        const c = String(code || '').trim().toUpperCase();
+        if (n.includes('fagundes') || c === 'ENL' || c === 'ENA') return 'Base Fagundes Filho';
+        if (n.includes('cajati') || c === 'ECL' || c === 'ECA') return 'Base Cajati';
+        if (n.includes('medeiros') || c === 'EEL' || c === 'EEA') return 'Base Vila Medeiros';
+        if (n.includes('monte') || c === 'EML' || c === 'EMA') return 'Base Monte Santo';
+        if (n.includes('aricanduva') || c === 'EQL' || c === 'EQA') return 'Base Aricanduva';
+        if (n.includes('catumbi') || c === 'EVL' || c === 'EVA') return 'Base Catumbi';
+        if (n.includes('andr') || c === 'ESL' || c === 'ESA') return 'Base Santo André';
+        return name;
+    };
+
+    list.forEach(t => {
+        const isPesado = t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk';
+        const isCesto = t.vehicle_type === 'Cesto Aéreo';
+        const isLeve = t.vehicle_type === 'Veículo Leve';
+        const isMoto = t.vehicle_type === 'Moto';
+
+        const baseKey = normalizeBase(t.base_display || t.base_name, t.base_code || t.prefix);
+        let targetReg = null;
+
+        if (t.geo === 'Norte' || ['Base Fagundes Filho', 'Base Cajati', 'Base Vila Medeiros'].includes(baseKey)) {
+            targetReg = breakdown.regiao_norte;
+        } else if (t.geo === 'Leste' || ['Base Monte Santo', 'Base Aricanduva', 'Base Catumbi', 'Base Santo André'].includes(baseKey)) {
+            targetReg = breakdown.regiao_leste;
+        }
+
+        if (targetReg) {
+            targetReg.total_block.total++;
+            if (isCesto) targetReg.total_block.cesto++;
+            if (isLeve) targetReg.total_block.leve++;
+            if (isMoto) targetReg.total_block.moto++;
+            if (isPesado) targetReg.total_block.linhaviva_munck++;
+
+            if (targetReg.bases[baseKey]) {
+                targetReg.bases[baseKey].total++;
+                if (isCesto) targetReg.bases[baseKey].cesto++;
+                if (isLeve) targetReg.bases[baseKey].leve++;
+                if (isMoto) targetReg.bases[baseKey].moto++;
+                if (isPesado) targetReg.bases[baseKey].linhaviva_munck++;
+            }
+        }
+    });
+
+    return breakdown;
+}
+
+// Renderização das Métricas dos Cards Agrupados (Região Norte & Região Leste)
+function renderGroupedBasesMetrics(customTeamList) {
+    let breakdown;
+    if (customTeamList && Array.isArray(customTeamList)) {
+        breakdown = computeRegionalBreakdown(customTeamList);
+    } else {
+        const sumTotal = deliveryState.summaryTotal || {};
+        breakdown = {
+            regiao_norte: sumTotal.regiao_norte || { total_block: {}, bases: {} },
+            regiao_leste: sumTotal.regiao_leste || { total_block: {}, bases: {} }
+        };
+    }
+
+    const regNorte = breakdown.regiao_norte;
+    const regLeste = breakdown.regiao_leste;
+
+    // Totalizador Norte
+    const nb = regNorte.total_block || {};
+    const elNorteNum = document.getElementById('delNorteTotalNum');
+    const elNorteCesto = document.getElementById('delNorteTotalCesto');
+    const elNorteLeve = document.getElementById('delNorteTotalLeve');
+    const elNorteMoto = document.getElementById('delNorteTotalMoto');
+    const elNortePesado = document.getElementById('delNorteTotalPesado');
+
+    if (elNorteNum) elNorteNum.textContent = nb.total || 0;
+    if (elNorteCesto) elNorteCesto.textContent = nb.cesto || 0;
+    if (elNorteLeve) elNorteLeve.textContent = nb.leve || 0;
+    if (elNorteMoto) elNorteMoto.textContent = nb.moto || 0;
+    if (elNortePesado) elNortePesado.textContent = nb.linhaviva_munck || 0;
+
+    // Bases do Norte
+    const nbBases = regNorte.bases || {};
+    const bFag = nbBases['Base Fagundes Filho'] || {};
+    const elBFagTot = document.getElementById('delBaseFagundesTotal');
+    const elBFagCesto = document.getElementById('delBaseFagundesCesto');
+    const elBFagLeve = document.getElementById('delBaseFagundesLeve');
+    const elBFagMoto = document.getElementById('delBaseFagundesMoto');
+    const elBFagPesado = document.getElementById('delBaseFagundesPesado');
+    if (elBFagTot) elBFagTot.textContent = bFag.total || 0;
+    if (elBFagCesto) elBFagCesto.textContent = bFag.cesto || 0;
+    if (elBFagLeve) elBFagLeve.textContent = bFag.leve || 0;
+    if (elBFagMoto) elBFagMoto.textContent = bFag.moto || 0;
+    if (elBFagPesado) elBFagPesado.textContent = bFag.linhaviva_munck || 0;
+
+    const bCaj = nbBases['Base Cajati'] || {};
+    const elBCajTot = document.getElementById('delBaseCajatiTotal');
+    const elBCajCesto = document.getElementById('delBaseCajatiCesto');
+    const elBCajLeve = document.getElementById('delBaseCajatiLeve');
+    const elBCajMoto = document.getElementById('delBaseCajatiMoto');
+    const elBCajPesado = document.getElementById('delBaseCajatiPesado');
+    if (elBCajTot) elBCajTot.textContent = bCaj.total || 0;
+    if (elBCajCesto) elBCajCesto.textContent = bCaj.cesto || 0;
+    if (elBCajLeve) elBCajLeve.textContent = bCaj.leve || 0;
+    if (elBCajMoto) elBCajMoto.textContent = bCaj.moto || 0;
+    if (elBCajPesado) elBCajPesado.textContent = bCaj.linhaviva_munck || 0;
+
+    const bMed = nbBases['Base Vila Medeiros'] || {};
+    const elBMedTot = document.getElementById('delBaseVilaMedeirosTotal');
+    const elBMedCesto = document.getElementById('delBaseVilaMedeirosCesto');
+    const elBMedLeve = document.getElementById('delBaseVilaMedeirosLeve');
+    const elBMedMoto = document.getElementById('delBaseVilaMedeirosMoto');
+    const elBMedPesado = document.getElementById('delBaseVilaMedeirosPesado');
+    if (elBMedTot) elBMedTot.textContent = bMed.total || 0;
+    if (elBMedCesto) elBMedCesto.textContent = bMed.cesto || 0;
+    if (elBMedLeve) elBMedLeve.textContent = bMed.leve || 0;
+    if (elBMedMoto) elBMedMoto.textContent = bMed.moto || 0;
+    if (elBMedPesado) elBMedPesado.textContent = bMed.linhaviva_munck || 0;
+
+    // Totalizador Leste
+    const lb = regLeste.total_block || {};
+    const elLesteNum = document.getElementById('delLesteTotalNum');
+    const elLesteCesto = document.getElementById('delLesteTotalCesto');
+    const elLesteLeve = document.getElementById('delLesteTotalLeve');
+    const elLesteMoto = document.getElementById('delLesteTotalMoto');
+    const elLestePesado = document.getElementById('delLesteTotalPesado');
+
+    if (elLesteNum) elLesteNum.textContent = lb.total || 0;
+    if (elLesteCesto) elLesteCesto.textContent = lb.cesto || 0;
+    if (elLesteLeve) elLesteLeve.textContent = lb.leve || 0;
+    if (elLesteMoto) elLesteMoto.textContent = lb.moto || 0;
+    if (elLestePesado) elLestePesado.textContent = lb.linhaviva_munck || 0;
+
+    // Bases do Leste
+    const lbBases = regLeste.bases || {};
+    const bMS = lbBases['Base Monte Santo'] || {};
+    const elBMSTot = document.getElementById('delBaseMonteSantoTotal');
+    const elBMSCesto = document.getElementById('delBaseMonteSantoCesto');
+    const elBMSLeve = document.getElementById('delBaseMonteSantoLeve');
+    const elBMSMoto = document.getElementById('delBaseMonteSantoMoto');
+    const elBMSPesado = document.getElementById('delBaseMonteSantoPesado');
+    if (elBMSTot) elBMSTot.textContent = bMS.total || 0;
+    if (elBMSCesto) elBMSCesto.textContent = bMS.cesto || 0;
+    if (elBMSLeve) elBMSLeve.textContent = bMS.leve || 0;
+    if (elBMSMoto) elBMSMoto.textContent = bMS.moto || 0;
+    if (elBMSPesado) elBMSPesado.textContent = bMS.linhaviva_munck || 0;
+
+    const bAri = lbBases['Base Aricanduva'] || {};
+    const elBAriTot = document.getElementById('delBaseAricanduvaTotal');
+    const elBAriCesto = document.getElementById('delBaseAricanduvaCesto');
+    const elBAriLeve = document.getElementById('delBaseAricanduvaLeve');
+    const elBAriMoto = document.getElementById('delBaseAricanduvaMoto');
+    const elBAriPesado = document.getElementById('delBaseAricanduvaPesado');
+    if (elBAriTot) elBAriTot.textContent = bAri.total || 0;
+    if (elBAriCesto) elBAriCesto.textContent = bAri.cesto || 0;
+    if (elBAriLeve) elBAriLeve.textContent = bAri.leve || 0;
+    if (elBAriMoto) elBAriMoto.textContent = bAri.moto || 0;
+    if (elBAriPesado) elBAriPesado.textContent = bAri.linhaviva_munck || 0;
+
+    const bCat = lbBases['Base Catumbi'] || {};
+    const elBCatTot = document.getElementById('delBaseCatumbiTotal');
+    const elBCatCesto = document.getElementById('delBaseCatumbiCesto');
+    const elBCatLeve = document.getElementById('delBaseCatumbiLeve');
+    const elBCatMoto = document.getElementById('delBaseCatumbiMoto');
+    const elBCatPesado = document.getElementById('delBaseCatumbiPesado');
+    if (elBCatTot) elBCatTot.textContent = bCat.total || 0;
+    if (elBCatCesto) elBCatCesto.textContent = bCat.cesto || 0;
+    if (elBCatLeve) elBCatLeve.textContent = bCat.leve || 0;
+    if (elBCatMoto) elBCatMoto.textContent = bCat.moto || 0;
+    if (elBCatPesado) elBCatPesado.textContent = bCat.linhaviva_munck || 0;
+
+    const bSA = lbBases['Base Santo André'] || {};
+    const elBSATot = document.getElementById('delBaseSantoAndreTotal');
+    const elBSACesto = document.getElementById('delBaseSantoAndreCesto');
+    const elBSALeve = document.getElementById('delBaseSantoAndreLeve');
+    const elBSAMoto = document.getElementById('delBaseSantoAndreMoto');
+    const elBSAPesado = document.getElementById('delBaseSantoAndrePesado');
+    if (elBSATot) elBSATot.textContent = bSA.total || 0;
+    if (elBSACesto) elBSACesto.textContent = bSA.cesto || 0;
+    if (elBSALeve) elBSALeve.textContent = bSA.leve || 0;
+    if (elBSAMoto) elBSAMoto.textContent = bSA.moto || 0;
+    if (elBSAPesado) elBSAPesado.textContent = bSA.linhaviva_munck || 0;
+}
+
+// Filtros Interativos Múltiplos por Região
+function toggleRegionFilter(regionName) {
+    const cardId = regionName === 'Norte' ? 'filterCardTotalNorte' : 'filterCardTotalLeste';
+    const cardEl = document.getElementById(cardId);
+
+    if (deliveryState.filters.regions.has(regionName)) {
+        deliveryState.filters.regions.delete(regionName);
+        if (cardEl) cardEl.classList.remove('filter-active');
+    } else {
+        deliveryState.filters.regions.add(regionName);
+        if (cardEl) cardEl.classList.add('filter-active');
+    }
+
+    applyDeliveryFilters();
+}
+
+// Filtros Interativos Múltiplos por Base
+function toggleBaseFilter(baseName, el) {
+    if (deliveryState.filters.bases.has(baseName)) {
+        deliveryState.filters.bases.delete(baseName);
+        if (el) el.classList.remove('filter-active');
+    } else {
+        deliveryState.filters.bases.add(baseName);
+        if (el) el.classList.add('filter-active');
+    }
+
+    applyDeliveryFilters();
+}
+
+// Limpeza de Todos os Filtros de Bases e Regiões
+function clearDeliveryBaseFilters() {
+    deliveryState.filters.regions.clear();
+    deliveryState.filters.bases.clear();
+
+    const nCard = document.getElementById('filterCardTotalNorte');
+    const lCard = document.getElementById('filterCardTotalLeste');
+    if (nCard) nCard.classList.remove('filter-active');
+    if (lCard) lCard.classList.remove('filter-active');
+
+    document.querySelectorAll('.base-interactive-card').forEach(c => c.classList.remove('filter-active'));
+
+    applyDeliveryFilters();
+    showToast('Filtros de bases e regiões reiniciados!', 'info');
+}
+
+// Filtros por Turno com Multi-Seleção Interativa
+function setDeliveryShiftFilter(shift, el) {
+    const container = document.getElementById('deliveryShiftPills');
+    const allBtn = container ? container.querySelector('[data-shift="ALL"]') : null;
+
+    if (shift === 'ALL') {
+        deliveryState.filters.shifts.clear();
+        if (container) {
+            container.querySelectorAll('.pill-chip').forEach(c => c.classList.remove('active'));
+        }
+        if (allBtn) allBtn.classList.add('active');
+    } else {
+        if (allBtn) allBtn.classList.remove('active');
+        if (deliveryState.filters.shifts.has(shift)) {
+            deliveryState.filters.shifts.delete(shift);
+            if (el) el.classList.remove('active');
+        } else {
+            deliveryState.filters.shifts.add(shift);
+            if (el) el.classList.add('active');
+        }
+
+        // Se nenhum turno estiver selecionado, volta para TODOS
+        if (deliveryState.filters.shifts.size === 0) {
+            if (allBtn) allBtn.classList.add('active');
+        }
+    }
+
+    applyDeliveryFilters();
+}
+
+// Filtros por Frota com Multi-Seleção Interativa
+function setDeliveryVehicleFilter(vehicle, el) {
+    const container = document.getElementById('deliveryVehiclePills');
+    const allBtn = container ? container.querySelector('[data-vehicle="ALL"]') : null;
+
+    if (vehicle === 'ALL') {
+        deliveryState.filters.vehicles.clear();
+        if (container) {
+            container.querySelectorAll('.pill-chip').forEach(c => c.classList.remove('active'));
+        }
+        if (allBtn) allBtn.classList.add('active');
+    } else {
+        if (allBtn) allBtn.classList.remove('active');
+        if (deliveryState.filters.vehicles.has(vehicle)) {
+            deliveryState.filters.vehicles.delete(vehicle);
+            if (el) el.classList.remove('active');
+        } else {
+            deliveryState.filters.vehicles.add(vehicle);
+            if (el) el.classList.add('active');
+        }
+
+        // Se nenhum veículo estiver selecionado, volta para TODAS
+        if (deliveryState.filters.vehicles.size === 0) {
+            if (allBtn) allBtn.classList.add('active');
+        }
+    }
+
+    applyDeliveryFilters();
+}
+
+// Busca rápida com debounce
+function debounceDeliverySearch() {
+    clearTimeout(deliveryState.searchTimer);
+    deliveryState.searchTimer = setTimeout(() => {
+        const input = document.getElementById('deliverySearchInput');
+        deliveryState.filters.search = input ? input.value : '';
+        applyDeliveryFilters();
+    }, 200);
+}
+
+// Renderização dos Gráficos com Cores e Contraste Otimizados
+function renderDeliveryCharts() {
+    try {
+        if (!window.Chart) return;
+        const isLight = document.body.classList.contains('theme-light');
+        const textColor = isLight ? '#0f172a' : '#f8fafc';
+        const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)';
+        const labelColor = isLight ? '#0f172a' : '#ffffff';
+
+        // 1. Gráfico de Curva de Entrada ao Longo do Dia (Barras Empilhadas com Rótulos de Quantidade)
+        const shiftCanvas = document.getElementById('deliveryShiftChart');
+        if (shiftCanvas) {
+            if (deliveryState.shiftChart) {
+                deliveryState.shiftChart.destroy();
+            }
+
+            // Apenas o horário na legenda/eixo x conforme solicitado
+            const shifts = ['06:00', '08:00', '12:00', '14:00', '20:00', '22:00'];
+            const shiftLabels = ['06:00', '08:00', '12:00', '14:00', '20:00', '22:00'];
+
+            // No painel ONLINE, a Curva de Entrada ao Longo do Dia exibe as equipes EM TURNO NO MOMENTO
+            const isOnlineScreen = deliveryState.currentScreen === 'online';
+            const list = isOnlineScreen
+                ? deliveryState.filteredTeams.filter(t => t.is_active)
+                : deliveryState.filteredTeams;
+
+            const dataCesto = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Cesto Aéreo').length);
+            const dataLeve = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Veículo Leve').length);
+            const dataMoto = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Moto').length);
+            const dataPesado = shifts.map(s => list.filter(t => t.shift_code === s && (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck')).length);
+
+            // Calcula o maior total para dar folga no topo do eixo Y
+            const totalsPerShift = shifts.map((_, i) => dataCesto[i] + dataLeve[i] + dataMoto[i] + dataPesado[i]);
+            const maxShiftTotal = Math.max(...totalsPerShift, 5);
+
+            // Plugin para desenhar as quantidades no topo da coluna e dentro dos blocos
+            const stackedDataLabelsPlugin = {
+                id: 'stackedDataLabels',
+                afterDatasetsDraw(chart) {
+                    const { ctx, scales: { x, y } } = chart;
+                    const isLightMode = document.body.classList.contains('theme-light');
+                    const textTopColor = isLightMode ? '#0f172a' : '#00f2fe';
+
+                    // Rótulo com o Total no topo de cada coluna de turno
+                    chart.data.labels.forEach((_, i) => {
+                        const total = totalsPerShift[i];
+                        if (total > 0) {
+                            const xPos = x.getPixelForValue(i);
+                            const yPos = y.getPixelForValue(total);
+                            ctx.save();
+                            ctx.fillStyle = textTopColor;
+                            ctx.font = 'bold 12px "JetBrains Mono", monospace';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'bottom';
+                            ctx.fillText(total, xPos, yPos - 4);
+                            ctx.restore();
+                        }
+                    });
+
+                    // Rótulo interno dentro de cada segmento colorido se houver altura suficiente
+                    chart.data.datasets.forEach((dataset, dsIdx) => {
+                        const meta = chart.getDatasetMeta(dsIdx);
+                        meta.data.forEach((bar, i) => {
+                            const val = dataset.data[i];
+                            if (val > 0) {
+                                const barHeight = Math.abs(bar.base - bar.y);
+                                if (barHeight >= 16) {
+                                    ctx.save();
+                                    ctx.fillStyle = '#ffffff';
+                                    ctx.font = 'bold 11px "JetBrains Mono", monospace';
+                                    ctx.textAlign = 'center';
+                                    ctx.textBaseline = 'middle';
+                                    const midY = (bar.y + bar.base) / 2;
+                                    ctx.fillText(val, bar.x, midY);
+                                    ctx.restore();
+                                }
+                            }
+                        });
+                    });
+                }
+            };
+
+            deliveryState.shiftChart = new Chart(shiftCanvas, {
+                type: 'bar',
+                data: {
+                    labels: shiftLabels,
+                    datasets: [
+                        { label: 'Cesto Aéreo', data: dataCesto, backgroundColor: 'rgba(0, 242, 254, 0.85)', borderRadius: 6 },
+                        { label: 'Veículo Leve', data: dataLeve, backgroundColor: 'rgba(59, 130, 246, 0.85)', borderRadius: 6 },
+                        { label: 'Moto', data: dataMoto, backgroundColor: 'rgba(16, 185, 129, 0.85)', borderRadius: 6 },
+                        { label: 'Linha Viva / Munck', data: dataPesado, backgroundColor: 'rgba(192, 132, 252, 0.85)', borderRadius: 6 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: { display: false },
+                            ticks: { color: textColor, font: { family: 'JetBrains Mono', weight: '700', size: 12 } }
+                        },
+                        y: {
+                            stacked: true,
+                            suggestedMax: Math.ceil(maxShiftTotal * 1.18) + 1,
+                            grid: { color: gridColor },
+                            ticks: { color: textColor, font: { family: 'JetBrains Mono', size: 11 } }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            titleColor: '#00f2fe',
+                            bodyColor: '#f8fafc',
+                            padding: 12,
+                            cornerRadius: 10
+                        }
+                    }
+                },
+                plugins: [stackedDataLabelsPlugin]
+            });
+        }
+
+        // 2. Gráfico de Composição da Frota Entregue (Barras com Rótulos de Quantidade)
+        const pieCanvas = document.getElementById('deliveryFleetPieChart');
+        if (pieCanvas) {
+            if (deliveryState.fleetPieChart) {
+                deliveryState.fleetPieChart.destroy();
+            }
+
+            const isOnlineScreen = deliveryState.currentScreen === 'online';
+            const list = isOnlineScreen
+                ? deliveryState.filteredTeams.filter(t => t.is_active)
+                : deliveryState.filteredTeams;
+
+            const fleetCategories = ['Cesto Aéreo', 'Veículo Leve', 'Moto', 'Linha Viva + Munk'];
+            const fleetCounts = [
+                list.filter(t => t.vehicle_type === 'Cesto Aéreo').length,
+                list.filter(t => t.vehicle_type === 'Veículo Leve').length,
+                list.filter(t => t.vehicle_type === 'Moto').length,
+                list.filter(t => t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck').length
+            ];
+
+            const maxFleetCount = Math.max(...fleetCounts, 5);
+
+            // Plugin para desenhar o rótulo de quantidade no topo de cada barra
+            const fleetBarDataLabelsPlugin = {
+                id: 'fleetBarDataLabels',
+                afterDatasetsDraw(chart) {
+                    const { ctx, scales: { x, y } } = chart;
+                    const isLightMode = document.body.classList.contains('theme-light');
+                    const textTopColor = isLightMode ? '#0f172a' : '#ffffff';
+
+                    const meta = chart.getDatasetMeta(0);
+                    meta.data.forEach((bar, i) => {
+                        const val = fleetCounts[i];
+                        const xPos = bar.x;
+                        const yPos = bar.y;
+                        ctx.save();
+                        ctx.fillStyle = textTopColor;
+                        ctx.font = 'bold 12px "JetBrains Mono", monospace';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText(val, xPos, yPos - 4);
+                        ctx.restore();
+                    });
+                }
+            };
+
+            deliveryState.fleetPieChart = new Chart(pieCanvas, {
+                type: 'bar',
+                data: {
+                    labels: fleetCategories,
+                    datasets: [{
+                        label: 'Equipes Entregues',
+                        data: fleetCounts,
+                        backgroundColor: [
+                            'rgba(0, 242, 254, 0.85)',
+                            'rgba(59, 130, 246, 0.85)',
+                            'rgba(16, 185, 129, 0.85)',
+                            'rgba(192, 132, 252, 0.85)'
+                        ],
+                        borderColor: [
+                            '#00f2fe',
+                            '#3b82f6',
+                            '#10b981',
+                            '#c084fc'
+                        ],
+                        borderWidth: 1.5,
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: textColor, font: { family: 'Plus Jakarta Sans', weight: '700', size: 11 } }
+                        },
+                        y: {
+                            suggestedMax: Math.ceil(maxFleetCount * 1.18) + 1,
+                            grid: { color: gridColor },
+                            ticks: { color: textColor, font: { family: 'JetBrains Mono', size: 11 } }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            titleColor: '#00f2fe',
+                            bodyColor: '#f8fafc',
+                            padding: 12,
+                            cornerRadius: 10
+                        }
+                    }
+                },
+                plugins: [fleetBarDataLabelsPlugin]
+            });
+        }
+    } catch (e) {
+        console.warn('Falha ao renderizar gráficos de entrega:', e);
+    }
+}
+
+// Controle de Recolhimento da Tabela
+function toggleDeliveryTableCollapse() {
+    deliveryState.isTableCollapsed = !deliveryState.isTableCollapsed;
+    const bodyEl = document.getElementById('deliveryTableCollapseBody');
+    const textEl = document.getElementById('textToggleDeliveryTable');
+    const subEl = document.getElementById('deliveryTableStateSubtitle');
+
+    if (deliveryState.isTableCollapsed) {
+        if (bodyEl) bodyEl.classList.add('table-collapsed');
+        if (textEl) textEl.textContent = 'EXPANDIR TABELA';
+        if (subEl) subEl.textContent = 'Tabela recolhida por padrão para máxima performance. Clique em Expandir para visualizar.';
+    } else {
+        if (bodyEl) bodyEl.classList.remove('table-collapsed');
+        if (textEl) textEl.textContent = 'RECOLHER TABELA';
+        if (subEl) subEl.textContent = 'Exibindo relação nominal detalhada das equipes filtradas.';
+    }
+}
+
+// Renderização da Tabela Nominal de Equipes
+function renderDeliveryTable() {
+    const tbody = document.getElementById('deliveryTableBody');
+    const countBadge = document.getElementById('deliveryResultsCountBadge');
+    const list = deliveryState.filteredTeams;
+
+    if (countBadge) {
+        countBadge.textContent = `${list.length} equipes filtradas`;
+    }
+
+    if (!tbody) return;
+
+    if (!list || list.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align: center; padding: 32px; color: var(--text-secondary);">
+                    <p style="font-weight: 700; margin: 0;">Nenhuma equipe encontrada para os filtros selecionados.</p>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = list.map(t => {
+        const isAct = t.is_active;
+        const statusBadge = isAct
+            ? `<span class="badge-status-active" style="background: rgba(16, 185, 129, 0.14); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;"><span class="live-status-dot" style="width:6px;height:6px;"></span> Logada</span>`
+            : `<span style="background: rgba(148, 163, 184, 0.14); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 700;">Turno Concluído</span>`;
+
+        return `
+            <tr>
+                <td>
+                    <span class="team-badge" style="font-weight: 800;">${t.team_code}</span>
+                </td>
+                <td>
+                    <div style="font-weight: 800; color: var(--text-primary);">${t.base_display || t.base_name}</div>
+                    <small style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-weight: 700;">${t.base_code}</small>
+                </td>
+                <td>
+                    <div style="font-weight: 700;">${t.region}</div>
+                    <small style="font-weight: 800; color: ${t.company === 'Alpitel' ? '#0284c7' : '#8b5cf6'};">${t.company}</small>
+                </td>
+                <td>
+                    <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type}</span>
+                </td>
+                <td>
+                    <strong style="font-family: 'JetBrains Mono', monospace; color: #10b981;">${t.login_time || '--:--'}</strong>
+                </td>
+                <td>
+                    <span style="font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); font-weight: 600;">${t.logoff_time || '--:--'}</span>
+                </td>
+                <td>
+                    <span class="shift-pill ${t.shift_pill_class}" style="font-size: 0.74rem;">${t.shift_slot}</span>
+                </td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div style="font-weight: 600; color: var(--text-primary);">${t.driver || '--'}</div>
+                </td>
+                <td>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--text-secondary);">${t.plate || '--'}</span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Exportação Excel (.xlsx) Sensível aos Filtros Ativos
+function exportDeliveryExcelFiltered() {
+    const list = deliveryState.filteredTeams;
+    if (!list || list.length === 0) {
+        showToast('Nenhuma equipe para exportar com os filtros atuais.', 'warning');
+        return;
+    }
+
+    const rows = list.map(t => ({
+        "Código Equipe": t.team_code || "",
+        "Base Operacional": t.base_display || t.base_name || "",
+        "Sigla Base": t.base_code || "",
+        "Região": t.region || "",
+        "Empresa": t.company || "",
+        "Frota / Veículo": t.vehicle_type || "",
+        "Categoria": t.vehicle_category || "",
+        "Horário Login": t.login_time || "",
+        "Horário Logoff": t.logoff_time || "",
+        "Turno": t.shift_slot || "",
+        "Status Atual": t.is_active ? "Logada / Ativa" : (t.status || "Turno Concluído"),
+        "Motorista": t.driver || "",
+        "Placa": t.plate || "",
+        "UT": t.ut || "",
+        "Filial": t.filial || ""
+    }));
+
+    if (window.XLSX) {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Equipes Entregues");
+        const dateStr = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(wb, `Entrega_Equipes_Enel_${dateStr}.xlsx`);
+        showToast(`Planilha gerada com sucesso (${rows.length} equipes filtradas)!`, 'success');
+    } else {
+        // Fallback para endpoint nativo
+        window.location.href = '/api/delivery/export_excel';
+    }
+}
+
+function exportDeliveryExcel() {
+    exportDeliveryExcelFiltered();
+}
+
+// ==========================================================================
+// TELA 2: AUDITORIA & HISTÓRICO FORENSE
+// ==========================================================================
+function setHistoryAuditMode(mode) {
+    deliveryState.historyMode = mode;
+    const btnDay = document.getElementById('btnHistModeDay');
+    const btnMonth = document.getElementById('btnHistModeMonth');
+    const wrapDay = document.getElementById('histDaySelectorWrap');
+    const wrapMonth = document.getElementById('histMonthSelectorWrap');
+    const viewDay = document.getElementById('histViewDayContainer');
+    const viewMonth = document.getElementById('histViewMonthContainer');
+
+    if (mode === 'day') {
+        if (btnDay) btnDay.classList.add('active');
+        if (btnMonth) btnMonth.classList.remove('active');
+        if (wrapDay) wrapDay.style.display = 'block';
+        if (wrapMonth) wrapMonth.style.display = 'none';
+        if (viewDay) viewDay.style.display = 'block';
+        if (viewMonth) viewMonth.style.display = 'none';
+        loadDailyHistoryAudit();
+    } else {
+        if (btnDay) btnDay.classList.remove('active');
+        if (btnMonth) btnMonth.classList.add('active');
+        if (wrapDay) wrapDay.style.display = 'none';
+        if (wrapMonth) wrapMonth.style.display = 'block';
+        if (viewDay) viewDay.style.display = 'none';
+        if (viewMonth) viewMonth.style.display = 'block';
+        loadMonthlyHistoryAudit();
+    }
+}
+
+// Inicialização do Flatpickr para Múltiplas Datas de Auditoria
+function initHistoryDatePicker() {
+    const input = document.getElementById('histDateInput');
+    if (!input || !window.flatpickr) return;
+    if (deliveryState.datePickerInstance) return;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (!deliveryState.selectedAuditDates || deliveryState.selectedAuditDates.length === 0) {
+        deliveryState.selectedAuditDates = [todayStr];
+    }
+
+    deliveryState.datePickerInstance = flatpickr(input, {
+        mode: "multiple",
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d/m/Y",
+        conjunction: "  |  ",
+        defaultDate: deliveryState.selectedAuditDates,
+        locale: {
+            weekdays: {
+                shorthand: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
+                longhand: ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"]
+            },
+            months: {
+                shorthand: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"],
+                longhand: ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+            }
+        },
+        onChange: function(selectedDates) {
+            const dates = selectedDates.map(d => {
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${day}`;
+            });
+            deliveryState.selectedAuditDates = dates;
+            const clearBtn = document.getElementById('btnHistClearDates');
+            if (clearBtn) clearBtn.style.display = dates.length > 0 ? 'inline-block' : 'none';
+            handleAuditDatesSelected(dates);
+        }
+    });
+}
+
+function handleAuditDatesSelected(dates) {
+    if (!dates || dates.length === 0) return;
+
+    const viewDay = document.getElementById('histViewDayContainer');
+    const viewComp = document.getElementById('histViewComparisonContainer');
+    const viewMonth = document.getElementById('histViewMonthContainer');
+
+    if (viewMonth) viewMonth.style.display = 'none';
+
+    if (dates.length === 1) {
+        if (viewDay) viewDay.style.display = 'block';
+        if (viewComp) viewComp.style.display = 'none';
+        loadDailyHistoryAudit(dates[0]);
+    } else {
+        if (viewDay) viewDay.style.display = 'none';
+        if (viewComp) viewComp.style.display = 'block';
+        loadComparisonAudit(dates);
+    }
+}
+
+function clearSelectedAuditDates() {
+    if (deliveryState.datePickerInstance) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        deliveryState.datePickerInstance.setDate([todayStr], true);
+    }
+}
+
+function refreshCurrentHistoryAudit() {
+    if (deliveryState.historyMode === 'day') {
+        if (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates.length > 1) {
+            loadComparisonAudit(deliveryState.selectedAuditDates);
+        } else {
+            const target = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates[0]) || deliveryState.historyDate;
+            loadDailyHistoryAudit(target);
+        }
+    } else {
+        loadMonthlyHistoryAudit();
+    }
+}
+
+// Consulta Histórica por Dia (1 Data Selecionada)
+async function loadDailyHistoryAudit(targetDate = null) {
+    let dateVal = targetDate;
+    if (!dateVal) {
+        const input = document.getElementById('histDateInput');
+        dateVal = input && input.value ? input.value : deliveryState.historyDate;
+    }
+    if (dateVal && dateVal.includes(',')) dateVal = dateVal.split(',')[0].trim();
+    if (dateVal && dateVal.includes('|')) dateVal = dateVal.split('|')[0].trim();
+    deliveryState.historyDate = dateVal;
+
+    const elLabel = document.getElementById('histDayDateLabel');
+    if (elLabel) elLabel.textContent = `Auditando dados do dia: ${dateVal}`;
+
+    try {
+        const resp = await fetch(`/api/delivery/history?date=${dateVal}`);
+        const data = await resp.json();
+        deliveryState.historyDayData = data;
+
+        const summary = data.summary || {};
+        const elTotal = document.getElementById('histDayTotalNum');
+        const elCesto = document.getElementById('histDayCestoNum');
+        const elLeve = document.getElementById('histDayLeveNum');
+        const elMoto = document.getElementById('histDayMotoNum');
+        const elPesado = document.getElementById('histDayPesadoNum');
+
+        if (elTotal) elTotal.textContent = data.total_delivered || 0;
+        if (elCesto) elCesto.textContent = summary.cesto || 0;
+        if (elLeve) elLeve.textContent = summary.leve || 0;
+        if (elMoto) elMoto.textContent = summary.moto || 0;
+        if (elPesado) elPesado.textContent = summary.linhaviva_munck || 0;
+
+        // Preenche a tabela nominal do dia
+        const tbody = document.getElementById('histDayTableBody');
+        const teams = data.teams || [];
+        if (tbody) {
+            if (teams.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 30px; color: var(--text-secondary);">Nenhum registro encontrado para esta data.</td></tr>`;
+            } else {
+                tbody.innerHTML = teams.map(t => `
+                    <tr>
+                        <td><span class="team-badge" style="font-weight: 800;">${t.team_code}</span></td>
+                        <td><strong style="color: var(--text-primary);">${t.base_display || t.base_name}</strong></td>
+                        <td>${t.region} / <small style="font-weight: 800;">${t.company}</small></td>
+                        <td><strong>${t.vehicle_type}</strong></td>
+                        <td><strong style="color:#10b981; font-family:'JetBrains Mono', monospace;">${t.login_time || '--:--'}</strong></td>
+                        <td><span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">${t.logoff_time || '--:--'}</span></td>
+                        <td><span class="shift-pill">${t.shift_slot}</span></td>
+                        <td><span style="font-size: 0.72rem; font-weight: 800; color: #10b981;">${t.status || 'Entregue'}</span></td>
+                        <td>${t.driver || '--'}</td>
+                        <td><span style="font-family:'JetBrains Mono', monospace;">${t.plate || '--'}</span></td>
+                    </tr>
+                `).join('');
+            }
+        }
+    } catch (err) {
+        console.error('Falha ao carregar histórico diário:', err);
+    }
+}
+
+// Consulta e Renderização do Comparativo (2 ou mais Datas)
+async function loadComparisonAudit(dates) {
+    if (!dates || dates.length === 0) return;
+
+    // Badges das datas selecionadas no topo
+    const badgesContainer = document.getElementById('histComparisonSelectedBadges');
+    if (badgesContainer) {
+        badgesContainer.innerHTML = dates.map(d => {
+            const formatted = d.split('-').reverse().join('/');
+            return `<span class="date-comparison-badge">${formatted}</span>`;
+        }).join('');
+    }
+
+    try {
+        const promises = dates.map(d => fetch(`/api/delivery/history?date=${d}`).then(r => r.json()));
+        const results = await Promise.all(promises);
+
+        const validResults = results.map((res, i) => {
+            const dateStr = dates[i];
+            const summary = res.summary || {};
+            return {
+                date: dateStr,
+                dateFormatted: dateStr.split('-').reverse().join('/'),
+                total: res.total_delivered || 0,
+                cesto: summary.cesto || 0,
+                leve: summary.leve || 0,
+                moto: summary.moto || 0,
+                linhaviva: summary.linhaviva_munck || 0,
+                shifts: summary.shifts || {},
+                teams: res.teams || []
+            };
+        });
+
+        deliveryState.comparisonData = validResults;
+
+        // 1. KPI Cards comparativos para cada data
+        const kpiGrid = document.getElementById('histComparisonKpiGrid');
+        if (kpiGrid) {
+            kpiGrid.innerHTML = validResults.map(r => `
+                <div class="hero-liquid-card" style="padding: 16px; min-height: 110px;">
+                    <span class="hero-tag" style="font-size: 0.72rem;">DATA: ${r.dateFormatted}</span>
+                    <div class="hero-number-row" style="margin: 4px 0;">
+                        <span class="hero-big-number text-cyan" style="font-size: 1.8rem;">${r.total}</span>
+                        <span class="hero-unit">equipes</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; font-size: 0.72rem; color: var(--text-secondary); margin-top: 4px;">
+                        <span>C: <strong>${r.cesto}</strong></span>
+                        <span>L: <strong>${r.leve}</strong></span>
+                        <span>M: <strong>${r.moto}</strong></span>
+                        <span>LV: <strong>${r.linhaviva}</strong></span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 2. Gráfico Comparativo de Barras Agrupadas
+        renderComparisonBarChart(validResults);
+
+        // 3. Tabela Comparativa Analítica
+        const tbody = document.getElementById('histComparisonTableBody');
+        if (tbody) {
+            tbody.innerHTML = validResults.map(r => {
+                let topShift = '--';
+                let maxShiftVal = 0;
+                for (const [sh, cnt] of Object.entries(r.shifts)) {
+                    if (cnt > maxShiftVal) {
+                        maxShiftVal = cnt;
+                        topShift = sh;
+                    }
+                }
+                const topShiftDisplay = maxShiftVal > 0 ? `${topShift} (${maxShiftVal})` : '--';
+
+                return `
+                    <tr>
+                        <td><strong style="color: var(--text-primary); font-family: 'JetBrains Mono', monospace;">${r.dateFormatted}</strong></td>
+                        <td><span class="team-badge" style="font-size: 0.9rem; font-weight: 800; color: #00f2fe;">${r.total}</span></td>
+                        <td><strong style="color: #00f2fe; font-family: 'JetBrains Mono';">${r.cesto}</strong></td>
+                        <td><strong style="color: #60a5fa; font-family: 'JetBrains Mono';">${r.leve}</strong></td>
+                        <td><strong style="color: #10b981; font-family: 'JetBrains Mono';">${r.moto}</strong></td>
+                        <td><strong style="color: #c084fc; font-family: 'JetBrains Mono';">${r.linhaviva}</strong></td>
+                        <td><span class="shift-pill">${topShiftDisplay}</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+    } catch (err) {
+        console.error('Falha ao processar comparativo:', err);
+    }
+}
+
+function renderComparisonBarChart(results) {
+    const canvas = document.getElementById('histComparisonChart');
+    if (!canvas || !window.Chart) return;
+
+    if (deliveryState.comparisonChart) {
+        deliveryState.comparisonChart.destroy();
+    }
+
+    const isLight = document.body.classList.contains('theme-light');
+    const textColor = isLight ? '#0f172a' : '#f8fafc';
+    const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)';
+
+    const dateColors = [
+        { bg: 'rgba(0, 242, 254, 0.85)', border: '#00f2fe' },
+        { bg: 'rgba(16, 185, 129, 0.85)', border: '#10b981' },
+        { bg: 'rgba(59, 130, 246, 0.85)', border: '#3b82f6' },
+        { bg: 'rgba(192, 132, 252, 0.85)', border: '#c084fc' },
+        { bg: 'rgba(245, 158, 11, 0.85)', border: '#f59e0b' },
+        { bg: 'rgba(239, 68, 68, 0.85)', border: '#ef4444' }
+    ];
+
+    const labels = ['Total Entregue', 'Cesto Aéreo', 'Veículo Leve', 'Moto', 'Linha Viva + Munk'];
+
+    const datasets = results.map((r, idx) => {
+        const color = dateColors[idx % dateColors.length];
+        return {
+            label: r.dateFormatted,
+            data: [r.total, r.cesto, r.leve, r.moto, r.linhaviva],
+            backgroundColor: color.bg,
+            borderColor: color.border,
+            borderWidth: 1.5,
+            borderRadius: 6
+        };
+    });
+
+    const comparisonBarLabelsPlugin = {
+        id: 'comparisonBarLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            const isLightMode = document.body.classList.contains('theme-light');
+            const labelCol = isLightMode ? '#0f172a' : '#ffffff';
+
+            chart.data.datasets.forEach((dataset, dsIdx) => {
+                const meta = chart.getDatasetMeta(dsIdx);
+                meta.data.forEach((bar, i) => {
+                    const val = dataset.data[i];
+                    if (val > 0) {
+                        ctx.save();
+                        ctx.fillStyle = labelCol;
+                        ctx.font = 'bold 11px "JetBrains Mono", monospace';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText(val, bar.x, bar.y - 3);
+                        ctx.restore();
+                    }
+                });
+            });
+        }
+    };
+
+    let maxVal = 0;
+    results.forEach(r => {
+        if (r.total > maxVal) maxVal = r.total;
+    });
+
+    deliveryState.comparisonChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: textColor, font: { family: 'Plus Jakarta Sans', weight: '700', size: 11 } }
+                },
+                y: {
+                    suggestedMax: Math.ceil(maxVal * 1.18) + 1,
+                    grid: { color: gridColor },
+                    ticks: { color: textColor, font: { family: 'JetBrains Mono', size: 11 } }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: textColor, font: { family: 'Plus Jakarta Sans', weight: '700', size: 12 }, boxWidth: 14 }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleColor: '#00f2fe',
+                    bodyColor: '#f8fafc',
+                    padding: 12,
+                    cornerRadius: 10
+                }
+            }
+        },
+        plugins: [comparisonBarLabelsPlugin]
+    });
+}
+
+function exportComparisonExcel() {
+    const list = deliveryState.comparisonData;
+    if (!list || list.length === 0) {
+        showToast('Nenhum dado comparativo para exportar.', 'warning');
+        return;
+    }
+    const rows = list.map(r => ({
+        "Data": r.dateFormatted,
+        "Total Entregue": r.total,
+        "Cesto Aéreo": r.cesto,
+        "Veículo Leve": r.leve,
+        "Moto": r.moto,
+        "Linha Viva + Munk": r.linhaviva
+    }));
+    if (window.XLSX) {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Comparativo");
+        XLSX.writeFile(wb, `Comparativo_Entregas_${new Date().toISOString().split('T')[0]}.xlsx`);
+        showToast('Planilha de comparativo gerada com sucesso!', 'success');
+    }
+}
+
+// Consulta Histórica por Mês
+async function loadMonthlyHistoryAudit() {
+    const input = document.getElementById('histMonthInput');
+    const monthVal = input && input.value ? input.value : deliveryState.historyMonth;
+    deliveryState.historyMonth = monthVal;
+
+    try {
+        const resp = await fetch(`/api/delivery/monthly?month=${monthVal}`);
+        const data = await resp.json();
+        deliveryState.historyMonthData = data;
+
+        const elAvgTot = document.getElementById('histMonthAvgTotal');
+        const elDays = document.getElementById('histMonthOperatingDays');
+        const elAvgCesto = document.getElementById('histMonthAvgCesto');
+        const elAvgLeve = document.getElementById('histMonthAvgLeve');
+        const elAvgMoto = document.getElementById('histMonthAvgMoto');
+        const elAvgPesado = document.getElementById('histMonthAvgPesado');
+
+        if (elAvgTot) elAvgTot.textContent = (data.avg_total || 0).toFixed(1);
+        if (elDays) elDays.textContent = `Calculado sobre ${data.operating_days || 0} dias com operação registrada`;
+        if (elAvgCesto) elAvgCesto.textContent = (data.avg_cesto || 0).toFixed(1);
+        if (elAvgLeve) elAvgLeve.textContent = (data.avg_leve || 0).toFixed(1);
+        if (elAvgMoto) elAvgMoto.textContent = (data.avg_moto || 0).toFixed(1);
+        if (elAvgPesado) elAvgPesado.textContent = (data.avg_linhaviva_munck || 0).toFixed(1);
+
+        // Gráfico Mensal de Barras Diárias com Linha de Média
+        renderMonthlyBarChart(data);
+    } catch (err) {
+        console.error('Falha ao carregar auditoria mensal:', err);
+    }
+}
+
+function renderMonthlyBarChart(data) {
+    const canvas = document.getElementById('histMonthlyBarChart');
+    if (!canvas || !window.Chart) return;
+
+    if (deliveryState.historyMonthlyChart) {
+        deliveryState.historyMonthlyChart.destroy();
+    }
+
+    const isLight = document.body.classList.contains('theme-light');
+    const textColor = isLight ? '#0f172a' : '#f8fafc';
+    const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)';
+
+    const days = data.days || [];
+    const labels = days.map(d => d.date.slice(8) + '/' + d.date.slice(5, 7));
+    const totalData = days.map(d => d.total_teams);
+    const avgValue = data.avg_total || 0;
+    const avgLineData = days.map(() => avgValue);
+
+    deliveryState.historyMonthlyChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    type: 'line',
+                    label: `Média Mensal (${avgValue.toFixed(1)})`,
+                    data: avgLineData,
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    borderDash: [6, 4],
+                    pointRadius: 0,
+                    fill: false
+                },
+                {
+                    type: 'bar',
+                    label: 'Total Entregue',
+                    data: totalData,
+                    backgroundColor: 'rgba(0, 242, 254, 0.75)',
+                    borderRadius: 6
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: textColor, font: { family: 'Plus Jakarta Sans', weight: '700', size: 10 } }
+                },
+                y: {
+                    grid: { color: gridColor },
+                    ticks: { color: textColor, font: { family: 'JetBrains Mono', size: 11 } }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: { color: textColor, font: { family: 'Plus Jakarta Sans', weight: '700' } }
+                }
+            }
+        }
+    });
+}
+
+function exportHistoryExcel() {
+    const data = deliveryState.historyDayData;
+    if (!data || !data.teams || data.teams.length === 0) {
+        showToast('Nenhum dado auditado para exportar.', 'warning');
+        return;
+    }
+    const rows = data.teams.map(t => ({
+        "Data": data.date,
+        "Código Equipe": t.team_code,
+        "Base Operacional": t.base_display || t.base_name,
+        "Região": t.region,
+        "Empresa": t.company,
+        "Frota": t.vehicle_type,
+        "Login": t.login_time,
+        "Logoff": t.logoff_time,
+        "Turno": t.shift_slot,
+        "Motorista": t.driver,
+        "Placa": t.plate
+    }));
+    if (window.XLSX) {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
+        XLSX.writeFile(wb, `Auditoria_Entrega_${data.date}.xlsx`);
+        showToast(`Auditoria do dia ${data.date} exportada!`, 'success');
+    }
+}
+
+// Disparo do Robô CDP
+async function triggerEnelCdpCapture() {
+    const btn = document.getElementById('btnTriggerEnelCdp');
+    const btnText = document.getElementById('triggerEnelCdpText');
+    const originalText = btnText ? btnText.textContent : 'Disparar Coleta Imediata Agora (Robô CDP)';
+    
+    if (btnText) btnText.textContent = 'Robô CDP: Lendo 500 linhas na Enel...';
+    if (btn) btn.disabled = true;
+
+    try {
+        showToast('Robô CDP acionado! Coletando dados do portal Enel...', 'info');
+        const resp = await fetch('/api/capture/enel', { method: 'POST' });
+        const data = await resp.json();
+        
+        if (data.status === 'success') {
+            showToast(`Sucesso! ${data.message || 'Dados sincronizados com o Supabase!'}`, 'success');
+            await loadDeliveryData(false);
+            closeModal('deliveryCollectModal');
+        } else {
+            showToast(data.message || 'Aviso durante a coleta da Enel.', 'warning');
+        }
+    } catch (err) {
+        showToast('Erro ao comunicar com o Robô CDP: ' + err.message, 'danger');
+    } finally {
+        if (btnText) btnText.textContent = originalText;
+        if (btn) btn.disabled = false;
+        initIcons();
+    }
+}
+
+function openDeliveryCollectModal() {
+    const modal = document.getElementById('deliveryCollectModal');
+    if (modal) {
+        modal.classList.add('active');
+        initIcons();
+    }
+}
+
+async function copyDaemonScriptToClipboard() {
+    const daemonCode = `// Script autônomo Enel SP
+(function iniciarRoboAutonomoEnel() {
+    const LOCAL_SERVER_URL = 'http://127.0.0.1:5000/api/delivery/sync';
+    const INTERVAL_SECONDS = 120;
+    // ...
+})();`;
+    try {
+        await navigator.clipboard.writeText(daemonCode);
+        showToast('Script copiado!', 'success');
+    } catch (err) {
+        showToast('Erro ao copiar.', 'danger');
+    }
+}
+
+// ==========================================================================
+// PAINEL DE GERENCIAMENTO DO SISTEMA (ACESSO RESTRITO)
+// ==========================================================================
+
+function switchAdminTab(tabName) {
+    const btnEngines = document.getElementById('btnAdminTabEngines');
+    const btnTelemetry = document.getElementById('btnAdminTabTelemetry');
+    const contentEngines = document.getElementById('adminTabEnginesContent');
+    const contentTelemetry = document.getElementById('adminTabTelemetryContent');
+
+    if (tabName === 'engines') {
+        if (btnEngines) btnEngines.classList.add('active');
+        if (btnTelemetry) btnTelemetry.classList.remove('active');
+        if (contentEngines) contentEngines.style.display = 'block';
+        if (contentTelemetry) contentTelemetry.style.display = 'none';
+        loadAdminEngineStatus();
+    } else {
+        if (btnEngines) btnEngines.classList.remove('active');
+        if (btnTelemetry) btnTelemetry.classList.add('active');
+        if (contentEngines) contentEngines.style.display = 'none';
+        if (contentTelemetry) contentTelemetry.style.display = 'block';
+        loadAdminTelemetry();
+    }
+    initIcons();
+}
+
+async function loadAdminEngineStatus() {
+    try {
+        const resp = await fetch('/api/admin/engine_status');
+        const data = await resp.json();
+        if (data.status !== 'success') return;
+
+        const engines = data.engines || {};
+
+        // 1. Motor TRBOnet One
+        const trbo = engines.trbonet || {};
+        const bTrbo = document.getElementById('engineBadgeTrbonet');
+        const mTrbo = document.getElementById('engineMsgTrbonet');
+        const sTrbo = document.getElementById('engineSyncTrbonet');
+        const rTrbo = document.getElementById('engineRecordsTrbonet');
+        if (bTrbo) {
+            bTrbo.className = `engine-status-badge ${trbo.status === 'OPERATIONAL' ? 'badge-operational' : (trbo.status === 'ERROR_CONNECTION' ? 'badge-error-connection' : 'badge-stopped')}`;
+            bTrbo.textContent = trbo.status === 'OPERATIONAL' ? 'OPERACIONAL' : (trbo.status === 'ERROR_CONNECTION' ? 'FALHA DE CONEXÃO' : 'MOTOR PARADO');
+        }
+        if (mTrbo) mTrbo.textContent = trbo.message || '--';
+        if (sTrbo) sTrbo.textContent = trbo.last_sync || '--:--:--';
+        if (rTrbo) rTrbo.textContent = `${trbo.records || 0} rádios`;
+
+        // 2. Robô CDP Enel SP
+        const enel = engines.enel_cdp || {};
+        const bEnel = document.getElementById('engineBadgeEnel');
+        const mEnel = document.getElementById('engineMsgEnel');
+        const sEnel = document.getElementById('engineSyncEnel');
+        const rEnel = document.getElementById('engineRecordsEnel');
+        if (bEnel) {
+            bEnel.className = `engine-status-badge ${enel.status === 'OPERATIONAL' ? 'badge-operational' : (enel.status === 'ERROR_CONNECTION' ? 'badge-error-connection' : 'badge-stopped')}`;
+            bEnel.textContent = enel.status === 'OPERATIONAL' ? 'OPERACIONAL' : (enel.status === 'ERROR_CONNECTION' ? 'FALHA DE CONEXÃO' : 'MOTOR PARADO');
+        }
+        if (mEnel) mEnel.textContent = enel.message || '--';
+        if (sEnel) sEnel.textContent = enel.last_sync || '--:--:--';
+        if (rEnel) rEnel.textContent = `${enel.records || 0} equipes`;
+
+        // 3. Supabase Cloud
+        const cloud = engines.cloud_sync || {};
+        const bCloud = document.getElementById('engineBadgeCloud');
+        const mCloud = document.getElementById('engineMsgCloud');
+        if (bCloud) {
+            bCloud.className = `engine-status-badge ${cloud.status === 'OPERATIONAL' ? 'badge-operational' : 'badge-stopped'}`;
+            bCloud.textContent = cloud.status === 'OPERATIONAL' ? 'OPERACIONAL' : 'FALHA DE REDE';
+        }
+        if (mCloud) mCloud.textContent = cloud.message || '--';
+
+    } catch (err) {
+        console.error('Erro ao consultar status dos motores:', err);
+    }
+}
+
+async function triggerRestartEngines() {
+    if (!confirm('Deseja enviar comando para reiniciar os motores locais de captura (TRBOnet One e Robô CDP Enel SP)?\nO servidor web continuará funcionando normalmente.')) {
+        return;
+    }
+
+    const btn = document.getElementById('btnRestartEngines');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> Reiniciando Motores...`;
+        initIcons();
+    }
+
+    try {
+        const resp = await fetch('/api/admin/restart_engines', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            }
+        });
+        const result = await resp.json();
+        if (result.status === 'success') {
+            showToast(result.message || 'Motores reiniciados com sucesso!', 'success');
+            setTimeout(loadAdminEngineStatus, 1500);
+        } else {
+            showToast(result.message || 'Erro ao reiniciar motores.', 'danger');
+        }
+    } catch (err) {
+        showToast('Falha na comunicação com o servidor: ' + err.message, 'danger');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="power" style="width: 16px; height: 16px; margin-right: 6px;"></i> REINICIAR MOTORES LOCAIS`;
+            initIcons();
+        }
+    }
+}
+
+let currentTelemetrySessions = [];
+
+async function loadAdminTelemetry() {
+    try {
+        const resp = await fetch('/api/admin/telemetry_metrics', {
+            headers: { 'Authorization': `Bearer ${authState.token || ''}` }
+        });
+        const data = await resp.json();
+        if (data.status !== 'success') return;
+
+        const elAct = document.getElementById('telemetryActiveNow');
+        const elTod = document.getElementById('telemetryToday');
+        const elWek = document.getElementById('telemetryWeek');
+        const elMon = document.getElementById('telemetryMonth');
+
+        if (elAct) elAct.textContent = data.active_now || 0;
+        if (elTod) elTod.textContent = data.today_unique || 0;
+        if (elWek) elWek.textContent = data.week_unique || 0;
+        if (elMon) elMon.textContent = data.month_unique || 0;
+
+        const sessions = data.recent_sessions || [];
+        currentTelemetrySessions = sessions;
+        const tbody = document.getElementById('telemetrySessionsTableBody');
+        if (tbody) {
+            if (sessions.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 24px; color: var(--text-secondary);">Nenhuma sessão registrada até o momento.</td></tr>`;
+            } else {
+                const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+                tbody.innerHTML = sessions.map(s => {
+                    const isOnline = s.last_heartbeat ? new Date(s.last_heartbeat) >= fiveMinAgo : false;
+                    const badgeClass = isOnline ? 'badge-online-gps' : 'badge-offline-gray';
+                    const badgeText = isOnline ? 'ONLINE' : 'DESCONECTADO';
+                    const fSeen = s.first_seen ? new Date(s.first_seen).toLocaleString('pt-BR') : '--';
+                    const lBeat = s.last_heartbeat ? new Date(s.last_heartbeat).toLocaleTimeString('pt-BR') : '--';
+                    const fpShort = s.fingerprint ? `${s.fingerprint.substring(0, 8)}...` : '--';
+
+                    return `
+                        <tr>
+                            <td><strong style="color: var(--text-primary);">${s.username || 'Colaborador'}</strong></td>
+                            <td><code style="color: #00f2fe; font-family: 'JetBrains Mono';">${s.ip_address || '--'}</code></td>
+                            <td>${s.geo_city || 'São Paulo'} / <small style="font-weight: 800;">${s.geo_region || 'SP'}</small></td>
+                            <td><strong>${s.device_type || 'Desktop'}</strong></td>
+                            <td>${s.browser_name || 'Chrome'} <small style="color: var(--text-secondary);">(${s.os_name || 'Windows'})</small></td>
+                            <td><span style="font-family: 'JetBrains Mono'; font-size: 0.72rem; color: var(--text-secondary);" title="${s.fingerprint}">${fpShort}</span></td>
+                            <td><span class="status-badge ${badgeClass}" style="font-size: 0.72rem; padding: 2px 8px;">${badgeText}</span></td>
+                            <td><small style="font-family: 'JetBrains Mono'; color: var(--text-secondary);">${fSeen}</small></td>
+                            <td><strong style="font-family: 'JetBrains Mono'; color: ${isOnline ? '#10b981' : 'var(--text-secondary)'};">${lBeat}</strong></td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+    } catch (err) {
+        console.error('Erro ao consultar telemetria:', err);
+    }
+}
+
+function exportTelemetryExcel() {
+    if (!currentTelemetrySessions || currentTelemetrySessions.length === 0) {
+        showToast('Nenhuma sessão para exportar.', 'warning');
+        return;
+    }
+    const rows = currentTelemetrySessions.map(s => ({
+        "Usuário": s.username || "Colaborador",
+        "IP Origem": s.ip_address || "--",
+        "Cidade": s.geo_city || "São Paulo",
+        "UF": s.geo_region || "SP",
+        "Dispositivo": s.device_type || "Desktop",
+        "Sistema Operacional": s.os_name || "Windows",
+        "Navegador": s.browser_name || "Chrome",
+        "Fingerprint": s.fingerprint || "--",
+        "Primeiro Acesso": s.first_seen || "--",
+        "Último Heartbeat": s.last_heartbeat || "--"
+    }));
+
+    if (window.XLSX) {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Sessões");
+        XLSX.writeFile(wb, `Telemetria_Sessoes_${new Date().toISOString().split('T')[0]}.xlsx`);
+        showToast('Relatório de sessões exportado com sucesso!', 'success');
+    }
+}
+
+function logoutAdminSession() {
+    handleLogout();
+    navigateToView('hub');
+}
+
+// ==============================================================================
+// TELEMETRIA SILENCIOSA CLIENT-SIDE (FINGERPRINT, DISPOSITIVO & HEARTBEAT)
+// ==============================================================================
+
+function getOrCreateSessionId() {
+    let sid = sessionStorage.getItem('cco_client_session_id');
+    if (!sid) {
+        sid = 'sess_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+        sessionStorage.setItem('cco_client_session_id', sid);
+    }
+    return sid;
+}
+
+function generateBrowserFingerprint() {
+    let cached = localStorage.getItem('cco_client_fingerprint');
+    if (cached) return cached;
+
+    try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = 'top';
+        ctx.font = "14px 'Arial'";
+        ctx.fillStyle = "#f60";
+        ctx.fillRect(125, 1, 62, 20);
+        ctx.fillStyle = "#069";
+        ctx.fillText("CCO-ALPITEL-2026", 2, 15);
+        ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+        ctx.fillText("CCO-ALPITEL-2026", 4, 17);
+        const dataUrl = canvas.toDataURL();
+        
+        let hash = 0;
+        const str = dataUrl + navigator.userAgent + screen.width + 'x' + screen.height + Intl.DateTimeFormat().resolvedOptions().timeZone;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash |= 0;
+        }
+        const fp = 'fp_' + Math.abs(hash).toString(16);
+        localStorage.setItem('cco_client_fingerprint', fp);
+        return fp;
+    } catch (e) {
+        return 'fp_generic_' + Math.abs(Date.now()).toString(16);
+    }
+}
+
+function detectClientEnvironment() {
+    const ua = navigator.userAgent;
+    let deviceType = 'Desktop';
+    if (/tablet|ipad|playbook|silk/i.test(ua)) deviceType = 'Tablet';
+    else if (/Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle/i.test(ua)) deviceType = 'Mobile';
+
+    let osName = 'Windows';
+    if (ua.indexOf('Win') !== -1) osName = 'Windows';
+    else if (ua.indexOf('Mac') !== -1) osName = 'macOS';
+    else if (ua.indexOf('Android') !== -1) osName = 'Android';
+    else if (ua.indexOf('Linux') !== -1) osName = 'Linux';
+    else if (/iPhone|iPad|iPod/.test(ua)) osName = 'iOS';
+
+    let browserName = 'Chrome';
+    if (ua.indexOf('Edg') !== -1) browserName = 'Edge';
+    else if (ua.indexOf('Firefox') !== -1) browserName = 'Firefox';
+    else if (ua.indexOf('Safari') !== -1 && ua.indexOf('Chrome') === -1) browserName = 'Safari';
+
+    return { deviceType, osName, browserName };
+}
+
+async function sendTelemetryHeartbeat() {
+    try {
+        const env = detectClientEnvironment();
+        const payload = {
+            session_id: getOrCreateSessionId(),
+            fingerprint: generateBrowserFingerprint(),
+            device_type: env.deviceType,
+            os_name: env.osName,
+            browser_name: env.browserName,
+            endpoint: window.location.hash || '/'
+        };
+
+        await fetch('/api/telemetry/heartbeat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            },
+            body: JSON.stringify(payload)
+        });
+    } catch (e) {
+        // Silencioso
+    }
+}
+
+// Binds Globais
+window.navigateToView = navigateToView;
+window.switchDeliveryScreen = switchDeliveryScreen;
+window.loadDeliveryData = loadDeliveryData;
+window.toggleRegionFilter = toggleRegionFilter;
+window.toggleBaseFilter = toggleBaseFilter;
+window.clearDeliveryBaseFilters = clearDeliveryBaseFilters;
+window.setDeliveryShiftFilter = setDeliveryShiftFilter;
+window.setDeliveryVehicleFilter = setDeliveryVehicleFilter;
+window.debounceDeliverySearch = debounceDeliverySearch;
+window.toggleDeliveryTableCollapse = toggleDeliveryTableCollapse;
+window.exportDeliveryExcelFiltered = exportDeliveryExcelFiltered;
+window.exportDeliveryExcel = exportDeliveryExcel;
+window.setHistoryAuditMode = setHistoryAuditMode;
+window.refreshCurrentHistoryAudit = refreshCurrentHistoryAudit;
+window.loadDailyHistoryAudit = loadDailyHistoryAudit;
+window.loadMonthlyHistoryAudit = loadMonthlyHistoryAudit;
+window.exportHistoryExcel = exportHistoryExcel;
+window.initHistoryDatePicker = initHistoryDatePicker;
+window.clearSelectedAuditDates = clearSelectedAuditDates;
+window.loadComparisonAudit = loadComparisonAudit;
+window.exportComparisonExcel = exportComparisonExcel;
+window.openDeliveryCollectModal = openDeliveryCollectModal;
+window.copyDaemonScriptToClipboard = copyDaemonScriptToClipboard;
+window.triggerEnelCdpCapture = triggerEnelCdpCapture;
+window.switchAdminTab = switchAdminTab;
+window.loadAdminEngineStatus = loadAdminEngineStatus;
+window.triggerRestartEngines = triggerRestartEngines;
+window.loadAdminTelemetry = loadAdminTelemetry;
+window.exportTelemetryExcel = exportTelemetryExcel;
+window.logoutAdminSession = logoutAdminSession;
+
+
 

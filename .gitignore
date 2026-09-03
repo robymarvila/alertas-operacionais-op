@@ -8,3 +8,5 @@ venv/
 *.log
 .DS_Store
 *.tmp
+delivery_daily_cache.json
+*.cache.json

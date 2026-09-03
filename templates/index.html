@@ -10,13 +10,27 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
-    <!-- Lucide Icons, Chart.js & SheetJS (Excel .xlsx) -->
+    <!-- Lucide Icons, Chart.js, SheetJS & Flatpickr (Multi-datas) -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=3.1.0">
+    <script>
+        (function() {
+            var hash = window.location.hash;
+            if (hash === '#delivery') {
+                document.documentElement.classList.add('route-delivery');
+            } else if (hash === '#module' || hash === '#trbonet') {
+                document.documentElement.classList.add('route-module');
+            } else {
+                document.documentElement.classList.add('route-hub');
+            }
+        })();
+    </script>
 </head>
 <body class="theme-dark">
 
@@ -56,6 +70,12 @@
                         <span id="authLockTextHub" class="auth-lock-label">Acesso Restrito</span>
                     </button>
 
+                    <!-- Botão para Painel de Gerenciamento (Visível quando desbloqueado) -->
+                    <button class="btn btn-warning btn-sm" id="btnHubAdminPanel" onclick="navigateToView('admin')" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);">
+                        <i data-lucide="shield-alert" style="width: 15px; height: 15px; vertical-align: middle; margin-right: 4px;"></i>
+                        <span>Gerenciamento</span>
+                    </button>
+
                     <!-- Relógio CCO -->
                     <div class="header-clock-pill">
                         <i data-lucide="clock" class="mini-icon text-cyan"></i>
@@ -74,9 +94,52 @@
                 </div>
             </div>
 
+            <!-- BANNER DE BOAS-VINDAS ULTRA PREMIUM NO HUB CENTRAL -->
+            <div class="hub-welcome-banner glass-card" id="hubWelcomeBanner">
+                <div class="hub-welcome-glow"></div>
+                <div class="hub-welcome-content">
+                    <div class="hub-welcome-text-wrap">
+                        <div class="hub-welcome-badge">
+                            <span class="hub-welcome-badge-dot"></span>
+                            <span>PLATAFORMA OPERACIONAL INTEGRADA • CCO & OPERAÇÃO</span>
+                        </div>
+                        <h2 class="hub-welcome-title">
+                            Bem-vindo ao <span class="text-cyan-gradient">Monitoramento Online</span>
+                        </h2>
+                        <p class="hub-welcome-desc">
+                            Aqui você terá acesso a diversas informações <strong>ONLINE em tempo real</strong> para melhor gerenciar seu dia de trabalho, acompanhar escalas, veículos em campo e garantir conformidade operacional com máxima agilidade e precisão. <strong>Aproveite a experiência!</strong>
+                        </p>
+                        <div class="hub-welcome-pills">
+                            <div class="welcome-pill">
+                                <i data-lucide="radio" class="pill-icon text-emerald"></i>
+                                <span>Telemetria GPS & TRBOnet</span>
+                            </div>
+                            <div class="welcome-pill">
+                                <i data-lucide="users" class="pill-icon text-cyan"></i>
+                                <span>Coleta Autônoma Enel SP (2 min)</span>
+                            </div>
+                            <div class="welcome-pill">
+                                <i data-lucide="shield-check" class="pill-icon text-purple"></i>
+                                <span>Auditoria 100% em Nuvem Supabase</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hub-welcome-quick-actions">
+                        <button class="btn btn-primary welcome-action-btn" onclick="navigateToView('delivery')">
+                            <i data-lucide="users"></i>
+                            <span>Ver Entrega de Equipes</span>
+                        </button>
+                        <button class="btn btn-secondary welcome-action-btn" onclick="navigateToView('module')">
+                            <i data-lucide="radio"></i>
+                            <span>Ver STATUS TRBOnet</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Grid de Módulos do Sistema -->
             <div class="hub-modules-section">
-                <div class="hub-modules-grid single-module-grid">
+                <div class="hub-modules-grid">
 
                     <!-- CARD 1: STATUS TRBOnet (MÓDULO ATIVO PRINCIPAL) -->
                     <div class="module-card module-card-active glass-card" onclick="navigateToView('module')">
@@ -147,6 +210,68 @@
                         <div class="module-card-footer">
                             <span class="module-access-btn">
                                 <span>Acessar STATUS TRBOnet X PowerON</span>
+                                <i data-lucide="arrow-right"></i>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- CARD 2: ENTREGA DE EQUIPES (ENEL SP) -->
+                    <div class="module-card module-card-active glass-card" onclick="navigateToView('delivery')">
+                        <div class="module-card-glow"></div>
+                        <div class="module-card-top">
+                            <div class="module-card-icon-box icon-emerald-box">
+                                <i data-lucide="users" class="pulse-icon"></i>
+                            </div>
+                            <span class="module-status-badge badge-active">
+                                <span class="badge-dot dot-emerald"></span> ATIVO & CONCILIANDO
+                            </span>
+                        </div>
+
+                        <div class="module-card-body">
+                            <h4 class="module-title">ENTREGA DE EQUIPES</h4>
+
+                            <!-- Horários de Sincronização em Destaque -->
+                            <div class="module-sync-grid">
+                                <div class="module-sync-item">
+                                    <div class="sync-label-row">
+                                        <span class="dot-sm dot-emerald"></span>
+                                        <strong>Equipes Ativas:</strong>
+                                    </div>
+                                    <span class="sync-val text-emerald" id="hubDeliveryActiveCount">--</span>
+                                </div>
+                                <div class="module-sync-item">
+                                    <div class="sync-label-row">
+                                        <span class="dot-sm dot-trbonet"></span>
+                                        <strong>Última Sincronização:</strong>
+                                    </div>
+                                    <span class="sync-val" id="hubDeliveryLastSync">--:--:--</span>
+                                </div>
+                            </div>
+
+                            <!-- Mini Métricas do Módulo de Entrega -->
+                            <div class="module-mini-kpis">
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Total Entregue</span>
+                                    <strong class="mini-kpi-val text-cyan" id="hubMiniDeliveredTotal">--</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Cesto Aéreo</span>
+                                    <strong class="mini-kpi-val text-emerald" id="hubMiniCesto">--</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Veículo Leve</span>
+                                    <strong class="mini-kpi-val text-blue" id="hubMiniLeve">--</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Linha Viva/Munck</span>
+                                    <strong class="mini-kpi-val text-purple" id="hubMiniPesado">--</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="module-card-footer">
+                            <span class="module-access-btn">
+                                <span>Acessar ENTREGA DE EQUIPES</span>
                                 <i data-lucide="arrow-right"></i>
                             </span>
                         </div>
@@ -942,7 +1067,862 @@
             </div>
 
         </div>
+        <!-- FIM DE tabViewAudit -->
+
+        </div>
         <!-- FIM DO MÓDULO 1 (moduleAuditView) -->
+
+        <!-- ================================================================= -->
+        <!-- MÓDULO 2: ENTREGA DE EQUIPES (ENEL SP) - ULTRA PREMIUM SKEUOMORPHIC -->
+        <!-- ================================================================= -->
+        <div id="moduleDeliveryView" class="module-view-container" style="display: none;">
+
+            <!-- Header do Módulo de Entrega (Sem Ícones / Tipografia Pura) -->
+            <header class="main-header glass-card" id="moduleDeliveryHeader" style="margin-bottom: 20px;">
+                <div class="header-left">
+                    <button class="btn-back-hub" id="btnBackToHubFromDelivery" onclick="navigateToView('hub')" title="Voltar ao Hub Central de Módulos">
+                        <span>HUB CENTRAL</span>
+                    </button>
+
+                    <div class="brand-badge" onclick="navigateToView('hub')" style="cursor: pointer;" title="Ir para o Hub de Módulos CCO">
+                        <div class="brand-text">
+                            <h2>ENTREGA DE EQUIPES</h2>
+                            <span>Monitoramento de Frota & Turnos (Enel SP)</span>
+                        </div>
+                    </div>
+
+                    <!-- Alternador de Telas (Segmented Switch M3 Expressive) -->
+                    <div class="delivery-screen-switcher" id="deliveryScreenSwitcher">
+                        <button class="screen-switch-btn active" id="btnSwitchOnline" onclick="switchDeliveryScreen('online')">
+                            <span class="live-status-dot"></span>
+                            <span>ONLINE / TEMPO REAL</span>
+                        </button>
+                        <button class="screen-switch-btn" id="btnSwitchHistory" onclick="switchDeliveryScreen('history')">
+                            <span>AUDITORIA & HISTÓRICO</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <!-- Relógio CCO -->
+                    <div class="header-clock-pill">
+                        <span id="digitalClockDelivery" class="clock-digits">--:--:--</span>
+                    </div>
+
+                    <!-- Botão Seletor de Tema -->
+                    <button class="btn-theme-toggle" id="btnThemeToggleDelivery" onclick="toggleTheme()" title="Alternar entre Tema Claro e Tema Escuro">
+                        <span style="font-size: 0.75rem; font-weight: 800; letter-spacing: 0.05em;">TEMA</span>
+                    </button>
+
+                    <!-- Ações Rápidas do Cabeçalho -->
+                    <div class="header-actions">
+                        <!-- 0. Botão de Autenticação / Cadeado -->
+                        <button class="btn btn-secondary btn-auth-lock locked" id="btnAuthDelivery" onclick="openAuthModal()" title="Autenticação e Desbloqueio Operacional">
+                            <span id="authLockTextDelivery">BLOQUEADO</span>
+                        </button>
+
+                        <!-- 1. Coletar Entrega (Enel Portal) -->
+                        <button class="btn btn-primary special-action locked-action" id="btnCollectDelivery" title="Coletar dados via Robô Autônomo CDP" onclick="handleRestrictedAction(openDeliveryCollectModal)">
+                            <span>COLETAR AGORA (CDP)</span>
+                            <span class="lock-mini-badge"><i data-lucide="lock"></i></span>
+                        </button>
+
+                        <!-- 2. Sincronizar Painel -->
+                        <button class="btn btn-secondary" id="btnRefreshDelivery" title="Atualizar Dados de Entrega" onclick="loadDeliveryData(true)">
+                            <span>SINCRONIZAR</span>
+                        </button>
+
+                        <!-- 3. Tela Cheia -->
+                        <button class="btn btn-secondary" id="btnFullscreenDelivery" title="Alternar Modo Tela Cheia (Wallboard)" onclick="toggleFullscreen()">
+                            <span>TELA CHEIA</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- ============================================================= -->
+            <!-- TELA 1: ONLINE / TEMPO REAL                                   -->
+            <!-- ============================================================= -->
+            <div id="deliveryScreenOnline" class="delivery-screen-container">
+
+                <!-- DECK DE DESTAQUE DUPLO: EQUIPES ATIVAS vs TOTAL DO DIA + 4 TIPOLOGIAS -->
+                <div class="delivery-dual-hero-grid">
+                    <!-- Card 1: Equipes Ativas Agora -->
+                    <div class="hero-liquid-card hero-card-active">
+                        <span class="hero-tag"><span class="live-status-dot"></span> EQUIPES ATIVAS</span>
+                        <div class="hero-number-row">
+                            <span class="hero-big-number text-emerald" id="delHeroActive">0</span>
+                            <span class="hero-unit">em turno</span>
+                        </div>
+                        <span class="hero-subtext" id="delHeroActiveSub">Snapshot ao vivo da coleta</span>
+                    </div>
+
+                    <!-- Card 2: Equipes Total Entregue no Dia -->
+                    <div class="hero-liquid-card hero-card-total">
+                        <span class="hero-tag">TOTAL ENTREGUE (DIA)</span>
+                        <div class="hero-number-row">
+                            <span class="hero-big-number text-cyan" id="delHeroTotalDay">0</span>
+                            <span class="hero-unit">acumulado</span>
+                        </div>
+                        <span class="hero-subtext" id="delHeroTotalSub">Equipes únicas logadas hoje</span>
+                    </div>
+
+                    <!-- Card 3: Cesto Aéreo -->
+                    <div class="fleet-liquid-card">
+                        <span class="fleet-liquid-title text-cyan">CESTO AÉREO</span>
+                        <div class="fleet-liquid-vals">
+                            <div class="fleet-val-block">
+                                <span>ATIVAS</span>
+                                <strong class="text-cyan" id="delFleetCestoActive">0</strong>
+                            </div>
+                            <div class="fleet-val-block" style="text-align: right;">
+                                <span>TOTAL DIA</span>
+                                <strong style="color: #94a3b8;" id="delFleetCestoTotal">0</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 4: Veículo Leve -->
+                    <div class="fleet-liquid-card">
+                        <span class="fleet-liquid-title" style="color: #60a5fa;">VEÍCULO LEVE</span>
+                        <div class="fleet-liquid-vals">
+                            <div class="fleet-val-block">
+                                <span>ATIVAS</span>
+                                <strong style="color: #60a5fa;" id="delFleetLeveActive">0</strong>
+                            </div>
+                            <div class="fleet-val-block" style="text-align: right;">
+                                <span>TOTAL DIA</span>
+                                <strong style="color: #94a3b8;" id="delFleetLeveTotal">0</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 5: Moto -->
+                    <div class="fleet-liquid-card">
+                        <span class="fleet-liquid-title text-emerald">MOTO</span>
+                        <div class="fleet-liquid-vals">
+                            <div class="fleet-val-block">
+                                <span>ATIVAS</span>
+                                <strong class="text-emerald" id="delFleetMotoActive">0</strong>
+                            </div>
+                            <div class="fleet-val-block" style="text-align: right;">
+                                <span>TOTAL DIA</span>
+                                <strong style="color: #94a3b8;" id="delFleetMotoTotal">0</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 6: Linha Viva + Munck -->
+                    <div class="fleet-liquid-card">
+                        <span class="fleet-liquid-title" style="color: #c084fc;">LINHA VIVA + MUNK</span>
+                        <div class="fleet-liquid-vals">
+                            <div class="fleet-val-block">
+                                <span>ATIVAS</span>
+                                <strong style="color: #c084fc;" id="delFleetPesadoActive">0</strong>
+                            </div>
+                            <div class="fleet-val-block" style="text-align: right;">
+                                <span>TOTAL DIA</span>
+                                <strong style="color: #94a3b8;" id="delFleetPesadoTotal">0</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BARRA DE ESCOPO E FILTROS RÁPIDOS M3 EXPRESSIVE -->
+                <div class="delivery-filter-bar glass-card" id="deliveryFilterBar" style="margin-bottom: 20px;">
+                    <div class="delivery-filter-row">
+                        <!-- Filtro de Turno -->
+                        <div class="filter-group-pill">
+                            <span class="filter-group-label">TURNO:</span>
+                            <div class="pill-options-wrap" id="deliveryShiftPills">
+                                <button class="pill-chip active" data-shift="ALL" onclick="setDeliveryShiftFilter('ALL', this)">TODOS</button>
+                                <button class="pill-chip" data-shift="06:00" onclick="setDeliveryShiftFilter('06:00', this)">06:00</button>
+                                <button class="pill-chip" data-shift="08:00" onclick="setDeliveryShiftFilter('08:00', this)">08:00</button>
+                                <button class="pill-chip" data-shift="12:00" onclick="setDeliveryShiftFilter('12:00', this)">12:00</button>
+                                <button class="pill-chip" data-shift="14:00" onclick="setDeliveryShiftFilter('14:00', this)">14:00</button>
+                                <button class="pill-chip" data-shift="20:00" onclick="setDeliveryShiftFilter('20:00', this)">20:00</button>
+                                <button class="pill-chip" data-shift="22:00" onclick="setDeliveryShiftFilter('22:00', this)">22:00</button>
+                            </div>
+                        </div>
+
+                        <!-- Filtro de Frota -->
+                        <div class="filter-group-pill">
+                            <span class="filter-group-label">FROTA:</span>
+                            <div class="pill-options-wrap" id="deliveryVehiclePills">
+                                <button class="pill-chip active" data-vehicle="ALL" onclick="setDeliveryVehicleFilter('ALL', this)">TODAS</button>
+                                <button class="pill-chip" data-vehicle="Cesto Aéreo" onclick="setDeliveryVehicleFilter('Cesto Aéreo', this)">CESTO AÉREO</button>
+                                <button class="pill-chip" data-vehicle="Veículo Leve" onclick="setDeliveryVehicleFilter('Veículo Leve', this)">VEÍCULO LEVE</button>
+                                <button class="pill-chip" data-vehicle="Moto" onclick="setDeliveryVehicleFilter('Moto', this)">MOTO</button>
+                                <button class="pill-chip" data-vehicle="Linha Viva + Munk" onclick="setDeliveryVehicleFilter('Linha Viva + Munk', this)">LINHA VIVA + MUNK</button>
+                            </div>
+                        </div>
+
+                        <!-- Busca Rápida -->
+                        <div class="delivery-search-box" style="flex: 1; min-width: 240px;">
+                            <input type="text" id="deliverySearchInput" placeholder="BUSCAR EQUIPE, PLACA, MOTORISTA..." oninput="debounceDeliverySearch()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ANALYTICS: GRÁFICO DE CURVA DE ENTREGA POR TURNO & DISTRIBUIÇÃO -->
+                <div class="delivery-analytics-grid" style="margin-bottom: 24px;">
+                    <!-- Gráfico: Curva de Entrada ao Longo do Dia -->
+                    <div class="chart-card glass-card">
+                        <div class="chart-header">
+                            <div>
+                                <h4 class="chart-title">CURVA DE ENTRADA AO LONGO DO DIA</h4>
+                                <p class="chart-subtitle" id="deliveryShiftChartSubtitle">Equipes Em Turno no momento por faixa horária</p>
+                            </div>
+                            <div class="chart-legend-wrap" id="deliveryChartLegend">
+                                <span class="legend-badge legend-cesto"><span class="legend-dot dot-cesto"></span> Cesto</span>
+                                <span class="legend-badge legend-leve"><span class="legend-dot dot-leve"></span> Leve</span>
+                                <span class="legend-badge legend-moto"><span class="legend-dot dot-moto"></span> Moto</span>
+                                <span class="legend-badge legend-pesado"><span class="legend-dot dot-pesado"></span> LV + Munk</span>
+                            </div>
+                        </div>
+                        <div class="chart-body" style="height: 280px; position: relative;">
+                            <canvas id="deliveryShiftChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Card de Distribuição por Categoria & Região -->
+                    <div class="chart-card glass-card">
+                        <div class="chart-header">
+                            <div>
+                                <h4 class="chart-title">COMPOSIÇÃO DA FROTA ENTREGUE</h4>
+                                <p class="chart-subtitle">Total de Equipes por Tipologia Veicular</p>
+                            </div>
+                        </div>
+                        <div class="chart-body" style="height: 280px; position: relative;">
+                            <canvas id="deliveryFleetPieChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PAINEL AGRUPADO DAS 14 BASES OPERACIONAIS (NORTE & LESTE COM FILTRO MÚLTIPLO) -->
+                <div class="delivery-regions-container">
+                    <!-- REGIÃO NORTE -->
+                    <div class="geo-region-card" id="geoRegionCardNorte">
+                        <div class="geo-region-header">
+                            <div class="geo-region-title">
+                                <span>REGIÃO NORTE</span>
+                                <span class="geo-region-badge badge-norte">3 BASES OFICIAIS</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span style="font-size: 0.75rem; color: var(--text-secondary);">CLIQUE NOS CARDS PARA APLICAR FILTROS MÚLTIPLOS</span>
+                                <button class="btn btn-secondary btn-sm" onclick="clearDeliveryBaseFilters()" style="padding: 4px 12px; font-size: 0.75rem; font-weight: 800;">LIMPAR FILTROS</button>
+                            </div>
+                        </div>
+                        <div class="geo-cards-layout">
+                            <!-- Card Totalizador da Região Norte -->
+                            <div class="region-total-interactive-card" id="filterCardTotalNorte" onclick="toggleRegionFilter('Norte')">
+                                <div class="region-total-header">
+                                    <span class="region-total-label">TOTAL REGIÃO NORTE</span>
+                                    <span class="region-total-count text-emerald" id="delNorteTotalNum">0</span>
+                                </div>
+                                <div class="base-vehicle-quad">
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">CESTO</span><span class="v-mini-num text-cyan" id="delNorteTotalCesto">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delNorteTotalLeve">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delNorteTotalMoto">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delNorteTotalPesado">0</span></div>
+                                </div>
+                            </div>
+                            <!-- Grid das 3 Bases do Norte -->
+                            <div class="region-bases-grid" id="gridBasesNorte">
+                                <!-- Base Fagundes Filho -->
+                                <div class="base-interactive-card" data-base-name="Base Fagundes Filho" onclick="toggleBaseFilter('Base Fagundes Filho', this)">
+                                    <div class="base-card-top">
+                                        <span class="base-card-name">BASE FAGUNDES FILHO</span>
+                                        <span class="base-card-total" id="delBaseFagundesTotal">0</span>
+                                    </div>
+                                    <div class="base-vehicle-quad">
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">CESTO</span><span class="v-mini-num text-cyan" id="delBaseFagundesCesto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseFagundesLeve">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseFagundesMoto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseFagundesPesado">0</span></div>
+                                    </div>
+                                </div>
+                                <!-- Base Cajati -->
+                                <div class="base-interactive-card" data-base-name="Base Cajati" onclick="toggleBaseFilter('Base Cajati', this)">
+                                    <div class="base-card-top">
+                                        <span class="base-card-name">BASE CAJATI</span>
+                                        <span class="base-card-total" id="delBaseCajatiTotal">0</span>
+                                    </div>
+                                    <div class="base-vehicle-quad">
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">CESTO</span><span class="v-mini-num text-cyan" id="delBaseCajatiCesto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseCajatiLeve">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseCajatiMoto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseCajatiPesado">0</span></div>
+                                    </div>
+                                </div>
+                                <!-- Base Vila Medeiros -->
+                                <div class="base-interactive-card" data-base-name="Base Vila Medeiros" onclick="toggleBaseFilter('Base Vila Medeiros', this)">
+                                    <div class="base-card-top">
+                                        <span class="base-card-name">BASE VILA MEDEIROS</span>
+                                        <span class="base-card-total" id="delBaseVilaMedeirosTotal">0</span>
+                                    </div>
+                                    <div class="base-vehicle-quad">
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">CESTO</span><span class="v-mini-num text-cyan" id="delBaseVilaMedeirosCesto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseVilaMedeirosLeve">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseVilaMedeirosMoto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseVilaMedeirosPesado">0</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- REGIÃO LESTE -->
+                    <div class="geo-region-card" id="geoRegionCardLeste">
+                        <div class="geo-region-header">
+                            <div class="geo-region-title">
+                                <span>REGIÃO LESTE</span>
+                                <span class="geo-region-badge badge-leste">4 BASES OFICIAIS</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span style="font-size: 0.75rem; color: var(--text-secondary);">CLIQUE NOS CARDS PARA APLICAR FILTROS MÚLTIPLOS</span>
+                                <button class="btn btn-secondary btn-sm" onclick="clearDeliveryBaseFilters()" style="padding: 4px 12px; font-size: 0.75rem; font-weight: 800;">LIMPAR FILTROS</button>
+                            </div>
+                        </div>
+                        <div class="geo-cards-layout">
+                            <!-- Card Totalizador da Região Leste -->
+                            <div class="region-total-interactive-card" id="filterCardTotalLeste" onclick="toggleRegionFilter('Leste')">
+                                <div class="region-total-header">
+                                    <span class="region-total-label">TOTAL REGIÃO LESTE</span>
+                                    <span class="region-total-count" style="color:#60a5fa;" id="delLesteTotalNum">0</span>
+                                </div>
+                                <div class="base-vehicle-quad">
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">CESTO</span><span class="v-mini-num text-cyan" id="delLesteTotalCesto">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delLesteTotalLeve">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delLesteTotalMoto">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delLesteTotalPesado">0</span></div>
+                                </div>
+                            </div>
+                            <!-- Grid das 4 Bases do Leste -->
+                            <div class="region-bases-grid" id="gridBasesLeste">
+                                <!-- Base Monte Santo -->
+                                <div class="base-interactive-card" data-base-name="Base Monte Santo" onclick="toggleBaseFilter('Base Monte Santo', this)">
+                                    <div class="base-card-top">
+                                        <span class="base-card-name">BASE MONTE SANTO</span>
+                                        <span class="base-card-total" id="delBaseMonteSantoTotal">0</span>
+                                    </div>
+                                    <div class="base-vehicle-quad">
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">CESTO</span><span class="v-mini-num text-cyan" id="delBaseMonteSantoCesto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseMonteSantoLeve">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseMonteSantoMoto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseMonteSantoPesado">0</span></div>
+                                    </div>
+                                </div>
+                                <!-- Base Aricanduva -->
+                                <div class="base-interactive-card" data-base-name="Base Aricanduva" onclick="toggleBaseFilter('Base Aricanduva', this)">
+                                    <div class="base-card-top">
+                                        <span class="base-card-name">BASE ARICANDUVA</span>
+                                        <span class="base-card-total" id="delBaseAricanduvaTotal">0</span>
+                                    </div>
+                                    <div class="base-vehicle-quad">
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">CESTO</span><span class="v-mini-num text-cyan" id="delBaseAricanduvaCesto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseAricanduvaLeve">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseAricanduvaMoto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseAricanduvaPesado">0</span></div>
+                                    </div>
+                                </div>
+                                <!-- Base Catumbi -->
+                                <div class="base-interactive-card" data-base-name="Base Catumbi" onclick="toggleBaseFilter('Base Catumbi', this)">
+                                    <div class="base-card-top">
+                                        <span class="base-card-name">BASE CATUMBI</span>
+                                        <span class="base-card-total" id="delBaseCatumbiTotal">0</span>
+                                    </div>
+                                    <div class="base-vehicle-quad">
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">CESTO</span><span class="v-mini-num text-cyan" id="delBaseCatumbiCesto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseCatumbiLeve">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseCatumbiMoto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseCatumbiPesado">0</span></div>
+                                    </div>
+                                </div>
+                                <!-- Base Santo André -->
+                                <div class="base-interactive-card" data-base-name="Base Santo André" onclick="toggleBaseFilter('Base Santo André', this)">
+                                    <div class="base-card-top">
+                                        <span class="base-card-name">BASE SANTO ANDRÉ</span>
+                                        <span class="base-card-total" id="delBaseSantoAndreTotal">0</span>
+                                    </div>
+                                    <div class="base-vehicle-quad">
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">CESTO</span><span class="v-mini-num text-cyan" id="delBaseSantoAndreCesto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseSantoAndreLeve">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseSantoAndreMoto">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseSantoAndrePesado">0</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TABELA DETALHADA COLAPSÁVEL (RECOLHIDA POR PADRÃO + EXPORT EXCEL) -->
+                <div class="delivery-table-collapsible-wrapper">
+                    <div class="delivery-table-collapsible-header">
+                        <div>
+                            <h4 style="font-size: 1rem; font-weight: 800; letter-spacing: 0.04em; color: var(--text-primary); margin-bottom: 4px;">
+                                RELAÇÃO DETALHADA DE EQUIPES ENTREGUES
+                            </h4>
+                            <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="deliveryTableStateSubtitle">
+                                Tabela recolhida por padrão para máxima performance. Clique em Expandir para visualizar.
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <span class="history-count-badge" id="deliveryResultsCountBadge" style="font-size: 0.78rem;">0 equipes filtradas</span>
+                            
+                            <!-- Botão Recolher / Expandir -->
+                            <button class="table-collapse-trigger-btn" id="btnToggleDeliveryTable" onclick="toggleDeliveryTableCollapse()">
+                                <span id="textToggleDeliveryTable">EXPANDIR TABELA</span>
+                            </button>
+
+                            <!-- Botão Exportar Excel Filtrado -->
+                            <button class="btn btn-secondary btn-sm" id="btnExportFilteredDelivery" onclick="exportDeliveryExcelFiltered()" style="padding: 8px 16px; font-weight: 800;">
+                                <span class="text-emerald">EXPORTAR EXCEL (.XLSX)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="delivery-table-body-container table-collapsed" id="deliveryTableCollapseBody">
+                        <div class="table-responsive" style="margin-top: 12px;">
+                            <table class="data-table" id="deliveryMainTable">
+                                <thead>
+                                    <tr>
+                                        <th>EQUIPE</th>
+                                        <th>BASE OPERACIONAL</th>
+                                        <th>REGIÃO / EMPRESA</th>
+                                        <th>FROTA / VEÍCULO</th>
+                                        <th>LOGIN</th>
+                                        <th>LOGOFF</th>
+                                        <th>TURNO</th>
+                                        <th>STATUS</th>
+                                        <th>MOTORISTA</th>
+                                        <th>PLACA</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="deliveryTableBody">
+                                    <!-- Inserido dinamicamente via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <!-- FIM DE deliveryScreenOnline -->
+
+            <!-- ============================================================= -->
+            <!-- TELA 2: AUDITORIA & HISTÓRICO                                 -->
+            <!-- ============================================================= -->
+            <div id="deliveryScreenHistory" class="delivery-screen-container" style="display: none;">
+
+                <!-- BARRA DE CONTROLE TEMPORAL DA AUDITORIA -->
+                <div class="history-control-glass-card">
+                    <div style="display: flex; gap: 16px; align-items: center;">
+                        <span style="font-size: 0.85rem; font-weight: 800; letter-spacing: 0.05em; color: var(--text-primary);">MODO DE CONSULTA:</span>
+                        <div class="delivery-screen-switcher" style="padding: 2px;">
+                            <button class="screen-switch-btn active" id="btnHistModeDay" onclick="setHistoryAuditMode('day')">VISÃO POR DIA</button>
+                            <button class="screen-switch-btn" id="btnHistModeMonth" onclick="setHistoryAuditMode('month')">VISÃO POR MÊS</button>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <!-- Seletor de Dia(s) com Multi-seleção -->
+                        <div id="histDaySelectorWrap" style="display: flex; align-items: center; gap: 8px;">
+                            <input type="text" id="histDateInput" class="history-date-input" placeholder="Selecione data(s) no calendário..." readonly style="cursor: pointer; min-width: 250px;">
+                            <button class="btn btn-secondary btn-sm" id="btnHistClearDates" type="button" onclick="clearSelectedAuditDates()" style="font-weight: 800; border-radius: 8px; display: none;">
+                                LIMPAR
+                            </button>
+                        </div>
+                        <!-- Seletor de Mês -->
+                        <div id="histMonthSelectorWrap" style="display: none;">
+                            <input type="month" id="histMonthInput" class="history-date-input" onchange="loadMonthlyHistoryAudit()">
+                        </div>
+                        <button class="btn btn-primary" onclick="refreshCurrentHistoryAudit()" style="padding: 8px 18px; font-weight: 800;">
+                            CONSULTAR
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SUB-TELA A: VISÃO DIÁRIA (1 DATA) -->
+                <div id="histViewDayContainer">
+                    <div class="delivery-dual-hero-grid" style="margin-bottom: 20px;">
+                        <div class="hero-liquid-card hero-card-total" style="grid-column: span 2;">
+                            <span class="hero-tag">TOTAL ENTREGUE NA DATA SELECIONADA</span>
+                            <div class="hero-number-row">
+                                <span class="hero-big-number text-cyan" id="histDayTotalNum">0</span>
+                                <span class="hero-unit">equipes</span>
+                            </div>
+                            <span class="hero-subtext" id="histDayDateLabel">Consultando data...</span>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title text-cyan">CESTO AÉREO</span>
+                            <strong class="hero-big-number text-cyan" style="font-size: 1.5rem;" id="histDayCestoNum">0</strong>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title" style="color: #60a5fa;">VEÍCULO LEVE</span>
+                            <strong class="hero-big-number" style="color: #60a5fa; font-size: 1.5rem;" id="histDayLeveNum">0</strong>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title text-emerald">MOTO</span>
+                            <strong class="hero-big-number text-emerald" style="font-size: 1.5rem;" id="histDayMotoNum">0</strong>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title" style="color: #c084fc;">LINHA VIVA + MUNK</span>
+                            <strong class="hero-big-number" style="color: #c084fc; font-size: 1.5rem;" id="histDayPesadoNum">0</strong>
+                        </div>
+                    </div>
+
+                    <!-- Tabela Nominal do Dia Consultado -->
+                    <div class="delivery-table-collapsible-wrapper">
+                        <div class="delivery-table-collapsible-header">
+                            <div>
+                                <h4 style="font-size: 1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">EQUIPES ENTREGUES NA DATA</h4>
+                                <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="histTableSubtitle">Relação completa de equipes auditadas</p>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="exportHistoryExcel()">EXPORTAR EXCEL</button>
+                        </div>
+                        <div class="table-responsive" style="margin-top: 14px;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>EQUIPE</th>
+                                        <th>BASE OPERACIONAL</th>
+                                        <th>REGIÃO / EMPRESA</th>
+                                        <th>FROTA / VEÍCULO</th>
+                                        <th>LOGIN</th>
+                                        <th>LOGOFF</th>
+                                        <th>TURNO</th>
+                                        <th>STATUS</th>
+                                        <th>MOTORISTA</th>
+                                        <th>PLACA</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="histDayTableBody">
+                                    <!-- Inserido via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SUB-TELA C: VISÃO COMPARATIVA DE MÚLTIPLAS DATAS -->
+                <div id="histViewComparisonContainer" style="display: none;">
+                    <div class="glass-card" style="padding: 20px; border-radius: 16px; margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <h4 style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary); margin: 0 0 4px 0;">COMPARATIVO ENTRE DATAS SELECIONADAS</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Análise comparativa de volume e tipologia veicular entre as datas escolhidas</p>
+                            </div>
+                            <div id="histComparisonSelectedBadges" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
+                        </div>
+
+                        <!-- Cards de Comparativo Rápido -->
+                        <div class="delivery-dual-hero-grid" id="histComparisonKpiGrid" style="margin-top: 14px;">
+                            <!-- Inserido dinamicamente via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Gráfico Comparativo de Barras Agrupadas -->
+                    <div class="chart-card glass-card" style="margin-bottom: 20px;">
+                        <div class="chart-header">
+                            <div>
+                                <h4 class="chart-title">COMPARATIVO DE ENTREGAS POR DATA</h4>
+                                <p class="chart-subtitle">Volume total e quebra por tipologia veicular por dia auditado</p>
+                            </div>
+                        </div>
+                        <div class="chart-body" style="height: 320px; position: relative;">
+                            <canvas id="histComparisonChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Tabela Comparativa Analítica -->
+                    <div class="delivery-table-collapsible-wrapper">
+                        <div class="delivery-table-collapsible-header">
+                            <div>
+                                <h4 style="font-size: 1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">QUADRO COMPARATIVO DIÁRIO</h4>
+                                <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;">Métricas consolidadas de cada data selecionada</p>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="exportComparisonExcel()">EXPORTAR COMPARATIVO</button>
+                        </div>
+                        <div class="table-responsive" style="margin-top: 14px;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>DATA</th>
+                                        <th>TOTAL ENTREGUE</th>
+                                        <th>CESTO AÉREO</th>
+                                        <th>VEÍCULO LEVE</th>
+                                        <th>MOTO</th>
+                                        <th>LINHA VIVA + MUNK</th>
+                                        <th>TURNO PRINCIPAL</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="histComparisonTableBody">
+                                    <!-- Inserido dinamicamente via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SUB-TELA B: VISÃO MENSAL -->
+                <div id="histViewMonthContainer" style="display: none;">
+                    <div class="delivery-dual-hero-grid" style="margin-bottom: 20px;">
+                        <div class="hero-liquid-card hero-card-active" style="grid-column: span 2;">
+                            <span class="hero-tag">MÉDIA DIÁRIA DE EQUIPES ENTREGUES</span>
+                            <div class="hero-number-row">
+                                <span class="hero-big-number text-emerald" id="histMonthAvgTotal">0.0</span>
+                                <span class="hero-unit">equipes / dia</span>
+                            </div>
+                            <span class="hero-subtext" id="histMonthOperatingDays">Calculado sobre 0 dias com operação</span>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title text-cyan">MÉDIA CESTO AÉREO</span>
+                            <strong class="hero-big-number text-cyan" style="font-size: 1.5rem;" id="histMonthAvgCesto">0.0</strong>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title" style="color: #60a5fa;">MÉDIA VEÍCULO LEVE</span>
+                            <strong class="hero-big-number" style="color: #60a5fa; font-size: 1.5rem;" id="histMonthAvgLeve">0.0</strong>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title text-emerald">MÉDIA MOTO</span>
+                            <strong class="hero-big-number text-emerald" style="font-size: 1.5rem;" id="histMonthAvgMoto">0.0</strong>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title" style="color: #c084fc;">MÉDIA LV + MUNK</span>
+                            <strong class="hero-big-number" style="color: #c084fc; font-size: 1.5rem;" id="histMonthAvgPesado">0.0</strong>
+                        </div>
+                    </div>
+
+                    <!-- Gráfico Mensal: Evolução Diária de Entregas -->
+                    <div class="chart-card glass-card" style="margin-bottom: 24px;">
+                        <div class="chart-header">
+                            <div>
+                                <h4 class="chart-title">EVOLUÇÃO DIÁRIA DE ENTREGAS NO MÊS</h4>
+                                <p class="chart-subtitle">Histórico de volume diário entregue com linha de média mensal</p>
+                            </div>
+                        </div>
+                        <div class="chart-body" style="height: 320px; position: relative;">
+                            <canvas id="histMonthlyBarChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <!-- FIM DE deliveryScreenHistory -->
+
+        </div>
+        <!-- FIM DO MÓDULO 2 (moduleDeliveryView) -->
+
+        <!-- ============================================================== -->
+        <!-- MÓDULO 3: PAINEL DE GERENCIAMENTO DO SISTEMA (ACESSO RESTRITO) -->
+        <!-- ============================================================== -->
+        <div class="module-view-container" id="systemAdminViewContainer" style="display: none;">
+            
+            <!-- Header do Painel Administrativo -->
+            <header class="main-header glass-card" style="margin-bottom: 20px;">
+                <div class="header-left">
+                    <button class="btn-back-hub" onclick="navigateToView('hub')" title="Voltar ao Hub Central">
+                        <i data-lucide="arrow-left"></i>
+                        <span>Hub Central</span>
+                    </button>
+                    <div class="brand-badge">
+                        <div class="brand-logo-icon" style="background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4);">
+                            <i data-lucide="shield-alert" style="color: #f59e0b;"></i>
+                        </div>
+                        <div class="brand-info">
+                            <div class="brand-title-row">
+                                <h1>GERENCIAMENTO & TELEMETRIA MASTER</h1>
+                            </div>
+                            <p class="brand-subtitle">Monitoramento de Motores de Coleta, Diagnósticos de Falha e Auditoria de Sessões</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="delivery-screen-switcher" style="padding: 4px;">
+                    <button class="screen-switch-btn active" id="btnAdminTabEngines" onclick="switchAdminTab('engines')">
+                        <i data-lucide="cpu" style="width: 14px; height: 14px; margin-right: 4px;"></i> MOTORES DO SISTEMA
+                    </button>
+                    <button class="screen-switch-btn" id="btnAdminTabTelemetry" onclick="switchAdminTab('telemetry')">
+                        <i data-lucide="users" style="width: 14px; height: 14px; margin-right: 4px;"></i> TELEMETRIA & SESSÕES
+                    </button>
+                </div>
+
+                <div class="header-right">
+                    <button class="btn btn-danger btn-sm" onclick="logoutAdminSession()" style="font-weight: 800; border-radius: 8px;">
+                        <i data-lucide="log-out" style="width: 14px; height: 14px; margin-right: 4px;"></i> BLOQUEAR / SAIR
+                    </button>
+                    <button class="btn-theme-toggle" onclick="toggleTheme()" title="Alternar Tema">
+                        <div class="theme-icon-wrap">
+                            <i data-lucide="sun" class="theme-icon-sun"></i>
+                            <i data-lucide="moon" class="theme-icon-moon"></i>
+                        </div>
+                    </button>
+                </div>
+            </header>
+
+            <!-- ABA 1: STATUS DOS MOTORES DO SISTEMA -->
+            <div id="adminTabEnginesContent">
+                <div class="admin-action-bar glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; margin-bottom: 24px;">
+                    <div>
+                        <h3 style="font-size: 1.1rem; font-weight: 800; margin: 0; color: var(--text-primary);">SAÚDE DOS MOTORES & CONECTIVIDADE LOCAL</h3>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">Diagnóstico discriminando Falha de Conexão vs Processo Parado com reativação sob demanda.</p>
+                    </div>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <button class="btn btn-secondary" onclick="loadAdminEngineStatus()" style="font-weight: 800;">
+                            <i data-lucide="refresh-cw" style="width: 14px; height: 14px; margin-right: 6px;"></i> ATUALIZAR STATUS
+                        </button>
+                        <button class="btn btn-warning" id="btnRestartEngines" onclick="triggerRestartEngines()" style="font-weight: 800; padding: 10px 20px; box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);">
+                            <i data-lucide="power" style="width: 16px; height: 16px; margin-right: 6px;"></i> REINICIAR MOTORES LOCAIS
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Grid de Cards de Motores -->
+                <div class="engine-cards-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; margin-bottom: 24px;">
+                    
+                    <!-- Motor 1: TRBOnet One -->
+                    <div class="engine-health-card glass-card" id="engineCardTrbonet">
+                        <div class="engine-card-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div class="engine-icon-wrap" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); display: flex; align-items: center; justify-content: center; color: #10b981;">
+                                <i data-lucide="radio"></i>
+                            </div>
+                            <span class="engine-status-badge badge-operational" id="engineBadgeTrbonet">OPERACIONAL</span>
+                        </div>
+                        <h4 class="engine-title" style="font-size: 1.05rem; font-weight: 800; margin: 0 0 6px 0;">Motor TRBOnet One (Rádios & GPS)</h4>
+                        <p class="engine-diag-msg" id="engineMsgTrbonet" style="font-size: 0.8rem; color: var(--text-secondary); min-height: 38px;">Aguardando verificação de conexão...</p>
+                        <div class="engine-metrics-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid var(--border-glass); padding-top: 12px; margin-top: 10px;">
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">ÚLTIMO SINCRONISMO</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--text-primary);" id="engineSyncTrbonet">--:--:--</strong>
+                            </div>
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">RÁDIOS CONCILIADOS</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: #00f2fe;" id="engineRecordsTrbonet">--</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Motor 2: Robô CDP Enel SP -->
+                    <div class="engine-health-card glass-card" id="engineCardEnel">
+                        <div class="engine-card-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div class="engine-icon-wrap" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(0, 242, 254, 0.15); border: 1px solid rgba(0, 242, 254, 0.35); display: flex; align-items: center; justify-content: center; color: #00f2fe;">
+                                <i data-lucide="users"></i>
+                            </div>
+                            <span class="engine-status-badge badge-operational" id="engineBadgeEnel">OPERACIONAL</span>
+                        </div>
+                        <h4 class="engine-title" style="font-size: 1.05rem; font-weight: 800; margin: 0 0 6px 0;">Robô CDP Enel SP (Equipes & Turnos)</h4>
+                        <p class="engine-diag-msg" id="engineMsgEnel" style="font-size: 0.8rem; color: var(--text-secondary); min-height: 38px;">Aguardando teste na porta 9222...</p>
+                        <div class="engine-metrics-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid var(--border-glass); padding-top: 12px; margin-top: 10px;">
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">ÚLTIMA LEITURA CDP</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--text-primary);" id="engineSyncEnel">--:--:--</strong>
+                            </div>
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">EQUIPES ATIVAS</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: #10b981;" id="engineRecordsEnel">--</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Motor 3: Supabase Cloud -->
+                    <div class="engine-health-card glass-card" id="engineCardCloud">
+                        <div class="engine-card-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div class="engine-icon-wrap" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(192, 132, 252, 0.15); border: 1px solid rgba(192, 132, 252, 0.35); display: flex; align-items: center; justify-content: center; color: #c084fc;">
+                                <i data-lucide="database"></i>
+                            </div>
+                            <span class="engine-status-badge badge-operational" id="engineBadgeCloud">OPERACIONAL</span>
+                        </div>
+                        <h4 class="engine-title" style="font-size: 1.05rem; font-weight: 800; margin: 0 0 6px 0;">Banco em Nuvem Supabase</h4>
+                        <p class="engine-diag-msg" id="engineMsgCloud" style="font-size: 0.8rem; color: var(--text-secondary); min-height: 38px;">Verificando latência com a nuvem...</p>
+                        <div class="engine-metrics-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid var(--border-glass); padding-top: 12px; margin-top: 10px;">
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">COMUNICAÇÃO REST</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: #c084fc;" id="engineSyncCloud">Ativa</strong>
+                            </div>
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">SEGURANÇA</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: #10b981;">RLS Habilitado</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ABA 2: TELEMETRIA & AUDITORIA DE SESSÕES -->
+            <div id="adminTabTelemetryContent" style="display: none;">
+                <!-- 4 Hero KPI Cards de Telemetria -->
+                <div class="delivery-dual-hero-grid" style="margin-bottom: 24px;">
+                    <div class="hero-liquid-card hero-card-active">
+                        <span class="hero-tag">SESSÕES ATIVAS AGORA</span>
+                        <div class="hero-number-row">
+                            <span class="hero-big-number text-emerald" id="telemetryActiveNow">0</span>
+                            <span class="hero-unit">online</span>
+                        </div>
+                        <span class="hero-subtext">Usuários conectados nos últimos 5 minutos</span>
+                    </div>
+                    <div class="hero-liquid-card">
+                        <span class="hero-tag">ACESSOS HOJE</span>
+                        <div class="hero-number-row">
+                            <span class="hero-big-number text-cyan" id="telemetryToday">0</span>
+                            <span class="hero-unit">únicos hoje</span>
+                        </div>
+                        <span class="hero-subtext">Dispositivos distintos na data atual</span>
+                    </div>
+                    <div class="hero-liquid-card">
+                        <span class="hero-tag">ACESSOS NA SEMANA</span>
+                        <div class="hero-number-row">
+                            <span class="hero-big-number" style="color: #60a5fa;" id="telemetryWeek">0</span>
+                            <span class="hero-unit">únicos (7d)</span>
+                        </div>
+                        <span class="hero-subtext">Usuários nos últimos 7 dias operacionais</span>
+                    </div>
+                    <div class="hero-liquid-card">
+                        <span class="hero-tag">ACESSOS NO MÊS</span>
+                        <div class="hero-number-row">
+                            <span class="hero-big-number" style="color: #c084fc;" id="telemetryMonth">0</span>
+                            <span class="hero-unit">únicos (30d)</span>
+                        </div>
+                        <span class="hero-subtext">Acumulado mensal de colaboradores</span>
+                    </div>
+                </div>
+
+                <!-- Tabela Forense de Auditoria de Sessões -->
+                <div class="table-container glass-card" style="margin-bottom: 30px;">
+                    <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; padding: 18px 24px;">
+                        <div>
+                            <h4 class="table-title">REGISTRO DE SESSÕES & AUDITORIA FORENSE</h4>
+                            <p class="table-subtitle">Rastreamento de Fingerprint, IP de Origem, Geolocalização, Dispositivo e Navegador</p>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" onclick="exportTelemetryExcel()" style="font-weight: 800;">
+                            <i data-lucide="download" style="width: 14px; height: 14px; margin-right: 4px;"></i> EXPORTAR SESSÕES
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>USUÁRIO</th>
+                                    <th>IP ORIGEM</th>
+                                    <th>GEOLOCALIZAÇÃO</th>
+                                    <th>DISPOSITIVO</th>
+                                    <th>NAVEGADOR / OS</th>
+                                    <th>FINGERPRINT</th>
+                                    <th>STATUS</th>
+                                    <th>PRIMEIRO ACESSO</th>
+                                    <th>ÚLTIMO SINAL</th>
+                                </tr>
+                            </thead>
+                            <tbody id="telemetrySessionsTableBody">
+                                <tr><td colspan="9" style="text-align: center; padding: 30px; color: var(--text-secondary);">Carregando telemetria...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
     </main>
@@ -1093,6 +2073,85 @@
     </div>
 </div>
 
+<!-- Modal: Coleta Autônoma Enel SP (teams-list) -->
+<div class="modal-backdrop" id="deliveryCollectModal">
+    <div class="modal-card glass-card" style="max-width: 680px;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.35);">
+                    <i data-lucide="bot" class="text-cyan"></i>
+                </div>
+                <div>
+                    <h3>Robô Autônomo de Coleta - Portal Enel SP</h3>
+                    <p class="modal-subtitle">Sincronização 100% autônoma (500 linhas, F5 e extração contínua)</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeModal('deliveryCollectModal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body" style="padding: 24px;">
+            <!-- Painel 1: Robô Nativo Python (Padrão TRBOnet) -->
+            <div style="background: linear-gradient(135deg, rgba(0, 242, 254, 0.08), rgba(139, 92, 246, 0.08)); border: 1.5px solid rgba(0, 242, 254, 0.35); border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                            <span class="pulse-dot"></span>
+                            <strong style="color: #00f2fe; font-size: 1.05rem;">Robô Python Autônomo (CDP - Padrão TRBOnet)</strong>
+                        </div>
+                        <p style="color: var(--text-secondary); font-size: 0.86rem; margin: 0; line-height: 1.5;">
+                            Executa em segundo plano pelo servidor a cada <strong>2 minutos</strong>. Conecta-se à aba aberta da Enel, dá F5 para atualizar, seleciona <strong>500 linhas</strong> e salva direto no Supabase.
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px;">
+                    <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 12px; text-align: center;">
+                        <span style="font-size: 0.72rem; color: var(--text-secondary); display: block;">PROTOCOLO</span>
+                        <strong style="color: #10b981; font-size: 0.85rem;">CDP (Porta 9222)</strong>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 12px; text-align: center;">
+                        <span style="font-size: 0.72rem; color: var(--text-secondary); display: block;">INTERVALO</span>
+                        <strong style="color: #00f2fe; font-size: 0.85rem;">120s (2 minutos)</strong>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 12px; text-align: center;">
+                        <span style="font-size: 0.72rem; color: var(--text-secondary); display: block;">PAGINAÇÃO</span>
+                        <strong style="color: #f59e0b; font-size: 0.85rem;">500 Linhas</strong>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="btnTriggerEnelCdp" onclick="triggerEnelCdpCapture()" style="width: 100%; justify-content: center; padding: 12px; font-weight: 700;">
+                    <i data-lucide="zap"></i>
+                    <span id="triggerEnelCdpText">⚡ Disparar Coleta Imediata Agora (Robô CDP)</span>
+                </button>
+            </div>
+
+            <!-- Painel 2: Script Flutuante de Contingência -->
+            <details style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px;">
+                <summary style="cursor: pointer; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600;">
+                    <i data-lucide="code" class="mini-icon"></i> Opção de Contingência: Script Manual de Console
+                </summary>
+                <div style="margin-top: 12px;">
+                    <ol style="color: var(--text-secondary); font-size: 0.82rem; padding-left: 20px; line-height: 1.5; margin-bottom: 12px;">
+                        <li>Abra a aba da Enel no navegador: <strong class="text-cyan">https://equipesbrasil.enelint.global/</strong></li>
+                        <li>Pressione <kbd style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">F12</kbd> (Console).</li>
+                        <li>Copie e cole o código flutuante de contingência.</li>
+                    </ol>
+                    <button class="btn btn-secondary btn-sm" id="btnCopyDaemonCode" onclick="copyDaemonScriptToClipboard()" style="width: 100%; justify-content: center;">
+                        <i data-lucide="copy"></i>
+                        <span id="copyDaemonBtnText">Copiar Script de Contingência</span>
+                    </button>
+                </div>
+            </details>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="closeModal('deliveryCollectModal')">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal: Autenticação, Cadastro e Gestão de Usuários (E2EE) -->
 <div class="modal-backdrop" id="authModal">
     <div class="modal-card glass-card auth-modal-card">
@@ -1166,6 +2225,9 @@
                         </div>
                     </div>
                     <div class="active-session-actions">
+                        <button class="btn btn-warning" onclick="navigateToView('admin'); closeModal('authModal');" id="btnGoToAdminPanel" style="display: none; font-weight: 800;">
+                            <i data-lucide="shield-alert"></i> Painel de Gerenciamento
+                        </button>
                         <button class="btn btn-secondary" onclick="switchAuthTab('admin_users')" id="btnManageUsersShort" style="display: none;">
                             <i data-lucide="users"></i> Gerenciar Usuários
                         </button>
@@ -1255,7 +2317,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v=3.1.2"></script>
 
 </body>
 </html>

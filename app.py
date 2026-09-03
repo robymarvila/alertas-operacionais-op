@@ -3,14 +3,16 @@ Servidor Flask - Painel Operacional PowerON vs TRBOnet
 Fornece rotas web, APIs RESTful para sincronização em tempo real e upload de arquivos.
 """
 
-from flask import Flask, render_template, jsonify, request, send_file, make_response, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_file, make_response, send_from_directory, redirect
 import io
 import os
+import requests
 import csv
 import threading
 import time
 from datetime import datetime
 from data_manager import data_manager
+from delivery_manager import delivery_manager
 from supabase_client import (
     push_snapshot_to_supabase,
     fetch_latest_snapshot_from_supabase,
@@ -21,7 +23,9 @@ from supabase_client import (
     create_sync_command,
     get_pending_commands,
     update_command_status,
-    wait_for_command_completion
+    wait_for_command_completion,
+    push_delivery_snapshot_to_supabase,
+    fetch_latest_delivery_snapshot_from_supabase
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -34,10 +38,30 @@ app = Flask(
 )
 app.config['JSON_SORT_KEYS'] = False
 
+@app.after_request
+def add_cors_headers(response):
+    """Permite requisições Cross-Origin (CORS) vindas do portal Enel SP."""
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
+    return response
+
 @app.route('/')
+@app.route('/hub')
 def index():
-    """Renderiza a página principal do dashboard."""
+    """Renderiza a aplicação principal com design 100% oficial e aprovado."""
     return render_template('index.html')
+
+@app.route('/trbonet')
+def view_trbonet():
+    """Acesso direto ao Módulo 1: STATUS TRBOnet."""
+    return redirect('/#module', code=302)
+
+@app.route('/teams')
+@app.route('/delivery')
+def view_teams():
+    """Acesso direto ao Módulo 2: ENTREGA DE EQUIPES."""
+    return redirect('/#delivery', code=302)
 
 @app.route('/static/<path:filename>')
 def custom_static(filename):
@@ -240,6 +264,170 @@ def reset_data():
         "data": data
     })
 
+# ==============================================================================
+# PAINEL DE CONTROLE ADMINISTRATIVO: SAÚDE DOS MOTORES & TELEMETRIA
+# ==============================================================================
+
+def check_port_listening(host="127.0.0.1", port=9222, timeout=1.0) -> bool:
+    """Verifica se uma porta de rede local está aberta e aceitando conexões TCP."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    try:
+        s.connect((host, port))
+        s.close()
+        return True
+    except Exception:
+        return False
+
+@app.route('/api/admin/engine_status', methods=['GET'])
+def get_engine_status():
+    """
+    Retorna o status detalhado em tempo real de todos os motores:
+    1. Motor TRBOnet One (Rádios & GPS)
+    2. Robô CDP Enel SP (Equipes & Turnos - Porta 9222)
+    3. Sincronizador em Nuvem Supabase
+    Discrimina se a falha é de CONEXÃO ou se o PROCESSO PAROU.
+    """
+    from supabase_client import fetch_all_engine_health, update_engine_health, BASE_REST_URL, get_headers
+    from delivery_manager import delivery_manager
+
+    # 1. Motor Enel CDP
+    port_9222_open = check_port_listening("127.0.0.1", 9222)
+    thread_enel_alive = ENGINE_THREADS.get("enel_cdp") is not None and ENGINE_THREADS["enel_cdp"].is_alive()
+
+    if not thread_enel_alive:
+        enel_status = "STOPPED"
+        enel_error_type = "PROCESS_STOPPED"
+        enel_msg = "Motor Parado: A rotina de segundo plano da Enel foi finalizada ou não iniciou."
+    elif not port_9222_open:
+        enel_status = "ERROR_CONNECTION"
+        enel_error_type = "CONNECTION_REFUSED"
+        enel_msg = "Falha de Conexão: O Edge corporativo não está ouvindo na porta 9222. Inicie o Edge com depuração ativada."
+    else:
+        enel_status = "OPERATIONAL"
+        enel_error_type = "NONE"
+        enel_msg = "Operacional: Conexão CDP ativa na porta 9222 lendo 500 linhas a cada 2 min."
+
+    update_engine_health("enel_cdp_collector", enel_status, is_running=thread_enel_alive,
+                         error_type=enel_error_type, last_error=enel_msg,
+                         records_count=len(delivery_manager.active_teams))
+
+    # 2. Motor TRBOnet One
+    thread_trbo_alive = ENGINE_THREADS.get("trbonet") is not None and ENGINE_THREADS["trbonet"].is_alive()
+    if not thread_trbo_alive:
+        trbo_status = "STOPPED"
+        trbo_error_type = "PROCESS_STOPPED"
+        trbo_msg = "Motor Parado: A rotina de auto-captura do TRBOnet está inativa."
+    else:
+        trbo_status = "OPERATIONAL"
+        trbo_error_type = "NONE"
+        trbo_msg = "Operacional: Rádios e telemetria GPS sendo conciliados a cada 2 min."
+
+    update_engine_health("trbonet_collector", trbo_status, is_running=thread_trbo_alive,
+                         error_type=trbo_error_type, last_error=trbo_msg,
+                         records_count=len(data_manager.trbonet_teams))
+
+    # 3. Sincronizador Nuvem Supabase
+    try:
+        resp = requests.get(f"{BASE_REST_URL}/system_engine_health?select=engine_name&limit=1", headers=get_headers(), timeout=6)
+        cloud_ok = resp.status_code in [200, 206]
+    except Exception as exc:
+        print(f"[ENGINE_STATUS ERROR] Supabase check failed: {exc}")
+        cloud_ok = False
+
+    cloud_status = "OPERATIONAL" if cloud_ok else "ERROR_CONNECTION"
+    cloud_msg = "Operacional: Conexão REST com banco Supabase ativa." if cloud_ok else "Falha de Conexão: Supabase inacessível ou sem internet."
+    update_engine_health("cloud_sync_listener", cloud_status, is_running=True,
+                         error_type="NONE" if cloud_ok else "CONNECTION_REFUSED",
+                         last_error=cloud_msg, records_count=0)
+
+    return jsonify({
+        "status": "success",
+        "engines": {
+            "trbonet": {
+                "name": "trbonet_collector",
+                "label": "Motor TRBOnet One (Rádios & GPS)",
+                "status": trbo_status,
+                "is_running": thread_trbo_alive,
+                "error_type": trbo_error_type,
+                "message": trbo_msg,
+                "last_sync": data_manager.last_trbonet_sync,
+                "records": len(data_manager.trbonet_teams)
+            },
+            "enel_cdp": {
+                "name": "enel_cdp_collector",
+                "label": "Robô CDP Enel SP (Equipes & Turnos)",
+                "status": enel_status,
+                "is_running": thread_enel_alive,
+                "error_type": enel_error_type,
+                "message": enel_msg,
+                "last_sync": delivery_manager.last_sync_time,
+                "records": len(delivery_manager.active_teams)
+            },
+            "cloud_sync": {
+                "name": "cloud_sync_listener",
+                "label": "Sincronizador Nuvem Supabase",
+                "status": cloud_status,
+                "is_running": True,
+                "error_type": "NONE" if cloud_ok else "CONNECTION_REFUSED",
+                "message": cloud_msg,
+                "last_sync": datetime.now().strftime("%H:%M:%S"),
+                "records": 0
+            }
+        }
+    })
+
+@app.route('/api/admin/restart_engines', methods=['POST'])
+def restart_engines():
+    """
+    Reinicia os motores autônomos locais sem derrubar o servidor web.
+    """
+    try:
+        user = get_current_user()
+        if not user:
+            return jsonify({"status": "unauthorized", "message": "Acesso Restrito: Faça login para reiniciar motores."}), 401
+
+        print("[ADMIN] Reiniciando motores locais de segundo plano a pedido do usuário...")
+        start_background_jobs(force_restart=True)
+        return jsonify({
+            "status": "success",
+            "message": "Motores locais (TRBOnet One e Robô CDP Enel SP) reiniciados com sucesso!"
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Erro ao reiniciar motores: {str(e)}"}), 500
+
+@app.route('/api/telemetry/heartbeat', methods=['POST'])
+def telemetry_heartbeat():
+    """Registra ou atualiza o heartbeat de uma sessão de usuário e loga no Supabase."""
+    try:
+        from supabase_client import upsert_user_session, log_user_access
+        payload = request.get_json(force=True, silent=True) or {}
+        
+        # IP real do cliente
+        forwarded = request.headers.get("X-Forwarded-For")
+        ip = forwarded.split(",")[0].strip() if forwarded else (request.remote_addr or "127.0.0.1")
+        payload["ip_address"] = ip
+
+        # Se houver usuário autenticado no token JWT
+        user = get_current_user()
+        if user:
+            payload["username"] = user.get("nome") or user.get("email") or "Administrador"
+            payload["user_id"] = user.get("sub")
+
+        upsert_user_session(payload)
+        log_user_access(payload)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/admin/telemetry_metrics', methods=['GET'])
+def get_telemetry_metrics():
+    """Retorna estatísticas consolidadas de usuários ativos agora, hoje, semana e mês."""
+    from supabase_client import fetch_session_telemetry_metrics
+    data = fetch_session_telemetry_metrics()
+    return jsonify(data)
+
 def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
     """
     Executa a leitura direta do TRBOnet One via UIAutomation (quando em Windows Local)
@@ -336,6 +524,17 @@ def capture_trbonet_live():
         }), 401
 
     res = execute_trbonet_sync(source_label="Captura Manual (Usuário)")
+    status_code = 200 if res.get("status") in ["success", "warning"] else 500
+    return jsonify(res), status_code
+
+@app.route('/api/capture/enel', methods=['POST', 'GET'])
+def capture_enel_live():
+    """
+    Executa a leitura direta do portal Enel SP via Chrome DevTools Protocol (CDP)
+    selecionando 500 linhas e sincronizando com o Supabase e com o delivery_manager.
+    """
+    from coletor_enel_cdp import executar_ciclo_sincronizacao_enel
+    res = executar_ciclo_sincronizacao_enel(source_label="Captura Manual CDP (Usuário)")
     status_code = 200 if res.get("status") in ["success", "warning"] else 500
     return jsonify(res), status_code
 
@@ -851,6 +1050,110 @@ def export_csv():
     response.headers["Content-Type"] = "text/csv; charset=utf-8-sig"
     return response
 
+# ==============================================================================
+# MÓDULO 2: ENTREGA DE EQUIPES (ENEL SP - PADRÃO TEAMS)
+# ==============================================================================
+
+@app.route('/api/teams/data', methods=['GET'])
+@app.route('/api/delivery/data', methods=['GET'])
+def get_teams_data():
+    """Retorna o estado consolidado das equipes entregues hoje (Ativas vs Total Acumulado)."""
+    if not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams:
+        cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+        if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
+            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase")
+
+    return jsonify(delivery_manager.get_consolidated_state())
+
+@app.route('/api/delivery/history', methods=['GET'])
+def get_delivery_history_by_date():
+    """Retorna a auditoria forense de entrega para uma data específica (YYYY-MM-DD)."""
+    from datetime import date
+    date_str = request.args.get('date') or date.today().isoformat()
+    return jsonify(delivery_manager.get_daily_audit_data(date_str))
+
+@app.route('/api/delivery/monthly', methods=['GET'])
+def get_delivery_monthly_audit():
+    """Retorna consolidação e média diária de equipes entregues no mês (YYYY-MM)."""
+    from datetime import date
+    month_str = request.args.get('month') or date.today().strftime('%Y-%m')
+    return jsonify(delivery_manager.get_monthly_audit_data(month_str))
+
+@app.route('/api/teams/sync', methods=['POST', 'OPTIONS'])
+@app.route('/api/delivery/sync', methods=['POST', 'OPTIONS'])
+def sync_teams_records():
+    """Recebe lote de registros extraídos do portal Enel e persiste no Supabase."""
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        records = payload.get("records") or payload.get("data") or []
+        source = payload.get("source", "Extrator Web Enel SP")
+
+        if not records or not isinstance(records, list):
+            return jsonify({"status": "error", "message": "Nenhum registro enviado."}), 400
+
+        result = delivery_manager.process_raw_enel_records(records, source_label=source)
+
+        try:
+            push_delivery_snapshot_to_supabase(result, sync_source=source)
+        except Exception as err:
+            print(f"[WARN] Falha ao enviar entrega para o Supabase: {err}")
+
+        return jsonify({
+            "status": "success",
+            "message": f"Processadas e consolidadas {len(result.get('teams', []))} equipes entregues!",
+            "data": result
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/teams/export_excel', methods=['GET'])
+@app.route('/api/delivery/export_excel', methods=['GET'])
+def export_teams_excel():
+    """Gera e faz download de planilha Excel (.xlsx) das equipes entregues."""
+    if not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams:
+        cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+        if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
+            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase")
+
+    teams = list(delivery_manager.daily_accumulated_teams.values()) if delivery_manager.daily_accumulated_teams else delivery_manager.active_teams
+    rows = []
+    for t in teams:
+        rows.append({
+            "Código Equipe": t.get("team_code", ""),
+            "Base Operacional": t.get("base_name", ""),
+            "Sigla Base": t.get("base_code", ""),
+            "Região": t.get("region", ""),
+            "Empresa": t.get("company", ""),
+            "Tipo de Frota": t.get("vehicle_type", ""),
+            "Categoria Veículo": t.get("vehicle_category", ""),
+            "Horário Login": t.get("login_time", ""),
+            "Horário Logoff": t.get("logoff_time", ""),
+            "Turno Operacional": t.get("shift_slot", ""),
+            "Motorista / Responsável": t.get("driver", ""),
+            "Placa": t.get("plate", ""),
+            "Status Operacional": t.get("status", ""),
+            "Tipo Operação": t.get("tipo_operacional", ""),
+            "UT": t.get("ut", ""),
+            "Filial": t.get("filial", "")
+        })
+
+    import pandas as pd
+    df = pd.DataFrame(rows)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Entrega_Equipes_Enel')
+
+    output.seek(0)
+    filename = f"Entrega_Equipes_Enel_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename
+    )
+
 @app.route('/api/health', methods=['GET'])
 def health():
     return jsonify({
@@ -859,14 +1162,19 @@ def health():
         "timestamp": datetime.now().isoformat()
     })
 
+ENGINE_THREADS = {
+    "trbonet": None,
+    "enel_cdp": None,
+    "cloud_listener": None
+}
+
 def trbonet_background_worker(interval_seconds=120):
     """
     Worker em segundo plano que executa a captura automática silenciosa
     do TRBOnet One a cada 2 minutos (120 segundos).
     """
     print(f"[BACKGROUND WORKER] Rotina de auto-captura do TRBOnet One iniciada (intervalo: {interval_seconds}s).")
-    # Aguarda 8 segundos iniciais para o servidor Flask inicializar completamente
-    time.sleep(8)
+    time.sleep(6)
     while True:
         try:
             execute_trbonet_sync(source_label="Rotina Automática (2 min)")
@@ -906,19 +1214,39 @@ def remote_command_listener_worker(poll_interval=2.5):
                         push_snapshot_to_supabase(consolidated)
                     except Exception:
                         pass
+                elif cmd_name in ["CAPTURE_ENEL", "SYNC_ENEL", "COLETAR_ENEL"]:
+                    from coletor_enel_cdp import executar_ciclo_sincronizacao_enel
+                    res = executar_ciclo_sincronizacao_enel(source_label="Disparo Remoto Solicitado na Nuvem")
                     status = "COMPLETED" if res.get("status") == "success" else "ERROR"
                     update_command_status(cmd_id, status, res)
         except Exception:
             pass
         time.sleep(poll_interval)
 
-def start_background_jobs():
+def start_background_jobs(force_restart=False):
     """Inicia threads de captura periódica e escuta de comandos remotos da nuvem."""
     if os.name == 'nt' and not os.environ.get("VERCEL"):
-        bg_sync = threading.Thread(target=trbonet_background_worker, args=(120,), daemon=True)
-        bg_sync.start()
-        bg_listener = threading.Thread(target=remote_command_listener_worker, args=(2.5,), daemon=True)
-        bg_listener.start()
+        # 1. Rotina de auto-captura do TRBOnet One (120s)
+        if force_restart or ENGINE_THREADS["trbonet"] is None or not ENGINE_THREADS["trbonet"].is_alive():
+            bg_sync = threading.Thread(target=trbonet_background_worker, args=(120,), daemon=True)
+            bg_sync.start()
+            ENGINE_THREADS["trbonet"] = bg_sync
+
+        # 2. Escuta de comandos remotos da nuvem Supabase (2.5s)
+        if force_restart or ENGINE_THREADS["cloud_listener"] is None or not ENGINE_THREADS["cloud_listener"].is_alive():
+            bg_listener = threading.Thread(target=remote_command_listener_worker, args=(2.5,), daemon=True)
+            bg_listener.start()
+            ENGINE_THREADS["cloud_listener"] = bg_listener
+
+        # 3. Rotina de auto-captura autônoma da Enel SP via CDP (120s)
+        try:
+            from coletor_enel_cdp import enel_background_worker
+            if force_restart or ENGINE_THREADS["enel_cdp"] is None or not ENGINE_THREADS["enel_cdp"].is_alive():
+                bg_enel = threading.Thread(target=enel_background_worker, args=(120,), daemon=True)
+                bg_enel.start()
+                ENGINE_THREADS["enel_cdp"] = bg_enel
+        except Exception as err:
+            print(f"[WARN] Falha ao iniciar worker Enel CDP: {err}")
 
 if __name__ == '__main__':
     import sys
@@ -930,6 +1258,7 @@ if __name__ == '__main__':
     print("[INICIANDO] ALERTAS OPERACIONAIS OP: POWERON vs TRBONET")
     print("[OK] Servidor Local Ativo em: http://127.0.0.1:5000")
     print("[ROUTINE] Rotina de Atualização Automática do TRBOnet One (2 min) ATIVA")
+    print("[ROUTINE] Rotina de Atualização Automática da Enel SP CDP (2 min) ATIVA")
     print("="*70 + "\n")
     
     start_background_jobs()

@@ -42,6 +42,7 @@ class DataManager:
         # Base de dados em tempo real (inicia 100% vazia até receber sincronização real)
         self.poweron_teams = []
         self.trbonet_teams = {}
+        self.enel_team_details = {}
 
         # Registro histórico por equipe
         self.team_history = {}
@@ -296,6 +297,14 @@ class DataManager:
             mins = tot_mins % 60
             online_duration_str = f"{hrs}h {mins:02d}m" if hrs > 0 else f"{mins}m"
 
+            enel_d = self.enel_team_details.get(code, {})
+            driver = enel_d.get("driver") or "--"
+            plate = enel_d.get("plate") or "--"
+            vehicle_type = enel_d.get("vehicle_type") or "--"
+            shift_slot = enel_d.get("shift_slot") or "--"
+            login_time = enel_d.get("login_time") or "--:--"
+            logoff_time = enel_d.get("logoff_time") or "--:--"
+
             teams.append({
                 "code": code,
                 "prefix": prefix,
@@ -308,6 +317,12 @@ class DataManager:
                 "last_signal": last_signal,
                 "radio_id": radio_id,
                 "channel": channel,
+                "driver": driver,
+                "plate": plate,
+                "vehicle_type": vehicle_type,
+                "shift_slot": shift_slot,
+                "login_time": login_time,
+                "logoff_time": logoff_time,
                 "status_code": status_code,
                 "status_label": status_label,
                 "status_category": status_category,
@@ -515,6 +530,42 @@ class DataManager:
             "event": f"Sincronização ({source_label})",
             "source": source_label,
             "details": f"Conciliadas {len(self.poweron_teams)} equipes PowerON e {len(self.trbonet_teams)} rádios TRBOnet nas 14 bases oficiais."
+        })
+
+        return self.consolidate_data()
+
+    def update_from_enel(self, active_codes, active_details=None, source_label="Enel SP Autônomo (CDP)"):
+        """
+        Atualiza a lista de equipes ativas diretamente do Módulo de Entrega Enel SP.
+        Elimina a necessidade de upload ou leitura de planilhas do PowerON.
+        """
+        self.last_update = datetime.now()
+        hoje_str = self.last_update.strftime("%d/%m/%Y")
+
+        if active_codes is not None:
+            self.poweron_teams = sorted(list(set([
+                str(t).strip().upper() for t in active_codes 
+                if len(str(t).strip().upper()) >= 3 and str(t).strip().upper()[:3] in self.official_bases
+            ])))
+
+        if active_details:
+            self.enel_team_details.update(active_details)
+            logins = [
+                d.get("login_time") for d in active_details.values() 
+                if d.get("login_time") and d.get("login_time") != "--:--"
+            ]
+            if logins:
+                self.last_poweron_login = f"{hoje_str} {max(logins)}"
+            else:
+                self.last_poweron_login = self.last_update.strftime("%d/%m/%Y %H:%M:%S")
+
+        self._init_team_history()
+        self.update_count += 1
+        self.audit_log.insert(0, {
+            "timestamp": self.last_update.strftime("%H:%M:%S"),
+            "event": f"Sincronização ({source_label})",
+            "source": source_label,
+            "details": f"Conciliadas {len(self.poweron_teams)} equipes ativas Enel SP e {len(self.trbonet_teams)} rádios TRBOnet."
         })
 
         return self.consolidate_data()

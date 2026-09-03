@@ -7,7 +7,7 @@ e consultas relacionais para a tela de Auditoria & Histórico.
 import os
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://xgfawbqllikosyngfvwa.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sb_publishable_uDfIgt5BLYkRJMU540FMcA_LbaubJox")
@@ -292,3 +292,293 @@ def wait_for_command_completion(command_id: str, timeout_seconds: int = 10) -> d
             pass
         time.sleep(0.8)
     return {"status": "TIMEOUT", "message": "O Agente Local não respondeu a tempo."}
+
+# ==============================================================================
+# PERSISTÊNCIA RELACIONAL DO MÓDULO DE ENTREGA DE EQUIPES (ENEL)
+# ==============================================================================
+
+def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal Enel SP") -> dict:
+    """Grava o cabeçalho da sessão de entrega e as linhas individuais no Supabase."""
+    try:
+        summary = delivery_data.get("summary", {})
+        teams = delivery_data.get("teams", [])
+        now = datetime.now()
+        date_today = now.strftime("%Y-%m-%d")
+
+        counts_v = summary.get("counts_vehicle", {})
+        counts_c = summary.get("counts_company", {})
+
+        session_payload = {
+            "captured_at": now.isoformat(),
+            "date_ref": date_today,
+            "total_teams": int(summary.get("total_delivered", len(teams))),
+            "total_cesto": int(counts_v.get("Cesto Aéreo", 0)),
+            "total_veiculo_leve": int(counts_v.get("Veículo Leve", 0)),
+            "total_moto": int(counts_v.get("Moto", 0)),
+            "total_munck": int(counts_v.get("Munck", 0)),
+            "total_linha_viva": int(counts_v.get("Linha Viva", 0)),
+            "total_alpitel": int(counts_c.get("Alpitel", 0)),
+            "total_propria": int(counts_c.get("Própria", 0)),
+            "sync_source": sync_source
+        }
+
+        endpoint_session = f"{BASE_REST_URL}/team_delivery_sessions"
+        resp_session = requests.post(endpoint_session, headers=get_headers(), json=session_payload, timeout=10)
+        
+        session_id = None
+        if resp_session.status_code in [200, 201]:
+            s_data = resp_session.json()
+            if isinstance(s_data, list) and s_data:
+                session_id = s_data[0].get("id")
+
+        if teams and len(teams) > 0:
+            records_payload = []
+            for t in teams:
+                records_payload.append({
+                    "session_id": session_id,
+                    "captured_at": now.isoformat(),
+                    "date_ref": date_today,
+                    "team_code": str(t.get("team_code", "")).upper(),
+                    "base_code": str(t.get("base_code", "")).upper(),
+                    "base_name": str(t.get("base_name", "")),
+                    "base_display": str(t.get("base_display") or t.get("base_name", "")),
+                    "region": str(t.get("region", "Outras Bases")),
+                    "company": str(t.get("company", "Outros")),
+                    "vehicle_type": str(t.get("vehicle_type", "Outros")),
+                    "vehicle_category": str(t.get("vehicle_category", "Pesado")),
+                    "unified_group": str(t.get("unified_group", "Cesto Aéreo")),
+                    "login_time": str(t.get("login_time", "--")),
+                    "logoff_time": str(t.get("logoff_time", "--")),
+                    "shift_slot": str(t.get("shift_slot", "Turno 08:00")),
+                    "shift_code": str(t.get("shift_code", "08:00")),
+                    "status": str(t.get("status", "Logada")),
+                    "driver": str(t.get("driver", "--")),
+                    "plate": str(t.get("plate", "--")),
+                    "ut": str(t.get("ut", "--")),
+                    "filial": str(t.get("filial", "--")),
+                    "is_active": bool(t.get("is_active", True)),
+                    "sync_source": sync_source
+                })
+
+            # Inserção em lotes de 100
+            endpoint_records = f"{BASE_REST_URL}/team_delivery_records"
+            for i in range(0, len(records_payload), 100):
+                chunk = records_payload[i:i+100]
+                requests.post(endpoint_records, headers=get_headers(), json=chunk, timeout=10)
+
+        return {"status": "success", "session_id": session_id, "total_records": len(teams)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def fetch_latest_delivery_snapshot_from_supabase() -> dict:
+    """Busca os registros da última sessão de entrega gravada no Supabase."""
+    try:
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?order=captured_at.desc&limit=500"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=10)
+        if resp.status_code == 200:
+            records = resp.json() or []
+            return {"status": "success", "data": records}
+        return {"status": "error", "message": resp.text, "data": []}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "data": []}
+
+def fetch_delivery_records_by_date(date_str: str) -> list:
+    """Busca registros históricos de equipes entregues para uma data específica (YYYY-MM-DD)."""
+    try:
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&order=team_code.asc&limit=1000"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=12)
+        if resp.status_code == 200:
+            return resp.json() or []
+        return []
+    except Exception as e:
+        print(f"[SUPABASE FETCH DATE ERROR] {e}")
+        return []
+
+def fetch_delivery_sessions_by_month(month_str: str) -> list:
+    """Busca cabeçalhos de sessões de entrega de um determinado mês (YYYY-MM)."""
+    try:
+        endpoint = f"{BASE_REST_URL}/team_delivery_sessions?date_ref=gte.{month_str}-01&date_ref=lte.{month_str}-31&order=date_ref.asc&limit=1000"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=12)
+        if resp.status_code == 200:
+            return resp.json() or []
+        return []
+    except Exception as e:
+        print(f"[SUPABASE FETCH MONTH ERROR] {e}")
+        return []
+
+# ==============================================================================
+# MONITORAMENTO DE SAÚDE DOS MOTORES (ENGINE HEALTH)
+# ==============================================================================
+
+def update_engine_health(engine_name: str, status: str, is_running: bool = True,
+                         error_type: str = "NONE", last_error: str = None,
+                         records_count: int = 0) -> dict:
+    """
+    Atualiza o estado de um motor na tabela 'system_engine_health'.
+    status: 'OPERATIONAL', 'ERROR_CONNECTION', 'STOPPED', 'WARNING'
+    error_type: 'NONE', 'CONNECTION_REFUSED', 'TIMEOUT', 'PROCESS_STOPPED'
+    """
+    try:
+        payload = {
+            "status": status,
+            "is_running": is_running,
+            "error_type": error_type,
+            "last_heartbeat": datetime.now().isoformat(),
+            "records_count": records_count
+        }
+        if status == "OPERATIONAL":
+            payload["last_success_sync"] = datetime.now().isoformat()
+            payload["consecutive_errors"] = 0
+            payload["last_error_message"] = None
+        else:
+            payload["last_error_message"] = str(last_error or "")
+
+        headers = get_headers()
+        headers["Prefer"] = "return=representation"
+        endpoint = f"{BASE_REST_URL}/system_engine_health?engine_name=eq.{engine_name}"
+        resp = requests.patch(endpoint, headers=headers, json=payload, timeout=6)
+        if resp.status_code in [200, 204]:
+            return {"status": "success"}
+        return {"status": "error", "message": resp.text}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def fetch_all_engine_health() -> list:
+    """Busca o status em tempo real de todos os motores cadastrados no Supabase."""
+    try:
+        endpoint = f"{BASE_REST_URL}/system_engine_health?order=engine_name.asc"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=6)
+        if resp.status_code == 200:
+            return resp.json() or []
+        return []
+    except Exception as e:
+        print(f"[FETCH ENGINE HEALTH ERROR] {e}")
+        return []
+
+# ==============================================================================
+# TELEMETRIA DE SESSÕES E AUDITORIA DE USUÁRIOS
+# ==============================================================================
+
+def upsert_user_session(session_data: dict) -> dict:
+    """
+    Registra ou atualiza o heartbeat de uma sessão de usuário no Supabase.
+    Armazena Fingerprint, IP, Geolocalização, Dispositivo e Navegador.
+    """
+    try:
+        session_id = session_data.get("session_id")
+        if not session_id:
+            return {"status": "error", "message": "session_id é obrigatório"}
+
+        payload = {
+            "session_id": session_id,
+            "username": session_data.get("username", "Colaborador"),
+            "fingerprint": session_data.get("fingerprint", "desconhecido"),
+            "ip_address": session_data.get("ip_address", "127.0.0.1"),
+            "device_type": session_data.get("device_type", "Desktop"),
+            "device_brand": session_data.get("device_brand", ""),
+            "os_name": session_data.get("os_name", "Windows"),
+            "browser_name": session_data.get("browser_name", "Navegador"),
+            "geo_city": session_data.get("geo_city", "São Paulo"),
+            "geo_region": session_data.get("geo_region", "SP"),
+            "geo_country": session_data.get("geo_country", "Brasil"),
+            "last_heartbeat": datetime.now().isoformat(),
+            "is_active": True
+        }
+
+        headers = get_headers()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        endpoint = f"{BASE_REST_URL}/system_user_sessions"
+        resp = requests.post(endpoint, headers=headers, json=payload, timeout=6)
+        if resp.status_code in [200, 201]:
+            return {"status": "success"}
+        return {"status": "error", "message": resp.text}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def log_user_access(access_data: dict) -> dict:
+    """Grava uma entrada de log na tabela de auditoria temporal 'system_user_access_logs'."""
+    try:
+        payload = {
+            "session_id": access_data.get("session_id"),
+            "fingerprint": access_data.get("fingerprint", ""),
+            "username": access_data.get("username", "Colaborador"),
+            "ip_address": access_data.get("ip_address", "127.0.0.1"),
+            "device_type": access_data.get("device_type", "Desktop"),
+            "os_name": access_data.get("os_name", "Windows"),
+            "browser_name": access_data.get("browser_name", "Navegador"),
+            "geo_city": access_data.get("geo_city", "São Paulo"),
+            "endpoint": access_data.get("endpoint", "/"),
+            "accessed_at": datetime.now().isoformat(),
+            "date_ref": datetime.now().strftime("%Y-%m-%d")
+        }
+        endpoint = f"{BASE_REST_URL}/system_user_access_logs"
+        resp = requests.post(endpoint, headers=get_headers(), json=payload, timeout=6)
+        if resp.status_code in [200, 201]:
+            return {"status": "success"}
+        return {"status": "error", "message": resp.text}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def fetch_session_telemetry_metrics() -> dict:
+    """
+    Retorna métricas consolidadas de usuários ativos agora, hoje, semana e mês,
+    além da lista forense de sessões auditadas.
+    """
+    try:
+        now = datetime.now()
+        date_today = now.strftime("%Y-%m-%d")
+        
+        # 1. Sessões com heartbeat nos últimos 5 minutos (Ativos Agora)
+        five_min_ago = (now - timedelta(minutes=5)).isoformat()
+        ep_active = f"{BASE_REST_URL}/system_user_sessions?last_heartbeat=gte.{five_min_ago}&order=last_heartbeat.desc"
+        resp_act = requests.get(ep_active, headers=get_headers(), timeout=6)
+        active_sessions = resp_act.json() if resp_act.status_code == 200 else []
+        active_count = len(active_sessions)
+
+        # 2. Todas as sessões recentes (até 100)
+        ep_all = f"{BASE_REST_URL}/system_user_sessions?order=last_heartbeat.desc&limit=100"
+        resp_all = requests.get(ep_all, headers=get_headers(), timeout=6)
+        recent_sessions = resp_all.json() if resp_all.status_code == 200 else []
+
+        # 3. Contagem de acessos Hoje
+        ep_today = f"{BASE_REST_URL}/system_user_access_logs?date_ref=eq.{date_today}&select=id,fingerprint"
+        resp_today = requests.get(ep_today, headers=get_headers(), timeout=6)
+        logs_today = resp_today.json() if resp_today.status_code == 200 else []
+        unique_today = len(set(l.get("fingerprint") for l in logs_today if l.get("fingerprint"))) or len(logs_today)
+
+        # 4. Contagem de acessos Semana (últimos 7 dias)
+        seven_days_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        ep_week = f"{BASE_REST_URL}/system_user_access_logs?date_ref=gte.{seven_days_ago}&select=id,fingerprint"
+        resp_week = requests.get(ep_week, headers=get_headers(), timeout=6)
+        logs_week = resp_week.json() if resp_week.status_code == 200 else []
+        unique_week = len(set(l.get("fingerprint") for l in logs_week if l.get("fingerprint"))) or len(logs_week)
+
+        # 5. Contagem de acessos Mês (últimos 30 dias)
+        thirty_days_ago = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        ep_month = f"{BASE_REST_URL}/system_user_access_logs?date_ref=gte.{thirty_days_ago}&select=id,fingerprint"
+        resp_month = requests.get(ep_month, headers=get_headers(), timeout=6)
+        logs_month = resp_month.json() if resp_month.status_code == 200 else []
+        unique_month = len(set(l.get("fingerprint") for l in logs_month if l.get("fingerprint"))) or len(logs_month)
+
+        return {
+            "status": "success",
+            "active_now": active_count,
+            "today_unique": unique_today,
+            "week_unique": unique_week,
+            "month_unique": unique_month,
+            "active_sessions": active_sessions,
+            "recent_sessions": recent_sessions
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "active_now": 0,
+            "today_unique": 0,
+            "week_unique": 0,
+            "month_unique": 0,
+            "active_sessions": [],
+            "recent_sessions": []
+        }
+
+
