@@ -300,10 +300,11 @@ def wait_for_command_completion(command_id: str, timeout_seconds: int = 10) -> d
 def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal Enel SP") -> dict:
     """Grava o cabeçalho da sessão de entrega e as linhas individuais no Supabase."""
     try:
-        summary = delivery_data.get("summary", {})
-        teams = delivery_data.get("teams", [])
+        # Suporta tanto o formato consolidado atual (active_teams / summary_active) quanto o legado
+        teams = delivery_data.get("active_teams") or delivery_data.get("teams") or []
+        summary = delivery_data.get("summary_active") or delivery_data.get("summary") or {}
         now = datetime.now()
-        date_today = now.strftime("%Y-%m-%d")
+        date_today = delivery_data.get("date") or now.strftime("%Y-%m-%d")
 
         counts_v = summary.get("counts_vehicle", {})
         counts_c = summary.get("counts_company", {})
@@ -311,7 +312,7 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
         session_payload = {
             "captured_at": now.isoformat(),
             "date_ref": date_today,
-            "total_teams": int(summary.get("total_delivered", len(teams))),
+            "total_teams": int(summary.get("total", len(teams))),
             "total_cesto": int(counts_v.get("Cesto Aéreo", 0)),
             "total_veiculo_leve": int(counts_v.get("Veículo Leve", 0)),
             "total_moto": int(counts_v.get("Moto", 0)),
@@ -371,13 +372,39 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
         return {"status": "error", "message": str(e)}
 
 def fetch_latest_delivery_snapshot_from_supabase() -> dict:
-    """Busca os registros da última sessão de entrega gravada no Supabase."""
+    """Busca estritamente os registros da última sessão de entrega ativa gravada no Supabase."""
     try:
-        endpoint = f"{BASE_REST_URL}/team_delivery_records?order=captured_at.desc&limit=500"
+        # 1. Busca a sessão mais recente que contenha registros (total_teams > 0)
+        endpoint_sess = f"{BASE_REST_URL}/team_delivery_sessions?total_teams=gt.0&order=captured_at.desc&limit=1"
+        resp_sess = requests.get(endpoint_sess, headers=get_headers(), timeout=10)
+        
+        latest_session_id = None
+        if resp_sess.status_code == 200:
+            sessions = resp_sess.json() or []
+            if sessions:
+                latest_session_id = sessions[0].get("id")
+
+        if latest_session_id:
+            endpoint_recs = f"{BASE_REST_URL}/team_delivery_records?session_id=eq.{latest_session_id}&order=team_code.asc&limit=500"
+            resp_recs = requests.get(endpoint_recs, headers=get_headers(), timeout=10)
+            if resp_recs.status_code == 200:
+                records = resp_recs.json() or []
+                if records:
+                    return {"status": "success", "data": records, "session_id": latest_session_id}
+
+        # Fallback: busca os últimos registros deduplicando por team_code
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?order=captured_at.desc&limit=300"
         resp = requests.get(endpoint, headers=get_headers(), timeout=10)
         if resp.status_code == 200:
-            records = resp.json() or []
-            return {"status": "success", "data": records}
+            raw_records = resp.json() or []
+            seen = set()
+            dedup = []
+            for r in raw_records:
+                code = r.get("team_code")
+                if code and code not in seen:
+                    seen.add(code)
+                    dedup.append(r)
+            return {"status": "success", "data": dedup}
         return {"status": "error", "message": resp.text, "data": []}
     except Exception as e:
         return {"status": "error", "message": str(e), "data": []}

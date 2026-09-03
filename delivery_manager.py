@@ -341,6 +341,7 @@ class DeliveryManager:
         self.last_sync_time = now.strftime("%d/%m/%Y %H:%M:%S")
         self.sync_source = source_label
 
+        active_dict = {}
         active_processed = []
 
         for rec in raw_records:
@@ -425,7 +426,7 @@ class DeliveryManager:
                 "raw_shift": str(shift_raw),
                 "last_seen_time": now.strftime("%H:%M:%S")
             }
-            active_processed.append(team_obj)
+            active_dict[team_code] = team_obj
 
             # Acumula no histórico do dia
             if team_code not in self.daily_accumulated_teams:
@@ -440,8 +441,10 @@ class DeliveryManager:
                 self.daily_accumulated_teams[team_code]["first_seen_time"] = f_seen
                 self.daily_accumulated_teams[team_code]["is_active"] = True
 
+        active_processed = sorted(list(active_dict.values()), key=lambda x: x["team_code"])
+
         # Marca equipes acumuladas que saíram da lista ativa nesta coleta
-        active_codes = {t["team_code"] for t in active_processed}
+        active_codes = set(active_dict.keys())
         for code, t in list(self.daily_accumulated_teams.items()):
             if code not in active_codes:
                 t["is_active"] = False
@@ -450,8 +453,6 @@ class DeliveryManager:
                 if now.hour >= 5 and t.get("shift_code") in ["20:00", "22:00"]:
                     del self.daily_accumulated_teams[code]
 
-        # Ordena ambas
-        active_processed.sort(key=lambda x: x["team_code"])
         self.active_teams = active_processed
 
         # Registra ponto na curva intraday por faixa de horário (06h, 08h, 12h, 14h, 20h, 22h)

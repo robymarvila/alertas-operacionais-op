@@ -1063,6 +1063,18 @@ def get_teams_data():
         if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
             delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase")
 
+        try:
+            from supabase_client import fetch_delivery_records_by_date
+            op_date = delivery_manager.get_operational_date()
+            today_recs = fetch_delivery_records_by_date(op_date)
+            if today_recs:
+                for r in today_recs:
+                    t_code = r.get("team_code")
+                    if t_code and t_code not in delivery_manager.daily_accumulated_teams:
+                        delivery_manager.daily_accumulated_teams[t_code] = r
+        except Exception:
+            pass
+
     return jsonify(delivery_manager.get_consolidated_state())
 
 @app.route('/api/delivery/history', methods=['GET'])
