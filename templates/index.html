@@ -16,9 +16,11 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- Supabase JS Client for Realtime WebSockets (Padrão Fleet) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=3.1.0">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=3.3.2">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -360,6 +362,12 @@
 
                     <!-- Ações Rápidas Organizadas no Lado Direito (No Módulo) -->
                     <div class="header-actions" id="moduleHeaderActions">
+                        <!-- Badge Realtime Supabase (WebSocket Padrão Fleet) -->
+                        <div class="realtime-status-pill" id="realtimeModuleBadge" title="Status da Conexão WebSocket com o Supabase">
+                            <span class="status-pulse-dot" id="realtimeModulePulse"></span>
+                            <span class="realtime-text" id="realtimeModuleText">REALTIME ATIVO</span>
+                        </div>
+
                         <!-- Temporizador Circular de Auto-refresh (2 Minutos) -->
                         <div class="auto-refresh-control" title="Auto-refresh automático a cada 2 minutos">
                             <svg class="progress-ring" width="36" height="36">
@@ -1121,6 +1129,12 @@
                             <span id="authLockTextDelivery">BLOQUEADO</span>
                         </button>
 
+                        <!-- Badge Realtime Supabase (WebSocket Padrão Fleet) -->
+                        <div class="realtime-status-pill" id="realtimeDeliveryBadge" title="Status da Conexão WebSocket com o Supabase">
+                            <span class="status-pulse-dot" id="realtimeDeliveryPulse"></span>
+                            <span class="realtime-text" id="realtimeDeliveryText">REALTIME ATIVO</span>
+                        </div>
+
                         <!-- 1. Coletar Entrega (Enel Portal) -->
                         <button class="btn btn-primary special-action locked-action" id="btnCollectDelivery" title="Coletar dados via Robô Autônomo CDP" onclick="handleRestrictedAction(openDeliveryCollectModal)">
                             <span>COLETAR AGORA (CDP)</span>
@@ -1299,6 +1313,31 @@
                     </div>
                 </div>
 
+                <!-- BARRA DE CONTROLE: SELETOR DE VISUALIZAÇÃO REGIONAL (ATIVAS vs TOTAL DIA) -->
+                <div class="regional-control-bar glass-card">
+                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                        <span style="font-size: 0.82rem; font-weight: 800; color: var(--text-primary); letter-spacing: 0.04em;">VISUALIZAÇÃO DOS CARDS REGIONAIS:</span>
+                        <div class="region-view-mode-toggle" id="regionalViewModeSwitcher">
+                            <button class="region-mode-btn active" data-mode="active" onclick="setRegionalViewMode('active')">
+                                <span class="status-dot-sm green"></span>
+                                <span>EQUIPES ATIVAS (EM TURNO)</span>
+                            </button>
+                            <button class="region-mode-btn" data-mode="total" onclick="setRegionalViewMode('total')">
+                                <span class="status-dot-sm blue"></span>
+                                <span>TOTAL DO DIA (ACUMULADO)</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <span id="regionalModeStatusHint" style="font-size: 0.76rem; font-weight: 600; color: var(--text-secondary);">
+                            Mostrando apenas equipes em turno ativo
+                        </span>
+                        <button class="btn btn-secondary btn-sm" onclick="clearDeliveryBaseFilters()" style="padding: 6px 14px; font-size: 0.75rem; font-weight: 800; border-radius: 8px;">
+                            LIMPAR SELEÇÃO
+                        </button>
+                    </div>
+                </div>
+
                 <!-- PAINEL AGRUPADO DAS 14 BASES OPERACIONAIS (NORTE & LESTE COM FILTRO MÚLTIPLO) -->
                 <div class="delivery-regions-container">
                     <!-- REGIÃO NORTE -->
@@ -1308,9 +1347,16 @@
                                 <span>REGIÃO NORTE</span>
                                 <span class="geo-region-badge badge-norte">3 BASES OFICIAIS</span>
                             </div>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <span style="font-size: 0.75rem; color: var(--text-secondary);">CLIQUE NOS CARDS PARA APLICAR FILTROS MÚLTIPLOS</span>
-                                <button class="btn btn-secondary btn-sm" onclick="clearDeliveryBaseFilters()" style="padding: 4px 12px; font-size: 0.75rem; font-weight: 800;">LIMPAR FILTROS</button>
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <div class="region-view-mode-toggle">
+                                    <button class="region-mode-btn active" data-mode="active" onclick="setRegionalViewMode('active')">
+                                        <span class="status-dot-sm green"></span> ATIVAS
+                                    </button>
+                                    <button class="region-mode-btn" data-mode="total" onclick="setRegionalViewMode('total')">
+                                        <span class="status-dot-sm blue"></span> TOTAL DIA
+                                    </button>
+                                </div>
+                                <button class="btn btn-secondary btn-sm" onclick="clearDeliveryBaseFilters()" style="padding: 4px 12px; font-size: 0.75rem; font-weight: 800;">LIMPAR</button>
                             </div>
                         </div>
                         <div class="geo-cards-layout">
@@ -1379,9 +1425,16 @@
                                 <span>REGIÃO LESTE</span>
                                 <span class="geo-region-badge badge-leste">4 BASES OFICIAIS</span>
                             </div>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <span style="font-size: 0.75rem; color: var(--text-secondary);">CLIQUE NOS CARDS PARA APLICAR FILTROS MÚLTIPLOS</span>
-                                <button class="btn btn-secondary btn-sm" onclick="clearDeliveryBaseFilters()" style="padding: 4px 12px; font-size: 0.75rem; font-weight: 800;">LIMPAR FILTROS</button>
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <div class="region-view-mode-toggle">
+                                    <button class="region-mode-btn active" data-mode="active" onclick="setRegionalViewMode('active')">
+                                        <span class="status-dot-sm green"></span> ATIVAS
+                                    </button>
+                                    <button class="region-mode-btn" data-mode="total" onclick="setRegionalViewMode('total')">
+                                        <span class="status-dot-sm blue"></span> TOTAL DIA
+                                    </button>
+                                </div>
+                                <button class="btn btn-secondary btn-sm" onclick="clearDeliveryBaseFilters()" style="padding: 4px 12px; font-size: 0.75rem; font-weight: 800;">LIMPAR</button>
                             </div>
                         </div>
                         <div class="geo-cards-layout">
@@ -2317,7 +2370,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=3.2.0"></script>
+<script src="/static/js/app.js?v=3.3.2"></script>
 
 </body>
 </html>

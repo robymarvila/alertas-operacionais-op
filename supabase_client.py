@@ -298,21 +298,21 @@ def wait_for_command_completion(command_id: str, timeout_seconds: int = 10) -> d
 # ==============================================================================
 
 def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal Enel SP") -> dict:
-    """Grava o cabeçalho da sessão de entrega e as linhas individuais no Supabase."""
+    """Grava o cabeçalho da sessão de entrega e as linhas individuais no Supabase (ativas + acumuladas do dia)."""
     try:
-        # Suporta tanto o formato consolidado atual (active_teams / summary_active) quanto o legado
-        teams = delivery_data.get("active_teams") or delivery_data.get("teams") or []
-        summary = delivery_data.get("summary_active") or delivery_data.get("summary") or {}
+        active_teams = delivery_data.get("active_teams") or delivery_data.get("teams") or []
+        daily_total = delivery_data.get("daily_total_teams") or []
+        summary_active = delivery_data.get("summary_active") or delivery_data.get("summary") or {}
         now = datetime.now()
         date_today = delivery_data.get("date") or now.strftime("%Y-%m-%d")
 
-        counts_v = summary.get("counts_vehicle", {})
-        counts_c = summary.get("counts_company", {})
+        counts_v = summary_active.get("counts_vehicle", {})
+        counts_c = summary_active.get("counts_company", {})
 
         session_payload = {
             "captured_at": now.isoformat(),
             "date_ref": date_today,
-            "total_teams": int(summary.get("total", len(teams))),
+            "total_teams": int(summary_active.get("total", len(active_teams))),
             "total_cesto": int(counts_v.get("Cesto Aéreo", 0)),
             "total_veiculo_leve": int(counts_v.get("Veículo Leve", 0)),
             "total_moto": int(counts_v.get("Moto", 0)),
@@ -332,9 +332,13 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
             if isinstance(s_data, list) and s_data:
                 session_id = s_data[0].get("id")
 
-        if teams and len(teams) > 0:
+        # Persiste o universo completo do dia nesta sessão: equipes ativas (is_active=True) e concluídas (is_active=False)
+        teams_to_save = daily_total if daily_total and len(daily_total) >= len(active_teams) else active_teams
+
+        if teams_to_save and len(teams_to_save) > 0:
             records_payload = []
-            for t in teams:
+            for t in teams_to_save:
+                is_act = bool(t.get("is_active", True))
                 records_payload.append({
                     "session_id": session_id,
                     "captured_at": now.isoformat(),
@@ -357,7 +361,7 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                     "plate": str(t.get("plate", "--")),
                     "ut": str(t.get("ut", "--")),
                     "filial": str(t.get("filial", "--")),
-                    "is_active": bool(t.get("is_active", True)),
+                    "is_active": is_act,
                     "sync_source": sync_source
                 })
 
@@ -367,7 +371,7 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                 chunk = records_payload[i:i+100]
                 requests.post(endpoint_records, headers=get_headers(), json=chunk, timeout=10)
 
-        return {"status": "success", "session_id": session_id, "total_records": len(teams)}
+        return {"status": "success", "session_id": session_id, "total_records": len(teams_to_save)}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -385,7 +389,7 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
                 latest_session_id = sessions[0].get("id")
 
         if latest_session_id:
-            endpoint_recs = f"{BASE_REST_URL}/team_delivery_records?session_id=eq.{latest_session_id}&order=team_code.asc&limit=500"
+            endpoint_recs = f"{BASE_REST_URL}/team_delivery_records?session_id=eq.{latest_session_id}&order=team_code.asc&limit=1000"
             resp_recs = requests.get(endpoint_recs, headers=get_headers(), timeout=10)
             if resp_recs.status_code == 200:
                 records = resp_recs.json() or []

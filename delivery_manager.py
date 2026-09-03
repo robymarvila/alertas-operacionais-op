@@ -356,6 +356,8 @@ class DeliveryManager:
                 ut = rec.get("UT") or rec.get("ut") or "--"
                 base_raw = rec.get("BASE") or rec.get("base") or rec.get("base_name") or rec.get("base_code") or "--"
                 filial = rec.get("FILIAL") or rec.get("filial") or "--"
+                is_act_input = rec.get("is_active")
+                is_active_val = bool(is_act_input) if is_act_input is not None else True
             elif isinstance(rec, (list, tuple)) and len(rec) >= 5:
                 ut = rec[0] if len(rec) > 0 else "--"
                 base_raw = rec[1] if len(rec) > 1 else "--"
@@ -367,6 +369,7 @@ class DeliveryManager:
                 shift_raw = rec[7] if len(rec) > 7 else "--"
                 status_oper = rec[9] if len(rec) > 9 else "Logada"
                 plate = rec[11] if len(rec) > 11 else "--"
+                is_active_val = True
             else:
                 continue
 
@@ -412,7 +415,7 @@ class DeliveryManager:
                 "filial": filial,
                 "tipo_operacional": tipo_oper,
                 "status": status_oper,
-                "is_active": True,
+                "is_active": is_active_val,
                 "vehicle_type": veh_info["type"],
                 "unified_group": veh_info["unified_group"],
                 "vehicle_category": veh_info["category"],
@@ -426,7 +429,8 @@ class DeliveryManager:
                 "raw_shift": str(shift_raw),
                 "last_seen_time": now.strftime("%H:%M:%S")
             }
-            active_dict[team_code] = team_obj
+            if is_active_val:
+                active_dict[team_code] = team_obj
 
             # Acumula no histórico do dia
             if team_code not in self.daily_accumulated_teams:
@@ -439,7 +443,7 @@ class DeliveryManager:
                 f_seen = existing.get("first_seen_time", now.strftime("%H:%M:%S"))
                 self.daily_accumulated_teams[team_code].update(team_obj)
                 self.daily_accumulated_teams[team_code]["first_seen_time"] = f_seen
-                self.daily_accumulated_teams[team_code]["is_active"] = True
+                self.daily_accumulated_teams[team_code]["is_active"] = is_active_val
 
         active_processed = sorted(list(active_dict.values()), key=lambda x: x["team_code"])
 

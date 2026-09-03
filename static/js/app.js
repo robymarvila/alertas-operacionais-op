@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchDashboardData(false);
     loadDeliveryData(false);
     startAutoRefreshTimer();
-    startRealtimePoller(15000); // Polling em tempo real a cada 15 segundos
+    initSupabaseRealtime(); // WebSocket Realtime com Supabase (Padrão Fleet Operação)
     sendTelemetryHeartbeat();
     setInterval(sendTelemetryHeartbeat, 60000);
 
@@ -667,28 +667,114 @@ async function refreshAllRealtimeData(isManual = false) {
     }
 }
 
-// Poller Contínuo de Alta Frequência (Tempo Real a cada 15 segundos)
-let realTimePollerId = null;
-function startRealtimePoller(intervalMs = 15000) {
-    if (realTimePollerId) clearInterval(realTimePollerId);
-    realTimePollerId = setInterval(async () => {
-        // Não consome recursos se a aba estiver oculta ou o temporizador estiver pausado
-        if (document.hidden || appState.isPaused) return;
+// ==========================================================================
+// SUPABASE REALTIME CLIENT (WEBSOCKETS PUSH - PADRÃO FLEET OPERAÇÃO)
+// ==========================================================================
+const SUPABASE_REALTIME_CONFIG = {
+    url: "https://xgfawbqllikosyngfvwa.supabase.co",
+    anonKey: "sb_publishable_uDfIgt5BLYkRJMU540FMcA_LbaubJox"
+};
 
-        try {
-            await Promise.allSettled([
-                fetchDashboardData(false),
-                loadDeliveryData(false)
-            ]);
-            updateHubCard();
-            updateDeliveryHubCard();
-        } catch (err) {
-            // Silencioso em caso de micro-oscilações de rede
+let supabaseClient = null;
+let realtimeSyncChannel = null;
+
+function setRealtimeBadgeStatus(status) {
+    const badges = [
+        { pill: document.getElementById('realtimeModuleBadge'), pulse: document.getElementById('realtimeModulePulse'), text: document.getElementById('realtimeModuleText') },
+        { pill: document.getElementById('realtimeDeliveryBadge'), pulse: document.getElementById('realtimeDeliveryPulse'), text: document.getElementById('realtimeDeliveryText') }
+    ];
+
+    badges.forEach(b => {
+        if (!b.pill) return;
+        if (status === 'SUBSCRIBED') {
+            b.pill.classList.remove('reconnecting');
+            if (b.pulse) { b.pulse.className = 'status-pulse-dot'; }
+            if (b.text) { b.text.textContent = 'REALTIME ATIVO'; }
+        } else if (status === 'CONNECTING') {
+            b.pill.classList.add('reconnecting');
+            if (b.pulse) { b.pulse.className = 'status-pulse-dot yellow'; }
+            if (b.text) { b.text.textContent = 'CONECTANDO...'; }
+        } else {
+            b.pill.classList.add('reconnecting');
+            if (b.pulse) { b.pulse.className = 'status-pulse-dot yellow'; }
+            if (b.text) { b.text.textContent = 'RECONECTANDO...'; }
         }
-    }, intervalMs);
+    });
 }
 
-window.refreshAllRealtimeData = refreshAllRealtimeData;
+function initSupabaseRealtime(retryCount = 0) {
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        if (retryCount < 6) {
+            setTimeout(() => initSupabaseRealtime(retryCount + 1), 400);
+            return;
+        }
+        console.warn('[REALTIME] SDK Supabase JS não encontrado após tentativas.');
+        return;
+    }
+
+    try {
+        setRealtimeBadgeStatus('CONNECTING');
+        supabaseClient = window.supabase.createClient(SUPABASE_REALTIME_CONFIG.url, SUPABASE_REALTIME_CONFIG.anonKey);
+
+        realtimeSyncChannel = supabaseClient
+            .channel('cco-realtime-engine-sync')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'operational_sync_sessions' },
+                (payload) => {
+                    console.log('[REALTIME WS] Nova coleta TRBOnet One gravada no Supabase!', payload);
+                    fetchDashboardData(false);
+                    updateHubCard();
+                    showRealtimeIndicator('TRBOnet Atualizado ao Vivo');
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'team_delivery_sessions' },
+                (payload) => {
+                    console.log('[REALTIME WS] Nova coleta Enel SP gravada no Supabase!', payload);
+                    loadDeliveryData(false);
+                    updateDeliveryHubCard();
+                    showRealtimeIndicator('Entrega de Equipes Atualizada ao Vivo');
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'system_engine_health' },
+                (payload) => {
+                    console.log('[REALTIME WS] Estado do motor operacional atualizado:', payload);
+                    if (appState.currentView === 'admin') {
+                        loadAdminEngineStatus();
+                    }
+                }
+            )
+            .subscribe((status, err) => {
+                console.log(`[REALTIME WS] Conexão WebSocket: ${status}`, err || '');
+                setRealtimeBadgeStatus(status);
+            });
+
+    } catch (err) {
+        console.error('[REALTIME WS] Erro ao inicializar conexão WebSocket:', err);
+        setRealtimeBadgeStatus('ERROR');
+    }
+}
+
+function showRealtimeIndicator(message) {
+    const toasts = document.getElementById('toastContainer');
+    if (!toasts) return;
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification toast-realtime';
+    toast.style.cssText = 'background: rgba(16, 185, 129, 0.95); color: #ffffff; border: 1px solid #10b981; border-radius: 8px; padding: 8px 16px; font-weight: 700; font-size: 0.8rem; box-shadow: 0 10px 25px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; margin-bottom: 8px; animation: slideInRight 0.3s ease;';
+    toast.innerHTML = `<span class="status-pulse-dot" style="background:#fff; box-shadow:0 0 6px #fff;"></span> ${message}`;
+    toasts.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.4s ease';
+        setTimeout(() => toast.remove(), 400);
+    }, 3000);
+}
+
+window.initSupabaseRealtime = initSupabaseRealtime;
 
 // ==========================================================================
 // ATUALIZAÇÃO DOS KPIS E RESUMO EXECUTIVO (REATIVO AOS FILTROS REGIONAIS/BASES)
@@ -3022,6 +3108,7 @@ const deliveryState = {
         vehicles: new Set(),
         search: ''
     },
+    regionalViewMode: 'active', // 'active' (Equipes Ativas) | 'total' (Total do Dia)
     filteredTeams: [],
     isTableCollapsed: true,
     shiftChart: null,
@@ -3131,18 +3218,46 @@ function updateDeliveryHubCard() {
     if (elLastSync) elLastSync.textContent = deliveryState.lastSync || '--:--:--';
 }
 
+// Alternador do Modo de Visualização dos Cards Regionais (Ativas vs Total do Dia)
+function setRegionalViewMode(mode) {
+    deliveryState.regionalViewMode = mode; // 'active' | 'total'
+
+    // Atualiza todos os botões seletores da tela
+    document.querySelectorAll('.region-mode-btn').forEach(btn => {
+        if (btn.getAttribute('data-mode') === mode) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    const hintEl = document.getElementById('regionalModeStatusHint');
+    if (hintEl) {
+        hintEl.textContent = mode === 'active'
+            ? 'Mostrando apenas equipes em turno ativo'
+            : 'Mostrando total acumulado do dia (ativas + encerradas)';
+    }
+
+    applyDeliveryFilters();
+}
+window.setRegionalViewMode = setRegionalViewMode;
+
 // Aplicação de Filtros Múltiplos (Regiões, Bases, Turnos, Frotas e Busca)
 function applyDeliveryFilters() {
     const { regions, bases, shifts, vehicles, search } = deliveryState.filters;
     const q = (search || '').trim().toUpperCase();
+    const isModeActive = deliveryState.regionalViewMode !== 'total';
 
-    // A base de filtragem é o universo total acumulado no dia (Equipes TOTAL)
-    const sourceList = deliveryState.dailyTotalTeams.length > 0 
-        ? deliveryState.dailyTotalTeams 
-        : deliveryState.activeTeams;
+    // Se o modo for 'active', o universo base são as equipes ativas agora
+    // Se o modo for 'total', o universo base são todas as equipes acumuladas no dia
+    const sourceList = isModeActive
+        ? (deliveryState.activeTeams.length > 0 ? deliveryState.activeTeams : deliveryState.dailyTotalTeams.filter(t => t.is_active !== false))
+        : (deliveryState.dailyTotalTeams.length > 0 ? deliveryState.dailyTotalTeams : deliveryState.activeTeams);
 
     // 1. Escopo de Turno, Frota e Busca (usado para alimentar os cards da Região Norte, Região Leste e Bases)
     const scopeFiltered = sourceList.filter(t => {
+        if (isModeActive && t.is_active === false) return false;
+
         // Filtro por Turnos Múltiplos
         if (shifts.size > 0 && !shifts.has(t.shift_code)) return false;
 
@@ -3179,12 +3294,39 @@ function applyDeliveryFilters() {
     // 2. Filtro Completo incluindo Regiões e Bases Múltiplas (para tabela e gráficos)
     deliveryState.filteredTeams = scopeFiltered.filter(t => {
         // Filtro por Região Múltipla
-        if (regions.size > 0 && !regions.has(t.geo)) return false;
+        if (regions.size > 0) {
+            let matchRegion = false;
+            for (const r of regions) {
+                if (t.geo === r || (t.region && t.region.toLowerCase().includes(r.toLowerCase()))) {
+                    matchRegion = true;
+                    break;
+                }
+            }
+            if (!matchRegion) return false;
+        }
 
-        // Filtro por Base Múltipla
+        // Filtro por Base Múltipla com correspondência resiliente
         if (bases.size > 0) {
-            const bDisp = t.base_display || t.base_name;
-            if (!bases.has(bDisp) && !bases.has(t.base_name)) return false;
+            let matchBase = false;
+            const bDisp = (t.base_display || '').toLowerCase();
+            const bName = (t.base_name || '').toLowerCase();
+            const bCode = (t.base_code || t.prefix || '').toLowerCase();
+            for (const b of bases) {
+                const bLower = b.toLowerCase();
+                if (bDisp === bLower || bName === bLower || bCode === bLower ||
+                    (bLower.includes('fagundes') && (bDisp.includes('fagundes') || bCode === 'enl' || bCode === 'ena')) ||
+                    (bLower.includes('cajati') && (bDisp.includes('cajati') || bCode === 'ecl' || bCode === 'eca')) ||
+                    (bLower.includes('medeiros') && (bDisp.includes('medeiros') || bCode === 'eel' || bCode === 'eea')) ||
+                    (bLower.includes('monte') && (bDisp.includes('monte') || bCode === 'eml' || bCode === 'ema')) ||
+                    (bLower.includes('aricanduva') && (bDisp.includes('aricanduva') || bCode === 'eql' || bCode === 'eqa')) ||
+                    (bLower.includes('catumbi') && (bDisp.includes('catumbi') || bCode === 'evl' || bCode === 'eva')) ||
+                    (bLower.includes('andr') && (bDisp.includes('andr') || bCode === 'esl' || bCode === 'esa'))
+                ) {
+                    matchBase = true;
+                    break;
+                }
+            }
+            if (!matchBase) return false;
         }
 
         return true;
@@ -3319,6 +3461,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const regNorte = breakdown.regiao_norte;
     const regLeste = breakdown.regiao_leste;
 
+    // Atualiza rótulos com o modo visualizado (ATIVAS vs TOTAL DIA)
+    const isModeActive = deliveryState.regionalViewMode !== 'total';
+    const modeSuffix = isModeActive ? '(ATIVAS)' : '(TOTAL DIA)';
+    const elNorteLabel = document.querySelector('#filterCardTotalNorte .region-total-label');
+    const elLesteLabel = document.querySelector('#filterCardTotalLeste .region-total-label');
+    if (elNorteLabel) elNorteLabel.textContent = `TOTAL REGIÃO NORTE ${modeSuffix}`;
+    if (elLesteLabel) elLesteLabel.textContent = `TOTAL REGIÃO LESTE ${modeSuffix}`;
+
     // Totalizador Norte
     const nb = regNorte.total_block || {};
     const elNorteNum = document.getElementById('delNorteTotalNum');
@@ -3447,6 +3597,10 @@ function toggleRegionFilter(regionName) {
     } else {
         deliveryState.filters.regions.add(regionName);
         if (cardEl) cardEl.classList.add('filter-active');
+        // Expande a tabela automaticamente para que o operador veja a relação filtrada
+        if (deliveryState.isTableCollapsed) {
+            toggleDeliveryTableCollapse();
+        }
     }
 
     applyDeliveryFilters();
@@ -3460,6 +3614,10 @@ function toggleBaseFilter(baseName, el) {
     } else {
         deliveryState.filters.bases.add(baseName);
         if (el) el.classList.add('filter-active');
+        // Expande a tabela automaticamente para que o operador veja a relação filtrada
+        if (deliveryState.isTableCollapsed) {
+            toggleDeliveryTableCollapse();
+        }
     }
 
     applyDeliveryFilters();
@@ -3799,10 +3957,24 @@ function toggleDeliveryTableCollapse() {
 function renderDeliveryTable() {
     const tbody = document.getElementById('deliveryTableBody');
     const countBadge = document.getElementById('deliveryResultsCountBadge');
+    const subEl = document.getElementById('deliveryTableStateSubtitle');
     const list = deliveryState.filteredTeams;
 
+    const isModeActive = deliveryState.regionalViewMode !== 'total';
+    const modeLabel = isModeActive ? 'Equipes Ativas' : 'Total Acumulado do Dia';
+
     if (countBadge) {
-        countBadge.textContent = `${list.length} equipes filtradas`;
+        countBadge.textContent = `${list.length} equipes filtradas (${modeLabel})`;
+    }
+
+    if (subEl && !deliveryState.isTableCollapsed) {
+        const parts = [modeLabel];
+        if (deliveryState.filters.regions.size > 0) parts.push(`Região: ${Array.from(deliveryState.filters.regions).join(', ')}`);
+        if (deliveryState.filters.bases.size > 0) parts.push(`Base: ${Array.from(deliveryState.filters.bases).join(', ')}`);
+        if (deliveryState.filters.shifts.size > 0) parts.push(`Turno: ${Array.from(deliveryState.filters.shifts).join(', ')}`);
+        if (deliveryState.filters.vehicles.size > 0) parts.push(`Frota: ${Array.from(deliveryState.filters.vehicles).join(', ')}`);
+        if (deliveryState.filters.search) parts.push(`Busca: "${deliveryState.filters.search}"`);
+        subEl.textContent = `Exibindo ${list.length} equipes | ${parts.join(' | ')}`;
     }
 
     if (!tbody) return;
