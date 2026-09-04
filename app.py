@@ -1094,6 +1094,26 @@ def get_delivery_monthly_audit():
     month_str = request.args.get('month') or date.today().strftime('%Y-%m')
     return jsonify(delivery_manager.get_monthly_audit_data(month_str))
 
+@app.route('/api/delivery/spotfire/sync', methods=['GET', 'POST'])
+def trigger_spotfire_sync():
+    """Dispara ciclo imediato de extração do TIBCO Spotfire via CDP."""
+    try:
+        from coletor_spotfire_cdp import executar_ciclo_sincronizacao_spotfire
+        res = executar_ciclo_sincronizacao_spotfire(source_label="Disparo Manual API")
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/delivery/integrity-check', methods=['GET'])
+def get_integrity_check():
+    """Retorna a auditoria forense de integridade confrontando EquipesBrasil com Spotfire."""
+    from datetime import datetime, timedelta
+    date_str = request.args.get('date')
+    if not date_str:
+        date_str = (datetime.now().date() - timedelta(days=1)).isoformat()
+    return jsonify(delivery_manager.get_daily_audit_data(date_str))
+
+
 @app.route('/api/teams/sync', methods=['POST', 'OPTIONS'])
 @app.route('/api/delivery/sync', methods=['POST', 'OPTIONS'])
 def sync_teams_records():
@@ -1180,6 +1200,8 @@ def health():
 ENGINE_THREADS = {
     "trbonet": None,
     "enel_cdp": None,
+    "spotfire_cdp": None,
+    "daily_10am_audit": None,
     "cloud_listener": None
 }
 
@@ -1234,9 +1256,45 @@ def remote_command_listener_worker(poll_interval=2.5):
                     res = executar_ciclo_sincronizacao_enel(source_label="Disparo Remoto Solicitado na Nuvem")
                     status = "COMPLETED" if res.get("status") == "success" else "ERROR"
                     update_command_status(cmd_id, status, res)
+                elif cmd_name in ["CAPTURE_SPOTFIRE", "SYNC_SPOTFIRE", "COLETAR_SPOTFIRE"]:
+                    from coletor_spotfire_cdp import executar_ciclo_sincronizacao_spotfire
+                    res = executar_ciclo_sincronizacao_spotfire(source_label="Disparo Remoto Solicitado na Nuvem")
+                    status = "COMPLETED" if res.get("status") == "success" else "ERROR"
+                    update_command_status(cmd_id, status, res)
         except Exception:
             pass
         time.sleep(poll_interval)
+
+def daily_10am_integrity_worker():
+    """
+    Worker que monitora o relógio e, pontualmente às 10:00 da manhã,
+    executa a conferência forense de integridade entre as equipes captadas no
+    EquipesBrasil e as equipes consolidadas no TIBCO Spotfire para o dia anterior (D-1).
+    Não apaga nenhum dado; apenas apura 100% da integridade e assertividade.
+    """
+    if os.name != 'nt' or os.environ.get("VERCEL"):
+        return
+    print("[INTEGRITY WORKER] Agendador de conferência diária das 10:00 ATIVO.", flush=True)
+    last_run_date = None
+    while True:
+        try:
+            now = datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+            # Executa na faixa das 10:00 se ainda não executou no dia de hoje
+            if now.hour == 10 and last_run_date != today_str:
+                d_yesterday = (now.date() - timedelta(days=1)).isoformat()
+                print(f"[INTEGRITY AUDIT 10:00] Iniciando conferência forense de integridade para a data {d_yesterday}...", flush=True)
+                audit_result = delivery_manager.get_daily_audit_data(d_yesterday)
+                reconcil = audit_result.get("reconciliation", {})
+                rate = reconcil.get("assertiveness_rate", 0)
+                tot_eb = reconcil.get("total_equipes_brasil", 0)
+                tot_sp = reconcil.get("total_spotfire", 0)
+                tot_logoff = reconcil.get("total_with_logoff", 0)
+                print(f"[INTEGRITY AUDIT 10:00 OK] Data: {d_yesterday} | EquipesBrasil: {tot_eb} | Spotfire: {tot_sp} | Com Logoff: {tot_logoff} | Assertividade: {rate}%", flush=True)
+                last_run_date = today_str
+        except Exception as err:
+            print(f"[INTEGRITY WORKER EXCEPTION] {err}", flush=True)
+        time.sleep(60)
 
 def start_background_jobs(force_restart=False):
     """Inicia threads de captura periódica e escuta de comandos remotos da nuvem."""
@@ -1263,6 +1321,22 @@ def start_background_jobs(force_restart=False):
         except Exception as err:
             print(f"[WARN] Falha ao iniciar worker Enel CDP: {err}")
 
+        # 4. Rotina de auto-captura autônoma do TIBCO Spotfire via CDP (180s)
+        try:
+            from coletor_spotfire_cdp import spotfire_background_worker
+            if force_restart or ENGINE_THREADS["spotfire_cdp"] is None or not ENGINE_THREADS["spotfire_cdp"].is_alive():
+                bg_spotfire = threading.Thread(target=spotfire_background_worker, args=(180,), daemon=True)
+                bg_spotfire.start()
+                ENGINE_THREADS["spotfire_cdp"] = bg_spotfire
+        except Exception as err:
+            print(f"[WARN] Falha ao iniciar worker Spotfire CDP: {err}")
+
+        # 5. Agendador da conferência forense diária das 10:00
+        if force_restart or ENGINE_THREADS["daily_10am_audit"] is None or not ENGINE_THREADS["daily_10am_audit"].is_alive():
+            bg_10am = threading.Thread(target=daily_10am_integrity_worker, daemon=True)
+            bg_10am.start()
+            ENGINE_THREADS["daily_10am_audit"] = bg_10am
+
 if __name__ == '__main__':
     import sys
     try:
@@ -1274,6 +1348,8 @@ if __name__ == '__main__':
     print("[OK] Servidor Local Ativo em: http://127.0.0.1:5000")
     print("[ROUTINE] Rotina de Atualização Automática do TRBOnet One (2 min) ATIVA")
     print("[ROUTINE] Rotina de Atualização Automática da Enel SP CDP (2 min) ATIVA")
+    print("[ROUTINE] Rotina de Atualização Automática do TIBCO Spotfire CDP (3 min) ATIVA")
+    print("[ROUTINE] Agendador de Conferência Forense Diária (10:00 AM) ATIVO")
     print("="*70 + "\n")
     
     start_background_jobs()

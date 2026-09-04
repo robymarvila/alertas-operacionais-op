@@ -3123,7 +3123,8 @@ const deliveryState = {
     datePickerInstance: null,
     selectedAuditDates: [new Date().toISOString().split('T')[0]],
     comparisonData: [],
-    comparisonChart: null
+    comparisonChart: null,
+    auditReconciliationFilter: 'all'
 };
 
 // Alternador de Telas (ONLINE vs AUDITORIA & HISTÓRICO)
@@ -4190,6 +4191,56 @@ function refreshCurrentHistoryAudit() {
     }
 }
 
+// Filtro de Confronto Spotfire
+function setAuditReconciliationFilter(filterKey) {
+    deliveryState.auditReconciliationFilter = filterKey;
+    const btns = {
+        all: document.getElementById('btnFilterReconcileAll'),
+        reconciled: document.getElementById('btnFilterReconcileSuccess'),
+        in_progress: document.getElementById('btnFilterReconcileActive'),
+        waiting: document.getElementById('btnFilterReconcileWaiting'),
+        spotfire_only: document.getElementById('btnFilterReconcileExtra')
+    };
+    Object.keys(btns).forEach(k => {
+        if (btns[k]) {
+            if (k === filterKey) btns[k].classList.add('active');
+            else btns[k].classList.remove('active');
+        }
+    });
+    renderDailyAuditTable();
+}
+
+// Disparo Manual de Sincronização do Spotfire via CDP
+async function triggerSpotfireManualSync() {
+    const btn = document.getElementById('btnSpotfireManualSync');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading-pulse">Coletando Spotfire...</span>';
+    }
+    showToast('Iniciando extração autônoma do TIBCO Spotfire via CDP...', 'info');
+    try {
+        const resp = await fetch('/api/delivery/spotfire/sync', { method: 'POST' });
+        const res = await resp.json();
+        if (res.status === 'success') {
+            showToast(`Sucesso! ${res.count || 0} registros do Spotfire sincronizados.`, 'success');
+            refreshCurrentHistoryAudit();
+        } else if (res.status === 'waiting_login') {
+            showToast(res.message, 'warning');
+        } else {
+            showToast(res.message || 'Erro durante a coleta do Spotfire.', 'danger');
+        }
+    } catch (err) {
+        showToast('Erro ao comunicar com o coletor Spotfire: ' + err.message, 'danger');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+        if (window.lucide) lucide.createIcons();
+    }
+}
+
 // Consulta Histórica por Dia (1 Data Selecionada)
 async function loadDailyHistoryAudit(targetDate = null) {
     let dateVal = targetDate;
@@ -4222,31 +4273,103 @@ async function loadDailyHistoryAudit(targetDate = null) {
         if (elMoto) elMoto.textContent = summary.moto || 0;
         if (elPesado) elPesado.textContent = summary.linhaviva_munck || 0;
 
-        // Preenche a tabela nominal do dia
-        const tbody = document.getElementById('histDayTableBody');
-        const teams = data.teams || [];
-        if (tbody) {
-            if (teams.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 30px; color: var(--text-secondary);">Nenhum registro encontrado para esta data.</td></tr>`;
-            } else {
-                tbody.innerHTML = teams.map(t => `
-                    <tr>
-                        <td><span class="team-badge" style="font-weight: 800;">${t.team_code}</span></td>
-                        <td><strong style="color: var(--text-primary);">${t.base_display || t.base_name}</strong></td>
-                        <td>${t.region} / <small style="font-weight: 800;">${t.company}</small></td>
-                        <td><strong>${t.vehicle_type}</strong></td>
-                        <td><strong style="color:#10b981; font-family:'JetBrains Mono', monospace;">${t.login_time || '--:--'}</strong></td>
-                        <td><span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">${t.logoff_time || '--:--'}</span></td>
-                        <td><span class="shift-pill">${t.shift_slot}</span></td>
-                        <td><span style="font-size: 0.72rem; font-weight: 800; color: #10b981;">${t.status || 'Entregue'}</span></td>
-                        <td>${t.driver || '--'}</td>
-                        <td><span style="font-family:'JetBrains Mono', monospace;">${t.plate || '--'}</span></td>
-                    </tr>
-                `).join('');
-            }
-        }
+        // Atualiza KPIs de Confronto Spotfire
+        const rec = data.reconciliation || {};
+        const elAssert = document.getElementById('histReconcileAssertividade');
+        const elLogoff = document.getElementById('histReconcileLogoffCount');
+        const elOsProd = document.getElementById('histReconcileOsProdutivas');
+        const elOsTot = document.getElementById('histReconcileOsTotal');
+        const elSpCount = document.getElementById('histReconcileSpotfireCount');
+        const elEbCount = document.getElementById('histReconcileEbCount');
+
+        if (elAssert) elAssert.textContent = (rec.assertiveness_rate != null ? rec.assertiveness_rate : 0) + '%';
+        if (elLogoff) elLogoff.textContent = rec.total_with_logoff || 0;
+        if (elOsProd) elOsProd.textContent = rec.total_os_produtivas || 0;
+        if (elOsTot) elOsTot.textContent = rec.total_os_geral || 0;
+        if (elSpCount) elSpCount.textContent = rec.total_spotfire || 0;
+        if (elEbCount) elEbCount.textContent = rec.total_equipes_brasil || 0;
+
+        // Renderiza a tabela nominal aplicando os filtros
+        renderDailyAuditTable();
     } catch (err) {
         console.error('Falha ao carregar histórico diário:', err);
+    }
+}
+
+// Renderização Reativa da Tabela Nominal de Auditoria
+function renderDailyAuditTable() {
+    const data = deliveryState.historyDayData;
+    const tbody = document.getElementById('histDayTableBody');
+    if (!tbody) return;
+
+    if (!data || !data.teams || data.teams.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 30px; color: var(--text-secondary);">Nenhum registro encontrado para esta data.</td></tr>`;
+        return;
+    }
+
+    const filterKey = deliveryState.auditReconciliationFilter || 'all';
+    let filteredTeams = data.teams;
+
+    if (filterKey === 'reconciled') {
+        filteredTeams = data.teams.filter(t => t.status_conciliacao === 'CONCILIADO_TOTAL');
+    } else if (filterKey === 'in_progress') {
+        filteredTeams = data.teams.filter(t => t.status_conciliacao === 'TURNO_EM_ANDAMENTO');
+    } else if (filterKey === 'waiting') {
+        filteredTeams = data.teams.filter(t => t.status_conciliacao === 'AGUARDANDO_SPOTFIRE');
+    } else if (filterKey === 'spotfire_only') {
+        filteredTeams = data.teams.filter(t => t.status_conciliacao === 'APENAS_SPOTFIRE');
+    }
+
+    if (filteredTeams.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 30px; color: var(--text-secondary);">Nenhuma equipe encontrada para o filtro de confronto selecionado.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = filteredTeams.map(t => {
+        // Formata Logoff Real
+        let logoffHtml = `<span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">--:--</span>`;
+        if (t.logoff_real && t.logoff_real !== '--' && t.logoff_real !== '--:--') {
+            logoffHtml = `<span class="badge-logoff-closed"><i data-lucide="check"></i> ${t.logoff_real}</span>`;
+        }
+
+        // Formata Status de Conciliação
+        let statusBadge = '';
+        if (t.status_conciliacao === 'CONCILIADO_TOTAL') {
+            statusBadge = `<span class="badge-reconcile badge-reconcile-success" title="Turno com LogOff e Produtividade confirmados no Spotfire"><i data-lucide="check-circle-2"></i> 100% CONCILIADO</span>`;
+        } else if (t.status_conciliacao === 'TURNO_EM_ANDAMENTO') {
+            statusBadge = `<span class="badge-reconcile badge-reconcile-warning" title="Equipe em atividade, aguardando LogOff"><i data-lucide="clock"></i> EM ANDAMENTO</span>`;
+        } else if (t.status_conciliacao === 'APENAS_SPOTFIRE') {
+            statusBadge = `<span class="badge-reconcile badge-reconcile-extra" title="Detectada no Spotfire mas ausente no EquipesBrasil"><i data-lucide="alert-circle"></i> APENAS SPOTFIRE</span>`;
+        } else {
+            statusBadge = `<span class="badge-reconcile badge-reconcile-pending" title="Aguardando próxima atualização do Spotfire (janela 30min)"><i data-lucide="hourglass"></i> AGUARDANDO DESH</span>`;
+        }
+
+        // Produtividade
+        const prod = t.produtivas || 0;
+        const totalOs = t.qtd_os || 0;
+        const osHtml = `<span title="Produtivas: ${prod} | Total: ${totalOs} | Improdutivas: ${t.improdutiva || 0} | Verificações: ${t.verificacoes || 0}"><strong style="color: #10b981;">${prod}</strong> <small style="color: var(--text-secondary);">/ ${totalOs}</small></span>`;
+
+        return `
+            <tr>
+                <td><span class="team-badge" style="font-weight: 800;">${t.team_code}</span></td>
+                <td><strong style="color: var(--text-primary);">${t.base_display || t.base_name}</strong></td>
+                <td>${t.region} / <small style="font-weight: 800;">${t.company}</small></td>
+                <td><strong>${t.vehicle_type}</strong></td>
+                <td><span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">${t.login_time || '--:--'}</span></td>
+                <td><strong style="color:#38bdf8; font-family:'JetBrains Mono', monospace;">${t.login_real || '--:--'}</strong></td>
+                <td>${logoffHtml}</td>
+                <td><strong style="color:#a78bfa; font-family:'JetBrains Mono', monospace;">${t.duracao_efetiva || '--'}</strong></td>
+                <td>${osHtml}</td>
+                <td>${statusBadge}</td>
+                <td><span class="shift-pill">${t.shift_slot}</span></td>
+                <td>${t.driver || '--'}</td>
+                <td><span style="font-family:'JetBrains Mono', monospace;">${t.plate || '--'}</span></td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) {
+        lucide.createIcons();
     }
 }
 
@@ -4576,8 +4699,15 @@ function exportHistoryExcel() {
         "Região": t.region,
         "Empresa": t.company,
         "Frota": t.vehicle_type,
-        "Login": t.login_time,
-        "Logoff": t.logoff_time,
+        "Login Enel": t.login_time || '--:--',
+        "Login Real (Spotfire)": t.login_real || '--:--',
+        "LogOff Real (Spotfire)": t.logoff_real || '--:--',
+        "Duração Efetiva": t.duracao_efetiva || '--',
+        "OS Produtivas": t.produtivas || 0,
+        "OS Improdutivas": t.improdutiva || 0,
+        "Total OS": t.qtd_os || 0,
+        "Rejeita": t.rejeita || 'NÃO',
+        "Status Conciliação": t.status_conciliacao || 'AGUARDANDO_SPOTFIRE',
         "Turno": t.shift_slot,
         "Motorista": t.driver,
         "Placa": t.plate
@@ -4585,9 +4715,9 @@ function exportHistoryExcel() {
     if (window.XLSX) {
         const ws = XLSX.utils.json_to_sheet(rows);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
-        XLSX.writeFile(wb, `Auditoria_Entrega_${data.date}.xlsx`);
-        showToast(`Auditoria do dia ${data.date} exportada!`, 'success');
+        XLSX.utils.book_append_sheet(wb, ws, "Auditoria_Confronto");
+        XLSX.writeFile(wb, `Auditoria_Confronto_Spotfire_${data.date}.xlsx`);
+        showToast(`Auditoria com confronto Spotfire do dia ${data.date} exportada!`, 'success');
     }
 }
 

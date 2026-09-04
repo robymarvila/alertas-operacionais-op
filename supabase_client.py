@@ -438,6 +438,51 @@ def fetch_delivery_sessions_by_month(month_str: str) -> list:
         return []
 
 # ==============================================================================
+# MÓDULO SPOTFIRE: PERSISTÊNCIA E CONSULTA DE EXTRAÇÕES (TIBCO SPOTFIRE ENEL)
+# ==============================================================================
+
+def push_spotfire_records_to_supabase(records_list: list) -> dict:
+    """
+    Insere ou atualiza (UPSERT) registros extraídos do Spotfire na tabela 'team_spotfire_records'.
+    Usa a constraint única (data_referencia, equipe_normalizada) para merge atômico.
+    """
+    if not records_list:
+        return {"status": "success", "count": 0}
+    try:
+        endpoint = f"{BASE_REST_URL}/team_spotfire_records?on_conflict=data_referencia,equipe_normalizada"
+        headers = get_headers().copy()
+        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+        
+        saved_count = 0
+        for i in range(0, len(records_list), 100):
+            chunk = records_list[i:i+100]
+            resp = requests.post(endpoint, headers=headers, json=chunk, timeout=15)
+            if resp.status_code in [200, 201]:
+                saved_count += len(chunk)
+            else:
+                print(f"[WARN SUPABASE SPOTFIRE UPSERT] Status {resp.status_code}: {resp.text}")
+                
+        return {"status": "success", "count": saved_count}
+    except Exception as e:
+        print(f"[ERROR SUPABASE SPOTFIRE PUSH] {e}")
+        return {"status": "error", "message": str(e), "count": 0}
+
+def fetch_spotfire_records_by_date(date_str: str) -> list:
+    """
+    Busca registros extraídos do Spotfire para uma data específica (YYYY-MM-DD).
+    """
+    try:
+        endpoint = f"{BASE_REST_URL}/team_spotfire_records?data_referencia=eq.{date_str}&order=equipe_normalizada.asc&limit=2000"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=12)
+        if resp.status_code == 200:
+            return resp.json() or []
+        return []
+    except Exception as e:
+        print(f"[SUPABASE FETCH SPOTFIRE ERROR] {e}")
+        return []
+
+
+# ==============================================================================
 # MONITORAMENTO DE SAÚDE DOS MOTORES (ENGINE HEALTH)
 # ==============================================================================
 

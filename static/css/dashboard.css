@@ -6518,6 +6518,98 @@ body.theme-light .region-mode-btn.active[data-mode="total"] {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+/* ==========================================================================
+   ESTILOS: CONCILIAÇÃO E CONFRONTO FORENSE SPOTFIRE vs EQUIPESBRASIL
+   ========================================================================== */
+
+.badge-logoff-closed {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #10b981;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 0.8rem;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.15);
+}
+
+.badge-reconcile {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.badge-reconcile svg {
+    width: 12px;
+    height: 12px;
+}
+
+.badge-reconcile-success {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #10b981;
+}
+
+.badge-reconcile-warning {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+}
+
+.badge-reconcile-pending {
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    color: #94a3b8;
+}
+
+.badge-reconcile-extra {
+    background: rgba(168, 85, 247, 0.12);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    color: #c084fc;
+}
+
+/* Modo Claro (.theme-light) */
+body.theme-light .badge-logoff-closed {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #047857;
+}
+
+body.theme-light .badge-reconcile-success {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #065f46;
+}
+
+body.theme-light .badge-reconcile-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #b45309;
+}
+
+body.theme-light .badge-reconcile-pending {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #475569;
+}
+
+body.theme-light .badge-reconcile-extra {
+    background: #faf5ff;
+    border-color: #e9d5ff;
+    color: #7e22ce;
+}
+
+
 
 
 

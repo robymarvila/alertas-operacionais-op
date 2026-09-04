@@ -9,7 +9,34 @@ from datetime import datetime, date, timedelta
 import json
 import os
 
+import re
+
 CACHE_FILE = "delivery_daily_cache.json"
+
+def normalize_team_code(raw_name: str) -> str:
+    """Padroniza o código da equipe removendo espaços, traços e caracteres especiais."""
+    if not raw_name:
+        return ""
+    return re.sub(r'[^A-Za-z0-9]', '', str(raw_name)).upper()
+
+def calculate_time_duration(start_str: str, end_str: str) -> str:
+    """Calcula a duração HH:MM entre dois horários de início e fim."""
+    try:
+        if not start_str or not end_str or start_str in ["--", "--:--"] or end_str in ["--", "--:--"]:
+            return "--"
+        fmt1 = "%H:%M:%S" if len(start_str.strip()) > 5 else "%H:%M"
+        fmt2 = "%H:%M:%S" if len(end_str.strip()) > 5 else "%H:%M"
+        t1 = datetime.strptime(start_str.strip(), fmt1)
+        t2 = datetime.strptime(end_str.strip(), fmt2)
+        diff = t2 - t1
+        if diff.total_seconds() < 0:
+            diff += timedelta(days=1)
+        hours, remainder = divmod(int(diff.total_seconds()), 3600)
+        minutes, _ = divmod(remainder, 60)
+        return f"{hours:02d}h {minutes:02d}m"
+    except Exception:
+        return "--"
+
 
 class DeliveryManager:
     @staticmethod
@@ -76,6 +103,7 @@ class DeliveryManager:
         self.intraday_curve = {}              # Histórico horário das equipes que entraram
         self.last_sync_time = "--"
         self.sync_source = "Aguardando sincronização"
+        self.spotfire_cache = {}              # (date_ref, norm_code) -> dict
         
         self.load_local_cache()
 
@@ -513,66 +541,181 @@ class DeliveryManager:
             "geo_groups": self.geo_groups
         }
 
+    def reconcile_with_spotfire_records(self, spotfire_records: list, date_ref: str = None):
+        """Atualiza o cache de registros do Spotfire e mescla com as equipes acumuladas do dia."""
+        if not date_ref:
+            date_ref = self.get_operational_date()
+        for r in spotfire_records:
+            norm = r.get("equipe_normalizada") or normalize_team_code(r.get("equipe", ""))
+            if norm:
+                self.spotfire_cache[(date_ref, norm)] = r
+
+        # Se for do dia atual, enriquece as equipes acumuladas em memória
+        if date_ref == self.current_date_str:
+            for code, t in self.daily_accumulated_teams.items():
+                norm = normalize_team_code(code)
+                sp = self.spotfire_cache.get((date_ref, norm))
+                if sp:
+                    if sp.get("inicio_calibrado"):
+                        t["login_real"] = sp.get("inicio_calibrado")
+                    if sp.get("fim_calibrado"):
+                        t["logoff_real"] = sp.get("fim_calibrado")
+                        t["logoff_time"] = sp.get("fim_calibrado")
+                    t["qtd_os"] = sp.get("qtd_os", 0)
+                    t["produtivas"] = sp.get("produtivas", 0)
+                    t["improdutiva"] = sp.get("improdutiva", 0)
+                    t["verificacoes"] = sp.get("verificacoes", 0)
+                    t["no_local"] = sp.get("no_local", 0)
+                    t["rejeita"] = sp.get("rejeita", "NÃO")
+                    t["duracao_efetiva"] = calculate_time_duration(t.get("login_real") or t.get("login_time"), t.get("logoff_real"))
+                    t["status_conciliacao"] = "CONCILIADO_TOTAL" if sp.get("fim_calibrado") and sp.get("fim_calibrado") not in ["--", "--:--"] else "TURNO_EM_ANDAMENTO"
+                    t["spotfire_reconciled"] = True
+
     def get_daily_audit_data(self, date_str: str) -> dict:
-        """Gera a auditoria para uma data específica."""
-        # Se for a data atual, usa os dados em memória
+        """
+        Gera a auditoria consolidada para uma data específica (YYYY-MM-DD),
+        confrontando os dados do EquipesBrasil com as informações do TIBCO Spotfire.
+        """
+        base_teams = []
         if date_str == self.current_date_str:
             state = self.get_consolidated_state()
-            return {
-                "status": "success",
-                "date": date_str,
-                "total_delivered": state["total_delivered_day"],
-                "summary": state["summary_total"],
-                "teams": state["daily_total_teams"]
-            }
+            base_teams = [dict(t) for t in state["daily_total_teams"]]
+        else:
+            try:
+                from supabase_client import fetch_delivery_records_by_date
+                records = fetch_delivery_records_by_date(date_str)
+                if records:
+                    for r in records:
+                        t_code = r.get("team_code", "")
+                        prefix = t_code[:3]
+                        b_info = self.official_bases.get(prefix)
+                        v_info = self.classify_vehicle(t_code)
+                        base_teams.append({
+                            "team_code": t_code,
+                            "base_code": prefix,
+                            "base_name": b_info["name"] if b_info else r.get("base_name", f"Base {prefix}"),
+                            "base_display": b_info["base_display"] if b_info else r.get("base_name", f"Base {prefix}"),
+                            "region": b_info["region"] if b_info else r.get("region", "Outras Bases"),
+                            "geo": b_info["geo"] if b_info else "Outras",
+                            "company": b_info["company"] if b_info else r.get("company", "Outros"),
+                            "vehicle_type": v_info["type"],
+                            "login_time": r.get("login_time", "--:--"),
+                            "logoff_time": r.get("logoff_time", "--:--"),
+                            "shift_slot": r.get("shift_slot", "Turno 08:00"),
+                            "shift_code": r.get("shift_slot", "08:00").replace("Turno ", "").strip(),
+                            "status": r.get("status", "Entregue"),
+                            "driver": r.get("raw_info", {}).get("driver", "--") if isinstance(r.get("raw_info"), dict) else "--",
+                            "plate": r.get("raw_info", {}).get("plate", "--") if isinstance(r.get("raw_info"), dict) else "--"
+                        })
+            except Exception as err:
+                print(f"[AUDIT FETCH ERROR] {err}")
 
-        # Para datas passadas, consulta o Supabase
+        # Busca registros correspondentes no Spotfire
+        sp_map = {}
         try:
-            from supabase_client import fetch_delivery_records_by_date
-            records = fetch_delivery_records_by_date(date_str)
-            if records:
-                # Processa os registros históricos
-                processed_hist = []
-                for r in records:
-                    t_code = r.get("team_code", "")
-                    prefix = t_code[:3]
-                    b_info = self.official_bases.get(prefix)
-                    v_info = self.classify_vehicle(t_code)
-                    processed_hist.append({
-                        "team_code": t_code,
-                        "base_code": prefix,
-                        "base_name": b_info["name"] if b_info else r.get("base_name", f"Base {prefix}"),
-                        "base_display": b_info["base_display"] if b_info else r.get("base_name", f"Base {prefix}"),
-                        "region": b_info["region"] if b_info else r.get("region", "Outras Bases"),
-                        "geo": b_info["geo"] if b_info else "Outras",
-                        "company": b_info["company"] if b_info else r.get("company", "Outros"),
-                        "vehicle_type": v_info["type"],
-                        "login_time": r.get("login_time", "--:--"),
-                        "logoff_time": r.get("logoff_time", "--:--"),
-                        "shift_slot": r.get("shift_slot", "Turno 08:00"),
-                        "shift_code": r.get("shift_slot", "08:00").replace("Turno ", "").strip(),
-                        "status": r.get("status", "Entregue"),
-                        "driver": r.get("raw_info", {}).get("driver", "--") if isinstance(r.get("raw_info"), dict) else "--",
-                        "plate": r.get("raw_info", {}).get("plate", "--") if isinstance(r.get("raw_info"), dict) else "--"
-                    })
-                metrics = self._build_metrics_breakdown(processed_hist)
-                return {
-                    "status": "success",
-                    "date": date_str,
-                    "total_delivered": len(processed_hist),
-                    "summary": metrics,
-                    "teams": processed_hist
-                }
-        except Exception as err:
-            print(f"[AUDIT ERROR] {err}")
+            from supabase_client import fetch_spotfire_records_by_date
+            spotfire_records = fetch_spotfire_records_by_date(date_str)
+            for sp in spotfire_records:
+                norm = sp.get("equipe_normalizada") or normalize_team_code(sp.get("equipe", ""))
+                if norm:
+                    sp_map[norm] = sp
+        except Exception as e:
+            print(f"[SPOTFIRE AUDIT FETCH ERROR] {e}")
 
-        # Retorna fallback vazio se não houver dados
+        # Reconciliação dos registros de EquipesBrasil com Spotfire
+        seen_teams = set()
+        for t in base_teams:
+            norm = normalize_team_code(t.get("team_code", ""))
+            seen_teams.add(norm)
+            sp = sp_map.get(norm)
+            if sp:
+                t["login_real"] = sp.get("inicio_calibrado") or t.get("login_time", "--:--")
+                t["logoff_real"] = sp.get("fim_calibrado") or "--:--"
+                if sp.get("fim_calibrado") and sp.get("fim_calibrado") not in ["--", "--:--"]:
+                    t["logoff_time"] = sp.get("fim_calibrado")
+                t["qtd_os"] = sp.get("qtd_os", 0)
+                t["produtivas"] = sp.get("produtivas", 0)
+                t["improdutiva"] = sp.get("improdutiva", 0)
+                t["verificacoes"] = sp.get("verificacoes", 0)
+                t["no_local"] = sp.get("no_local", 0)
+                t["rejeita"] = sp.get("rejeita", "NÃO")
+                t["duracao_efetiva"] = calculate_time_duration(t["login_real"], t["logoff_real"])
+                t["status_conciliacao"] = "CONCILIADO_TOTAL" if t["logoff_real"] not in ["--", "--:--"] else "TURNO_EM_ANDAMENTO"
+                t["spotfire_reconciled"] = True
+            else:
+                t["login_real"] = t.get("login_time", "--:--")
+                t["logoff_real"] = "--:--"
+                t["qtd_os"] = 0
+                t["produtivas"] = 0
+                t["improdutiva"] = 0
+                t["verificacoes"] = 0
+                t["no_local"] = 0
+                t["rejeita"] = "NÃO"
+                t["duracao_efetiva"] = "--"
+                t["status_conciliacao"] = "AGUARDANDO_SPOTFIRE"
+                t["spotfire_reconciled"] = False
+
+        # Inclui equipes que constam exclusivamente no Spotfire (sem EquipesBrasil)
+        for norm, sp in sp_map.items():
+            if norm not in seen_teams:
+                prefix = norm[:3]
+                b_info = self.official_bases.get(prefix)
+                v_info = self.classify_vehicle(norm)
+                base_teams.append({
+                    "team_code": sp.get("equipe") or norm,
+                    "base_code": prefix,
+                    "base_name": b_info["name"] if b_info else f"Base {prefix}",
+                    "base_display": b_info["base_display"] if b_info else f"Base {prefix}",
+                    "region": b_info["region"] if b_info else "Outras Bases",
+                    "geo": b_info["geo"] if b_info else "Outras",
+                    "company": b_info["company"] if b_info else "Outros",
+                    "vehicle_type": v_info["type"],
+                    "login_time": sp.get("inicio_calibrado") or "--:--",
+                    "logoff_time": sp.get("fim_calibrado") or "--:--",
+                    "login_real": sp.get("inicio_calibrado") or "--:--",
+                    "logoff_real": sp.get("fim_calibrado") or "--:--",
+                    "shift_slot": "Spotfire Extra",
+                    "shift_code": "Extra",
+                    "status": "Apenas Spotfire",
+                    "driver": "--",
+                    "plate": "--",
+                    "qtd_os": sp.get("qtd_os", 0),
+                    "produtivas": sp.get("produtivas", 0),
+                    "improdutiva": sp.get("improdutiva", 0),
+                    "verificacoes": sp.get("verificacoes", 0),
+                    "no_local": sp.get("no_local", 0),
+                    "rejeita": sp.get("rejeita", "NÃO"),
+                    "duracao_efetiva": calculate_time_duration(sp.get("inicio_calibrado"), sp.get("fim_calibrado")),
+                    "status_conciliacao": "APENAS_SPOTFIRE",
+                    "spotfire_reconciled": True
+                })
+
+        metrics = self._build_metrics_breakdown(base_teams)
+
+        # Totais de conciliação para os KPI Cards
+        total_delivered = len(base_teams)
+        total_eb = len([t for t in base_teams if t.get("status_conciliacao") != "APENAS_SPOTFIRE"])
+        reconciled_count = len([t for t in base_teams if t.get("spotfire_reconciled")])
+        total_with_logoff = len([t for t in base_teams if t.get("logoff_real") not in ["--", "--:--"]])
+        total_os_produtivas = sum(t.get("produtivas", 0) for t in base_teams)
+        total_os_geral = sum(t.get("qtd_os", 0) for t in base_teams)
+        rate = round((reconciled_count / max(total_eb, 1)) * 100.0, 1) if total_eb > 0 else 0.0
+
         return {
-            "status": "empty",
+            "status": "success" if total_delivered > 0 else "empty",
             "date": date_str,
-            "total_delivered": 0,
-            "summary": self._build_metrics_breakdown([]),
-            "teams": []
+            "total_delivered": total_delivered,
+            "summary": metrics,
+            "reconciliation": {
+                "total_delivered": total_delivered,
+                "total_equipes_brasil": total_eb,
+                "total_spotfire": len(sp_map),
+                "total_with_logoff": total_with_logoff,
+                "total_os_produtivas": total_os_produtivas,
+                "total_os_geral": total_os_geral,
+                "assertiveness_rate": rate
+            },
+            "teams": base_teams
         }
 
     def get_monthly_audit_data(self, month_str: str) -> dict:

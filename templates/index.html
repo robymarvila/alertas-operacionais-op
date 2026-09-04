@@ -1624,14 +1624,86 @@
                             <span class="fleet-liquid-title" style="color: #c084fc;">LINHA VIVA + MUNK</span>
                             <strong class="hero-big-number" style="color: #c084fc; font-size: 1.5rem;" id="histDayPesadoNum">0</strong>
                         </div>
+                    <!-- DECK DE CONCILIAÇÃO & CONFRONTO FORENSE (TIBCO SPOTFIRE vs EQUIPESBRASIL) -->
+                    <div class="delivery-dual-hero-grid" style="margin-bottom: 20px;">
+                        <!-- Card 1: Assertividade Operacional -->
+                        <div class="hero-liquid-card" style="border-color: rgba(56, 189, 248, 0.4); background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(15, 23, 42, 0.6) 100%);">
+                            <span class="hero-tag" style="color: #38bdf8;"><span class="live-status-dot" style="background:#38bdf8;"></span> CONFRONTO FORENSE</span>
+                            <div class="hero-number-row">
+                                <span class="hero-big-number" style="color: #38bdf8;" id="histReconcileAssertividade">--%</span>
+                                <span class="hero-unit">assertividade</span>
+                            </div>
+                            <span class="hero-subtext" id="histReconcileRateSub">Taxa de conciliação Spotfire vs EquipesBrasil</span>
+                        </div>
+
+                        <!-- Card 2: LogOff Real Confirmado -->
+                        <div class="hero-liquid-card" style="border-color: rgba(16, 185, 129, 0.4); background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.6) 100%);">
+                            <span class="hero-tag" style="color: #10b981;">LOGOFF REAL CONFIRMADO</span>
+                            <div class="hero-number-row">
+                                <span class="hero-big-number text-emerald" id="histReconcileLogoffCount">0</span>
+                                <span class="hero-unit">equipes encerradas</span>
+                            </div>
+                            <span class="hero-subtext">Horário oficial calibrado de encerramento</span>
+                        </div>
+
+                        <!-- Card 3: Produtividade de OS -->
+                        <div class="fleet-liquid-card" style="border-color: rgba(168, 85, 247, 0.35);">
+                            <span class="fleet-liquid-title" style="color: #c084fc;">OS PRODUTIVAS (SPOTFIRE)</span>
+                            <div class="fleet-liquid-vals">
+                                <div class="fleet-val-block">
+                                    <span>CONCLUÍDAS</span>
+                                    <strong style="color: #c084fc;" id="histReconcileOsProdutivas">0</strong>
+                                </div>
+                                <div class="fleet-val-block" style="text-align: right;">
+                                    <span>TOTAL GERAL</span>
+                                    <strong style="color: #94a3b8;" id="histReconcileOsTotal">0</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card 4: Base Spotfire vs EquipesBrasil -->
+                        <div class="fleet-liquid-card" style="border-color: rgba(245, 158, 11, 0.35);">
+                            <span class="fleet-liquid-title" style="color: #fbbf24;">BASE SPOTFIRE</span>
+                            <div class="fleet-liquid-vals">
+                                <div class="fleet-val-block">
+                                    <span>DETECTADAS</span>
+                                    <strong style="color: #fbbf24;" id="histReconcileSpotfireCount">0</strong>
+                                </div>
+                                <div class="fleet-val-block" style="text-align: right;">
+                                    <span>EQUIPESBRASIL</span>
+                                    <strong style="color: #94a3b8;" id="histReconcileEbCount">0</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BARRA DE FILTROS RÁPIDOS DE CONCILIAÇÃO -->
+                    <div class="delivery-filter-bar glass-card" style="margin-bottom: 20px; padding: 14px 20px;">
+                        <div class="delivery-filter-row" style="align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span class="filter-group-label" style="font-size: 0.76rem; font-weight: 800; color: var(--text-secondary); letter-spacing: 0.05em;">FILTRAR CONFRONTO:</span>
+                                <div class="delivery-screen-switcher" style="padding: 2px;">
+                                    <button class="screen-switch-btn active" id="btnFilterReconcileAll" onclick="setAuditReconciliationFilter('all')">TODAS AS EQUIPES</button>
+                                    <button class="screen-switch-btn" id="btnFilterReconcileSuccess" onclick="setAuditReconciliationFilter('reconciled')">100% CONCILIADAS (COM LOGOFF)</button>
+                                    <button class="screen-switch-btn" id="btnFilterReconcileActive" onclick="setAuditReconciliationFilter('in_progress')">TURNO EM ANDAMENTO</button>
+                                    <button class="screen-switch-btn" id="btnFilterReconcileWaiting" onclick="setAuditReconciliationFilter('waiting')">AGUARDANDO DESH (DELAY)</button>
+                                    <button class="screen-switch-btn" id="btnFilterReconcileExtra" onclick="setAuditReconciliationFilter('spotfire_only')">APENAS SPOTFIRE</button>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <button class="btn btn-secondary btn-sm" id="btnSpotfireManualSync" onclick="triggerSpotfireManualSync()" title="Disparar extração imediata do Spotfire via CDP">
+                                    <i data-lucide="refresh-cw" style="width:14px; height:14px; margin-right:4px;"></i> SINCRONIZAR SPOTFIRE
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Tabela Nominal do Dia Consultado -->
                     <div class="delivery-table-collapsible-wrapper">
                         <div class="delivery-table-collapsible-header">
                             <div>
-                                <h4 style="font-size: 1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">EQUIPES ENTREGUES NA DATA</h4>
-                                <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="histTableSubtitle">Relação completa de equipes auditadas</p>
+                                <h4 style="font-size: 1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">EQUIPES ENTREGUES NA DATA (CONCILIAÇÃO FORENSE)</h4>
+                                <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="histTableSubtitle">Confronto linha a linha entre EquipesBrasil e TIBCO Spotfire</p>
                             </div>
                             <button class="btn btn-secondary btn-sm" onclick="exportHistoryExcel()">EXPORTAR EXCEL</button>
                         </div>
@@ -1642,11 +1714,14 @@
                                         <th>EQUIPE</th>
                                         <th>BASE OPERACIONAL</th>
                                         <th>REGIÃO / EMPRESA</th>
-                                        <th>FROTA / VEÍCULO</th>
-                                        <th>LOGIN</th>
-                                        <th>LOGOFF</th>
+                                        <th>FROTA</th>
+                                        <th>LOGIN ENEL</th>
+                                        <th>LOGIN REAL (SPOTFIRE)</th>
+                                        <th>LOGOFF REAL (SPOTFIRE)</th>
+                                        <th>DURAÇÃO EFETIVA</th>
+                                        <th>OS (PROD / TOTAL)</th>
+                                        <th>STATUS CONCILIAÇÃO</th>
                                         <th>TURNO</th>
-                                        <th>STATUS</th>
                                         <th>MOTORISTA</th>
                                         <th>PLACA</th>
                                     </tr>
