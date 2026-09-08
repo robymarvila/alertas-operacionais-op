@@ -37,17 +37,26 @@ def listar_alvos_cdp():
 
 def localizar_aba_enel(criar_se_nao_existir=False):
     """Localiza a aba do portal da Enel SP no Edge/Chrome."""
+    try:
+        from cdp_browser_manager import garantir_navegador_cdp_ativo
+        garantir_navegador_cdp_ativo()
+    except Exception:
+        pass
+
     targets = listar_alvos_cdp()
     if not targets:
         return None
 
-    # Procura aba com URL ou Título da Enel
+    # Procura aba estritamente do portal EquipesBrasil (nunca capturar o Spotfire)
     for t in targets:
         if t.get('type') == 'page':
             t_url = (t.get('url') or '').lower()
             t_title = (t.get('title') or '').lower()
-            if 'equipesbrasil' in t_url or ENEL_DOMAIN_KEYWORD in t_url or 'equipes' in t_title or 'enel' in t_title:
+            if 'spotfire' in t_url or 'spotfire' in t_title or 'elabziplra00' in t_url:
+                continue
+            if 'equipesbrasil.enelint.global' in t_url or 'filtro avançado' in t_title or 'login.microsoftonline.com' in t_url or 'entrar em sua conta' in t_title:
                 return t
+
 
     if criar_se_nao_existir:
         try:
@@ -198,7 +207,7 @@ def extrair_dados_enel_via_cdp():
                     headers.forEach((h, idx) => {
                         if (h) obj[h] = cells[idx] || '';
                     });
-                    // Mapeamento posicional oficial
+                    // Mapeamento posicional oficial (13 colunas da tabela Equipes Brasil)
                     obj['UT'] = cells[0] || '';
                     obj['BASE'] = cells[1] || '';
                     obj['FILIAL'] = cells[2] || '';
@@ -207,8 +216,11 @@ def extrair_dados_enel_via_cdp():
                     obj['TIPO'] = cells[5] || '';
                     obj['MOTORISTA'] = cells[6] || '';
                     obj['TURNO'] = cells[7] || '';
+                    obj['GPS'] = cells[8] || '';
                     obj['STATUS'] = cells[9] || 'Logada';
-                    obj['PLACA'] = cells[11] || '--';
+                    obj['PLACA'] = cells[10] || '';
+                    obj['INICIO_DESCANSO'] = cells[11] || '';
+                    obj['ORDEM'] = cells[12] || '';
                     results.push(obj);
                 }
             });
@@ -253,6 +265,7 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
 
         res = extrair_dados_enel_via_cdp()
         if res.get("status") != "success":
+            print(f"[ENEL CDP WARN] {res.get('message', 'Aba não encontrada ou CDP inativo')}", flush=True)
             return res
 
         records = res.get("records", [])
@@ -283,21 +296,31 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
             "message": str(e)
         }
 
-def enel_background_worker(interval_seconds=120):
+def enel_background_worker(interval_seconds=120, stop_event=None):
     """
     Worker executado em thread contínua a cada 2 minutos (120s),
     exatamente no mesmo padrão do TRBOnet.
     """
     print(f"[BACKGROUND WORKER] Rotina de auto-captura da Enel SP iniciada (intervalo: {interval_seconds}s).", flush=True)
-    # Aguarda 10s para inicialização do servidor
-    time.sleep(10)
+    if stop_event:
+        if stop_event.wait(10):
+            return
+    else:
+        time.sleep(10)
 
     while True:
+        if stop_event and stop_event.is_set():
+            print("[BACKGROUND WORKER] Rotina da Enel SP finalizada.", flush=True)
+            break
         try:
             executar_ciclo_sincronizacao_enel(source_label="Rotina Automática (2 min)")
         except Exception as err:
             print(f"[ENEL WORKER EXCEPTION] {err}", flush=True)
-        time.sleep(interval_seconds)
+        if stop_event:
+            if stop_event.wait(interval_seconds):
+                break
+        else:
+            time.sleep(interval_seconds)
 
 if __name__ == "__main__":
     print("Testando extração imediata via CDP...")

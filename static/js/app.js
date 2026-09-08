@@ -3,7 +3,7 @@
  * Motor Reativo, Multi-Seleção Regional e de Bases, Sincronização PowerON e Auditoria
  */
 
-// Configuração das 4 Regiões Oficiais (14 Bases Oficiais)
+// Configuração das 2 Regiões Oficiais Alpitel (7 Bases Oficiais)
 const REGION_CONFIG = {
     NORTE_ALPITEL: {
         name: 'Região Norte Alpitel',
@@ -14,16 +14,6 @@ const REGION_CONFIG = {
         name: 'Região Leste Alpitel',
         bases: ['EML', 'EQL', 'EVL', 'ESL'],
         color: '#3b82f6'
-    },
-    NORTE_PROPRIA: {
-        name: 'Região Norte Própria',
-        bases: ['ENA', 'ECA', 'EEA'],
-        color: '#8b5cf6'
-    },
-    LESTE_PROPRIA: {
-        name: 'Região Leste Própria',
-        bases: ['EMA', 'EQA', 'EVA', 'ESA'],
-        color: '#ec4899'
     }
 };
 
@@ -43,6 +33,7 @@ const appState = {
 
     // Filtros Multi-seleção e Visualização
     selectedBases: new Set(['ALL']), // Set contendo 'ALL' ou códigos de bases selecionadas
+    selectedStatuses: new Set(['ALL']), // Set contendo 'ALL' ou status selecionados
     currentStatusFilter: 'ALL',
     searchQuery: '',
     historySearchQuery: '',
@@ -467,6 +458,7 @@ async function fetchDashboardData(isManual = false) {
             renderResults();
             updateFilterBadges();
             syncBaseUI();
+            syncStatusUI();
             updateHubCard();
 
             if (appState.currentMainTab === 'dashboard') {
@@ -522,9 +514,12 @@ function manualRefresh() {
 // ==========================================================================
 // SINCRONIZAÇÃO DO TRBONET ONE (LEITURA SILENCIOSA AO VIVO)
 // ==========================================================================
-async function captureTRBOnetLive() {
+// ==========================================================================
+// ATUALIZAR DADOS / SINCRONIZAÇÃO UNIFICADA (TRBONET + EQUIPES BRASIL)
+// ==========================================================================
+async function syncUnifiedLive() {
     if (!authState.isAuthenticated) {
-        showToast('Ação Restrita: Efetue o login no Cadeado para ler o TRBOnet One.', 'warning');
+        showToast('Ação Restrita: Efetue o login no Cadeado para atualizar os dados.', 'warning');
         openAuthModal();
         return;
     }
@@ -532,12 +527,12 @@ async function captureTRBOnetLive() {
     const btn = document.getElementById('btnLiveCapture');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Lendo TRBOnet...</span>`;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Atualizando...</span>`;
     }
     initIcons();
 
     try {
-        const response = await fetch('/api/capture/trbonet', {
+        const response = await fetch('/api/sync/unified', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${authState.token || ''}`
@@ -552,22 +547,27 @@ async function captureTRBOnetLive() {
         }
 
         if (result.status === 'success') {
-            showToast(result.message, 'success');
+            showToast(result.message || 'Dados atualizados com sucesso!', 'success');
             fetchDashboardData(false);
+            if (typeof fetchDeliveryState === 'function') fetchDeliveryState(false);
         } else if (result.status === 'warning') {
             showToast(result.message, 'danger');
         } else {
-            showToast(`Erro na captura: ${result.message}`, 'danger');
+            showToast(`Erro na sincronização: ${result.message}`, 'danger');
         }
     } catch (err) {
-        showToast(`Falha ao conectar com o robô de captura: ${err.message}`, 'danger');
+        showToast(`Falha ao conectar com o robô de atualização: ${err.message}`, 'danger');
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = `<i data-lucide="radio" id="liveCaptureIcon"></i> <span>Ler TRBOnet</span>`;
+            btn.innerHTML = `<i data-lucide="refresh-cw" id="liveCaptureIcon"></i> <span>Atualizar / Sincronizar</span>`;
         }
         initIcons();
     }
+}
+
+async function captureTRBOnetLive() {
+    return syncUnifiedLive();
 }
 
 // ==========================================================================
@@ -846,7 +846,7 @@ function updateKPIs() {
     const scopeText = document.getElementById('kpiScopeText');
     if (scopeText) {
         if (isAll) {
-            scopeText.textContent = `Todas as 14 Bases Oficiais (Visão Global • ${targetTeams.length} equipes monitoradas)`;
+            scopeText.textContent = `Todas as 7 Bases Alpitel (Visão Global • ${targetTeams.length} equipes monitoradas)`;
         } else {
             const selectedLabels = [];
             Object.keys(REGION_CONFIG).forEach(key => {
@@ -910,45 +910,45 @@ function animateCount(elementId, targetValue) {
 }
 
 // ==========================================================================
-// RENDERIZAÇÃO DAS 14 BASES OPERACIONAIS POR REGIÃO & EMPRESA
+// RENDERIZAÇÃO DAS 7 BASES OPERACIONAIS ALPITEL POR REGIÃO
 // ==========================================================================
 function renderRegionalBases() {
     const northAlpitelGrid = document.getElementById('northAlpitelBasesGrid');
     const eastAlpitelGrid = document.getElementById('eastAlpitelBasesGrid');
-    const northPropriaGrid = document.getElementById('northPropriaBasesGrid');
-    const eastPropriaGrid = document.getElementById('eastPropriaBasesGrid');
 
     const regions = appState.regions || {};
     const northAlpitelBases = regions.NORTE_ALPITEL ? regions.NORTE_ALPITEL.bases : [];
     const eastAlpitelBases = regions.LESTE_ALPITEL ? regions.LESTE_ALPITEL.bases : [];
-    const northPropriaBases = regions.NORTE_PROPRIA ? regions.NORTE_PROPRIA.bases : [];
-    const eastPropriaBases = regions.LESTE_PROPRIA ? regions.LESTE_PROPRIA.bases : [];
 
     if (northAlpitelGrid) northAlpitelGrid.innerHTML = northAlpitelBases.map(b => createBaseCardHTML(b)).join('');
     if (eastAlpitelGrid) eastAlpitelGrid.innerHTML = eastAlpitelBases.map(b => createBaseCardHTML(b)).join('');
-    if (northPropriaGrid) northPropriaGrid.innerHTML = northPropriaBases.map(b => createBaseCardHTML(b)).join('');
-    if (eastPropriaGrid) eastPropriaGrid.innerHTML = eastPropriaBases.map(b => createBaseCardHTML(b)).join('');
 
     initIcons();
 }
 
 function createBaseCardHTML(b) {
-    const isSelected = appState.selectedBases.has(b.prefix);
+    const isAll = appState.selectedBases.has('ALL') || appState.selectedBases.size === 0;
+    const isSelected = !isAll && appState.selectedBases.has(b.prefix);
     return `
-        <div class="base-card-premium ${isSelected ? 'active-filter' : ''}" data-base-code="${b.prefix}" onclick="toggleBaseFilter('${b.prefix}')">
+        <div class="base-card-premium ${isSelected ? 'active-filter' : ''}" data-base-code="${b.prefix}" onclick="toggleBaseFilter('${b.prefix}')" title="Clique para filtrar/desfiltrar a base ${b.name} (${b.prefix})">
             <div class="base-card-top">
-                <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
                     <span class="base-code-pill">${b.prefix}</span>
                     <h5 class="base-name-title">${b.name}</h5>
                 </div>
-                <span class="base-compliance-badge ${getComplianceBadgeClass(b.compliance_rate)}">
-                    ${b.compliance_rate}%
-                </span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span class="base-compliance-badge ${getComplianceBadgeClass(b.compliance_rate)}">
+                        ${b.compliance_rate}%
+                    </span>
+                    <span class="base-filter-check" title="Base selecionada no filtro">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </span>
+                </div>
             </div>
 
             <div class="base-metrics-grid">
                 <div class="base-metric-col">
-                    <span class="metric-col-label">PowerON</span>
+                    <span class="metric-col-label">LOGADO</span>
                     <span class="metric-col-val">${b.total_poweron}</span>
                 </div>
                 <div class="base-metric-col">
@@ -992,28 +992,21 @@ function toggleRegionFilter(regionCode, element) {
         const allPresent = regionBases.every(b => appState.selectedBases.has(b));
 
         if (allPresent) {
+            // Se todas as bases da região já estavam marcadas, desmarca essa região
             regionBases.forEach(b => appState.selectedBases.delete(b));
-            if (appState.selectedBases.size === 0) appState.selectedBases.add('ALL');
+            if (appState.selectedBases.size === 0) {
+                appState.selectedBases.add('ALL');
+            }
         } else {
+            // Adiciona todas as bases da região, mantendo outras seleções (multi-filtro)
             appState.selectedBases.delete('ALL');
             regionBases.forEach(b => appState.selectedBases.add(b));
-        }
-
-        // Se todas as 14 bases forem selecionadas, simplifica para 'ALL'
-        const all14Bases = [
-            ...REGION_CONFIG.NORTE_ALPITEL.bases,
-            ...REGION_CONFIG.LESTE_ALPITEL.bases,
-            ...REGION_CONFIG.NORTE_PROPRIA.bases,
-            ...REGION_CONFIG.LESTE_PROPRIA.bases
-        ];
-        if (all14Bases.every(b => appState.selectedBases.has(b))) {
-            appState.selectedBases.clear();
-            appState.selectedBases.add('ALL');
         }
     }
 
     syncBaseUI();
     updateKPIs();
+    updateFilterBadges();
     renderResults();
 }
 
@@ -1035,6 +1028,7 @@ function toggleBaseFilter(baseCode) {
 
     syncBaseUI();
     updateKPIs();
+    updateFilterBadges();
     renderResults();
 }
 
@@ -1043,22 +1037,23 @@ function setBaseFilter(baseCode, element) {
 }
 
 function syncBaseUI() {
-    const isAll = appState.selectedBases.has('ALL');
+    const isAll = appState.selectedBases.has('ALL') || appState.selectedBases.size === 0;
 
-    const northAlpitelAll = REGION_CONFIG.NORTE_ALPITEL.bases.every(b => appState.selectedBases.has(b));
-    const eastAlpitelAll = REGION_CONFIG.LESTE_ALPITEL.bases.every(b => appState.selectedBases.has(b));
-    const northPropriaAll = REGION_CONFIG.NORTE_PROPRIA.bases.every(b => appState.selectedBases.has(b));
-    const eastPropriaAll = REGION_CONFIG.LESTE_PROPRIA.bases.every(b => appState.selectedBases.has(b));
+    const northBases = REGION_CONFIG.NORTE_ALPITEL ? REGION_CONFIG.NORTE_ALPITEL.bases : ['ENL', 'ECL', 'EEL'];
+    const eastBases = REGION_CONFIG.LESTE_ALPITEL ? REGION_CONFIG.LESTE_ALPITEL.bases : ['EML', 'EQL', 'EVL', 'ESL'];
+
+    const northAll = northBases.every(b => appState.selectedBases.has(b));
+    const northSome = northBases.some(b => appState.selectedBases.has(b));
+    const eastAll = eastBases.every(b => appState.selectedBases.has(b));
+    const eastSome = eastBases.some(b => appState.selectedBases.has(b));
 
     // 1. Sincronizar Chips de Região (Barra de Filtros)
     const regionChips = document.querySelectorAll('#regionFiltersContainer .chip-filter');
     regionChips.forEach(chip => {
         const reg = chip.getAttribute('data-region');
         if (reg === 'ALL') chip.classList.toggle('active', isAll);
-        if (reg === 'NORTE_ALPITEL') chip.classList.toggle('active', !isAll && northAlpitelAll);
-        if (reg === 'LESTE_ALPITEL') chip.classList.toggle('active', !isAll && eastAlpitelAll);
-        if (reg === 'NORTE_PROPRIA') chip.classList.toggle('active', !isAll && northPropriaAll);
-        if (reg === 'LESTE_PROPRIA') chip.classList.toggle('active', !isAll && eastPropriaAll);
+        if (reg === 'NORTE_ALPITEL') chip.classList.toggle('active', !isAll && northAll);
+        if (reg === 'LESTE_ALPITEL') chip.classList.toggle('active', !isAll && eastAll);
     });
 
     // 2. Sincronizar Botões Rápidos de Região (Barra de KPIs)
@@ -1066,26 +1061,31 @@ function syncBaseUI() {
     quickRegBtns.forEach(btn => {
         const reg = btn.getAttribute('data-region');
         if (reg === 'ALL') btn.classList.toggle('active', isAll);
-        if (reg === 'NORTE_ALPITEL') btn.classList.toggle('active', !isAll && northAlpitelAll);
-        if (reg === 'LESTE_ALPITEL') btn.classList.toggle('active', !isAll && eastAlpitelAll);
-        if (reg === 'NORTE_PROPRIA') btn.classList.toggle('active', !isAll && northPropriaAll);
-        if (reg === 'LESTE_PROPRIA') btn.classList.toggle('active', !isAll && eastPropriaAll);
+        if (reg === 'NORTE_ALPITEL') btn.classList.toggle('active', !isAll && northAll);
+        if (reg === 'LESTE_ALPITEL') btn.classList.toggle('active', !isAll && eastAll);
     });
 
     // 3. Atualizar Texto do Escopo dos KPIs
     const scopeText = document.getElementById('kpiScopeText');
     if (scopeText) {
         if (isAll) {
-            scopeText.textContent = 'Todas as Regiões e Bases (Visão Global Consolidada)';
+            scopeText.textContent = 'Todas as 7 Bases Alpitel (Visão Global Consolidada)';
         } else {
             const activeRegs = [];
-            if (northAlpitelAll) activeRegs.push('Norte Alpitel');
-            if (northPropriaAll) activeRegs.push('Norte Própria');
-            if (eastAlpitelAll) activeRegs.push('Leste Alpitel');
-            if (eastPropriaAll) activeRegs.push('Leste Própria');
-            
+            if (northAll) activeRegs.push('Norte Alpitel');
+            else if (northSome) {
+                const sel = northBases.filter(b => appState.selectedBases.has(b));
+                activeRegs.push(`Norte (${sel.join(', ')})`);
+            }
+
+            if (eastAll) activeRegs.push('Leste Alpitel');
+            else if (eastSome) {
+                const sel = eastBases.filter(b => appState.selectedBases.has(b));
+                activeRegs.push(`Leste (${sel.join(', ')})`);
+            }
+
             if (activeRegs.length > 0) {
-                scopeText.textContent = `Regiões Ativas: ${activeRegs.join(' + ')}`;
+                scopeText.textContent = `Escopo: ${activeRegs.join(' + ')}`;
             } else {
                 scopeText.textContent = `Bases Ativas: ${Array.from(appState.selectedBases).join(', ')}`;
             }
@@ -1096,10 +1096,10 @@ function syncBaseUI() {
     const baseChips = document.querySelectorAll('#baseFiltersContainer .chip-filter');
     baseChips.forEach(chip => {
         const code = chip.getAttribute('data-base');
-        if (isAll) {
-            chip.classList.toggle('active', code === 'ALL');
+        if (code === 'ALL') {
+            chip.classList.toggle('active', isAll);
         } else {
-            chip.classList.toggle('active', appState.selectedBases.has(code));
+            chip.classList.toggle('active', !isAll && appState.selectedBases.has(code));
         }
     });
 
@@ -1117,23 +1117,112 @@ function syncBaseUI() {
     // 6. Sincronizar Blocos Regionais
     const blockNorthAlpitel = document.getElementById('blockRegionNorthAlpitel');
     const blockEastAlpitel = document.getElementById('blockRegionEastAlpitel');
-    const blockNorthPropria = document.getElementById('blockRegionNorthPropria');
-    const blockEastPropria = document.getElementById('blockRegionEastPropria');
 
-    if (blockNorthAlpitel) blockNorthAlpitel.classList.toggle('active-region', !isAll && northAlpitelAll);
-    if (blockEastAlpitel) blockEastAlpitel.classList.toggle('active-region', !isAll && eastAlpitelAll);
-    if (blockNorthPropria) blockNorthPropria.classList.toggle('active-region', !isAll && northPropriaAll);
-    if (blockEastPropria) blockEastPropria.classList.toggle('active-region', !isAll && eastPropriaAll);
+    if (blockNorthAlpitel) {
+        blockNorthAlpitel.classList.toggle('active-region', !isAll && northAll);
+        blockNorthAlpitel.classList.toggle('has-active-bases', !isAll && northSome && !northAll);
+    }
+    if (blockEastAlpitel) {
+        blockEastAlpitel.classList.toggle('active-region', !isAll && eastAll);
+        blockEastAlpitel.classList.toggle('has-active-bases', !isAll && eastSome && !eastAll);
+    }
+
+    // Badges de contagem dos blocos
+    const northBadge = document.getElementById('northAlpitelBasesCountBadge');
+    if (northBadge) {
+        if (!isAll && northAll) {
+            northBadge.textContent = '✓ 3 Bases Ativas';
+            northBadge.style.color = '#10b981';
+            northBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+        } else if (!isAll && northSome) {
+            const count = northBases.filter(b => appState.selectedBases.has(b)).length;
+            northBadge.textContent = `${count}/3 Bases`;
+            northBadge.style.color = '#38bdf8';
+            northBadge.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+        } else {
+            northBadge.textContent = '3 Bases';
+            northBadge.style.color = '';
+            northBadge.style.borderColor = '';
+        }
+    }
+
+    const eastBadge = document.getElementById('eastAlpitelBasesCountBadge');
+    if (eastBadge) {
+        if (!isAll && eastAll) {
+            eastBadge.textContent = '✓ 4 Bases Ativas';
+            eastBadge.style.color = '#3b82f6';
+            eastBadge.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+        } else if (!isAll && eastSome) {
+            const count = eastBases.filter(b => appState.selectedBases.has(b)).length;
+            eastBadge.textContent = `${count}/4 Bases`;
+            eastBadge.style.color = '#38bdf8';
+            eastBadge.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+        } else {
+            eastBadge.textContent = '4 Bases';
+            eastBadge.style.color = '';
+            eastBadge.style.borderColor = '';
+        }
+    }
+}
+
+function toggleStatusFilter(statusCode, element) {
+    if (!appState.selectedStatuses) {
+        appState.selectedStatuses = new Set(['ALL']);
+    }
+
+    if (statusCode === 'ALL') {
+        appState.selectedStatuses.clear();
+        appState.selectedStatuses.add('ALL');
+    } else {
+        appState.selectedStatuses.delete('ALL');
+        if (appState.selectedStatuses.has(statusCode)) {
+            appState.selectedStatuses.delete(statusCode);
+            if (appState.selectedStatuses.size === 0) {
+                appState.selectedStatuses.add('ALL');
+            }
+        } else {
+            appState.selectedStatuses.add(statusCode);
+        }
+    }
+
+    if (appState.selectedStatuses.has('ALL') || appState.selectedStatuses.size === 0) {
+        appState.currentStatusFilter = 'ALL';
+    } else if (appState.selectedStatuses.size === 1) {
+        appState.currentStatusFilter = Array.from(appState.selectedStatuses)[0];
+    } else {
+        appState.currentStatusFilter = 'MULTI';
+    }
+
+    syncStatusUI();
+    renderResults();
 }
 
 function setStatusFilter(statusCode, element) {
-    appState.currentStatusFilter = statusCode;
+    toggleStatusFilter(statusCode, element);
+}
 
-    const chips = element ? element.parentElement.querySelectorAll('.chip-filter') : document.querySelectorAll('.filter-cluster:nth-child(3) .chip-filter');
-    chips.forEach(chip => chip.classList.remove('active'));
-    if (element) element.classList.add('active');
+function syncStatusUI() {
+    const isAll = !appState.selectedStatuses || appState.selectedStatuses.has('ALL') || appState.selectedStatuses.size === 0;
 
-    renderResults();
+    const chips = document.querySelectorAll('#statusFiltersContainer .chip-filter, .filter-cluster .chip-filter[data-status]');
+    chips.forEach(chip => {
+        const st = chip.getAttribute('data-status');
+        if (st === 'ALL') {
+            chip.classList.toggle('active', isAll);
+        } else {
+            chip.classList.toggle('active', !isAll && appState.selectedStatuses.has(st));
+        }
+    });
+
+    const kpiPowerOn = document.getElementById('kpiCardPowerOn');
+    const kpiOnline = document.getElementById('kpiCardOnline');
+    const kpiOffline = document.getElementById('cardOfflineAlert');
+    const kpiTrboOnly = document.getElementById('kpiCardTrboOnly');
+
+    if (kpiPowerOn) kpiPowerOn.classList.toggle('kpi-selected-filter', isAll);
+    if (kpiOnline) kpiOnline.classList.toggle('kpi-selected-filter', !isAll && appState.selectedStatuses && appState.selectedStatuses.has('ONLINE'));
+    if (kpiOffline) kpiOffline.classList.toggle('kpi-selected-filter', !isAll && appState.selectedStatuses && appState.selectedStatuses.has('OFFLINE'));
+    if (kpiTrboOnly) kpiTrboOnly.classList.toggle('kpi-selected-filter', !isAll && appState.selectedStatuses && appState.selectedStatuses.has('TRBO_ONLY'));
 }
 
 function handleSearchChange() {
@@ -1178,6 +1267,13 @@ function setViewMode(mode) {
 function clearAllFilters() {
     appState.selectedBases.clear();
     appState.selectedBases.add('ALL');
+    
+    if (!appState.selectedStatuses) {
+        appState.selectedStatuses = new Set(['ALL']);
+    } else {
+        appState.selectedStatuses.clear();
+        appState.selectedStatuses.add('ALL');
+    }
     appState.currentStatusFilter = 'ALL';
     appState.searchQuery = '';
     
@@ -1187,14 +1283,10 @@ function clearAllFilters() {
     const btnClear = document.getElementById('btnClearSearch');
     if (btnClear) btnClear.style.display = 'none';
 
-    document.querySelectorAll('.filter-chips .chip-filter').forEach((c) => {
-        const isAll = c.getAttribute('data-status') === 'ALL' || c.getAttribute('data-base') === 'ALL' || c.getAttribute('data-region') === 'ALL';
-        c.classList.toggle('active', isAll);
-    });
-
-    toggleOtherBasesDrawer(false);
     syncBaseUI();
+    syncStatusUI();
     updateKPIs();
+    updateFilterBadges();
     renderResults();
     showToast('Filtros redefinidos para o estado padrão.', 'info');
 }
@@ -1206,7 +1298,8 @@ function getFilteredTeams() {
     let filtered = [...appState.teams];
 
     // Filtro por Multi-seleção de Bases / Regiões
-    if (!appState.selectedBases.has('ALL') && appState.selectedBases.size > 0) {
+    const isAllBases = appState.selectedBases.has('ALL') || appState.selectedBases.size === 0;
+    if (!isAllBases) {
         filtered = filtered.filter(t => {
             if (appState.selectedBases.has(t.prefix)) return true;
             if (appState.selectedBases.has('OUTRAS') && t.is_other_base) return true;
@@ -1214,15 +1307,16 @@ function getFilteredTeams() {
         });
     }
 
-    // Filtro por Status
-    if (appState.currentStatusFilter === 'ONLINE') {
-        filtered = filtered.filter(t => t.trbonet);
-    } else if (appState.currentStatusFilter === 'OFFLINE') {
-        filtered = filtered.filter(t => t.status_code === 'OFFLINE');
-    } else if (appState.currentStatusFilter === 'TRBO_ONLY') {
-        filtered = filtered.filter(t => t.status_code === 'TRBO_ONLY');
-    } else if (appState.currentStatusFilter === 'GPS_ONLY') {
-        filtered = filtered.filter(t => t.gps);
+    // Filtro por Multi-seleção de Status
+    const isAllStatus = !appState.selectedStatuses || appState.selectedStatuses.has('ALL') || appState.selectedStatuses.size === 0;
+    if (!isAllStatus) {
+        filtered = filtered.filter(t => {
+            if (appState.selectedStatuses.has('ONLINE') && t.trbonet) return true;
+            if (appState.selectedStatuses.has('OFFLINE') && t.status_code === 'OFFLINE') return true;
+            if (appState.selectedStatuses.has('TRBO_ONLY') && t.status_code === 'TRBO_ONLY') return true;
+            if (appState.selectedStatuses.has('GPS_ONLY') && t.gps) return true;
+            return false;
+        });
     }
 
     // Filtro por Texto de Busca
@@ -1359,7 +1453,7 @@ function renderCardsView(teams) {
 
                 <div class="team-card-body">
                     <div class="team-card-row">
-                        <span class="card-row-label"><i data-lucide="clipboard-check" class="mini-icon"></i> PowerON</span>
+                        <span class="card-row-label"><i data-lucide="clipboard-check" class="mini-icon"></i> Equipes Brasil</span>
                         <span class="card-row-val ${t.poweron ? 'text-emerald' : 'text-muted'}">${t.poweron ? 'Em Turno' : 'Fora de Escala'}</span>
                     </div>
                     <div class="team-card-row">
@@ -1382,18 +1476,22 @@ function renderCardsView(teams) {
 }
 
 function updateFilterBadges() {
-    const s = appState.summary;
+    let target = [...appState.teams];
+    const isAll = appState.selectedBases.has('ALL') || appState.selectedBases.size === 0;
+    if (!isAll) {
+        target = target.filter(t => appState.selectedBases.has(t.prefix));
+    }
     const allEl = document.getElementById('count-all');
     const onlineEl = document.getElementById('count-online');
     const offlineEl = document.getElementById('count-offline');
     const trboEl = document.getElementById('count-trbo-only');
     const gpsEl = document.getElementById('count-gps');
 
-    if (allEl) allEl.textContent = appState.teams.length;
-    if (onlineEl) onlineEl.textContent = s.total_trbonet || 0;
-    if (offlineEl) offlineEl.textContent = s.total_offline || 0;
-    if (trboEl) trboEl.textContent = s.total_trbo_only || 0;
-    if (gpsEl) gpsEl.textContent = s.online_with_gps || 0;
+    if (allEl) allEl.textContent = target.length;
+    if (onlineEl) onlineEl.textContent = target.filter(t => t.trbonet).length;
+    if (offlineEl) offlineEl.textContent = target.filter(t => t.status_code === 'OFFLINE').length;
+    if (trboEl) trboEl.textContent = target.filter(t => t.status_code === 'TRBO_ONLY').length;
+    if (gpsEl) gpsEl.textContent = target.filter(t => t.gps).length;
 }
 
 function sortTable(field) {
@@ -1474,7 +1572,7 @@ function renderCharts() {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Escala PowerON',
+                        label: 'Escala Equipes Brasil',
                         data: powerOnData,
                         backgroundColor: 'rgba(59, 130, 246, 0.75)',
                         borderColor: '#3b82f6',
@@ -1648,7 +1746,7 @@ function openTeamModal(code) {
         } else if (team.status_code === 'ONLINE_NOGPS') {
             rec.textContent = 'Orientar a equipe a posicionar o rádio próximo ao para-brisa para fixação do sinal de satélite GPS.';
         } else if (team.status_code === 'TRBO_ONLY') {
-            rec.textContent = 'Verificar se a equipe está prestando serviço extra ou se esqueceu de efetuar o login de início de turno no PowerON.';
+            rec.textContent = 'Verificar se a equipe está prestando serviço extra ou se esqueceu de efetuar o login de início de turno no Equipes Brasil.';
         } else {
             rec.textContent = 'Operação em perfeita conformidade. Nenhuma intervenção necessária.';
         }
@@ -1893,9 +1991,9 @@ document.addEventListener('click', (e) => {
 
 function copySummaryToClipboard() {
     const s = appState.summary;
-    const text = `=== ALERTAS OPERACIONAIS OP (POWERON × TRBONET) ===
+    const text = `=== ALERTAS OPERACIONAIS OP (EQUIPES BRASIL × TRBONET) ===
 Data: ${s.last_update}
-Total PowerON: ${s.total_poweron} equipes
+Total Equipes Brasil: ${s.total_poweron} equipes
 Total TRBOnet: ${s.total_trbonet} rádios
 Online com GPS: ${s.online_with_gps}
 Online sem GPS: ${s.online_without_gps}
@@ -3110,7 +3208,7 @@ const deliveryState = {
     },
     regionalViewMode: 'active', // 'active' (Equipes Ativas) | 'total' (Total do Dia)
     filteredTeams: [],
-    isTableCollapsed: true,
+    isTableCollapsed: false,
     shiftChart: null,
     fleetPieChart: null,
     searchTimer: null,
@@ -3122,13 +3220,18 @@ const deliveryState = {
     historyMonthlyChart: null,
     datePickerInstance: null,
     selectedAuditDates: [new Date().toISOString().split('T')[0]],
+    availableAuditDates: [],
+    availableAuditMonths: [],
     comparisonData: [],
     comparisonChart: null,
-    auditReconciliationFilter: 'all'
+    auditReconciliationFilter: 'all',
+    activeRegion: 'Norte',
+    planningTargets: null,
+    workforceChart: null
 };
 
 // Alternador de Telas (ONLINE vs AUDITORIA & HISTÓRICO)
-function switchDeliveryScreen(screenName) {
+async function switchDeliveryScreen(screenName) {
     deliveryState.currentScreen = screenName;
     const btnOnline = document.getElementById('btnSwitchOnline');
     const btnHist = document.getElementById('btnSwitchHistory');
@@ -3147,21 +3250,19 @@ function switchDeliveryScreen(screenName) {
         if (scrOnline) scrOnline.style.display = 'none';
         if (scrHist) scrHist.style.display = 'block';
 
-        // Inicializa seletores de data/mês
-        initHistoryDatePicker();
+        // Garante carga das datas e meses disponíveis do Supabase
+        await reloadAuditAvailableDates();
+
         const monthInput = document.getElementById('histMonthInput');
         if (monthInput && !monthInput.value) monthInput.value = deliveryState.historyMonth;
+        const wfMonthSel = document.getElementById('wfFilterMonth') || document.getElementById('histWorkforceMonthSelect');
+        const wfMonthVal = (wfMonthSel && wfMonthSel.value) ? wfMonthSel.value : (deliveryState.historyMonth || '2026-09');
 
-        if (deliveryState.historyMode === 'day') {
-            if (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates.length > 1) {
-                loadComparisonAudit(deliveryState.selectedAuditDates);
-            } else {
-                const target = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates[0]) || deliveryState.historyDate;
-                loadDailyHistoryAudit(target);
-            }
-        } else {
-            loadMonthlyHistoryAudit();
-        }
+        initHistoryDatePicker();
+        const target = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates[0]) || deliveryState.historyDate;
+        loadDailyHistoryAudit(target);
+        loadTargetsComparativeAudit(target, deliveryState.activeRegion || 'Norte');
+        await loadWorkforceMonthlyChart(wfMonthVal);
     }
 }
 
@@ -3182,6 +3283,16 @@ async function loadDeliveryData(forceRefresh = false) {
             deliveryState.intradayCurve = result.intraday_curve || {};
             deliveryState.geoGroups = result.geo_groups || {};
             deliveryState.lastSync = result.timestamp || '--:--:--';
+
+            // Ponto 3: Atualiza a telemetria CCO no cabeçalho (Última Coleta CDP)
+            const elCdpTime = document.getElementById('cdpLastSyncTime');
+            if (elCdpTime && deliveryState.lastSync) {
+                elCdpTime.textContent = deliveryState.lastSync;
+            }
+            const elCdpBadge = document.getElementById('cdpLastSyncBadge');
+            if (elCdpBadge && result.sync_source) {
+                elCdpBadge.title = `Última coleta CDP: ${deliveryState.lastSync} (${result.sync_source}). Clique para forçar conferência.`;
+            }
 
             applyDeliveryFilters();
             updateDeliveryHubCard();
@@ -3262,16 +3373,29 @@ function applyDeliveryFilters() {
         // Filtro por Turnos Múltiplos
         if (shifts.size > 0 && !shifts.has(t.shift_code)) return false;
 
-        // Filtro por Frota / Veículos Múltiplos
+        // Filtro por Frota / Veículos Múltiplos com normalização fonética/acentos
         if (vehicles.size > 0) {
+            const cleanStr = s => String(s || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
             let matchVehicle = false;
             for (const v of vehicles) {
-                if (v === 'Linha Viva + Munk') {
-                    if (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk') {
+                const vClean = cleanStr(v);
+                const tTypeClean = cleanStr(t.vehicle_type);
+                const tGroupClean = cleanStr(t.unified_group);
+                if (vClean.includes('munk') || vClean.includes('linha viva')) {
+                    if (tTypeClean.includes('linha viva') || tTypeClean.includes('munck') || tTypeClean.includes('munk') || tGroupClean.includes('munk') || tGroupClean.includes('linha viva')) {
                         matchVehicle = true;
                         break;
                     }
-                } else if (t.vehicle_type === v || t.unified_group === v) {
+                } else if (vClean.includes('cesto') && (tTypeClean.includes('cesto') || tGroupClean.includes('cesto'))) {
+                    matchVehicle = true;
+                    break;
+                } else if (vClean.includes('leve') && (tTypeClean.includes('leve') || tGroupClean.includes('leve'))) {
+                    matchVehicle = true;
+                    break;
+                } else if (vClean.includes('moto') && (tTypeClean.includes('moto') || tGroupClean.includes('moto'))) {
+                    matchVehicle = true;
+                    break;
+                } else if (tTypeClean === vClean || tGroupClean === vClean) {
                     matchVehicle = true;
                     break;
                 }
@@ -3294,21 +3418,23 @@ function applyDeliveryFilters() {
 
     // 2. Filtro Completo incluindo Regiões e Bases Múltiplas (para tabela e gráficos)
     deliveryState.filteredTeams = scopeFiltered.filter(t => {
+        const hasRegions = regions.size > 0;
+        const hasBases = bases.size > 0;
+
         // Filtro por Região Múltipla
-        if (regions.size > 0) {
-            let matchRegion = false;
+        let matchRegion = false;
+        if (hasRegions) {
             for (const r of regions) {
                 if (t.geo === r || (t.region && t.region.toLowerCase().includes(r.toLowerCase()))) {
                     matchRegion = true;
                     break;
                 }
             }
-            if (!matchRegion) return false;
         }
 
         // Filtro por Base Múltipla com correspondência resiliente
-        if (bases.size > 0) {
-            let matchBase = false;
+        let matchBase = false;
+        if (hasBases) {
             const bDisp = (t.base_display || '').toLowerCase();
             const bName = (t.base_name || '').toLowerCase();
             const bCode = (t.base_code || t.prefix || '').toLowerCase();
@@ -3327,6 +3453,16 @@ function applyDeliveryFilters() {
                     break;
                 }
             }
+        }
+
+        // Regra de Composição Geográfica Resiliente:
+        // Se tanto regiões quanto bases específicas foram clicadas, a equipe é exibida se corresponder a
+        // qualquer uma das regiões selecionadas OU a qualquer uma das bases selecionadas (União Inteligente)
+        if (hasRegions && hasBases) {
+            if (!matchRegion && !matchBase) return false;
+        } else if (hasRegions) {
+            if (!matchRegion) return false;
+        } else if (hasBases) {
             if (!matchBase) return false;
         }
 
@@ -3587,8 +3723,22 @@ function renderGroupedBasesMetrics(customTeamList) {
     if (elBSAPesado) elBSAPesado.textContent = bSA.linhaviva_munck || 0;
 }
 
-// Filtros Interativos Múltiplos por Região
-function toggleRegionFilter(regionName) {
+// Garante que a tabela esteja expandida ao interagir com filtros
+function ensureDeliveryTableExpanded() {
+    if (deliveryState.isTableCollapsed) {
+        deliveryState.isTableCollapsed = false;
+        const bodyEl = document.getElementById('deliveryTableCollapseBody');
+        const textEl = document.getElementById('textToggleDeliveryTable');
+        const subEl = document.getElementById('deliveryTableStateSubtitle');
+        if (bodyEl) bodyEl.classList.remove('table-collapsed');
+        if (textEl) textEl.textContent = 'RECOLHER TABELA';
+        if (subEl) subEl.textContent = 'Exibindo relação nominal detalhada das equipes filtradas.';
+    }
+}
+window.ensureDeliveryTableExpanded = ensureDeliveryTableExpanded;
+
+// Filtros Interativos Múltiplos por Região (Entrega de Equipes)
+function toggleDeliveryRegionFilter(regionName) {
     const cardId = regionName === 'Norte' ? 'filterCardTotalNorte' : 'filterCardTotalLeste';
     const cardEl = document.getElementById(cardId);
 
@@ -3598,29 +3748,23 @@ function toggleRegionFilter(regionName) {
     } else {
         deliveryState.filters.regions.add(regionName);
         if (cardEl) cardEl.classList.add('filter-active');
-        // Expande a tabela automaticamente para que o operador veja a relação filtrada
-        if (deliveryState.isTableCollapsed) {
-            toggleDeliveryTableCollapse();
-        }
     }
 
+    ensureDeliveryTableExpanded();
     applyDeliveryFilters();
 }
 
-// Filtros Interativos Múltiplos por Base
-function toggleBaseFilter(baseName, el) {
+// Filtros Interativos Múltiplos por Base (Entrega de Equipes)
+function toggleDeliveryBaseFilter(baseName, el) {
     if (deliveryState.filters.bases.has(baseName)) {
         deliveryState.filters.bases.delete(baseName);
         if (el) el.classList.remove('filter-active');
     } else {
         deliveryState.filters.bases.add(baseName);
         if (el) el.classList.add('filter-active');
-        // Expande a tabela automaticamente para que o operador veja a relação filtrada
-        if (deliveryState.isTableCollapsed) {
-            toggleDeliveryTableCollapse();
-        }
     }
 
+    ensureDeliveryTableExpanded();
     applyDeliveryFilters();
 }
 
@@ -3667,6 +3811,7 @@ function setDeliveryShiftFilter(shift, el) {
         }
     }
 
+    ensureDeliveryTableExpanded();
     applyDeliveryFilters();
 }
 
@@ -3697,6 +3842,7 @@ function setDeliveryVehicleFilter(vehicle, el) {
         }
     }
 
+    ensureDeliveryTableExpanded();
     applyDeliveryFilters();
 }
 
@@ -3730,11 +3876,19 @@ function renderDeliveryCharts() {
             const shifts = ['06:00', '08:00', '12:00', '14:00', '20:00', '22:00'];
             const shiftLabels = ['06:00', '08:00', '12:00', '14:00', '20:00', '22:00'];
 
-            // No painel ONLINE, a Curva de Entrada ao Longo do Dia exibe as equipes EM TURNO NO MOMENTO
+            // No painel ONLINE: se modo for 'active', exibe equipes em turno ativo; se for 'total', exibe todas do dia
             const isOnlineScreen = deliveryState.currentScreen === 'online';
-            const list = isOnlineScreen
-                ? deliveryState.filteredTeams.filter(t => t.is_active)
+            const isTotalMode = deliveryState.regionalViewMode === 'total';
+            const list = (isOnlineScreen && !isTotalMode)
+                ? deliveryState.filteredTeams.filter(t => t.is_active !== false)
                 : deliveryState.filteredTeams;
+
+            const shiftSubtitle = document.getElementById('deliveryShiftChartSubtitle');
+            if (shiftSubtitle) {
+                shiftSubtitle.textContent = isTotalMode 
+                    ? 'Total Acumulado de Equipes por Faixa Horária (Ativas + Encerradas)'
+                    : 'Entrada de Equipes Ativas por Faixa Horária de Login';
+            }
 
             const dataCesto = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Cesto Aéreo').length);
             const dataLeve = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Veículo Leve').length);
@@ -3842,9 +3996,17 @@ function renderDeliveryCharts() {
             }
 
             const isOnlineScreen = deliveryState.currentScreen === 'online';
-            const list = isOnlineScreen
-                ? deliveryState.filteredTeams.filter(t => t.is_active)
+            const isTotalMode = deliveryState.regionalViewMode === 'total';
+            const list = (isOnlineScreen && !isTotalMode)
+                ? deliveryState.filteredTeams.filter(t => t.is_active !== false)
                 : deliveryState.filteredTeams;
+
+            const fleetSubtitle = document.getElementById('deliveryFleetChartSubtitle');
+            if (fleetSubtitle) {
+                fleetSubtitle.textContent = isTotalMode
+                    ? 'Total Acumulado do Dia por Tipologia Veicular'
+                    : 'Total de Equipes Ativas por Tipologia Veicular';
+            }
 
             const fleetCategories = ['Cesto Aéreo', 'Veículo Leve', 'Moto', 'Linha Viva + Munk'];
             const fleetCounts = [
@@ -3946,11 +4108,12 @@ function toggleDeliveryTableCollapse() {
     if (deliveryState.isTableCollapsed) {
         if (bodyEl) bodyEl.classList.add('table-collapsed');
         if (textEl) textEl.textContent = 'EXPANDIR TABELA';
-        if (subEl) subEl.textContent = 'Tabela recolhida por padrão para máxima performance. Clique em Expandir para visualizar.';
+        if (subEl) subEl.textContent = 'Tabela recolhida. Clique em Expandir para visualizar a relação nominal.';
     } else {
         if (bodyEl) bodyEl.classList.remove('table-collapsed');
         if (textEl) textEl.textContent = 'RECOLHER TABELA';
         if (subEl) subEl.textContent = 'Exibindo relação nominal detalhada das equipes filtradas.';
+        renderDeliveryTable();
     }
 }
 
@@ -3981,10 +4144,14 @@ function renderDeliveryTable() {
     if (!tbody) return;
 
     if (!list || list.length === 0) {
+        const hasAnyFilter = deliveryState.filters.regions.size > 0 || deliveryState.filters.bases.size > 0 || deliveryState.filters.shifts.size > 0 || deliveryState.filters.vehicles.size > 0 || deliveryState.filters.search;
         tbody.innerHTML = `
             <tr>
-                <td colspan="10" style="text-align: center; padding: 32px; color: var(--text-secondary);">
-                    <p style="font-weight: 700; margin: 0;">Nenhuma equipe encontrada para os filtros selecionados.</p>
+                <td colspan="11" style="text-align: center; padding: 36px 20px; color: var(--text-secondary);">
+                    <p style="font-weight: 700; font-size: 0.95rem; margin: 0 0 6px 0; color: var(--text-primary);">Nenhuma equipe encontrada para os filtros selecionados.</p>
+                    <p style="font-size: 0.8rem; margin: 0; color: var(--text-secondary);">
+                        ${hasAnyFilter ? 'Tente desmarcar alguns filtros ou clique em <strong style="color: #38bdf8; cursor: pointer; text-decoration: underline;" onclick="clearDeliveryBaseFilters()">LIMPAR SELEÇÃO</strong>.' : 'Nenhuma equipe registrada no momento.'}
+                    </p>
                 </td>
             </tr>
         `;
@@ -3993,9 +4160,62 @@ function renderDeliveryTable() {
 
     tbody.innerHTML = list.map(t => {
         const isAct = t.is_active;
-        const statusBadge = isAct
-            ? `<span class="badge-status-active" style="background: rgba(16, 185, 129, 0.14); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;"><span class="live-status-dot" style="width:6px;height:6px;"></span> Logada</span>`
-            : `<span style="background: rgba(148, 163, 184, 0.14); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 700;">Turno Concluído</span>`;
+        const statusEB = t.status_equipes_brasil || t.status || (isAct ? 'Logada' : 'Turno Concluído');
+        
+        let statusBadge = '';
+        if (statusEB.toLowerCase().includes('atendimento')) {
+            statusBadge = `<span class="badge-status-active" style="background: rgba(14, 165, 233, 0.15); color: #0284c7; border: 1px solid rgba(14, 165, 233, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;"><span class="live-status-dot" style="width:6px;height:6px;background:#0284c7;"></span> Em Atendimento</span>`;
+        } else if (statusEB.toLowerCase().includes('descanso')) {
+            statusBadge = `<span style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;">☕ Descanso</span>`;
+        } else if (statusEB.toLowerCase().includes('livre') || statusEB.toLowerCase().includes('deslocamento')) {
+            statusBadge = `<span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;">⚡ ${statusEB}</span>`;
+        } else if (isAct) {
+            statusBadge = `<span class="badge-status-active" style="background: rgba(16, 185, 129, 0.14); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;"><span class="live-status-dot" style="width:6px;height:6px;"></span> ${statusEB}</span>`;
+        } else {
+            statusBadge = `<span style="background: rgba(148, 163, 184, 0.14); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 700;">Turno Concluído</span>`;
+        }
+
+        // Badge da Placa & Cruzamento com Frotas
+        const plateVal = t.plate && t.plate !== '--' ? t.plate : '';
+        let plateHtml = '';
+        if (!plateVal) {
+            plateHtml = `<span style="color: var(--text-secondary); font-size: 0.75rem;">Sem placa</span>`;
+        } else {
+            let fleetBadge = '';
+            const isCad = t.plate_cadastrada;
+            const situacao = (t.situacao_veiculo_cadastrado || '').toUpperCase();
+            const statusV = (t.status_veiculo_cadastrado || '').toUpperCase();
+
+            if (!isCad) {
+                fleetBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.35); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; display: inline-block; margin-top: 2px;">Não Cadastrada</span>`;
+            } else if (situacao === 'PARADO' || statusV.includes('MANUTEN') || statusV.includes('ANÁLISE') || statusV.includes('ANALISE')) {
+                fleetBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.18); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.45); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; display: inline-block; margin-top: 2px;" title="Alerta: Veículo cadastrado como ${situacao} (${statusV}) na frota!">⚠️ ${situacao}</span>`;
+            } else {
+                fleetBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; display: inline-block; margin-top: 2px;">✓ ${situacao}</span>`;
+            }
+
+            plateHtml = `
+                <div>
+                    <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: var(--text-primary);">${plateVal}</strong>
+                </div>
+                ${fleetBadge}
+            `;
+        }
+
+        // GPS
+        const gpsStr = t.gps_update_str && t.gps_update_str !== '--' ? t.gps_update_str : '--';
+        const gpsMin = t.gps_update_minutes;
+        const gpsColor = gpsMin !== null && gpsMin !== undefined && gpsMin > 60 ? '#f59e0b' : '#10b981';
+
+        // Descanso
+        const descansoHtml = t.data_inicio_descanso
+            ? `<div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 700; color: #8b5cf6;">${t.data_inicio_descanso}</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-secondary);">${t.hora_inicio_descanso || '--:--'}</div>`
+            : `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
+
+        // Ordem
+        const ordemHtml = t.ordem_servico
+            ? `<span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.78rem; color: #0284c7;">${t.ordem_servico}</span>`
+            : `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
 
         return `
             <tr>
@@ -4007,27 +4227,26 @@ function renderDeliveryTable() {
                     <small style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-weight: 700;">${t.base_code}</small>
                 </td>
                 <td>
-                    <div style="font-weight: 700;">${t.region}</div>
-                    <small style="font-weight: 800; color: ${t.company === 'Alpitel' ? '#0284c7' : '#8b5cf6'};">${t.company}</small>
+                    <div style="font-weight: 700; font-size: 0.76rem;">${t.ut || '--'}</div>
+                    <small style="font-weight: 800; color: #0ea5e9;">${t.filial || '--'}</small>
                 </td>
                 <td>
                     <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type}</span>
                 </td>
                 <td>
-                    <strong style="font-family: 'JetBrains Mono', monospace; color: #10b981;">${t.login_time || '--:--'}</strong>
-                </td>
-                <td>
-                    <span style="font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); font-weight: 600;">${t.logoff_time || '--:--'}</span>
-                </td>
-                <td>
                     <span class="shift-pill ${t.shift_pill_class}" style="font-size: 0.74rem;">${t.shift_slot}</span>
                 </td>
-                <td>${statusBadge}</td>
                 <td>
-                    <div style="font-weight: 600; color: var(--text-primary);">${t.driver || '--'}</div>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.76rem; color: ${gpsColor};">
+                        ${gpsStr}
+                    </span>
                 </td>
+                <td>${statusBadge}</td>
+                <td>${plateHtml}</td>
+                <td>${descansoHtml}</td>
+                <td>${ordemHtml}</td>
                 <td>
-                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--text-secondary);">${t.plate || '--'}</span>
+                    <div style="font-weight: 600; font-size: 0.76rem; color: var(--text-primary);">${t.driver || '--'}</div>
                 </td>
             </tr>
         `;
@@ -4108,24 +4327,107 @@ function setHistoryAuditMode(mode) {
     }
 }
 
-// Inicialização do Flatpickr para Múltiplas Datas de Auditoria
-function initHistoryDatePicker() {
+// Carregamento e Atualização das Datas e Meses Disponíveis no Banco
+async function reloadAuditAvailableDates() {
+    try {
+        const resp = await fetch('/api/delivery/available-dates');
+        const data = await resp.json();
+        if (data.status === 'success') {
+            deliveryState.availableAuditDates = data.dates || [];
+            deliveryState.availableAuditMonths = data.months || [];
+
+            // Garante meses ordenados de forma crescente: Janeiro, Fevereiro, Março, Abril...
+            deliveryState.availableAuditMonths.sort((a, b) => {
+                const valA = typeof a === 'object' ? a.value : a;
+                const valB = typeof b === 'object' ? b.value : b;
+                return valA.localeCompare(valB);
+            });
+
+            // Popula lista suspensa do FILTROS GERAIS DO PERÍODO
+            const wfMonthSel = document.getElementById('wfFilterMonth');
+            if (wfMonthSel && deliveryState.availableAuditMonths.length > 0) {
+                const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+                
+                const optionsHtml = deliveryState.availableAuditMonths.map(m => {
+                    const val = typeof m === 'object' ? m.value : m;
+                    let label = typeof m === 'object' ? m.label : null;
+                    if (!label && typeof val === 'string' && val.includes('-')) {
+                        const parts = val.split('-');
+                        const y = parts[0];
+                        const monthIdx = parseInt(parts[1], 10) - 1;
+                        label = `${monthNames[monthIdx] || parts[1]} de ${y}`;
+                    }
+                    return `<option value="${val}">${label || val}</option>`;
+                }).join('');
+
+                const prevVal = wfMonthSel.value;
+                wfMonthSel.innerHTML = optionsHtml;
+
+                // Define o mês de ontem como padrão
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yMonth = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}`;
+
+                if (prevVal && Array.from(wfMonthSel.options).some(o => o.value === prevVal)) {
+                    wfMonthSel.value = prevVal;
+                } else if (Array.from(wfMonthSel.options).some(o => o.value === yMonth)) {
+                    wfMonthSel.value = yMonth;
+                } else if (wfMonthSel.options.length > 0) {
+                    wfMonthSel.value = wfMonthSel.options[wfMonthSel.options.length - 1].value;
+                }
+
+                if (deliveryState.currentScreen === 'history' && (!deliveryState.monthlyRawData || deliveryState.monthlyRawData.length === 0)) {
+                    loadWorkforceMonthlyChart(wfMonthSel.value);
+                }
+            }
+
+            // Redesenha Flatpickr para renderizar as bolinhas verdes nos dias com dados
+            if (deliveryState.datePickerInstance) {
+                deliveryState.datePickerInstance.redraw();
+            }
+        }
+    } catch (e) {
+        console.warn('Erro ao consultar datas com auditoria disponível:', e);
+    }
+}
+
+// Inicialização do Flatpickr para Múltiplas Datas de Auditoria (Liquid Glass)
+async function initHistoryDatePicker() {
     const input = document.getElementById('histDateInput');
     if (!input || !window.flatpickr) return;
     if (deliveryState.datePickerInstance) return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (!deliveryState.selectedAuditDates || deliveryState.selectedAuditDates.length === 0) {
-        deliveryState.selectedAuditDates = [todayStr];
+    // Busca as datas disponíveis antes de abrir
+    await reloadAuditAvailableDates();
+
+    // REGRA DE NEGÓCIO: Sempre apresentar o DIA ANTERIOR (ontem) como data principal
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    let defaultDates = [];
+    if (deliveryState.availableAuditDates && deliveryState.availableAuditDates.includes(yesterdayStr)) {
+        defaultDates = [yesterdayStr];
+    } else if (deliveryState.availableAuditDates && deliveryState.availableAuditDates.length > 0) {
+        // Encontra a data mais recente anterior ou igual a ontem
+        const prevDates = deliveryState.availableAuditDates.filter(d => d <= yesterdayStr);
+        defaultDates = [prevDates.length > 0 ? prevDates[0] : deliveryState.availableAuditDates[0]];
+    } else {
+        defaultDates = [yesterdayStr];
     }
+
+    deliveryState.selectedAuditDates = defaultDates;
+    deliveryState.historyDate = defaultDates[0];
 
     deliveryState.datePickerInstance = flatpickr(input, {
         mode: "multiple",
         dateFormat: "Y-m-d",
         altInput: true,
         altFormat: "d/m/Y",
-        conjunction: "  |  ",
-        defaultDate: deliveryState.selectedAuditDates,
+        conjunction: " | ",
+        defaultDate: defaultDates,
         locale: {
             weekdays: {
                 shorthand: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
@@ -4134,6 +4436,17 @@ function initHistoryDatePicker() {
             months: {
                 shorthand: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"],
                 longhand: ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+            }
+        },
+        onDayCreate: function(dObj, dStr, fp, dayElem) {
+            if (!dayElem || !dayElem.dateObj) return;
+            const y = dayElem.dateObj.getFullYear();
+            const m = String(dayElem.dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dayElem.dateObj.getDate()).padStart(2, '0');
+            const ymd = `${y}-${m}-${d}`;
+            if (deliveryState.availableAuditDates && deliveryState.availableAuditDates.includes(ymd)) {
+                dayElem.classList.add('has-audit-data');
+                dayElem.setAttribute('title', 'Dados gravados no banco de auditoria');
             }
         },
         onChange: function(selectedDates) {
@@ -4149,6 +4462,12 @@ function initHistoryDatePicker() {
             handleAuditDatesSelected(dates);
         }
     });
+
+    // Carrega dados da data padrão inicial
+    if (defaultDates && defaultDates[0]) {
+        loadDailyHistoryAudit(defaultDates[0]);
+        loadTargetsComparativeAudit(defaultDates[0], deliveryState.activeRegion || 'Norte');
+    }
 }
 
 function handleAuditDatesSelected(dates) {
@@ -4164,6 +4483,13 @@ function handleAuditDatesSelected(dates) {
         if (viewDay) viewDay.style.display = 'block';
         if (viewComp) viewComp.style.display = 'none';
         loadDailyHistoryAudit(dates[0]);
+        loadTargetsComparativeAudit(dates[0], deliveryState.activeRegion || 'Norte');
+        const m = dates[0].slice(0, 7);
+        const selMonth = document.getElementById('wfFilterMonth');
+        const wfMonthInput = document.getElementById('histWorkforceMonthInput');
+        if (selMonth && selMonth.value !== m) selMonth.value = m;
+        if (wfMonthInput) wfMonthInput.value = m;
+        loadWorkforceMonthlyChart(m);
     } else {
         if (viewDay) viewDay.style.display = 'none';
         if (viewComp) viewComp.style.display = 'block';
@@ -4179,16 +4505,10 @@ function clearSelectedAuditDates() {
 }
 
 function refreshCurrentHistoryAudit() {
-    if (deliveryState.historyMode === 'day') {
-        if (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates.length > 1) {
-            loadComparisonAudit(deliveryState.selectedAuditDates);
-        } else {
-            const target = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates[0]) || deliveryState.historyDate;
-            loadDailyHistoryAudit(target);
-        }
-    } else {
-        loadMonthlyHistoryAudit();
-    }
+    const target = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates[0]) || deliveryState.historyDate;
+    loadDailyHistoryAudit(target);
+    loadTargetsComparativeAudit(target, deliveryState.activeRegion || 'Norte');
+    loadWorkforceMonthlyChart();
 }
 
 // Filtro de Confronto Spotfire
@@ -4196,10 +4516,10 @@ function setAuditReconciliationFilter(filterKey) {
     deliveryState.auditReconciliationFilter = filterKey;
     const btns = {
         all: document.getElementById('btnFilterReconcileAll'),
-        reconciled: document.getElementById('btnFilterReconcileSuccess'),
-        in_progress: document.getElementById('btnFilterReconcileActive'),
-        waiting: document.getElementById('btnFilterReconcileWaiting'),
-        spotfire_only: document.getElementById('btnFilterReconcileExtra')
+        both: document.getElementById('btnFilterReconcileBoth'),
+        spotfire_only: document.getElementById('btnFilterReconcileExtra'),
+        eb_only: document.getElementById('btnFilterReconcileEbOnly'),
+        logoff: document.getElementById('btnFilterReconcileSuccess')
     };
     Object.keys(btns).forEach(k => {
         if (btns[k]) {
@@ -4207,37 +4527,89 @@ function setAuditReconciliationFilter(filterKey) {
             else btns[k].classList.remove('active');
         }
     });
-    renderDailyAuditTable();
+    // Se o usuário clicou para filtrar e a tabela estiver recolhida, expande para visualizar
+    if (!deliveryState.histTableExpanded) {
+        toggleHistTableCollapse(true);
+    } else {
+        renderDailyAuditTable();
+    }
+}
+
+// Alterna Recolher / Expandir da Tabela Nominal de Auditoria
+function toggleHistTableCollapse(forceExpand = null) {
+    const tableBody = document.getElementById('histTableCollapseBody');
+    const placeholder = document.getElementById('histTablePlaceholder');
+    const textEl = document.getElementById('textToggleHistTable');
+    const iconEl = document.getElementById('iconToggleHistTable');
+
+    if (forceExpand !== null) {
+        deliveryState.histTableExpanded = forceExpand;
+    } else {
+        deliveryState.histTableExpanded = !deliveryState.histTableExpanded;
+    }
+
+    if (deliveryState.histTableExpanded) {
+        if (tableBody) tableBody.style.display = 'block';
+        if (placeholder) placeholder.style.display = 'none';
+        if (textEl) textEl.textContent = 'RECOLHER TABELA';
+        if (iconEl) iconEl.setAttribute('data-lucide', 'chevron-up');
+        renderDailyAuditTable();
+    } else {
+        if (tableBody) tableBody.style.display = 'none';
+        if (placeholder) placeholder.style.display = 'block';
+        if (textEl) textEl.textContent = 'EXPANDIR TABELA';
+        if (iconEl) iconEl.setAttribute('data-lucide', 'chevron-down');
+    }
+    if (window.lucide) lucide.createIcons();
 }
 
 // Disparo Manual de Sincronização do Spotfire via CDP
 async function triggerSpotfireManualSync() {
-    const btn = document.getElementById('btnSpotfireManualSync');
-    const origHtml = btn ? btn.innerHTML : '';
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="loading-pulse">Coletando Spotfire...</span>';
-    }
-    showToast('Iniciando extração autônoma do TIBCO Spotfire via CDP...', 'info');
+    return handleCarregarBaseClick();
+}
+
+// Ação do Botão CARREGAR BASE: Executa o Robô CDP do Scanner 5.0 e atualiza toda a base
+async function handleCarregarBaseClick() {
+    const btn = document.getElementById('btnCarregarBase');
+    const icon = document.getElementById('iconCarregarBase');
+    const txt = document.getElementById('txtCarregarBase');
+    const origTxt = txt ? txt.textContent : 'Carregar Base';
+
+    if (btn) btn.disabled = true;
+    if (icon) icon.classList.add('spin-animation');
+    if (txt) txt.textContent = 'Carregando Base...';
+
+    showToast('Iniciando robô CDP do Scanner 5.0 para extrair base completa...', 'info');
+
     try {
         const resp = await fetch('/api/delivery/spotfire/sync', { method: 'POST' });
-        const res = await resp.json();
-        if (res.status === 'success') {
-            showToast(`Sucesso! ${res.count || 0} registros do Spotfire sincronizados.`, 'success');
+        let res = null;
+        try {
+            res = await resp.json();
+        } catch (jsonErr) {
+            throw new Error(`Servidor retornou resposta inesperada (${resp.status} ${resp.statusText})`);
+        }
+
+        if (resp.ok && res.status === 'success') {
+            showToast(`Sucesso! ${res.count || 0} registros do Scanner 5.0 sincronizados com o banco!`, 'success');
+            const elUpd = document.getElementById('histReportLastUpdated');
+            if (elUpd && res.updated_at) {
+                elUpd.textContent = formatDateTimeBR(res.updated_at);
+            }
+            await reloadAuditAvailableDates();
             refreshCurrentHistoryAudit();
-        } else if (res.status === 'waiting_login') {
+        } else if (res && res.status === 'waiting_login') {
             showToast(res.message, 'warning');
         } else {
-            showToast(res.message || 'Erro durante a coleta do Spotfire.', 'danger');
+            showToast(res ? res.message : 'Aviso durante a atualização do Scanner 5.0.', 'warning');
         }
     } catch (err) {
-        showToast('Erro ao comunicar com o coletor Spotfire: ' + err.message, 'danger');
+        showToast('Erro ao comunicar com o robô CDP do Scanner 5.0: ' + err.message, 'danger');
     } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = origHtml;
-        }
-        if (window.lucide) lucide.createIcons();
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove('spin-animation');
+        if (txt) txt.textContent = origTxt;
+        initIcons();
     }
 }
 
@@ -4273,24 +4645,32 @@ async function loadDailyHistoryAudit(targetDate = null) {
         if (elMoto) elMoto.textContent = summary.moto || 0;
         if (elPesado) elPesado.textContent = summary.linhaviva_munck || 0;
 
-        // Atualiza KPIs de Confronto Spotfire
+        // Atualiza KPIs do Segmento de Confronto Forense
         const rec = data.reconciliation || {};
         const elAssert = document.getElementById('histReconcileAssertividade');
+        const elAmbos = document.getElementById('histReconcileAmbosCount');
+        const elOnlySp = document.getElementById('histReconcileOnlySpotfireCount');
+        const elOnlyEb = document.getElementById('histReconcileOnlyEbCount');
         const elLogoff = document.getElementById('histReconcileLogoffCount');
+        const elTotAudit = document.getElementById('histReconcileTotalAuditCount');
         const elOsProd = document.getElementById('histReconcileOsProdutivas');
         const elOsTot = document.getElementById('histReconcileOsTotal');
-        const elSpCount = document.getElementById('histReconcileSpotfireCount');
-        const elEbCount = document.getElementById('histReconcileEbCount');
+        const elPlaceCount = document.getElementById('histTablePlaceholderCount');
 
         if (elAssert) elAssert.textContent = (rec.assertiveness_rate != null ? rec.assertiveness_rate : 0) + '%';
+        if (elAmbos) elAmbos.textContent = rec.total_conciliado_ambos || 0;
+        if (elOnlySp) elOnlySp.textContent = rec.total_apenas_spotfire || 0;
+        if (elOnlyEb) elOnlyEb.textContent = rec.total_apenas_equipesbrasil || 0;
         if (elLogoff) elLogoff.textContent = rec.total_with_logoff || 0;
+        if (elTotAudit) elTotAudit.textContent = rec.total_delivered || 0;
         if (elOsProd) elOsProd.textContent = rec.total_os_produtivas || 0;
         if (elOsTot) elOsTot.textContent = rec.total_os_geral || 0;
-        if (elSpCount) elSpCount.textContent = rec.total_spotfire || 0;
-        if (elEbCount) elEbCount.textContent = rec.total_equipes_brasil || 0;
+        if (elPlaceCount) elPlaceCount.textContent = rec.total_delivered || 0;
 
-        // Renderiza a tabela nominal aplicando os filtros
-        renderDailyAuditTable();
+        // Renderiza as linhas caso a tabela esteja expandida
+        if (deliveryState.histTableExpanded) {
+            renderDailyAuditTable();
+        }
     } catch (err) {
         console.error('Falha ao carregar histórico diário:', err);
     }
@@ -4310,14 +4690,22 @@ function renderDailyAuditTable() {
     const filterKey = deliveryState.auditReconciliationFilter || 'all';
     let filteredTeams = data.teams;
 
-    if (filterKey === 'reconciled') {
-        filteredTeams = data.teams.filter(t => t.status_conciliacao === 'CONCILIADO_TOTAL');
-    } else if (filterKey === 'in_progress') {
-        filteredTeams = data.teams.filter(t => t.status_conciliacao === 'TURNO_EM_ANDAMENTO');
-    } else if (filterKey === 'waiting') {
-        filteredTeams = data.teams.filter(t => t.status_conciliacao === 'AGUARDANDO_SPOTFIRE');
+    if (filterKey === 'both') {
+        filteredTeams = data.teams.filter(t => 
+            t.status_conciliacao === 'CONCILIADO_TOTAL' || 
+            t.status_conciliacao === 'CONCILIADO_AMBOS' || 
+            t.status_conciliacao === 'TURNO_EM_ANDAMENTO' ||
+            (t.spotfire_reconciled && t.status_conciliacao !== 'APENAS_SPOTFIRE')
+        );
     } else if (filterKey === 'spotfire_only') {
         filteredTeams = data.teams.filter(t => t.status_conciliacao === 'APENAS_SPOTFIRE');
+    } else if (filterKey === 'eb_only') {
+        filteredTeams = data.teams.filter(t => 
+            t.status_conciliacao === 'APENAS_EQUIPESBRASIL' || 
+            t.status_conciliacao === 'AGUARDANDO_SPOTFIRE'
+        );
+    } else if (filterKey === 'logoff') {
+        filteredTeams = data.teams.filter(t => t.logoff_real && t.logoff_real !== '--' && t.logoff_real !== '--:--');
     }
 
     if (filteredTeams.length === 0) {
@@ -4336,18 +4724,21 @@ function renderDailyAuditTable() {
         let statusBadge = '';
         if (t.status_conciliacao === 'CONCILIADO_TOTAL') {
             statusBadge = `<span class="badge-reconcile badge-reconcile-success" title="Turno com LogOff e Produtividade confirmados no Spotfire"><i data-lucide="check-circle-2"></i> 100% CONCILIADO</span>`;
-        } else if (t.status_conciliacao === 'TURNO_EM_ANDAMENTO') {
-            statusBadge = `<span class="badge-reconcile badge-reconcile-warning" title="Equipe em atividade, aguardando LogOff"><i data-lucide="clock"></i> EM ANDAMENTO</span>`;
+        } else if (t.status_conciliacao === 'CONCILIADO_AMBOS' || t.status_conciliacao === 'TURNO_EM_ANDAMENTO') {
+            statusBadge = `<span class="badge-reconcile badge-reconcile-warning" title="Equipe presente no Spotfire e EB, turno em andamento"><i data-lucide="check"></i> CONCILIADO EM AMBOS</span>`;
         } else if (t.status_conciliacao === 'APENAS_SPOTFIRE') {
-            statusBadge = `<span class="badge-reconcile badge-reconcile-extra" title="Detectada no Spotfire mas ausente no EquipesBrasil"><i data-lucide="alert-circle"></i> APENAS SPOTFIRE</span>`;
+            statusBadge = `<span class="badge-reconcile badge-reconcile-extra" title="Detectada no Spotfire mas ausente no EquipesBrasil"><i data-lucide="alert-circle"></i> APENAS NO SPOTFIRE</span>`;
         } else {
-            statusBadge = `<span class="badge-reconcile badge-reconcile-pending" title="Aguardando próxima atualização do Spotfire (janela 30min)"><i data-lucide="hourglass"></i> AGUARDANDO DESH</span>`;
+            statusBadge = `<span class="badge-reconcile badge-reconcile-pending" title="Presente no EquipesBrasil, ausente no Spotfire"><i data-lucide="hourglass"></i> APENAS EQUIPESBRASIL</span>`;
         }
 
         // Produtividade
         const prod = t.produtivas || 0;
         const totalOs = t.qtd_os || 0;
         const osHtml = `<span title="Produtivas: ${prod} | Total: ${totalOs} | Improdutivas: ${t.improdutiva || 0} | Verificações: ${t.verificacoes || 0}"><strong style="color: #10b981;">${prod}</strong> <small style="color: var(--text-secondary);">/ ${totalOs}</small></span>`;
+
+        // Turno
+        const turnoText = t.turno ? `${t.turno} (${t.shift_slot || t.shift_code})` : (t.shift_slot || '--');
 
         return `
             <tr>
@@ -4361,7 +4752,7 @@ function renderDailyAuditTable() {
                 <td><strong style="color:#a78bfa; font-family:'JetBrains Mono', monospace;">${t.duracao_efetiva || '--'}</strong></td>
                 <td>${osHtml}</td>
                 <td>${statusBadge}</td>
-                <td><span class="shift-pill">${t.shift_slot}</span></td>
+                <td><span class="shift-pill ${t.shift_pill_class || ''}">${turnoText}</span></td>
                 <td>${t.driver || '--'}</td>
                 <td><span style="font-family:'JetBrains Mono', monospace;">${t.plate || '--'}</span></td>
             </tr>
@@ -4686,6 +5077,952 @@ function renderMonthlyBarChart(data) {
     });
 }
 
+// ==============================================================================
+// METAS OPERACIONAIS E COMPARATIVO (PLAN vs REAL vs GAP) - REGIÕES NORTE & LESTE
+// ==============================================================================
+
+function renderTargetsRow(row) {
+    let trClass = '';
+    if (row.is_grand_total) {
+        trClass = 'class="targets-row-total targets-row-grand-total"';
+    } else if (row.is_total) {
+        trClass = 'class="targets-row-total"';
+    }
+    const gap = row.gap || 0;
+    let gapClass = 'targets-cell-gap';
+    let gapText = '0';
+    if (gap > 0) {
+        gapClass += ' gap-positive';
+        gapText = `+${gap}`;
+    } else if (gap < 0) {
+        gapClass += ' gap-negative';
+        gapText = `${gap}`;
+    }
+
+    return `
+        <tr ${trClass}>
+            <td class="targets-cat-name">${row.categoria}</td>
+            <td class="targets-num-plan">${row.plan}</td>
+            <td class="targets-num-real">${row.real}</td>
+            <td class="text-center"><span class="${gapClass}">${gapText}</span></td>
+        </tr>
+    `;
+}
+
+function switchHistoryRegion(region) {
+    deliveryState.activeRegion = region;
+    const btnNorte = document.getElementById('btnRegionNorte');
+    const btnLeste = document.getElementById('btnRegionLeste');
+    if (region === 'Norte') {
+        if (btnNorte) btnNorte.classList.add('active');
+        if (btnLeste) btnLeste.classList.remove('active');
+    } else {
+        if (btnNorte) btnNorte.classList.remove('active');
+        if (btnLeste) btnLeste.classList.add('active');
+    }
+    loadTargetsComparativeAudit(deliveryState.historyDate, region);
+}
+
+function formatDateTimeBR(val) {
+    if (!val || val === '--' || val === 'None') return '--';
+    const str = String(val).trim();
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) return str;
+    try {
+        const cleaned = str.replace('T', ' ').split('.')[0].replace('Z', '');
+        if (cleaned.length === 10) {
+            const parts = cleaned.split('-');
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) {
+            const pad = n => String(n).padStart(2, '0');
+            return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+    } catch (e) {}
+    return str.replace('T', ' ');
+}
+
+async function loadTargetsComparativeAudit(targetDate = null, targetRegion = null) {
+    let dateVal = targetDate || deliveryState.historyDate;
+    if (dateVal && dateVal.includes(',')) dateVal = dateVal.split(',')[0].trim();
+    if (dateVal && dateVal.includes('|')) dateVal = dateVal.split('|')[0].trim();
+    const region = targetRegion || deliveryState.activeRegion || 'Norte';
+
+    try {
+        const resp = await fetch(`/api/delivery/targets-audit?date=${dateVal}&region=${region}`);
+        const data = await resp.json();
+
+        if (data.status === 'success') {
+            const tables = data.tables || {};
+            const basesBody = document.getElementById('targetBasesTableBody');
+            const turnoBody = document.getElementById('targetTurnoTableBody');
+            const vehBody = document.getElementById('targetVeiculoTableBody');
+
+            if (basesBody && tables.bases) {
+                basesBody.innerHTML = tables.bases.map(renderTargetsRow).join('');
+            }
+            if (turnoBody && tables.turno) {
+                turnoBody.innerHTML = tables.turno.map(renderTargetsRow).join('');
+            }
+            if (vehBody && tables.veiculo) {
+                vehBody.innerHTML = tables.veiculo.map(renderTargetsRow).join('');
+            }
+
+            const elUpd = document.getElementById('histReportLastUpdated');
+            if (elUpd && data.updated_at) {
+                elUpd.textContent = formatDateTimeBR(data.updated_at);
+            }
+
+            const fc = data.fleet_cards || {};
+            const setNum = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? 0; };
+            setNum('fleetValCesto', fc.cesto);
+            setNum('fleetValLeve', fc.leve);
+            setNum('fleetValMoto', fc.moto);
+            setNum('fleetValLv', fc.linhaviva);
+            setNum('fleetValMunk', fc.munck);
+        }
+    } catch (e) {
+        console.error('Erro ao carregar comparativo de metas:', e);
+    }
+}
+
+// ==============================================================================
+// FILTROS GERAIS DO PERÍODO & 4 CARDS DE INFORMAÇÕES RÁPIDAS (REATIVOS)
+// ==============================================================================
+
+function initPeriodFiltersControls(uniqueDimensions) {
+    if (!uniqueDimensions) return;
+    
+    // Região (Multi-seleção)
+    const regList = document.getElementById('wfFilterRegionList');
+    if (regList) {
+        const regions = uniqueDimensions.regions || ['Região Norte', 'Região Leste'];
+        regList.innerHTML = regions.map(r => `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-filter="region" value="${r}" checked>
+                <span>${r}</span>
+            </label>
+        `).join('');
+    }
+
+    // Base / UT (Hierarquia Oficial: Região Norte e Região Leste)
+    const baseList = document.getElementById('wfFilterBaseList');
+    if (baseList) {
+        const norteBases = ['Base Fagundes Filho', 'Base Cajati', 'Base Vila Medeiros'];
+        const lesteBases = ['Base Monte Santo', 'Base Catumbi', 'Base Aricanduva', 'Base Santo André'];
+
+        baseList.innerHTML = `
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Clique para selecionar/desmarcar todas as bases da Região Norte">
+                    <input type="checkbox" class="popover-group-checkbox" data-group="regiao-norte" checked>
+                    <span>Região Norte</span>
+                </label>
+                <div class="popover-group-children">
+                    ${norteBases.map(b => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-filter="base" data-group="regiao-norte" value="${b}" checked>
+                            <span>${b}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Clique para selecionar/desmarcar todas as bases da Região Leste">
+                    <input type="checkbox" class="popover-group-checkbox" data-group="regiao-leste" checked>
+                    <span>Região Leste</span>
+                </label>
+                <div class="popover-group-children">
+                    ${lesteBases.map(b => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-filter="base" data-group="regiao-leste" value="${b}" checked>
+                            <span>${b}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Turno (Multi-seleção)
+    const shiftList = document.getElementById('wfFilterShiftList');
+    if (shiftList) {
+        const shifts = uniqueDimensions.turnos || ['Manhã', 'Tarde', 'Noite'];
+        shiftList.innerHTML = shifts.map(s => `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-filter="shift" value="${s}" checked>
+                <span>${s}</span>
+            </label>
+        `).join('');
+    }
+
+    // Tipo Veículo (Hierarquia Oficial: TMA e SOT)
+    const vehList = document.getElementById('wfFilterVehicleList');
+    if (vehList) {
+        const tmaVehicles = ['Cesto Aéreo', 'Veículo Leve', 'Moto'];
+        const sotVehicles = ['Linha Viva', 'Munck'];
+
+        vehList.innerHTML = `
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Clique para selecionar/desmarcar todos os veículos do TMA">
+                    <input type="checkbox" class="popover-group-checkbox" data-group="tma" checked>
+                    <span>TMA</span>
+                </label>
+                <div class="popover-group-children">
+                    ${tmaVehicles.map(v => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-filter="vehicle" data-group="tma" value="${v}" checked>
+                            <span>${v}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Clique para selecionar/desmarcar Linha Viva e Munck (SOT)">
+                    <input type="checkbox" class="popover-group-checkbox" data-group="sot" checked>
+                    <span>SOT</span>
+                </label>
+                <div class="popover-group-children">
+                    ${sotVehicles.map(v => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-filter="vehicle" data-group="sot" value="${v}" checked>
+                            <span>${v}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Gerenciador de Hierarquia: marcar/desmarcar o grupo altera todos os filhos
+    document.querySelectorAll('.popover-group-checkbox').forEach(gcb => {
+        gcb.addEventListener('change', (e) => {
+            const grp = gcb.getAttribute('data-group');
+            const isChecked = gcb.checked;
+            document.querySelectorAll(`.popover-checkbox[data-group="${grp}"]`).forEach(cb => {
+                cb.checked = isChecked;
+            });
+            syncPeriodFiltersFromDOM();
+            applyWorkforcePeriodFilters();
+        });
+    });
+
+    // Função de sincronização de estado dos grupos pai quando filhos mudam
+    function updateGroupCheckboxesState() {
+        document.querySelectorAll('.popover-group-checkbox').forEach(gcb => {
+            const grp = gcb.getAttribute('data-group');
+            const children = Array.from(document.querySelectorAll(`.popover-checkbox[data-group="${grp}"]`));
+            if (children.length === 0) return;
+            const checkedCount = children.filter(c => c.checked).length;
+            gcb.checked = (checkedCount === children.length);
+            gcb.indeterminate = (checkedCount > 0 && checkedCount < children.length);
+        });
+    }
+
+    // Listener de clique para atualizar tudo instantaneamente
+    document.querySelectorAll('.popover-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
+            updateGroupCheckboxesState();
+            syncPeriodFiltersFromDOM();
+            applyWorkforcePeriodFilters();
+        });
+    });
+
+    syncPeriodFiltersFromDOM();
+}
+
+function updateFilterPillLabel(filterType, allCount, selectedCount, firstSelectedValue) {
+    const labelId = filterType === 'region' ? 'wfFilterRegionLabel' :
+                    filterType === 'base' ? 'wfFilterBaseLabel' :
+                    filterType === 'shift' ? 'wfFilterShiftLabel' : 'wfFilterVehicleLabel';
+    const el = document.getElementById(labelId);
+    if (!el) return;
+
+    if (selectedCount === allCount || (selectedCount > 0 && selectedCount === allCount)) {
+        el.textContent = 'Todos';
+    } else if (selectedCount === 0) {
+        el.textContent = 'Nenhum';
+    } else if (selectedCount === 1) {
+        el.textContent = firstSelectedValue.replace('Região ', '').replace('Base ', '');
+    } else {
+        el.textContent = `${selectedCount} sel.`;
+    }
+}
+
+function syncPeriodFiltersFromDOM() {
+    if (!deliveryState.periodFilters) {
+        deliveryState.periodFilters = { regions: [], bases: [], shifts: [], vehicles: [] };
+    }
+
+    const getSelected = (filterType) => {
+        const cbs = Array.from(document.querySelectorAll(`.popover-checkbox[data-filter="${filterType}"]`));
+        const checked = cbs.filter(c => c.checked).map(c => c.value);
+        updateFilterPillLabel(filterType, cbs.length, checked.length, checked[0] || '');
+        return checked;
+    };
+
+    deliveryState.periodFilters.regions = getSelected('region');
+    deliveryState.periodFilters.bases = getSelected('base');
+    deliveryState.periodFilters.shifts = getSelected('shift');
+    deliveryState.periodFilters.vehicles = getSelected('vehicle');
+}
+
+function setupPeriodFilterDropdowns() {
+    if (window._periodFiltersSetupDone) return;
+    window._periodFiltersSetupDone = true;
+
+    // Toggle popovers ao clicar nos botões de filtro
+    document.querySelectorAll('.period-filter-pill-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const targetId = btn.getAttribute('data-target');
+            const targetMenu = document.getElementById(targetId);
+            const isAlreadyActive = targetMenu && targetMenu.classList.contains('active');
+
+            // Fecha todos os outros popovers
+            document.querySelectorAll('.period-filter-popover').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+
+            if (!isAlreadyActive && targetMenu) {
+                targetMenu.classList.add('active');
+                btn.classList.add('active');
+            }
+        });
+    });
+
+    // Clique fora fecha popovers
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.dropdown-popover-container')) {
+            document.querySelectorAll('.period-filter-popover').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+        }
+    });
+
+    // Ações de "Todos" e "Limpar" nos popovers
+    document.querySelectorAll('.popover-action-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = btn.getAttribute('data-action');
+            const filterType = btn.getAttribute('data-filter');
+            const listId = filterType === 'region' ? 'wfFilterRegionList' :
+                           filterType === 'base' ? 'wfFilterBaseList' :
+                           filterType === 'shift' ? 'wfFilterShiftList' : 'wfFilterVehicleList';
+            const container = document.getElementById(listId);
+            if (!container) return;
+
+            container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = (action === 'select-all');
+                cb.indeterminate = false;
+            });
+
+            syncPeriodFiltersFromDOM();
+            applyWorkforcePeriodFilters();
+        });
+    });
+
+    // Listener para o seletor principal de mês
+    const wfMonthSel = document.getElementById('wfFilterMonth');
+    if (wfMonthSel) {
+        wfMonthSel.addEventListener('change', (e) => {
+            const val = e.target.value;
+            loadWorkforceMonthlyChart(val);
+        });
+    }
+}
+
+function applyWorkforcePeriodFilters() {
+    const rawData = deliveryState.monthlyRawData || [];
+    const f = deliveryState.periodFilters || { regions: [], bases: [], shifts: [], vehicles: [] };
+
+    const hasFilters = (f.regions && f.regions.length > 0) ||
+                       (f.bases && f.bases.length > 0) ||
+                       (f.shifts && f.shifts.length > 0) ||
+                       (f.vehicles && f.vehicles.length > 0);
+
+    let days = [];
+    let filtered = [];
+    const dayCounts = {};
+
+    if (!hasFilters && deliveryState.historyMonthlyDays && deliveryState.historyMonthlyDays.length > 0) {
+        // Fast-path otimizado (0.01ms): usa os dias pré-agregados do backend
+        days = deliveryState.historyMonthlyDays.map(d => ({ ...d }));
+        filtered = rawData;
+        days.forEach(d => {
+            if (d.total_teams > 0) dayCounts[d.date] = d.total_teams;
+        });
+    } else {
+        // Filtra instantaneamente em memória (<1ms)
+        filtered = rawData.filter(r => {
+            const matchReg = f.regions.length === 0 || f.regions.includes(r.region);
+            const matchBase = f.bases.length === 0 || f.bases.includes(r.base);
+            const matchShift = f.shifts.length === 0 || f.shifts.includes(r.turno);
+            const matchVeh = f.vehicles.length === 0 || f.vehicles.includes(r.vehicle_type);
+            return matchReg && matchBase && matchShift && matchVeh;
+        });
+
+        // Agrupa contagem por dia (YYYY-MM-DD)
+        filtered.forEach(r => {
+            const d = r.date;
+            if (d) {
+                dayCounts[d] = (dayCounts[d] || 0) + 1;
+            }
+        });
+
+        // Ordena todos os dias disponíveis no mês
+        const allDaysInMonth = Array.from(new Set(rawData.map(r => r.date).filter(Boolean))).sort();
+        days = allDaysInMonth.map(d => ({
+            date: d,
+            total_teams: dayCounts[d] || 0
+        }));
+    }
+
+    // Métricas dos 4 Cards de Informações Rápidas
+    const totalDeliveries = filtered.length;
+    const activeDaysKeys = Object.keys(dayCounts).filter(k => dayCounts[k] > 0);
+    const activeDaysCount = activeDaysKeys.length || (days.length || 1);
+    const avgTeamsNum = activeDaysCount > 0 ? (totalDeliveries / activeDaysCount) : 0;
+    const avgTeamsStr = avgTeamsNum.toFixed(1);
+
+    // Identifica o dia com maior pico de entrega
+    let peakCount = 0;
+    let peakDateStr = "--/--";
+    days.forEach(d => {
+        if (d.total_teams > peakCount) {
+            peakCount = d.total_teams;
+            const pts = d.date.split('-');
+            if (pts.length === 3) {
+                peakDateStr = `${pts[2]}/${pts[1]}`;
+            }
+        }
+    });
+
+    // Meta planejada correspondente aos filtros aplicados
+    let targetMeta = 226;
+    const targets = deliveryState.planningTargets || {};
+    const allBases = (deliveryState.uniqueDimensions && deliveryState.uniqueDimensions.bases) || [];
+    const allVehs = (deliveryState.uniqueDimensions && deliveryState.uniqueDimensions.vehicles) || [];
+    const allShifts = (deliveryState.uniqueDimensions && deliveryState.uniqueDimensions.turnos) || [];
+    const hasNorte = f.regions.length === 0 || f.regions.some(r => r.includes('Norte'));
+    const hasLeste = f.regions.length === 0 || f.regions.some(r => r.includes('Leste'));
+
+    if (f.vehicles.length > 0 && f.vehicles.length < allVehs.length) {
+        let vehSum = 0;
+        f.vehicles.forEach(vName => {
+            const key = (vName === 'Linha Viva') ? 'LV' : (vName === 'Munck') ? 'Munk' : vName;
+            const nV = (hasNorte && targets.Norte && targets.Norte.veiculo) ? (targets.Norte.veiculo[key] || targets.Norte.veiculo[vName] || 0) : 0;
+            const lV = (hasLeste && targets.Leste && targets.Leste.veiculo) ? (targets.Leste.veiculo[key] || targets.Leste.veiculo[vName] || 0) : 0;
+            vehSum += (nV + lV);
+        });
+        targetMeta = vehSum > 0 ? vehSum : Math.round(226 * (f.vehicles.length / Math.max(allVehs.length, 1)));
+    } else if (f.bases.length > 0 && f.bases.length < allBases.length) {
+        let baseSum = 0;
+        f.bases.forEach(bName => {
+            const cleanB = bName.replace('Base ', '').trim();
+            const nMeta = (targets.Norte && targets.Norte.bases) ? (targets.Norte.bases[cleanB] || 0) : 0;
+            const lMeta = (targets.Leste && targets.Leste.bases) ? (targets.Leste.bases[cleanB] || 0) : 0;
+            baseSum += (nMeta + lMeta);
+        });
+        targetMeta = baseSum > 0 ? baseSum : Math.round(226 * (f.bases.length / Math.max(allBases.length, 1)));
+    } else if (f.shifts.length > 0 && f.shifts.length < allShifts.length) {
+        let shiftSum = 0;
+        f.shifts.forEach(sName => {
+            const nS = (hasNorte && targets.Norte && targets.Norte.turno) ? (targets.Norte.turno[sName] || 0) : 0;
+            const lS = (hasLeste && targets.Leste && targets.Leste.turno) ? (targets.Leste.turno[sName] || 0) : 0;
+            shiftSum += (nS + lS);
+        });
+        targetMeta = shiftSum > 0 ? shiftSum : Math.round(226 * (f.shifts.length / Math.max(allShifts.length, 1)));
+    } else if (hasNorte && !hasLeste && targets.Norte) {
+        targetMeta = Object.values(targets.Norte.bases || {}).reduce((a, b) => a + b, 0);
+    } else if (hasLeste && !hasNorte && targets.Leste) {
+        targetMeta = Object.values(targets.Leste.bases || {}).reduce((a, b) => a + b, 0);
+    } else if (targets.daily_meta) {
+        targetMeta = targets.daily_meta;
+    }
+
+    const adherencePct = targetMeta > 0 ? Math.round((avgTeamsNum / targetMeta) * 100) : 0;
+
+    // Atualiza os 4 Cards
+    const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setTxt('wfKpiAvgTeams', avgTeamsStr);
+    setTxt('wfKpiAdherence', `${adherencePct}%`);
+    const bar = document.getElementById('wfKpiAdherenceBar');
+    if (bar) bar.style.width = `${Math.min(adherencePct, 100)}%`;
+    setTxt('wfKpiPlanMeta', targetMeta);
+    setTxt('wfKpiPeakTeams', peakCount);
+    setTxt('wfKpiPeakDate', peakDateStr);
+    setTxt('wfKpiTotalTeams', totalDeliveries);
+    setTxt('wfKpiDaysCount', activeDaysCount);
+
+    // Atualiza legendas no cabeçalho do gráfico
+    setTxt('legendPlannedNumber', targetMeta);
+    setTxt('legendAvgNumber', avgTeamsStr);
+
+    // Calcula acumulados para tooltips ricos
+    let runReal = 0;
+    let runPlan = 0;
+    days.forEach(d => {
+        runReal += d.total_teams;
+        runPlan += targetMeta;
+        d.planned = targetMeta;
+        d.cumulative_real = runReal;
+        d.cumulative_plan = runPlan;
+        d.gap_accumulated = runReal - runPlan;
+    });
+
+    // Redesenha o gráfico de evolução diária da força de trabalho
+    renderWorkforceMonthlyChart({
+        daily_meta: targetMeta,
+        avg_total: avgTeamsNum,
+        days: days
+    });
+
+    if (window.lucide) {
+        try { lucide.createIcons(); } catch (e) {}
+    }
+}
+
+async function loadWorkforceMonthlyChart(targetMonth = null) {
+    const sel = document.getElementById('wfFilterMonth') || document.getElementById('histWorkforceMonthSelect');
+    let monthVal = targetMonth || (sel && sel.value ? sel.value : deliveryState.historyMonth);
+    if (!monthVal) {
+        monthVal = new Date().toISOString().slice(0, 7);
+    }
+
+    const mSel1 = document.getElementById('wfFilterMonth');
+    const mSel2 = document.getElementById('histWorkforceMonthSelect');
+    if (mSel1 && mSel1.value !== monthVal) mSel1.value = monthVal;
+    if (mSel2 && mSel2.value !== monthVal) mSel2.value = monthVal;
+    deliveryState.historyMonth = monthVal;
+
+    try {
+        const resp = await fetch(`/api/delivery/monthly?month=${monthVal}`);
+        const data = await resp.json();
+        
+        if (data.status !== 'success') {
+            console.warn('[WORKFORCE] Resposta com status não-sucesso:', data.message);
+            return;
+        }
+
+        deliveryState.monthlyRawData = data.raw_records || [];
+        deliveryState.historyMonthlyDays = data.days || [];
+        deliveryState.uniqueDimensions = data.unique_dimensions || {};
+        deliveryState.planningTargets = data.planning_targets || {};
+
+        setupPeriodFilterDropdowns();
+        initPeriodFiltersControls(deliveryState.uniqueDimensions);
+        applyWorkforcePeriodFilters();
+    } catch (e) {
+        console.error('Erro ao carregar evolução diária da força de trabalho:', e);
+    }
+}
+
+function renderWorkforceMonthlyChart(monthlyData) {
+    const canvas = document.getElementById('histWorkforceChart');
+    if (!canvas || !window.Chart) return;
+
+    if (deliveryState.workforceChart) {
+        deliveryState.workforceChart.destroy();
+    }
+
+    const days = monthlyData.days || [];
+    if (days.length === 0) return;
+
+    const labels = days.map(d => {
+        const p = d.date.split('-');
+        return `${p[2]}/${p[1]}`;
+    });
+    const realData = days.map(d => d.total_teams);
+    const dailyMeta = monthlyData.daily_meta || 226;
+    const planData = days.map(d => d.planned || dailyMeta);
+    const avgVal = monthlyData.avg_total || 0;
+    const avgData = days.map(() => avgVal);
+
+    const isLight = document.body.classList.contains('theme-light');
+    const textColor = isLight ? '#0f172a' : '#f8fafc';
+    const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)';
+
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 320);
+    gradient.addColorStop(0, 'rgba(37, 99, 235, 0.45)');
+    gradient.addColorStop(0.7, 'rgba(37, 99, 235, 0.1)');
+    gradient.addColorStop(1, 'rgba(37, 99, 235, 0.0)');
+
+    function createHatchedPattern() {
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = 10;
+        pCanvas.height = 10;
+        const pctx = pCanvas.getContext('2d');
+        pctx.fillStyle = 'rgba(245, 158, 11, 0.16)';
+        pctx.fillRect(0, 0, 10, 10);
+        pctx.strokeStyle = '#f59e0b';
+        pctx.lineWidth = 2.2;
+        pctx.beginPath();
+        pctx.moveTo(0, 10);
+        pctx.lineTo(10, 0);
+        pctx.stroke();
+        return pctx.createPattern(pCanvas, 'repeat');
+    }
+
+    const hatchedPattern = createHatchedPattern();
+
+    deliveryState.workforceChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    type: 'line',
+                    label: 'REAL',
+                    data: realData,
+                    borderColor: '#2563eb',
+                    borderWidth: 3,
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 4,
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: '#2563eb',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    order: 1
+                },
+                {
+                    type: 'line',
+                    label: `MÉDIA REAL (${avgVal.toFixed(1)})`,
+                    data: avgData,
+                    borderColor: '#10b981',
+                    borderWidth: 2.5,
+                    borderDash: [6, 5],
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0,
+                    order: 0
+                },
+                {
+                    type: 'bar',
+                    label: `PLANEJADO (${dailyMeta})`,
+                    data: planData,
+                    backgroundColor: hatchedPattern,
+                    borderColor: '#d97706',
+                    borderWidth: 1.5,
+                    borderRadius: 6,
+                    barPercentage: 0.65,
+                    categoryPercentage: 0.8,
+                    order: 2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: textColor,
+                        font: { family: 'Plus Jakarta Sans', weight: '700', size: 11 }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    suggestedMax: (() => {
+                        const maxReal = Math.max(0, ...(realData.length > 0 ? realData : [0]));
+                        const maxVal = Math.max(maxReal, dailyMeta || 0);
+                        return maxVal > 0 ? Math.ceil(maxVal * 1.18) + (maxVal < 20 ? 2 : 5) : 50;
+                    })(),
+                    grid: { color: gridColor },
+                    ticks: {
+                        color: textColor,
+                        font: { family: 'JetBrains Mono', size: 11 },
+                        precision: 0
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    enabled: false,
+                    external: function(context) {
+                        const tooltipEl = document.getElementById('workforceCustomTooltip');
+                        if (!tooltipEl) return;
+                        const tooltipModel = context.tooltip;
+                        if (tooltipModel.opacity === 0) {
+                            tooltipEl.style.opacity = '0';
+                            return;
+                        }
+                        const dataIndex = tooltipModel.dataPoints && tooltipModel.dataPoints[0] ? tooltipModel.dataPoints[0].dataIndex : null;
+                        if (dataIndex === null) return;
+                        const dayObj = days[dataIndex];
+                        if (!dayObj) return;
+
+                        const dateParts = dayObj.date.split('-');
+                        const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+                        const realVal = dayObj.total_teams;
+                        const planVal = dayObj.planned || dailyMeta;
+                        const cumReal = dayObj.cumulative_real;
+                        const cumPlan = dayObj.cumulative_plan;
+                        const cumGap = dayObj.gap_accumulated;
+                        const cumGapSign = cumGap > 0 ? `+${cumGap}` : `${cumGap}`;
+                        const cumGapColor = cumGap >= 0 ? '#10b981' : '#ef4444';
+
+                        tooltipEl.innerHTML = `
+                            <div class="tooltip-date-header">
+                                📅 ${formattedDate}
+                            </div>
+                            <div class="tooltip-stat-row">
+                                <span class="tooltip-stat-label"><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#2563eb;"></span> REAL:</span>
+                                <span class="tooltip-stat-val text-cyan">${realVal}</span>
+                            </div>
+                            <div class="tooltip-stat-row">
+                                <span class="tooltip-stat-label"><span style="display:inline-block; width:8px; height:8px; background:#f59e0b; border-radius:2px;"></span> PLANEJADO:</span>
+                                <span class="tooltip-stat-val" style="color:#f59e0b;">${planVal}</span>
+                            </div>
+                            <div class="tooltip-stat-row">
+                                <span class="tooltip-stat-label"><span style="display:inline-block; width:8px; height:2px; background:#10b981;"></span> MÉDIA REAL:</span>
+                                <span class="tooltip-stat-val text-emerald">${avgVal.toFixed(1)}</span>
+                            </div>
+                            <div class="tooltip-divider"></div>
+                            <div class="tooltip-stat-row">
+                                <span class="tooltip-stat-label" style="font-size:0.75rem; color:#94a3b8;">Acumulado Planejado:</span>
+                                <span class="tooltip-stat-val" style="font-size:0.78rem;">${cumPlan}</span>
+                            </div>
+                            <div class="tooltip-stat-row">
+                                <span class="tooltip-stat-label" style="font-size:0.75rem; color:#60a5fa;">Acumulado Real:</span>
+                                <span class="tooltip-stat-val" style="font-size:0.78rem; color:#60a5fa;">${cumReal}</span>
+                            </div>
+                            <div class="tooltip-stat-row">
+                                <span class="tooltip-stat-label" style="font-size:0.75rem; font-weight:800;">GAP Acumulado:</span>
+                                <span class="tooltip-stat-val" style="font-size:0.78rem; color:${cumGapColor}; font-weight:900;">${cumGapSign}</span>
+                            </div>
+                        `;
+
+                        tooltipEl.style.opacity = '1';
+                        tooltipEl.style.left = tooltipModel.caretX + 'px';
+                        tooltipEl.style.top = tooltipModel.caretY + 'px';
+                    }
+                }
+            }
+        }
+    });
+}
+
+// ==============================================================================
+// MODAL DE GOVERNANÇA E EDIÇÃO DE METAS (ACESSO MASTER)
+// ==============================================================================
+
+async function openMasterPlanningModal() {
+    openModal('planningMasterModal');
+    try {
+        const resp = await fetch('/api/delivery/planning/targets');
+        const data = await resp.json();
+        deliveryState.planningTargets = data;
+        populatePlanningForm(data);
+    } catch (e) {
+        console.error('Erro ao carregar metas:', e);
+    }
+
+    if (authState.isAuthenticated && authState.user && authState.user.role === 'admin') {
+        unlockPlanningFields();
+    } else {
+        lockPlanningFields();
+    }
+}
+
+function verifyAndUnlockPlanning() {
+    const passInput = document.getElementById('planningMasterPassword');
+    const pass = (passInput ? passInput.value : '').trim();
+    if (['Tim@3021', 'admin3021', 'master3021'].includes(pass) || (authState.isAuthenticated && authState.user && authState.user.role === 'admin')) {
+        unlockPlanningFields();
+        showToast('Acesso Master autenticado! Modo de edição liberado.', 'success');
+    } else {
+        showToast('Senha Master incorreta! Acesso negado.', 'danger');
+    }
+}
+
+function unlockPlanningFields() {
+    const fieldset = document.getElementById('planningFieldset');
+    const btnSave = document.getElementById('btnSavePlanningModal');
+    const authInputs = document.getElementById('planningAuthInputs');
+    const unlockedBadge = document.getElementById('planningUnlockedBadge');
+    if (fieldset) fieldset.disabled = false;
+    if (btnSave) btnSave.disabled = false;
+    if (authInputs) authInputs.style.display = 'none';
+    if (unlockedBadge) unlockedBadge.style.display = 'inline-flex';
+}
+
+function lockPlanningFields() {
+    const fieldset = document.getElementById('planningFieldset');
+    const btnSave = document.getElementById('btnSavePlanningModal');
+    const authInputs = document.getElementById('planningAuthInputs');
+    const unlockedBadge = document.getElementById('planningUnlockedBadge');
+    if (fieldset) fieldset.disabled = true;
+    if (btnSave) btnSave.disabled = true;
+    if (authInputs) authInputs.style.display = 'flex';
+    if (unlockedBadge) unlockedBadge.style.display = 'none';
+}
+
+function switchPlanningModalTab(region) {
+    const btnNorte = document.getElementById('btnPlanTabNorte');
+    const btnLeste = document.getElementById('btnPlanTabLeste');
+    const paneNorte = document.getElementById('planPaneNorte');
+    const paneLeste = document.getElementById('planPaneLeste');
+    if (region === 'Norte') {
+        if (btnNorte) btnNorte.classList.add('active');
+        if (btnLeste) btnLeste.classList.remove('active');
+        if (paneNorte) paneNorte.style.display = 'block';
+        if (paneLeste) paneLeste.style.display = 'none';
+    } else {
+        if (btnNorte) btnNorte.classList.remove('active');
+        if (btnLeste) btnLeste.classList.add('active');
+        if (paneNorte) paneNorte.style.display = 'none';
+        if (paneLeste) paneLeste.style.display = 'block';
+    }
+}
+
+function populatePlanningForm(data) {
+    if (!data) return;
+    if (data.daily_meta) {
+        const metaInput = document.getElementById('planInputDailyMeta');
+        if (metaInput) metaInput.value = data.daily_meta;
+    }
+    const norte = data.Norte || {};
+    const leste = data.Leste || {};
+
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+
+    const nb = norte.bases || {};
+    const nt = norte.turno || {};
+    const nv = norte.veiculo || {};
+    setVal('planNorteBaseFagundes', nb['Fagundes Filho'] ?? 42);
+    setVal('planNorteBaseCajati', nb['Cajati'] ?? 24);
+    setVal('planNorteBaseVilaMedeiros', nb['Vila Medeiros'] ?? 28);
+    setVal('planNorteBaseLv', nb['LV'] ?? 10);
+    setVal('planNorteBaseMunk', nb['Munk'] ?? nb['Munck'] ?? 5);
+
+    setVal('planNorteTurnoManha', nt['Manhã'] ?? 54);
+    setVal('planNorteTurnoTarde', nt['Tarde'] ?? 42);
+    setVal('planNorteTurnoNoite', nt['Noite'] ?? 13);
+
+    setVal('planNorteVehCesto', nv['Cesto Aéreo'] ?? 68);
+    setVal('planNorteVehLeve', nv['Veículo Leve'] ?? 13);
+    setVal('planNorteVehMoto', nv['Moto'] ?? 13);
+    setVal('planNorteVehLv', nv['LV'] ?? 10);
+    setVal('planNorteVehMunk', nv['Munk'] ?? nv['Munck'] ?? 5);
+
+    const lb = leste.bases || {};
+    const lt = leste.turno || {};
+    const lv = leste.veiculo || {};
+    setVal('planLesteBaseMonteSanto', lb['Monte Santo'] ?? 33);
+    setVal('planLesteBaseCatumbi', lb['Catumbi'] ?? 21);
+    setVal('planLesteBaseAricanduva', lb['Aricanduva'] ?? 34);
+    setVal('planLesteBaseSantoAndre', lb['Santo André'] ?? 7);
+    setVal('planLesteBaseLv', lb['LV'] ?? 0);
+    setVal('planLesteBaseMunk', lb['Munk'] ?? lb['Munck'] ?? 0);
+
+    setVal('planLesteTurnoManha', lt['Manhã'] ?? 35);
+    setVal('planLesteTurnoTarde', lt['Tarde'] ?? 35);
+    setVal('planLesteTurnoNoite', lt['Noite'] ?? 25);
+
+    setVal('planLesteVehCesto', lv['Cesto Aéreo'] ?? 75);
+    setVal('planLesteVehLeve', lv['Veículo Leve'] ?? 15);
+    setVal('planLesteVehMoto', lv['Moto'] ?? 5);
+    setVal('planLesteVehLv', lv['LV'] ?? 0);
+    setVal('planLesteVehMunk', lv['Munk'] ?? lv['Munck'] ?? 0);
+}
+
+async function savePlanningTargets() {
+    const btn = document.getElementById('btnSavePlanningModal');
+    const passInput = document.getElementById('planningMasterPassword');
+    const pass = (passInput ? passInput.value : '').trim() || 'Tim@3021';
+    const email = (authState.user && authState.user.email) || 'admin@alpitelbrasil.com.br';
+
+    const dailyMeta = parseInt(document.getElementById('planInputDailyMeta')?.value || '226', 10);
+
+    const targets = {
+        daily_meta: dailyMeta,
+        Norte: {
+            bases: {
+                "Fagundes Filho": parseInt(document.getElementById('planNorteBaseFagundes')?.value || '0', 10),
+                "Cajati": parseInt(document.getElementById('planNorteBaseCajati')?.value || '0', 10),
+                "Vila Medeiros": parseInt(document.getElementById('planNorteBaseVilaMedeiros')?.value || '0', 10),
+                "LV": parseInt(document.getElementById('planNorteBaseLv')?.value || '0', 10),
+                "Munk": parseInt(document.getElementById('planNorteBaseMunk')?.value || '0', 10)
+            },
+            turno: {
+                "Manhã": parseInt(document.getElementById('planNorteTurnoManha')?.value || '0', 10),
+                "Tarde": parseInt(document.getElementById('planNorteTurnoTarde')?.value || '0', 10),
+                "Noite": parseInt(document.getElementById('planNorteTurnoNoite')?.value || '0', 10)
+            },
+            veiculo: {
+                "Cesto Aéreo": parseInt(document.getElementById('planNorteVehCesto')?.value || '0', 10),
+                "Veículo Leve": parseInt(document.getElementById('planNorteVehLeve')?.value || '0', 10),
+                "Moto": parseInt(document.getElementById('planNorteVehMoto')?.value || '0', 10),
+                "LV": parseInt(document.getElementById('planNorteVehLv')?.value || '0', 10),
+                "Munk": parseInt(document.getElementById('planNorteVehMunk')?.value || '0', 10)
+            }
+        },
+        Leste: {
+            bases: {
+                "Monte Santo": parseInt(document.getElementById('planLesteBaseMonteSanto')?.value || '0', 10),
+                "Catumbi": parseInt(document.getElementById('planLesteBaseCatumbi')?.value || '0', 10),
+                "Aricanduva": parseInt(document.getElementById('planLesteBaseAricanduva')?.value || '0', 10),
+                "Santo André": parseInt(document.getElementById('planLesteBaseSantoAndre')?.value || '0', 10),
+                "LV": parseInt(document.getElementById('planLesteBaseLv')?.value || '0', 10),
+                "Munk": parseInt(document.getElementById('planLesteBaseMunk')?.value || '0', 10)
+            },
+            turno: {
+                "Manhã": parseInt(document.getElementById('planLesteTurnoManha')?.value || '0', 10),
+                "Tarde": parseInt(document.getElementById('planLesteTurnoTarde')?.value || '0', 10),
+                "Noite": parseInt(document.getElementById('planLesteTurnoNoite')?.value || '0', 10)
+            },
+            veiculo: {
+                "Cesto Aéreo": parseInt(document.getElementById('planLesteVehCesto')?.value || '0', 10),
+                "Veículo Leve": parseInt(document.getElementById('planLesteVehLeve')?.value || '0', 10),
+                "Moto": parseInt(document.getElementById('planLesteVehMoto')?.value || '0', 10),
+                "LV": parseInt(document.getElementById('planLesteVehLv')?.value || '0', 10),
+                "Munk": parseInt(document.getElementById('planLesteVehMunk')?.value || '0', 10)
+            }
+        }
+    };
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> Salvando...`;
+    }
+
+    try {
+        const resp = await fetch('/api/delivery/planning/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                master_password: pass,
+                user_email: email,
+                targets: targets
+            })
+        });
+        const res = await resp.json();
+        if (res.status === 'success') {
+            showToast('Planejamento operacional atualizado com sucesso!', 'success');
+            closeModal('planningMasterModal');
+            loadTargetsComparativeAudit();
+            loadWorkforceMonthlyChart();
+        } else {
+            showToast(res.message || 'Erro ao salvar planejamento.', 'danger');
+        }
+    } catch (e) {
+        showToast(`Erro na comunicação: ${e.message}`, 'danger');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="save" style="width: 16px; height: 16px;"></i><span>Salvar Planejamento</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+}
+
 function exportHistoryExcel() {
     const data = deliveryState.historyDayData;
     if (!data || !data.teams || data.teams.length === 0) {
@@ -4727,20 +6064,63 @@ async function triggerEnelCdpCapture() {
     const btnText = document.getElementById('triggerEnelCdpText');
     const originalText = btnText ? btnText.textContent : 'Disparar Coleta Imediata Agora (Robô CDP)';
     
-    if (btnText) btnText.textContent = 'Robô CDP: Lendo 500 linhas na Enel...';
+    if (btnText) btnText.textContent = 'Robô CDP: Lendo equipes na Enel...';
     if (btn) btn.disabled = true;
 
     try {
-        showToast('Robô CDP acionado! Coletando dados do portal Enel...', 'info');
+        showToast('Robô CDP acionado! Enviando ordem de coleta...', 'info');
         const resp = await fetch('/api/capture/enel', { method: 'POST' });
-        const data = await resp.json();
+        let data = null;
+        try {
+            data = await resp.json();
+        } catch (jsonErr) {
+            console.error('[CDP CAPTURE ERROR] Resposta não-JSON:', resp.status);
+            throw new Error(`Servidor respondeu com status ${resp.status} (${resp.statusText}).`);
+        }
         
-        if (data.status === 'success') {
+        if (resp.ok && data.status === 'success') {
             showToast(`Sucesso! ${data.message || 'Dados sincronizados com o Supabase!'}`, 'success');
             await loadDeliveryData(false);
             closeModal('deliveryCollectModal');
+        } else if (resp.status === 202 || data?.status === 'queued') {
+            const cmdId = data.command_id;
+            showToast('Ordem enviada ao Robô Local via Nuvem! Aguardando extração...', 'info');
+            
+            // Polling inteligente de até 30 segundos (15 tentativas a cada 2s)
+            let completed = false;
+            if (cmdId) {
+                for (let attempt = 1; attempt <= 15; attempt++) {
+                    if (btnText) btnText.textContent = `Robô Local coletando dados (${attempt * 2}s)...`;
+                    await new Promise(r => setTimeout(r, 2000));
+                    try {
+                        const checkResp = await fetch(`/api/commands/${cmdId}`);
+                        if (checkResp.ok) {
+                            const cmdStatus = await checkResp.json();
+                            if (cmdStatus.status === 'COMPLETED') {
+                                showToast('Coleta concluída pelo robô local com sucesso!', 'success');
+                                await loadDeliveryData(false);
+                                closeModal('deliveryCollectModal');
+                                completed = true;
+                                break;
+                            } else if (cmdStatus.status === 'ERROR') {
+                                showToast('O robô local reportou erro: ' + (cmdStatus.message || 'Falha na captura.'), 'danger');
+                                completed = true;
+                                break;
+                            }
+                        }
+                    } catch (pollErr) {
+                        console.warn('[POLL WARN]', pollErr);
+                    }
+                }
+            }
+
+            if (!completed) {
+                showToast('Comando em processamento pelo robô local. Os dados serão atualizados em instantes via Realtime!', 'info');
+                await loadDeliveryData(false);
+                closeModal('deliveryCollectModal');
+            }
         } else {
-            showToast(data.message || 'Aviso durante a coleta da Enel.', 'warning');
+            showToast(data?.message || 'Aviso durante a coleta da Enel.', 'warning');
         }
     } catch (err) {
         showToast('Erro ao comunicar com o Robô CDP: ' + err.message, 'danger');
@@ -5069,12 +6449,23 @@ async function sendTelemetryHeartbeat() {
     }
 }
 
-// Binds Globais
+// Binds Globais - Módulo TRBOnet x Equipes Brasil
 window.navigateToView = navigateToView;
-window.switchDeliveryScreen = switchDeliveryScreen;
-window.loadDeliveryData = loadDeliveryData;
 window.toggleRegionFilter = toggleRegionFilter;
 window.toggleBaseFilter = toggleBaseFilter;
+window.setBaseFilter = setBaseFilter;
+window.toggleStatusFilter = toggleStatusFilter;
+window.setStatusFilter = setStatusFilter;
+window.clearAllFilters = clearAllFilters;
+window.handleSearchChange = handleSearchChange;
+window.clearSearch = clearSearch;
+window.setViewMode = setViewMode;
+
+// Binds Globais - Módulo Entrega de Equipes
+window.switchDeliveryScreen = switchDeliveryScreen;
+window.loadDeliveryData = loadDeliveryData;
+window.toggleDeliveryRegionFilter = toggleDeliveryRegionFilter;
+window.toggleDeliveryBaseFilter = toggleDeliveryBaseFilter;
 window.clearDeliveryBaseFilters = clearDeliveryBaseFilters;
 window.setDeliveryShiftFilter = setDeliveryShiftFilter;
 window.setDeliveryVehicleFilter = setDeliveryVehicleFilter;
@@ -5100,6 +6491,19 @@ window.triggerRestartEngines = triggerRestartEngines;
 window.loadAdminTelemetry = loadAdminTelemetry;
 window.exportTelemetryExcel = exportTelemetryExcel;
 window.logoutAdminSession = logoutAdminSession;
+
+// Binds de Metas e Planejamento Operacional
+window.switchHistoryRegion = switchHistoryRegion;
+window.loadTargetsComparativeAudit = loadTargetsComparativeAudit;
+window.loadWorkforceMonthlyChart = loadWorkforceMonthlyChart;
+window.openMasterPlanningModal = openMasterPlanningModal;
+window.verifyAndUnlockPlanning = verifyAndUnlockPlanning;
+window.switchPlanningModalTab = switchPlanningModalTab;
+window.savePlanningTargets = savePlanningTargets;
+window.toggleHistTableCollapse = toggleHistTableCollapse;
+window.setAuditReconciliationFilter = setAuditReconciliationFilter;
+window.handleCarregarBaseClick = handleCarregarBaseClick;
+window.reloadAuditAvailableDates = reloadAuditAvailableDates;
 
 
 

@@ -13,6 +13,11 @@ import re
 
 CACHE_FILE = "delivery_daily_cache.json"
 
+# 7 Bases Oficiais Definidas para Data Quality e Confronto (Região Norte e Região Leste)
+# Região Norte: ENL (Base Fagundes Filho), ECL (Base Cajati), EEL (Base Vila Medeiros)
+# Região Leste: EML (Base Monte Santo), EQL (Base Aricanduva), EVL (Base Catumbi), ESL (Base Santo André)
+TARGET_PREFIXES = {'ENL', 'ECL', 'EEL', 'EML', 'EQL', 'EVL', 'ESL'}
+
 def normalize_team_code(raw_name: str) -> str:
     """Padroniza o código da equipe removendo espaços, traços e caracteres especiais."""
     if not raw_name:
@@ -32,10 +37,161 @@ def calculate_time_duration(start_str: str, end_str: str) -> str:
         if diff.total_seconds() < 0:
             diff += timedelta(days=1)
         hours, remainder = divmod(int(diff.total_seconds()), 3600)
-        minutes, _ = divmod(remainder, 60)
+        minutes = remainder // 60
         return f"{hours:02d}h {minutes:02d}m"
     except Exception:
         return "--"
+
+
+def format_datetime_br(val) -> str:
+    """Formata timestamps ISO ou strings para o padrão brasileiro DD/MM/YYYY HH:mm:ss."""
+    if not val or str(val).strip() in ["--", "None", ""]:
+        return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    val_str = str(val).strip()
+    try:
+        if re.match(r'^\d{2}/\d{2}/\d{4}', val_str):
+            return val_str
+        cleaned = val_str.replace('T', ' ').split('.')[0].replace('Z', '')
+        if len(cleaned) == 10:  # YYYY-MM-DD
+            dt = datetime.strptime(cleaned, "%Y-%m-%d")
+            return dt.strftime("%d/%m/%Y")
+        elif len(cleaned) >= 19:  # YYYY-MM-DD HH:MM:SS
+            dt = datetime.strptime(cleaned[:19], "%Y-%m-%d %H:%M:%S")
+            return dt.strftime("%d/%m/%Y %H:%M:%S")
+        elif len(cleaned) == 16:  # YYYY-MM-DD HH:MM
+            dt = datetime.strptime(cleaned, "%Y-%m-%d %H:%M")
+            return dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        pass
+    return val_str
+
+def to_int(val, default=0):
+    """Converte valores inteiros com segurança."""
+    try:
+        if val is None or str(val).strip() in ['-', '', 'None', 'nan']:
+            return default
+        clean = re.sub(r'[^0-9-]', '', str(val).split('.')[0])
+        return int(clean) if clean else default
+    except Exception:
+        return default
+
+def to_float(val, default=0.0):
+    """Converte valores decimais com segurança tratando vírgulas e pontos."""
+    try:
+        if val is None or str(val).strip() in ['-', '', 'None', 'nan']:
+            return default
+        s = str(val).strip().replace(',', '.')
+        s_clean = re.sub(r'[^0-9.-]', '', s)
+        return float(s_clean) if s_clean else default
+    except Exception:
+        return default
+
+def classify_spotfire_shift_and_turno(sp_record: dict) -> dict:
+    """
+    Extrai e classifica com precisão o Turno (Manhã, Tarde, Noite) e o Agrupamento de Horário
+    (Turno 06:00, 08:00, 12:00, 14:00, 20:00, 22:00) a partir dos dados do Spotfire:
+    - Coluna Período (1 - Manhã, 2 - Tarde, 3 - Noite)
+    - login_desc (Início às XX Hrs)
+    - inicio_calibrado
+    """
+    raw_data = sp_record.get("raw_data") if isinstance(sp_record.get("raw_data"), dict) else {}
+    raw_periodo = str(raw_data.get("periodo", "") or sp_record.get("periodo", "")).lower()
+    login_desc = str(raw_data.get("login_desc", "") or sp_record.get("login_desc", ""))
+    inicio_cal = str(sp_record.get("inicio_calendario") or sp_record.get("inicio_calibrado", "") or sp_record.get("login_corrigido") or sp_record.get("login") or "").strip()
+
+    # 1. Determina Turno Macrocategoria: Manhã, Tarde, Noite
+    turno = None
+    if "1" in raw_periodo or "manh" in raw_periodo:
+        turno = "Manhã"
+    elif "2" in raw_periodo or "tard" in raw_periodo:
+        turno = "Tarde"
+    elif "3" in raw_periodo or "noit" in raw_periodo:
+        turno = "Noite"
+
+    # 2. Determina Horário de Início e Agrupamento Oficial de Turno
+    shift_slot = "Turno 08:00"
+    shift_code = "08:00"
+    shift_pill_class = "shift-08h"
+
+    hrs_match = re.search(r'(\d{1,2})\s*hr', login_desc, re.IGNORECASE)
+    login_time_extracted = None
+    if hrs_match:
+        h = int(hrs_match.group(1))
+        login_time_extracted = f"{h:02d}:00"
+    elif inicio_cal and ":" in inicio_cal:
+        parts = inicio_cal.split(" ")
+        time_part = parts[-1] if len(parts) > 1 else parts[0]
+        sub = time_part.split(":")
+        if len(sub) >= 2:
+            try:
+                h = int(sub[0])
+                m = int(sub[1])
+                login_time_extracted = f"{h:02d}:{m:02d}"
+            except Exception:
+                pass
+
+    if login_time_extracted:
+        try:
+            t_parts = login_time_extracted.split(':')
+            total_min = int(t_parts[0]) * 60 + int(t_parts[1])
+            if 240 <= total_min <= 455:      # 04:00 às 07:35
+                shift_slot = "Turno 06:00"
+                shift_code = "06:00"
+                shift_pill_class = "shift-06h"
+            elif 456 <= total_min <= 660:    # 07:36 às 11:00
+                shift_slot = "Turno 08:00"
+                shift_code = "08:00"
+                shift_pill_class = "shift-08h"
+            elif 661 <= total_min <= 815:    # 11:01 às 13:35
+                shift_slot = "Turno 12:00"
+                shift_code = "12:00"
+                shift_pill_class = "shift-12h"
+            elif 816 <= total_min <= 1050:   # 13:36 às 17:30
+                shift_slot = "Turno 14:00"
+                shift_code = "14:00"
+                shift_pill_class = "shift-14h"
+            elif 1051 <= total_min <= 1310:  # 17:36 às 21:50
+                shift_slot = "Turno 20:00"
+                shift_code = "20:00"
+                shift_pill_class = "shift-20h"
+            else:                            # 21:51 às 03:59
+                shift_slot = "Turno 22:00"
+                shift_code = "22:00"
+                shift_pill_class = "shift-22h"
+        except Exception:
+            pass
+
+        if not turno:
+            if shift_code in ["06:00", "08:00"]:
+                turno = "Manhã"
+            elif shift_code in ["12:00", "14:00"]:
+                turno = "Tarde"
+            elif shift_code in ["20:00", "22:00"]:
+                turno = "Noite"
+
+    if not turno:
+        turno = "Manhã"
+
+    if turno == "Manhã" and shift_code not in ["06:00", "08:00"]:
+        shift_code = "08:00"
+        shift_slot = "Turno 08:00"
+        shift_pill_class = "shift-08h"
+    elif turno == "Tarde" and shift_code not in ["12:00", "14:00"]:
+        shift_code = "14:00"
+        shift_slot = "Turno 14:00"
+        shift_pill_class = "shift-14h"
+    elif turno == "Noite" and shift_code not in ["20:00", "22:00"]:
+        shift_code = "20:00"
+        shift_slot = "Turno 20:00"
+        shift_pill_class = "shift-20h"
+
+    return {
+        "turno": turno,
+        "shift_slot": shift_slot,
+        "shift_code": shift_code,
+        "shift_pill_class": shift_pill_class,
+        "login_time_extracted": login_time_extracted
+    }
 
 
 class DeliveryManager:
@@ -104,8 +260,28 @@ class DeliveryManager:
         self.last_sync_time = "--"
         self.sync_source = "Aguardando sincronização"
         self.spotfire_cache = {}              # (date_ref, norm_code) -> dict
-        
+
+        # Caches de auditoria em memória de alta performance (<1ms)
+        self._daily_audit_cache = {}          # date_str -> dict
+        self._daily_audit_cache_ts = {}       # date_str -> timestamp
+        self._monthly_audit_cache = {}        # month_str -> dict
+        self._monthly_audit_cache_ts = {}     # month_str -> timestamp
+        self._audit_dates_cache = None
+        self._audit_dates_cache_ts = 0
+
         self.load_local_cache()
+
+    def clear_audit_cache(self, date_str=None):
+        """Invalida caches de auditoria quando novos dados são consolidados."""
+        if date_str:
+            self._daily_audit_cache.pop(date_str, None)
+            m = date_str[:7]
+            self._monthly_audit_cache.pop(m, None)
+        else:
+            self._daily_audit_cache.clear()
+            self._monthly_audit_cache.clear()
+            self._audit_dates_cache = None
+            self._audit_dates_cache_ts = 0
 
     def load_local_cache(self):
         """Carrega o cache cumulativo do dia operacional caso o servidor reinicie."""
@@ -183,7 +359,7 @@ class DeliveryManager:
         digits = "".join([c for c in code if c.isdigit()])
         first_digit = digits[0] if digits else ""
 
-        if first_digit == "1":
+        if first_digit in ("1", "6"):
             return {
                 "type": "Cesto Aéreo",
                 "unified_group": "Cesto Aéreo",
@@ -384,6 +560,9 @@ class DeliveryManager:
                 ut = rec.get("UT") or rec.get("ut") or "--"
                 base_raw = rec.get("BASE") or rec.get("base") or rec.get("base_name") or rec.get("base_code") or "--"
                 filial = rec.get("FILIAL") or rec.get("filial") or "--"
+                gps_raw = rec.get("GPS") or rec.get("gps") or "--"
+                descanso_raw = rec.get("INICIO_DESCANSO") or rec.get("INÍCIO DESCANSO") or rec.get("inicio_descanso") or rec.get("data_inicio_descanso") or "--"
+                ordem_raw = rec.get("ORDEM") or rec.get("ordem") or rec.get("ordem_servico") or "--"
                 is_act_input = rec.get("is_active")
                 is_active_val = bool(is_act_input) if is_act_input is not None else True
             elif isinstance(rec, (list, tuple)) and len(rec) >= 5:
@@ -395,8 +574,11 @@ class DeliveryManager:
                 tipo_oper = rec[5] if len(rec) > 5 else "--"
                 driver = rec[6] if len(rec) > 6 else "--"
                 shift_raw = rec[7] if len(rec) > 7 else "--"
+                gps_raw = rec[8] if len(rec) > 8 else "--"
                 status_oper = rec[9] if len(rec) > 9 else "Logada"
-                plate = rec[11] if len(rec) > 11 else "--"
+                plate = rec[10] if len(rec) > 10 else "--"
+                descanso_raw = rec[11] if len(rec) > 11 else "--"
+                ordem_raw = rec[12] if len(rec) > 12 else "--"
                 is_active_val = True
             else:
                 continue
@@ -405,6 +587,68 @@ class DeliveryManager:
                 continue
 
             prefix = team_code[:3]
+            # Data Quality: descarta qualquer equipe fora das 7 bases oficiais definidas
+            if prefix not in TARGET_PREFIXES:
+                continue
+
+            # Fallback Oficial de Filial: Se vier PSE ALPITEL ou contiver ALPITEL/PSE, normalizar para ALPITEL ENERGY
+            filial_str = str(filial or "").strip()
+            if "PSE" in filial_str.upper() or "ALPITEL" in filial_str.upper() or not filial_str or filial_str == "--":
+                filial = "ALPITEL ENERGY"
+
+            # Fallback Oficial de UT por prefixo de Base/Região:
+            # Região Norte (ENL, ECL, EEL) = "UT Norte" | Região Leste (EML, EQL, EVL, ESL) = "UT Leste"
+            if prefix in ['ENL', 'ECL', 'EEL']:
+                ut = "UT Norte"
+            elif prefix in ['EML', 'EQL', 'EVL', 'ESL']:
+                ut = "UT Leste"
+            else:
+                ut = str(ut or "").strip() or "--"
+
+            # Tratamento de GPS (String original e Minutos inteiros)
+            gps_str = str(gps_raw or "").strip()
+            gps_update_str = gps_str if gps_str and gps_str not in ['-', '--'] else "--"
+            gps_update_minutes = None
+            if gps_update_str != "--":
+                try:
+                    total_m = 0
+                    h_match = re.search(r'(\d+)\s*h', gps_update_str, re.IGNORECASE)
+                    m_match = re.search(r'(\d+)\s*min', gps_update_str, re.IGNORECASE)
+                    if h_match:
+                        total_m += int(h_match.group(1)) * 60
+                    if m_match:
+                        total_m += int(m_match.group(1))
+                    elif not h_match and re.search(r'^\d+$', gps_update_str):
+                        total_m = int(gps_update_str)
+                    gps_update_minutes = total_m
+                except Exception:
+                    gps_update_minutes = None
+
+            # Tratamento de INÍCIO DESCANSO (Separar Data e Hora)
+            descanso_str = str(descanso_raw or "").strip()
+            data_inicio_descanso = None
+            hora_inicio_descanso = None
+            if descanso_str and descanso_str not in ['-', '--']:
+                parts = [p.strip() for p in re.split(r'[, ]+', descanso_str) if p.strip()]
+                if len(parts) >= 2:
+                    data_inicio_descanso = parts[0]
+                    hora_inicio_descanso = parts[1]
+                elif len(parts) == 1:
+                    if ":" in parts[0]:
+                        hora_inicio_descanso = parts[0]
+                    elif "/" in parts[0]:
+                        data_inicio_descanso = parts[0]
+
+            # Tratamento de ORDEM
+            ordem_str = str(ordem_raw or "").strip()
+            ordem_servico = ordem_str if ordem_str and ordem_str not in ['-', '--'] else None
+
+            # Cruzamento de Placa com o Inventário de Frotas (Controle Operacional)
+            plate_val = str(plate or "").strip()
+            plate_display = plate_val if plate_val and plate_val not in ['-', '--'] else "--"
+            from fleet_client import fleet_client
+            fleet_match = fleet_client.cross_reference_plate(plate_display)
+
             base_info = self.official_bases.get(prefix)
 
             if base_info:
@@ -438,11 +682,22 @@ class DeliveryManager:
                 "company": company,
                 "is_official": is_official,
                 "driver": driver,
-                "plate": plate,
+                "plate": plate_display,
+                "plate_clean": fleet_match.get("plate_clean", ""),
+                "plate_cadastrada": fleet_match.get("plate_cadastrada", False),
+                "situacao_veiculo_cadastrado": fleet_match.get("situacao_veiculo_cadastrado", "SEM PLACA INFORMADA"),
+                "status_veiculo_cadastrado": fleet_match.get("status_veiculo_cadastrado", "--"),
                 "ut": ut,
                 "filial": filial,
+                "veiculo_portal": str(vehicle_desc or "--").strip(),
                 "tipo_operacional": tipo_oper,
                 "status": status_oper,
+                "status_equipes_brasil": status_oper,
+                "gps_update_str": gps_update_str,
+                "gps_update_minutes": gps_update_minutes,
+                "data_inicio_descanso": data_inicio_descanso,
+                "hora_inicio_descanso": hora_inicio_descanso,
+                "ordem_servico": ordem_servico,
                 "is_active": is_active_val,
                 "vehicle_type": veh_info["type"],
                 "unified_group": veh_info["unified_group"],
@@ -501,6 +756,7 @@ class DeliveryManager:
             if sc in curve_calc:
                 curve_calc[sc] += 1
         self.save_local_cache()
+        self.clear_audit_cache(self.current_date_str)
 
         # Integração Automática com o Módulo TRBOnet:
         # Alimenta a lista de equipes do TRBOnet diretamente com as equipes ativas da Enel SP
@@ -542,7 +798,7 @@ class DeliveryManager:
         }
 
     def reconcile_with_spotfire_records(self, spotfire_records: list, date_ref: str = None):
-        """Atualiza o cache de registros do Spotfire e mescla com as equipes acumuladas do dia."""
+        """Atualiza o cache de registros do Spotfire/Scanner e mescla com as equipes acumuladas do dia."""
         if not date_ref:
             date_ref = self.get_operational_date()
         for r in spotfire_records:
@@ -556,37 +812,62 @@ class DeliveryManager:
                 norm = normalize_team_code(code)
                 sp = self.spotfire_cache.get((date_ref, norm))
                 if sp:
-                    if sp.get("inicio_calibrado"):
-                        t["login_real"] = sp.get("inicio_calibrado")
-                    if sp.get("fim_calibrado"):
-                        t["logoff_real"] = sp.get("fim_calibrado")
-                        t["logoff_time"] = sp.get("fim_calibrado")
-                    t["qtd_os"] = sp.get("qtd_os", 0)
-                    t["produtivas"] = sp.get("produtivas", 0)
-                    t["improdutiva"] = sp.get("improdutiva", 0)
-                    t["verificacoes"] = sp.get("verificacoes", 0)
-                    t["no_local"] = sp.get("no_local", 0)
-                    t["rejeita"] = sp.get("rejeita", "NÃO")
+                    login_c = str(sp.get("login_corrigido") or sp.get("login") or sp.get("primeiro_login_corrigido") or sp.get("primeiro_login") or sp.get("inicio_calibrado") or "").strip()
+                    logoff_c = str(sp.get("logoff_corrigido") or sp.get("logoff") or sp.get("fim_calibrado") or "").strip()
+                    if login_c and login_c not in ["--", "--:--"]:
+                        t["login_real"] = login_c
+                    if logoff_c and logoff_c not in ["--", "--:--"]:
+                        t["logoff_real"] = logoff_c
+                        t["logoff_time"] = logoff_c
+                    t["qtd_os"] = to_int(sp.get("qtd_servicos") or sp.get("qtd_task") or sp.get("qtd_os") or 0)
+                    t["produtivas"] = to_int(sp.get("os_tma_total") or sp.get("os_tma") or sp.get("produtivas") or 0)
+                    t["improdutiva"] = to_int(sp.get("os_improdutiva_total") or sp.get("os_improdutiva") or sp.get("improdutiva") or 0)
+                    t["verificacoes"] = to_int(sp.get("verificacoes") or 0)
+                    t["no_local"] = to_int(sp.get("no_local") or 0)
+                    t["rejeita"] = str(sp.get("desvios") or sp.get("rejeita") or "NÃO")
                     t["duracao_efetiva"] = calculate_time_duration(t.get("login_real") or t.get("login_time"), t.get("logoff_real"))
-                    t["status_conciliacao"] = "CONCILIADO_TOTAL" if sp.get("fim_calibrado") and sp.get("fim_calibrado") not in ["--", "--:--"] else "TURNO_EM_ANDAMENTO"
+                    t["status_conciliacao"] = "CONCILIADO_TOTAL" if logoff_c and logoff_c not in ["--", "--:--"] else "TURNO_EM_ANDAMENTO"
                     t["spotfire_reconciled"] = True
+        self.clear_audit_cache(date_ref)
 
     def get_daily_audit_data(self, date_str: str) -> dict:
         """
         Gera a auditoria consolidada para uma data específica (YYYY-MM-DD),
-        confrontando os dados do EquipesBrasil com as informações do TIBCO Spotfire.
+        confrontando os dados do EquipesBrasil com as informações do Scanner 5.0 / TIBCO Spotfire.
+        Utiliza cache em memória para datas passadas (resposta <1ms).
         """
+        import time
+        now_ts = time.time()
+        ttl = 30 if date_str == self.current_date_str else 3600
+        if hasattr(self, '_daily_audit_cache') and date_str in self._daily_audit_cache:
+            if now_ts - self._daily_audit_cache_ts.get(date_str, 0) < ttl:
+                return self._daily_audit_cache[date_str]
+
         base_teams = []
         if date_str == self.current_date_str:
             state = self.get_consolidated_state()
-            base_teams = [dict(t) for t in state["daily_total_teams"]]
+            base_teams = [dict(t) for t in state["daily_total_teams"] if t.get("team_code", "")[:3] in TARGET_PREFIXES]
         else:
             try:
                 from supabase_client import fetch_delivery_records_by_date
                 records = fetch_delivery_records_by_date(date_str)
                 if records:
+                    # DEDUPLICAÇÃO ATÔMICA POR EQUIPE: consolida múltiplas sessões do mesmo dia
+                    seen_eb = {}
                     for r in records:
                         t_code = r.get("team_code", "")
+                        prefix = t_code[:3]
+                        if prefix not in TARGET_PREFIXES:
+                            continue
+                        if t_code in seen_eb:
+                            cur_logoff = seen_eb[t_code].get("logoff_time")
+                            new_logoff = r.get("logoff_time")
+                            if (not cur_logoff or cur_logoff in ["--", "--:--"]) and (new_logoff and new_logoff not in ["--", "--:--"]):
+                                seen_eb[t_code] = r
+                        else:
+                            seen_eb[t_code] = r
+
+                    for t_code, r in seen_eb.items():
                         prefix = t_code[:3]
                         b_info = self.official_bases.get(prefix)
                         v_info = self.classify_vehicle(t_code)
@@ -610,39 +891,57 @@ class DeliveryManager:
             except Exception as err:
                 print(f"[AUDIT FETCH ERROR] {err}")
 
-        # Busca registros correspondentes no Spotfire
+        # Busca registros correspondentes no Scanner 5.0 / Spotfire (apenas as 7 bases oficiais)
         sp_map = {}
         try:
-            from supabase_client import fetch_spotfire_records_by_date
-            spotfire_records = fetch_spotfire_records_by_date(date_str)
+            from supabase_client import fetch_scanner_records_by_date, fetch_spotfire_records_by_date
+            spotfire_records = fetch_scanner_records_by_date(date_str)
+            if not spotfire_records:
+                spotfire_records = fetch_spotfire_records_by_date(date_str)
             for sp in spotfire_records:
                 norm = sp.get("equipe_normalizada") or normalize_team_code(sp.get("equipe", ""))
-                if norm:
+                if norm and norm[:3] in TARGET_PREFIXES:
                     sp_map[norm] = sp
         except Exception as e:
-            print(f"[SPOTFIRE AUDIT FETCH ERROR] {e}")
+            print(f"[SCANNER AUDIT FETCH ERROR] {e}")
 
-        # Reconciliação dos registros de EquipesBrasil com Spotfire
+        # Reconciliação dos registros de EquipesBrasil com Scanner/Spotfire
         seen_teams = set()
         for t in base_teams:
             norm = normalize_team_code(t.get("team_code", ""))
             seen_teams.add(norm)
             sp = sp_map.get(norm)
             if sp:
-                t["login_real"] = sp.get("inicio_calibrado") or t.get("login_time", "--:--")
-                t["logoff_real"] = sp.get("fim_calibrado") or "--:--"
-                if sp.get("fim_calibrado") and sp.get("fim_calibrado") not in ["--", "--:--"]:
-                    t["logoff_time"] = sp.get("fim_calibrado")
-                t["qtd_os"] = sp.get("qtd_os", 0)
-                t["produtivas"] = sp.get("produtivas", 0)
-                t["improdutiva"] = sp.get("improdutiva", 0)
-                t["verificacoes"] = sp.get("verificacoes", 0)
-                t["no_local"] = sp.get("no_local", 0)
-                t["rejeita"] = sp.get("rejeita", "NÃO")
+                shift_info = classify_spotfire_shift_and_turno(sp)
+                t["turno"] = shift_info["turno"]
+                t["shift_slot"] = shift_info["shift_slot"]
+                t["shift_code"] = shift_info["shift_code"]
+                t["shift_pill_class"] = shift_info["shift_pill_class"]
+                login_c = str(sp.get("login_corrigido") or sp.get("login") or sp.get("primeiro_login_corrigido") or sp.get("primeiro_login") or sp.get("inicio_calibrado") or "").strip()
+                logoff_c = str(sp.get("logoff_corrigido") or sp.get("logoff") or sp.get("fim_calibrado") or "").strip()
+                t["login_real"] = login_c if (login_c and login_c not in ["--", "--:--"]) else t.get("login_time", "--:--")
+                t["logoff_real"] = logoff_c if (logoff_c and logoff_c not in ["--", "--:--"]) else "--:--"
+                if logoff_c and logoff_c not in ["--", "--:--"]:
+                    t["logoff_time"] = logoff_c
+                t["qtd_os"] = to_int(sp.get("qtd_servicos") or sp.get("qtd_task") or sp.get("qtd_os") or 0)
+                t["produtivas"] = to_int(sp.get("os_tma_total") or sp.get("os_tma") or sp.get("produtivas") or 0)
+                t["improdutiva"] = to_int(sp.get("os_improdutiva_total") or sp.get("os_improdutiva") or sp.get("improdutiva") or 0)
+                t["verificacoes"] = to_int(sp.get("verificacoes") or 0)
+                t["no_local"] = to_int(sp.get("no_local") or 0)
+                t["rejeita"] = str(sp.get("desvios") or sp.get("rejeita") or "NÃO")
                 t["duracao_efetiva"] = calculate_time_duration(t["login_real"], t["logoff_real"])
-                t["status_conciliacao"] = "CONCILIADO_TOTAL" if t["logoff_real"] not in ["--", "--:--"] else "TURNO_EM_ANDAMENTO"
+                t["status_conciliacao"] = "CONCILIADO_TOTAL" if t["logoff_real"] not in ["--", "--:--"] else "CONCILIADO_AMBOS"
                 t["spotfire_reconciled"] = True
             else:
+                sc = t.get("shift_code", "08:00")
+                if sc in ["06:00", "08:00"]:
+                    t["turno"] = "Manhã"
+                elif sc in ["12:00", "14:00"]:
+                    t["turno"] = "Tarde"
+                elif sc in ["20:00", "22:00"]:
+                    t["turno"] = "Noite"
+                else:
+                    t["turno"] = "Manhã"
                 t["login_real"] = t.get("login_time", "--:--")
                 t["logoff_real"] = "--:--"
                 t["qtd_os"] = 0
@@ -652,15 +951,20 @@ class DeliveryManager:
                 t["no_local"] = 0
                 t["rejeita"] = "NÃO"
                 t["duracao_efetiva"] = "--"
-                t["status_conciliacao"] = "AGUARDANDO_SPOTFIRE"
+                t["status_conciliacao"] = "APENAS_EQUIPESBRASIL"
                 t["spotfire_reconciled"] = False
 
-        # Inclui equipes que constam exclusivamente no Spotfire (sem EquipesBrasil)
+        # Inclui equipes que constam exclusivamente no Scanner 5.0 (sem EquipesBrasil)
         for norm, sp in sp_map.items():
             if norm not in seen_teams:
                 prefix = norm[:3]
+                if prefix not in TARGET_PREFIXES:
+                    continue
                 b_info = self.official_bases.get(prefix)
                 v_info = self.classify_vehicle(norm)
+                shift_info = classify_spotfire_shift_and_turno(sp)
+                login_c = str(sp.get("login_corrigido") or sp.get("login") or sp.get("primeiro_login_corrigido") or sp.get("primeiro_login") or sp.get("inicio_calibrado") or "").strip()
+                logoff_c = str(sp.get("logoff_corrigido") or sp.get("logoff") or sp.get("fim_calibrado") or "").strip()
                 base_teams.append({
                     "team_code": sp.get("equipe") or norm,
                     "base_code": prefix,
@@ -670,38 +974,43 @@ class DeliveryManager:
                     "geo": b_info["geo"] if b_info else "Outras",
                     "company": b_info["company"] if b_info else "Outros",
                     "vehicle_type": v_info["type"],
-                    "login_time": sp.get("inicio_calibrado") or "--:--",
-                    "logoff_time": sp.get("fim_calibrado") or "--:--",
-                    "login_real": sp.get("inicio_calibrado") or "--:--",
-                    "logoff_real": sp.get("fim_calibrado") or "--:--",
-                    "shift_slot": "Spotfire Extra",
-                    "shift_code": "Extra",
-                    "status": "Apenas Spotfire",
-                    "driver": "--",
-                    "plate": "--",
-                    "qtd_os": sp.get("qtd_os", 0),
-                    "produtivas": sp.get("produtivas", 0),
-                    "improdutiva": sp.get("improdutiva", 0),
-                    "verificacoes": sp.get("verificacoes", 0),
-                    "no_local": sp.get("no_local", 0),
-                    "rejeita": sp.get("rejeita", "NÃO"),
-                    "duracao_efetiva": calculate_time_duration(sp.get("inicio_calibrado"), sp.get("fim_calibrado")),
+                    "login_time": login_c or "--:--",
+                    "logoff_time": logoff_c or "--:--",
+                    "login_real": login_c or "--:--",
+                    "logoff_real": logoff_c or "--:--",
+                    "turno": shift_info["turno"],
+                    "shift_slot": shift_info["shift_slot"],
+                    "shift_code": shift_info["shift_code"],
+                    "shift_pill_class": shift_info["shift_pill_class"],
+                    "status": "Apenas Spotfire" if logoff_c in ["--", "--:--", ""] else "Turno Concluído (Spotfire)",
+                    "driver": sp.get("motorista") or sp.get("equipe1") or "--",
+                    "plate": sp.get("placa") or "--",
+                    "qtd_os": to_int(sp.get("qtd_servicos") or sp.get("qtd_task") or sp.get("qtd_os") or 0),
+                    "produtivas": to_int(sp.get("os_tma_total") or sp.get("os_tma") or sp.get("produtivas") or 0),
+                    "improdutiva": to_int(sp.get("os_improdutiva_total") or sp.get("os_improdutiva") or sp.get("improdutiva") or 0),
+                    "verificacoes": to_int(sp.get("verificacoes") or 0),
+                    "no_local": to_int(sp.get("no_local") or 0),
+                    "rejeita": str(sp.get("desvios") or sp.get("rejeita") or "NÃO"),
+                    "duracao_efetiva": calculate_time_duration(login_c or "--:--", logoff_c or "--:--"),
                     "status_conciliacao": "APENAS_SPOTFIRE",
                     "spotfire_reconciled": True
                 })
 
         metrics = self._build_metrics_breakdown(base_teams)
 
-        # Totais de conciliação para os KPI Cards
+        # Totais de conciliação para os KPI Cards e Segmento de Confronto
         total_delivered = len(base_teams)
         total_eb = len([t for t in base_teams if t.get("status_conciliacao") != "APENAS_SPOTFIRE"])
-        reconciled_count = len([t for t in base_teams if t.get("spotfire_reconciled")])
+        total_conciliado_ambos = len([t for t in base_teams if t.get("status_conciliacao") in ["CONCILIADO_TOTAL", "CONCILIADO_AMBOS", "TURNO_EM_ANDAMENTO"]])
+        total_apenas_spotfire = len([t for t in base_teams if t.get("status_conciliacao") == "APENAS_SPOTFIRE"])
+        total_apenas_eb = len([t for t in base_teams if t.get("status_conciliacao") == "APENAS_EQUIPESBRASIL"])
         total_with_logoff = len([t for t in base_teams if t.get("logoff_real") not in ["--", "--:--"]])
         total_os_produtivas = sum(t.get("produtivas", 0) for t in base_teams)
         total_os_geral = sum(t.get("qtd_os", 0) for t in base_teams)
-        rate = round((reconciled_count / max(total_eb, 1)) * 100.0, 1) if total_eb > 0 else 0.0
+        base_divisor = max(len(sp_map), total_delivered, 1)
+        rate = round((total_conciliado_ambos / base_divisor) * 100.0, 1) if len(sp_map) > 0 else (100.0 if total_eb == 0 else 0.0)
 
-        return {
+        res = {
             "status": "success" if total_delivered > 0 else "empty",
             "date": date_str,
             "total_delivered": total_delivered,
@@ -710,6 +1019,9 @@ class DeliveryManager:
                 "total_delivered": total_delivered,
                 "total_equipes_brasil": total_eb,
                 "total_spotfire": len(sp_map),
+                "total_conciliado_ambos": total_conciliado_ambos,
+                "total_apenas_spotfire": total_apenas_spotfire,
+                "total_apenas_equipesbrasil": total_apenas_eb,
                 "total_with_logoff": total_with_logoff,
                 "total_os_produtivas": total_os_produtivas,
                 "total_os_geral": total_os_geral,
@@ -717,87 +1029,623 @@ class DeliveryManager:
             },
             "teams": base_teams
         }
+        if total_delivered > 0:
+            self._daily_audit_cache[date_str] = res
+            self._daily_audit_cache_ts[date_str] = now_ts
+        return res
 
-    def get_monthly_audit_data(self, month_str: str) -> dict:
-        """Calcula as métricas consolidadas e médias diárias para o mês especificado (YYYY-MM)."""
-        try:
-            from supabase_client import fetch_delivery_sessions_by_month
-            sessions = fetch_delivery_sessions_by_month(month_str)
+    def get_comparative_targets_audit(self, date_str: str, region: str = "Norte") -> dict:
+        """
+        Calcula o comparativo oficial entre Metas Planejadas (PLAN), Entregas Efetivas (REAL) e Desvios (GAP)
+        para a data e região especificadas, estruturado exatamente nas 3 visões executivas:
+        1. BASES
+        2. TURNO
+        3. TIPO VEÍCULO
+        
+        Utiliza 100% dos registros tratados do TIBCO Spotfire como verdade oficial de fechamento.
+        """
+        reg_key = "Norte" if region.lower() in ["norte", "região norte"] else "Leste"
+        
+        # 1. Carrega Metas de Planejamento (Supabase / JSON)
+        from supabase_client import fetch_delivery_planning_targets
+        p_targets = fetch_delivery_planning_targets(date_str[:7])
+        reg_targets = p_targets.get(reg_key, {})
+        plan_bases = reg_targets.get("bases", {})
+        plan_turno = reg_targets.get("turno", {})
+        plan_veiculo = reg_targets.get("veiculo", {})
+
+        # 2. Carrega equipes reais tratadas diretamente do Spotfire (verdade oficial fechada)
+        from supabase_client import fetch_spotfire_records_by_date
+        sp_recs = fetch_spotfire_records_by_date(date_str)
+
+        # Filtra equipes da região selecionada estritamente pelos prefixos oficiais
+        if reg_key == "Norte":
+            target_prefixes = {"ENL", "ECL", "EEL"}
+        else:
+            target_prefixes = {"EML", "EQL", "EVL", "ESL"}
+
+        reg_teams = []
+        for r in sp_recs:
+            code = normalize_team_code(r.get("equipe_normalizada") or r.get("equipe", ""))
+            pfx = code[:3]
+            if pfx not in target_prefixes:
+                continue
+
+            # Validação mandatória: presença de login efetivo registrado
+            login_val = r.get("login_corrigido") or r.get("login") or ""
+            if not str(login_val).strip() or str(login_val).strip().lower() in ["none", "nan", "-", "0", "0.0"]:
+                continue
+
+            v_info = self.classify_vehicle(code)
+            shift_info = classify_spotfire_shift_and_turno(r)
+            reg_teams.append({
+                "team_code": code,
+                "base_code": pfx,
+                "vehicle_type": v_info["type"],
+                "turno": shift_info["turno"],
+                "shift_slot": shift_info["shift_slot"],
+                "shift_code": shift_info["shift_code"],
+                "raw_record": r
+            })
+
+        # 3. Contabilização Real por Categoria
+        # 3.1 BASES
+        base_real_counts = {}
+        for b_name in plan_bases.keys():
+            base_real_counts[b_name] = 0
+
+        # Mapeamento oficial de prefixo para nome da base
+        prefix_to_base = {
+            "ENL": "Fagundes Filho",
+            "ECL": "Cajati",
+            "EEL": "Vila Medeiros",
+            "EML": "Monte Santo",
+            "EVL": "Catumbi",
+            "EQL": "Aricanduva",
+            "ESL": "Santo André"
+        }
+
+        for t in reg_teams:
+            code = t.get("team_code", "").upper()
+            v_type = t.get("vehicle_type", "")
+            pfx = code[:3]
             
-            # Agrupa sessões por data (pega a sessão com maior total de cada dia como representativa)
-            days_map = {}
-            for s in sessions:
-                d_ref = s.get("date_ref")
-                tot = int(s.get("total_teams", 0))
-                if d_ref not in days_map or tot > days_map[d_ref]["total_teams"]:
-                    days_map[d_ref] = {
-                        "date": d_ref,
-                        "total_teams": tot,
-                        "cesto": int(s.get("total_cesto", 0)),
-                        "leve": int(s.get("total_veiculo_leve", 0)),
-                        "moto": int(s.get("total_moto", 0)),
-                        "munck": int(s.get("total_munck", 0)),
-                        "linha_viva": int(s.get("total_linha_viva", 0)),
-                        "linhaviva_munck": int(s.get("total_linha_viva", 0)) + int(s.get("total_munck", 0))
-                    }
+            # Identifica se é Linha Viva ou Munck
+            if v_type == "Munck" or code in self.munck_codes:
+                if "Munk" in base_real_counts:
+                    base_real_counts["Munk"] += 1
+                elif "Munck" in base_real_counts:
+                    base_real_counts["Munck"] += 1
+            elif v_type == "Linha Viva":
+                if "LV" in base_real_counts:
+                    base_real_counts["LV"] += 1
+            else:
+                # Pertence à base TMA
+                b_name = prefix_to_base.get(pfx)
+                if b_name and b_name in base_real_counts:
+                    base_real_counts[b_name] += 1
 
-            # Se for o mês atual, inclui também o dia de hoje caso ainda não esteja consolidado
-            today_prefix = self.current_date_str[:7]
-            if month_str == today_prefix and len(self.daily_accumulated_teams) > 0:
-                cur_sum = self._build_metrics_breakdown(list(self.daily_accumulated_teams.values()))
-                days_map[self.current_date_str] = {
-                    "date": self.current_date_str,
-                    "total_teams": cur_sum["total"],
-                    "cesto": cur_sum["cesto"],
-                    "leve": cur_sum["leve"],
-                    "moto": cur_sum["moto"],
-                    "munck": cur_sum["munck"],
-                    "linha_viva": cur_sum["linhaviva"],
-                    "linhaviva_munck": cur_sum["linhaviva_munck"]
+        # Constrói tabela 1: BASES
+        table_bases = []
+        sum_plan_tma = 0
+        sum_real_tma = 0
+        for b_name, p_val in plan_bases.items():
+            r_val = base_real_counts.get(b_name, 0)
+            gap_val = r_val - p_val
+            table_bases.append({
+                "categoria": b_name,
+                "plan": p_val,
+                "real": r_val,
+                "gap": gap_val,
+                "is_special": b_name in ["LV", "Munk", "Munck"]
+            })
+            if b_name not in ["LV", "Munk", "Munck"]:
+                sum_plan_tma += p_val
+                sum_real_tma += r_val
+
+        lv_plan = plan_bases.get("LV", 0)
+        lv_real = base_real_counts.get("LV", 0)
+        munk_plan = plan_bases.get("Munk", plan_bases.get("Munck", 0))
+        munk_real = base_real_counts.get("Munk", base_real_counts.get("Munck", 0))
+
+        if reg_key == "Norte":
+            table_bases.append({
+                "categoria": "Total TMA",
+                "plan": sum_plan_tma,
+                "real": sum_real_tma,
+                "gap": sum_real_tma - sum_plan_tma,
+                "is_total": True
+            })
+            tot_lv_tma_plan = sum_plan_tma + lv_plan + munk_plan
+            tot_lv_tma_real = sum_real_tma + lv_real + munk_real
+            table_bases.append({
+                "categoria": "Total LV + TMA",
+                "plan": tot_lv_tma_plan,
+                "real": tot_lv_tma_real,
+                "gap": tot_lv_tma_real - tot_lv_tma_plan,
+                "is_grand_total": True
+            })
+        else:
+            table_bases.append({
+                "categoria": "Total",
+                "plan": sum(plan_bases.values()),
+                "real": sum(base_real_counts.values()),
+                "gap": sum(base_real_counts.values()) - sum(plan_bases.values()),
+                "is_grand_total": True
+            })
+
+        # 3.2 TURNO (Auditoria precisa por Período: Manhã, Tarde, Noite)
+        turno_real_counts = {"Manhã": 0, "Tarde": 0, "Noite": 0}
+        for t in reg_teams:
+            t_name = t.get("turno", "Manhã")
+            if t_name in turno_real_counts:
+                turno_real_counts[t_name] += 1
+            else:
+                turno_real_counts["Manhã"] += 1
+
+        table_turno = []
+        for t_name in ["Manhã", "Tarde", "Noite"]:
+            p_val = plan_turno.get(t_name, 0)
+            r_val = turno_real_counts.get(t_name, 0)
+            table_turno.append({
+                "categoria": t_name,
+                "plan": p_val,
+                "real": r_val,
+                "gap": r_val - p_val
+            })
+
+        if reg_key == "Norte":
+            table_turno.append({
+                "categoria": "Total TMA",
+                "plan": sum_plan_tma,
+                "real": sum_real_tma,
+                "gap": sum_real_tma - sum_plan_tma,
+                "is_total": True
+            })
+            table_turno.append({
+                "categoria": "Total LV + TMA",
+                "plan": tot_lv_tma_plan,
+                "real": tot_lv_tma_real,
+                "gap": tot_lv_tma_real - tot_lv_tma_plan,
+                "is_grand_total": True
+            })
+        else:
+            tot_p_turno = sum(plan_turno.values())
+            tot_r_turno = sum(turno_real_counts.values())
+            table_turno.append({
+                "categoria": "Total",
+                "plan": tot_p_turno,
+                "real": tot_r_turno,
+                "gap": tot_r_turno - tot_p_turno,
+                "is_grand_total": True
+            })
+
+        # 3.3 TIPO VEÍCULO
+        veh_real_counts = {"Cesto Aéreo": 0, "Veículo Leve": 0, "Moto": 0, "LV": 0, "Munk": 0}
+        for t in reg_teams:
+            vt = t.get("vehicle_type", "Outros")
+            code = t.get("team_code", "").upper()
+            if vt == "Munck" or code in self.munck_codes:
+                veh_real_counts["Munk"] += 1
+            elif vt == "Linha Viva":
+                veh_real_counts["LV"] += 1
+            elif vt == "Cesto Aéreo":
+                veh_real_counts["Cesto Aéreo"] += 1
+            elif vt == "Veículo Leve":
+                veh_real_counts["Veículo Leve"] += 1
+            elif vt == "Moto":
+                veh_real_counts["Moto"] += 1
+
+        table_veiculo = []
+        for v_name in ["Cesto Aéreo", "Veículo Leve", "Moto", "LV", "Munk"]:
+            p_val = plan_veiculo.get(v_name, 0)
+            r_val = veh_real_counts.get(v_name, 0)
+            table_veiculo.append({
+                "categoria": v_name,
+                "plan": p_val,
+                "real": r_val,
+                "gap": r_val - p_val,
+                "is_special": v_name in ["LV", "Munk"]
+            })
+
+        if reg_key == "Norte":
+            table_veiculo.append({
+                "categoria": "Total TMA",
+                "plan": sum_plan_tma,
+                "real": sum_real_tma,
+                "gap": sum_real_tma - sum_plan_tma,
+                "is_total": True
+            })
+            table_veiculo.append({
+                "categoria": "Total LV + TMA",
+                "plan": tot_lv_tma_plan,
+                "real": tot_lv_tma_real,
+                "gap": tot_lv_tma_real - tot_lv_tma_plan,
+                "is_grand_total": True
+            })
+        else:
+            tot_p_veh = sum(plan_veiculo.values())
+            tot_r_veh = sum(veh_real_counts.values())
+            table_veiculo.append({
+                "categoria": "Total",
+                "plan": tot_p_veh,
+                "real": tot_r_veh,
+                "gap": tot_r_veh - tot_p_veh,
+                "is_grand_total": True
+            })
+
+        # Cards rápidos de frota
+        fleet_cards = {
+            "cesto": veh_real_counts["Cesto Aéreo"],
+            "leve": veh_real_counts["Veículo Leve"],
+            "moto": veh_real_counts["Moto"],
+            "linhaviva": veh_real_counts["LV"],
+            "munck": veh_real_counts["Munk"],
+            "total_regiao": len(reg_teams)
+        }
+
+        from coletor_spotfire_cdp import get_last_scanner_sync_time
+        last_scanner_sync = get_last_scanner_sync_time() or format_datetime_br(datetime.now())
+
+        return {
+            "status": "success",
+            "date": date_str,
+            "region": reg_key,
+            "updated_at": last_scanner_sync,
+            "daily_meta": p_targets.get("daily_meta", 226),
+            "tables": {
+                "bases": table_bases,
+                "turno": table_turno,
+                "veiculo": table_veiculo
+            },
+            "fleet_cards": fleet_cards
+        }
+
+    def get_monthly_audit_data(self, month_str: str = None) -> dict:
+        """
+        Retorna registros analíticos consolidados de equipes do mês selecionado (YYYY-MM),
+        com dimensões normalizadas para filtragem instantânea no front-end e cache inteligente.
+        """
+        if not month_str:
+            month_str = datetime.now().strftime("%Y-%m")
+
+        import os, json, time
+        now_ts = time.time()
+        # Se estiver em cache em memória, retorna instantaneamente (<1ms)
+        if hasattr(self, '_monthly_audit_cache') and month_str in self._monthly_audit_cache:
+            cache_ttl = 120 if month_str == datetime.now().strftime("%Y-%m") else 86400
+            if now_ts - self._monthly_audit_cache_ts.get(month_str, 0) < cache_ttl:
+                return self._monthly_audit_cache[month_str]
+
+        # Se for mês passado e existir cache em disco, carrega instantaneamente (<5ms)
+        cache_path = os.path.join("data", f"monthly_audit_{month_str}.json")
+        if month_str != datetime.now().strftime("%Y-%m") and os.path.isfile(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as fp:
+                    disk_res = json.load(fp)
+                if disk_res and disk_res.get("status") == "success" and disk_res.get("raw_records"):
+                    if not hasattr(self, '_monthly_audit_cache'):
+                        self._monthly_audit_cache = {}
+                        self._monthly_audit_cache_ts = {}
+                    self._monthly_audit_cache[month_str] = disk_res
+                    self._monthly_audit_cache_ts[month_str] = now_ts
+                    return disk_res
+            except Exception:
+                pass
+
+        try:
+            import calendar
+            import requests
+            from supabase_client import BASE_REST_URL, get_headers, fetch_delivery_planning_targets
+            
+            headers = get_headers()
+            cols_to_select = "data_referencia,equipe_normalizada,equipe,base_responsavel,base,tipo_equipe,login_corrigido,logoff_corrigido,inicio_calendario,fim_calendario,login,logoff,periodo"
+            
+            parts = month_str.split("-")
+            y, m = int(parts[0]), int(parts[1])
+            last_day = calendar.monthrange(y, m)[1]
+            start_dt = f"{y:04d}-{m:02d}-01"
+            end_dt = f"{y:04d}-{m:02d}-{last_day:02d}"
+
+            raw_data = []
+            offset = 0
+            chunk_size = 1000
+            for _ in range(7):  # Até 7000 registros (cobre com folga o mês inteiro de todas as bases)
+                url = f"{BASE_REST_URL}/team_scanner_records?data_referencia=gte.{start_dt}&data_referencia=lte.{end_dt}&select={cols_to_select}&order=data_referencia.asc&limit={chunk_size}&offset={offset}"
+                r = requests.get(url, headers=headers, timeout=10)
+                batch = r.json() if r.status_code == 200 else []
+                if not batch:
+                    break
+                raw_data.extend(batch)
+                if len(batch) < chunk_size:
+                    break
+                offset += chunk_size
+            
+            if not raw_data:
+                offset = 0
+                for _ in range(3):
+                    url_leg = f"{BASE_REST_URL}/team_spotfire_records?data_referencia=gte.{start_dt}&data_referencia=lte.{end_dt}&order=data_referencia.asc&limit={chunk_size}&offset={offset}"
+                    r_leg = requests.get(url_leg, headers=headers, timeout=10)
+                    batch_leg = r_leg.json() if r_leg.status_code == 200 else []
+                    if not batch_leg:
+                        break
+                    raw_data.extend(batch_leg)
+                    if len(batch_leg) < chunk_size:
+                        break
+                    offset += chunk_size
+
+            p_targets = fetch_delivery_planning_targets(month_str)
+
+            norm_records = []
+            regions_set = set()
+            bases_set = set()
+            vehicles_set = set()
+
+            ALPITEL_PREFIXES = {"ENL", "ECL", "EEL", "EML", "EQL", "EVL", "ESL"}
+            prefix_to_base = {
+                "ENL": "Base Fagundes Filho",
+                "ECL": "Base Cajati",
+                "EEL": "Base Vila Medeiros",
+                "EML": "Base Monte Santo",
+                "EQL": "Base Aricanduva",
+                "EVL": "Base Catumbi",
+                "ESL": "Base Santo André"
+            }
+            prefix_to_region = {
+                "ENL": "Região Norte",
+                "ECL": "Região Norte",
+                "EEL": "Região Norte",
+                "EML": "Região Leste",
+                "EQL": "Região Leste",
+                "EVL": "Região Leste",
+                "ESL": "Região Leste"
+            }
+
+            for row in raw_data:
+                team_code = normalize_team_code(row.get("equipe_normalizada") or row.get("equipe") or "")
+                if not team_code:
+                    continue
+                pfx = team_code[:3]
+                if pfx not in ALPITEL_PREFIXES:
+                    continue
+                
+                # Validação mandatória: presença de login efetivo registrado
+                login_t = row.get("login_corrigido") or row.get("login") or ""
+                if not str(login_t).strip() or str(login_t).strip().lower() in ["none", "nan", "-", "0", "0.0"]:
+                    continue
+
+                base_name = prefix_to_base.get(pfx, "Outros")
+                reg = prefix_to_region.get(pfx, "Outros")
+                
+                v_info = self.classify_vehicle(team_code)
+                v_type = v_info.get("type", "Outros")
+                
+                shift_info = classify_spotfire_shift_and_turno(row)
+                turno = shift_info.get("turno") or "Manhã"
+                shift_code = shift_info.get("shift_code") or "08:00"
+
+                dt_ref = str(row.get("data_referencia") or "")
+
+                rec = {
+                    "date": dt_ref,
+                    "team_code": team_code,
+                    "prefix": pfx,
+                    "base": base_name,
+                    "region": reg,
+                    "turno": turno,
+                    "shift_code": shift_code,
+                    "vehicle_type": v_type
                 }
+                norm_records.append(rec)
+                
+                if reg and reg != "Outros":
+                    regions_set.add(reg)
+                if base_name and base_name != "Outros":
+                    bases_set.add(base_name)
+                if v_type and v_type != "Outros":
+                    vehicles_set.add(v_type)
 
-            sorted_days = sorted(days_map.values(), key=lambda x: x["date"])
-            num_days = len(sorted_days)
+            # Agregação por dia em nível de backend para resposta leve
+            day_counts = {}
+            for r in norm_records:
+                d = r.get("date")
+                if d:
+                    day_counts[d] = day_counts.get(d, 0) + 1
 
-            if num_days == 0:
-                return {
-                    "status": "empty",
-                    "month": month_str,
-                    "operating_days": 0,
-                    "avg_total": 0,
-                    "avg_cesto": 0,
-                    "avg_leve": 0,
-                    "avg_moto": 0,
-                    "avg_linhaviva_munck": 0,
-                    "days": []
-                }
+            all_days = sorted(list(day_counts.keys()))
+            days_list = [{"date": d, "total_teams": day_counts[d]} for d in all_days]
+            op_days = len([d for d in days_list if d["total_teams"] > 0])
+            avg_tot = (sum(d["total_teams"] for d in days_list) / max(op_days, 1)) if op_days > 0 else 0
 
-            sum_tot = sum(d["total_teams"] for d in sorted_days)
-            sum_cesto = sum(d["cesto"] for d in sorted_days)
-            sum_leve = sum(d["leve"] for d in sorted_days)
-            sum_moto = sum(d["moto"] for d in sorted_days)
-            sum_lvm = sum(d["linhaviva_munck"] for d in sorted_days)
-
-            return {
+            res = {
                 "status": "success",
                 "month": month_str,
-                "operating_days": num_days,
-                "avg_total": round(sum_tot / num_days, 1),
-                "avg_cesto": round(sum_cesto / num_days, 1),
-                "avg_leve": round(sum_leve / num_days, 1),
-                "avg_moto": round(sum_moto / num_days, 1),
-                "avg_linhaviva_munck": round(sum_lvm / num_days, 1),
-                "days": sorted_days
+                "planning_targets": p_targets,
+                "total_records": len(norm_records),
+                "operating_days": op_days,
+                "avg_total": round(avg_tot, 1),
+                "days": days_list,
+                "unique_dimensions": {
+                    "regions": sorted(list(regions_set)),
+                    "bases": sorted(list(bases_set)),
+                    "turnos": ["Manhã", "Tarde", "Noite"],
+                    "vehicles": sorted(list(vehicles_set))
+                },
+                "raw_records": norm_records
             }
-        except Exception as err:
-            print(f"[MONTHLY AUDIT ERROR] {err}")
+            if len(norm_records) > 0:
+                self._monthly_audit_cache[month_str] = res
+                self._monthly_audit_cache_ts[month_str] = now_ts
+                # Salva cache em disco para meses passados (imutáveis)
+                if month_str != datetime.now().strftime("%Y-%m"):
+                    try:
+                        import os, json
+                        os.makedirs("data", exist_ok=True)
+                        cache_path = os.path.join("data", f"monthly_audit_{month_str}.json")
+                        with open(cache_path, "w", encoding="utf-8") as fp:
+                            json.dump(res, fp, ensure_ascii=False)
+                    except Exception:
+                        pass
+            return res
+        except Exception as e:
             return {
                 "status": "error",
-                "message": str(err),
+                "message": str(e),
                 "month": month_str,
-                "operating_days": 0,
-                "avg_total": 0,
+                "planning_targets": {},
+                "unique_dimensions": {},
+                "raw_records": [],
                 "days": []
             }
 
+    def clear_audit_cache(self, month: str = None):
+        """Limpa o cache em memória de auditoria mensal e de datas disponíveis."""
+        if month and hasattr(self, '_monthly_audit_cache'):
+            self._monthly_audit_cache.pop(month, None)
+            if hasattr(self, '_monthly_audit_cache_ts'):
+                self._monthly_audit_cache_ts.pop(month, None)
+        else:
+            self._monthly_audit_cache = {}
+            self._monthly_audit_cache_ts = {}
+            self._audit_dates_cache = None
+            self._audit_dates_cache_ts = 0
+
+    def get_available_audit_dates(self, force_refresh: bool = False) -> dict:
+        """
+        Retorna a lista completa de datas e meses com dados no Supabase para o calendário e dropdown.
+        Utiliza cache persistente em disco (data/delivery_available_dates.json) e memória para tempo de resposta <1ms.
+        """
+        import os, json, time, calendar
+        now = time.time()
+
+        # 1. Verifica cache em memória
+        if not force_refresh and hasattr(self, '_audit_dates_cache') and self._audit_dates_cache:
+            if now - getattr(self, '_audit_dates_cache_ts', 0) < 600:
+                return self._audit_dates_cache
+
+        # 2. Verifica cache em disco (se recente ou meses históricos)
+        cache_file = os.path.join("data", "delivery_available_dates.json")
+        disk_data = None
+        if not force_refresh and os.path.isfile(cache_file):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as fp:
+                    disk_data = json.load(fp)
+                if disk_data and disk_data.get("dates"):
+                    self._audit_dates_cache = disk_data
+                    self._audit_dates_cache_ts = now
+                    return disk_data
+            except Exception:
+                pass
+
+        try:
+            import requests
+            from concurrent.futures import ThreadPoolExecutor
+            from supabase_client import BASE_REST_URL, get_headers
+            headers = get_headers()
+            raw_dates = set()
+
+            # Se tínhamos dados de disco, aproveita para não re-escanear todo o passado
+            if disk_data and disk_data.get("dates"):
+                raw_dates.update(disk_data.get("dates"))
+
+            # 1. Busca datas recentes nos cabeçalhos de sessões (limit 200)
+            try:
+                r_sess = requests.get(
+                    f"{BASE_REST_URL}/team_delivery_sessions?select=date_ref&order=date_ref.desc&limit=200",
+                    headers=headers,
+                    timeout=5
+                )
+                if r_sess.status_code == 200:
+                    for row in (r_sess.json() or []):
+                        d = row.get("date_ref")
+                        if d:
+                            raw_dates.add(str(d).strip())
+            except Exception:
+                pass
+
+            # 2. Busca datas em paralelo com paginação por cursor para todos os meses
+            curr_year = datetime.now().year
+            curr_month = datetime.now().month
+
+            def fetch_month_dates(mo):
+                last_day = calendar.monthrange(curr_year, mo)[1]
+                cur_dt = f"{curr_year}-{mo:02d}-01"
+                end_dt = f"{curr_year}-{mo:02d}-{last_day:02d}"
+                m_dates = set()
+                while cur_dt <= end_dt:
+                    url = f"{BASE_REST_URL}/team_scanner_records?data_referencia=gte.{cur_dt}&data_referencia=lte.{end_dt}&select=data_referencia&order=data_referencia.asc&limit=1000"
+                    r = requests.get(url, headers=headers, timeout=10)
+                    items = r.json() if r.status_code == 200 else []
+                    if not items:
+                        break
+                    for x in items:
+                        d_val = x.get("data_referencia")
+                        if d_val:
+                            m_dates.add(str(d_val).strip())
+                    last = items[-1].get("data_referencia")
+                    if len(items) < 1000 or not last:
+                        break
+                    try:
+                        dt_obj = datetime.strptime(last, "%Y-%m-%d") + timedelta(days=1)
+                        cur_dt = dt_obj.strftime("%Y-%m-%d")
+                    except Exception:
+                        break
+                return list(m_dates)
+
+            # Se force_refresh ou não havia cache em disco, escaneia todos os meses (1 até curr_month)
+            months_to_scan = range(1, curr_month + 1) if (force_refresh or not disk_data) else [curr_month]
+            try:
+                with ThreadPoolExecutor(max_workers=9) as ex:
+                    results = ex.map(fetch_month_dates, months_to_scan)
+                    for res_list in results:
+                        raw_dates.update(res_list)
+            except Exception as e:
+                print(f"[AUDIT DATES SCAN ERROR] {e}")
+
+            sorted_dates = sorted(list(raw_dates), reverse=True)
+            months_set = sorted(list(set(d[:7] for d in sorted_dates if len(d) >= 7)), reverse=False)
+
+            month_names = {
+                "01": "Janeiro", "02": "Fevereiro", "03": "Março",
+                "04": "Abril", "05": "Maio", "06": "Junho",
+                "07": "Julho", "08": "Agosto", "09": "Setembro",
+                "10": "Outubro", "11": "Novembro", "12": "Dezembro"
+            }
+
+            months_list = []
+            for m in months_set:
+                parts = m.split("-")
+                if len(parts) == 2:
+                    y, mo = parts[0], parts[1]
+                    m_label = f"{month_names.get(mo, mo)}/{y}"
+                    months_list.append({"value": m, "label": m_label})
+
+            res = {
+                "status": "success",
+                "dates": sorted_dates,
+                "months": months_list,
+                "latest_date": sorted_dates[0] if sorted_dates else datetime.now().strftime("%Y-%m-%d"),
+                "latest_month": months_set[-1] if months_set else datetime.now().strftime("%Y-%m")
+            }
+
+            # Salva no arquivo de cache persistente
+            try:
+                os.makedirs("data", exist_ok=True)
+                with open(cache_file, "w", encoding="utf-8") as fp:
+                    json.dump(res, fp, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+            self._audit_dates_cache = res
+            self._audit_dates_cache_ts = now
+            return res
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": str(e),
+                "dates": [],
+                "months": []
+            }
+
 delivery_manager = DeliveryManager()
+

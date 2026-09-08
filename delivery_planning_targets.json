@@ -1,0 +1,48 @@
+{
+  "updated_at": "2026-09-04T12:00:00",
+  "updated_by": "admin@alpitelbrasil.com.br",
+  "daily_meta": 226,
+  "Norte": {
+    "bases": {
+      "Fagundes Filho": 42,
+      "Cajati": 24,
+      "Vila Medeiros": 28,
+      "LV": 10,
+      "Munk": 5
+    },
+    "turno": {
+      "Manhã": 54,
+      "Tarde": 42,
+      "Noite": 13
+    },
+    "veiculo": {
+      "Cesto Aéreo": 68,
+      "Veículo Leve": 13,
+      "Moto": 13,
+      "LV": 10,
+      "Munk": 5
+    }
+  },
+  "Leste": {
+    "bases": {
+      "Monte Santo": 33,
+      "Catumbi": 21,
+      "Aricanduva": 34,
+      "Santo André": 7,
+      "LV": 0,
+      "Munk": 0
+    },
+    "turno": {
+      "Manhã": 35,
+      "Tarde": 35,
+      "Noite": 25
+    },
+    "veiculo": {
+      "Cesto Aéreo": 75,
+      "Veículo Leve": 15,
+      "Moto": 5,
+      "LV": 0,
+      "Munk": 0
+    }
+  }
+}

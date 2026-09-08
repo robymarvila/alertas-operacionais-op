@@ -361,15 +361,41 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                     "plate": str(t.get("plate", "--")),
                     "ut": str(t.get("ut", "--")),
                     "filial": str(t.get("filial", "--")),
+                    "veiculo_portal": str(t.get("veiculo_portal", "--")),
+                    "gps_update_str": str(t.get("gps_update_str", "--")),
+                    "gps_update_minutes": t.get("gps_update_minutes"),
+                    "status_equipes_brasil": str(t.get("status_equipes_brasil", t.get("status", "Logada"))),
+                    "data_inicio_descanso": t.get("data_inicio_descanso"),
+                    "hora_inicio_descanso": t.get("hora_inicio_descanso"),
+                    "ordem_servico": t.get("ordem_servico"),
+                    "plate_clean": str(t.get("plate_clean", "")),
+                    "plate_cadastrada": bool(t.get("plate_cadastrada", False)),
+                    "situacao_veiculo_cadastrado": str(t.get("situacao_veiculo_cadastrado", "SEM PLACA INFORMADA")),
+                    "status_veiculo_cadastrado": str(t.get("status_veiculo_cadastrado", "--")),
                     "is_active": is_act,
                     "sync_source": sync_source
                 })
 
-            # Inserção em lotes de 100
+            # Inserção em lotes de 100 com tolerância a cache de schema
             endpoint_records = f"{BASE_REST_URL}/team_delivery_records"
+            new_column_keys = {
+                "veiculo_portal", "gps_update_str", "gps_update_minutes",
+                "status_equipes_brasil", "data_inicio_descanso", "hora_inicio_descanso",
+                "ordem_servico", "plate_clean", "plate_cadastrada",
+                "situacao_veiculo_cadastrado", "status_veiculo_cadastrado"
+            }
+
             for i in range(0, len(records_payload), 100):
                 chunk = records_payload[i:i+100]
-                requests.post(endpoint_records, headers=get_headers(), json=chunk, timeout=10)
+                resp_rec = requests.post(endpoint_records, headers=get_headers(), json=chunk, timeout=10)
+                if resp_rec.status_code not in [200, 201]:
+                    # Caso o Supabase ainda não tenha aplicado o schema_cdp_fleet_v5.sql, faz fallback para colunas base
+                    if resp_rec.status_code == 400 and "Could not find" in resp_rec.text:
+                        fallback_chunk = []
+                        for item in chunk:
+                            base_item = {k: v for k, v in item.items() if k not in new_column_keys}
+                            fallback_chunk.append(base_item)
+                        requests.post(endpoint_records, headers=get_headers(), json=fallback_chunk, timeout=10)
 
         return {"status": "success", "session_id": session_id, "total_records": len(teams_to_save)}
     except Exception as e:
@@ -416,10 +442,17 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
 def fetch_delivery_records_by_date(date_str: str) -> list:
     """Busca registros históricos de equipes entregues para uma data específica (YYYY-MM-DD)."""
     try:
-        endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&order=team_code.asc&limit=1000"
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&order=captured_at.desc&limit=2000"
         resp = requests.get(endpoint, headers=get_headers(), timeout=12)
         if resp.status_code == 200:
-            return resp.json() or []
+            raw = resp.json() or []
+            # Deduplica por equipe preservando o snapshot mais recente/completo
+            seen = {}
+            for r in raw:
+                code = r.get("team_code")
+                if code and code not in seen:
+                    seen[code] = r
+            return list(seen.values())
         return []
     except Exception as e:
         print(f"[SUPABASE FETCH DATE ERROR] {e}")
@@ -438,8 +471,56 @@ def fetch_delivery_sessions_by_month(month_str: str) -> list:
         return []
 
 # ==============================================================================
-# MÓDULO SPOTFIRE: PERSISTÊNCIA E CONSULTA DE EXTRAÇÕES (TIBCO SPOTFIRE ENEL)
+# MÓDULO SPOTFIRE & SCANNER 5.0: PERSISTÊNCIA E CONSULTA DE EXTRAÇÕES (TIBCO)
 # ==============================================================================
+
+def push_scanner_records_to_supabase(records_list: list) -> dict:
+    """
+    Insere ou atualiza (UPSERT) registros analíticos do Scanner 5.0 na tabela 'team_scanner_records'.
+    Usa a constraint única (data_referencia, equipe_normalizada) para merge atômico (1 equipe por linha).
+    """
+    if not records_list:
+        return {"status": "success", "count": 0}
+    try:
+        endpoint = f"{BASE_REST_URL}/team_scanner_records?on_conflict=data_referencia,equipe_normalizada"
+        headers = get_headers().copy()
+        headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+        
+        # Deduplica em memória para garantir atomicidade do ON CONFLICT no Postgres
+        seen = {}
+        for r in records_list:
+            k = (str(r.get("data_referencia")), str(r.get("equipe_normalizada")))
+            seen[k] = r
+        clean_list = list(seen.values())
+
+        saved_count = 0
+        chunk_size = 500
+        for i in range(0, len(clean_list), chunk_size):
+            chunk = clean_list[i:i+chunk_size]
+            resp = requests.post(endpoint, headers=headers, json=chunk, timeout=30)
+            if resp.status_code in [200, 201]:
+                saved_count += len(chunk)
+            else:
+                print(f"[WARN SUPABASE SCANNER UPSERT] Status {resp.status_code}: {resp.text}")
+                
+        return {"status": "success", "count": saved_count}
+    except Exception as e:
+        print(f"[ERROR SUPABASE SCANNER PUSH] {e}")
+        return {"status": "error", "message": str(e), "count": 0}
+
+def fetch_scanner_records_by_date(date_str: str) -> list:
+    """
+    Busca registros analíticos do Scanner 5.0 para uma data específica (YYYY-MM-DD).
+    """
+    try:
+        endpoint = f"{BASE_REST_URL}/team_scanner_records?data_referencia=eq.{date_str}&order=equipe_normalizada.asc&limit=2000"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=12)
+        if resp.status_code == 200:
+            return resp.json() or []
+        return []
+    except Exception as e:
+        print(f"[SUPABASE FETCH SCANNER ERROR] {e}")
+        return []
 
 def push_spotfire_records_to_supabase(records_list: list) -> dict:
     """
@@ -469,8 +550,15 @@ def push_spotfire_records_to_supabase(records_list: list) -> dict:
 
 def fetch_spotfire_records_by_date(date_str: str) -> list:
     """
-    Busca registros extraídos do Spotfire para uma data específica (YYYY-MM-DD).
+    Busca registros extraídos para uma data específica (YYYY-MM-DD).
+    Prioriza a nova tabela 'team_scanner_records' do Scanner 5.0, com fallback para 'team_spotfire_records'.
     """
+    # 1. Prioriza nova tabela Scanner 5.0
+    scanner_recs = fetch_scanner_records_by_date(date_str)
+    if scanner_recs:
+        return scanner_recs
+
+    # 2. Fallback legado
     try:
         endpoint = f"{BASE_REST_URL}/team_spotfire_records?data_referencia=eq.{date_str}&order=equipe_normalizada.asc&limit=2000"
         resp = requests.get(endpoint, headers=get_headers(), timeout=12)
@@ -656,5 +744,134 @@ def fetch_session_telemetry_metrics() -> dict:
             "active_sessions": [],
             "recent_sessions": []
         }
+
+# ==============================================================================
+# MÓDULO DE PLANEJAMENTO E METAS OPERACIONAIS (ENTREGA DE EQUIPES)
+# ==============================================================================
+
+PLANNING_TARGETS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "delivery_planning_targets.json")
+
+def fetch_delivery_planning_targets(month_str: str = None) -> dict:
+    """
+    Retorna as metas operacionais de entrega de equipes (Norte, Leste e Geral).
+    Tenta consultar do Supabase (team_delivery_planning_targets) e faz fallback para JSON local.
+    """
+    targets = None
+    if os.path.exists(PLANNING_TARGETS_FILE):
+        try:
+            with open(PLANNING_TARGETS_FILE, "r", encoding="utf-8") as f:
+                targets = json.load(f)
+        except Exception:
+            pass
+
+    # Tenta enriquecer com dados do Supabase
+    try:
+        m_filter = month_str or "DEFAULT"
+        endpoint = f"{BASE_REST_URL}/team_delivery_planning_targets?target_month=in.({m_filter},DEFAULT)&order=updated_at.desc"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=6)
+        if resp.status_code == 200:
+            rows = resp.json() or []
+            if rows:
+                if not targets:
+                    targets = {"daily_meta": 226, "Norte": {"bases": {}, "turno": {}, "veiculo": {}}, "Leste": {"bases": {}, "turno": {}, "veiculo": {}}}
+                for r in rows:
+                    reg = r.get("region")
+                    cat = r.get("category_type")
+                    key = r.get("item_key")
+                    val = int(r.get("target_val", 0))
+                    if reg in ["Norte", "Leste"]:
+                        if cat in ["base", "bases"]:
+                            targets[reg]["bases"][key] = val
+                        elif cat in ["turno", "turnos"]:
+                            targets[reg]["turno"][key] = val
+                        elif cat in ["veiculo", "veiculos"]:
+                            targets[reg]["veiculo"][key] = val
+                    elif cat == "daily_total" or key == "daily_meta":
+                        targets["daily_meta"] = val
+    except Exception as e:
+        print(f"[WARN FETCH PLANNING TARGETS] {e}")
+
+    return targets or {
+        "daily_meta": 226,
+        "Norte": {
+            "bases": {"Fagundes Filho": 42, "Cajati": 24, "Vila Medeiros": 28, "LV": 10, "Munk": 5},
+            "turno": {"Manhã": 54, "Tarde": 42, "Noite": 13},
+            "veiculo": {"Cesto Aéreo": 68, "Veículo Leve": 13, "Moto": 13, "LV": 10, "Munk": 5}
+        },
+        "Leste": {
+            "bases": {"Monte Santo": 33, "Catumbi": 21, "Aricanduva": 34, "Santo André": 7, "LV": 0, "Munk": 0},
+            "turno": {"Manhã": 35, "Tarde": 35, "Noite": 25},
+            "veiculo": {"Cesto Aéreo": 75, "Veículo Leve": 15, "Moto": 5, "LV": 0, "Munk": 0}
+        }
+    }
+
+def save_delivery_planning_targets(targets_payload: dict, user_email: str = "admin@alpitelbrasil.com.br") -> dict:
+    """
+    Grava as metas operacionais atualizadas no cache em disco e no Supabase.
+    """
+    try:
+        targets_payload["updated_at"] = datetime.now().isoformat()
+        targets_payload["updated_by"] = user_email
+        with open(PLANNING_TARGETS_FILE, "w", encoding="utf-8") as f:
+            json.dump(targets_payload, f, ensure_ascii=False, indent=2)
+
+        # Monta payload relacional para o Supabase
+        rows_to_save = []
+        # Meta diária
+        rows_to_save.append({
+            "target_month": "DEFAULT",
+            "region": "Geral",
+            "category_type": "daily_total",
+            "item_key": "daily_meta",
+            "target_val": int(targets_payload.get("daily_meta", 226)),
+            "updated_by": user_email,
+            "updated_at": datetime.now().isoformat()
+        })
+
+        for reg in ["Norte", "Leste"]:
+            r_data = targets_payload.get(reg, {})
+            for b_name, b_val in r_data.get("bases", {}).items():
+                rows_to_save.append({
+                    "target_month": "DEFAULT",
+                    "region": reg,
+                    "category_type": "base",
+                    "item_key": b_name,
+                    "target_val": int(b_val),
+                    "updated_by": user_email,
+                    "updated_at": datetime.now().isoformat()
+                })
+            for s_name, s_val in r_data.get("turno", {}).items():
+                rows_to_save.append({
+                    "target_month": "DEFAULT",
+                    "region": reg,
+                    "category_type": "turno",
+                    "item_key": s_name,
+                    "target_val": int(s_val),
+                    "updated_by": user_email,
+                    "updated_at": datetime.now().isoformat()
+                })
+            for v_name, v_val in r_data.get("veiculo", {}).items():
+                rows_to_save.append({
+                    "target_month": "DEFAULT",
+                    "region": reg,
+                    "category_type": "veiculo",
+                    "item_key": v_name,
+                    "target_val": int(v_val),
+                    "updated_by": user_email,
+                    "updated_at": datetime.now().isoformat()
+                })
+
+        try:
+            endpoint = f"{BASE_REST_URL}/team_delivery_planning_targets?on_conflict=target_month,region,category_type,item_key"
+            headers = get_headers().copy()
+            headers["Prefer"] = "resolution=merge-duplicates"
+            requests.post(endpoint, headers=headers, json=rows_to_save, timeout=8)
+        except Exception as e:
+            print(f"[WARN SUPABASE TARGETS SAVE] {e}")
+
+        return {"status": "success", "message": "Metas salvas com sucesso."}
+    except Exception as err:
+        return {"status": "error", "message": str(err)}
+
 
 

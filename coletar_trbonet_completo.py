@@ -131,7 +131,7 @@ def capturar_radios_trbonet_vivo():
 
             for m in padrao_equipe.findall(txt):
                 code = m.upper()
-                if len(code) >= 5:
+                if len(code) >= 5 and code[:3] in {'ENL', 'ECL', 'EEL', 'EML', 'EQL', 'EVL', 'ESL'}:
                     if current_category == "GPS":
                         radios_gps.add(code)
                     elif current_category == "NOGPS":

@@ -14,7 +14,7 @@ import os
 
 class DataManager:
     def __init__(self):
-        # 14 Bases Oficiais com empresas e regiões oficiais
+        # 7 Bases Oficiais Alpitel
         self.official_bases = {
             # Região Norte Alpitel
             "ENL": {"name": "Base Fagundes Filho", "region": "Região Norte Alpitel", "code": "ENL", "company": "Alpitel"},
@@ -25,18 +25,7 @@ class DataManager:
             "EML": {"name": "Base Monte Santo", "region": "Região Leste Alpitel", "code": "EML", "company": "Alpitel"},
             "EQL": {"name": "Base Aricanduva", "region": "Região Leste Alpitel", "code": "EQL", "company": "Alpitel"},
             "EVL": {"name": "Base Catumbi", "region": "Região Leste Alpitel", "code": "EVL", "company": "Alpitel"},
-            "ESL": {"name": "Base Santo André", "region": "Região Leste Alpitel", "code": "ESL", "company": "Alpitel"},
-
-            # Região Norte Própria
-            "ENA": {"name": "Base Fagundes Filho", "region": "Região Norte Própria", "code": "ENA", "company": "Própria"},
-            "ECA": {"name": "Base Cajati", "region": "Região Norte Própria", "code": "ECA", "company": "Própria"},
-            "EEA": {"name": "Base Vila Medeiros", "region": "Região Norte Própria", "code": "EEA", "company": "Própria"},
-
-            # Região Leste Própria
-            "EMA": {"name": "Base Monte Santo", "region": "Região Leste Própria", "code": "EMA", "company": "Própria"},
-            "EQA": {"name": "Base Aricanduva", "region": "Região Leste Própria", "code": "EQA", "company": "Própria"},
-            "EVA": {"name": "Base Catumbi", "region": "Região Leste Própria", "code": "EVA", "company": "Própria"},
-            "ESA": {"name": "Base Santo André", "region": "Região Leste Própria", "code": "ESA", "company": "Própria"},
+            "ESL": {"name": "Base Santo André", "region": "Região Leste Alpitel", "code": "ESL", "company": "Alpitel"}
         }
 
         # Base de dados em tempo real (inicia 100% vazia até receber sincronização real)
@@ -353,11 +342,9 @@ class DataManager:
         compliance_rate = round((total_online_poweron / total_poweron * 100), 1) if total_poweron > 0 else 0
         gps_rate = round((online_with_gps / total_online_poweron * 100), 1) if total_online_poweron > 0 else 0
 
-        # Compilação Estruturada dos 4 Grupos Oficiais
+        # Compilação Estruturada dos Grupos Oficiais Alpitel
         bases_norte_alpitel = ["ENL", "ECL", "EEL"]
         bases_leste_alpitel = ["EML", "EQL", "EVL", "ESL"]
-        bases_norte_propria = ["ENA", "ECA", "EEA"]
-        bases_leste_propria = ["EMA", "EQA", "EVA", "ESA"]
 
         def compilar_estatistica_base(prefix_code):
             base_teams = [t for t in teams if t["prefix"] == prefix_code]
@@ -387,10 +374,8 @@ class DataManager:
 
         norte_alpitel_stats = [compilar_estatistica_base(p) for p in bases_norte_alpitel]
         leste_alpitel_stats = [compilar_estatistica_base(p) for p in bases_leste_alpitel]
-        norte_propria_stats = [compilar_estatistica_base(p) for p in bases_norte_propria]
-        leste_propria_stats = [compilar_estatistica_base(p) for p in bases_leste_propria]
 
-        all_bases_list = norte_alpitel_stats + leste_alpitel_stats + norte_propria_stats + leste_propria_stats
+        all_bases_list = norte_alpitel_stats + leste_alpitel_stats
 
         return {
             "summary": {
@@ -418,14 +403,6 @@ class DataManager:
                 "LESTE_ALPITEL": {
                     "title": "Região Leste Alpitel",
                     "bases": leste_alpitel_stats
-                },
-                "NORTE_PROPRIA": {
-                    "title": "Região Norte Própria",
-                    "bases": norte_propria_stats
-                },
-                "LESTE_PROPRIA": {
-                    "title": "Região Leste Própria",
-                    "bases": leste_propria_stats
                 }
             },
             "bases": all_bases_list,

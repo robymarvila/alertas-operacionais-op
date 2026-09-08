@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alertas Operacionais OP - PowerON vs TRBOnet | CCO</title>
+    <title>Alertas Operacionais OP - Equipes Brasil vs TRBOnet | CCO</title>
     
     <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,7 +20,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=3.3.2">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=3.5.0">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -157,7 +157,7 @@
 
                         <div class="module-card-body">
                             <h4 class="module-title">STATUS TRBOnet</h4>
-                            <p class="module-subtitle-desc">Auditoria e Conciliação Cruzada: Escala PowerON × Telemetria GPS TRBOnet One</p>
+                            <p class="module-subtitle-desc">Auditoria e Conciliação Cruzada: Escala Equipes Brasil × Telemetria GPS TRBOnet One</p>
 
                             <!-- Horários de Sincronização em Destaque -->
                             <div class="module-sync-grid">
@@ -171,7 +171,7 @@
                                 <div class="module-sync-item">
                                     <div class="sync-label-row">
                                         <span class="dot-sm dot-poweron"></span>
-                                        <strong>PowerON:</strong>
+                                        <strong>Equipes Brasil:</strong>
                                     </div>
                                     <span class="sync-val" id="hubCardSyncPoweron">--/--/---- --:--:--</span>
                                 </div>
@@ -188,7 +188,7 @@
                                     <strong class="mini-kpi-val text-cyan" id="hubMiniTrbonet">--</strong>
                                 </div>
                                 <div class="mini-kpi-col">
-                                    <span class="mini-kpi-lbl">Escala PowerON</span>
+                                    <span class="mini-kpi-lbl">Escala Equipes Brasil</span>
                                     <strong class="mini-kpi-val text-blue" id="hubMiniPoweron">--</strong>
                                 </div>
                                 <div class="mini-kpi-col">
@@ -211,7 +211,7 @@
 
                         <div class="module-card-footer">
                             <span class="module-access-btn">
-                                <span>Acessar STATUS TRBOnet X PowerON</span>
+                                <span>Acessar STATUS TRBOnet X Equipes Brasil</span>
                                 <i data-lucide="arrow-right"></i>
                             </span>
                         </div>
@@ -302,9 +302,9 @@
                         </div>
                         <div class="brand-info">
                             <div class="brand-title-row">
-                                <h1>STATUS TRBOnet X PowerON</h1>
+                                <h1>STATUS TRBOnet X Equipes Brasil</h1>
                             </div>
-                            <p class="brand-subtitle">Auditoria e Conciliação: <strong>PowerON</strong> (Escala) × <strong>TRBOnet</strong> (Rádios / GPS)</p>
+                            <p class="brand-subtitle">Auditoria e Conciliação: <strong>Equipes Brasil</strong> (Escala) × <strong>TRBOnet</strong> (Rádios / GPS)</p>
                         </div>
                     </div>
 
@@ -318,10 +318,10 @@
                             <span class="source-time" id="headerSyncTrbonet">--/--/---- --:--:--</span>
                         </div>
 
-                        <div class="sync-source-pill source-poweron" title="Data e Hora do Último Login Registrado na Coluna LOGIN do PowerON">
+                        <div class="sync-source-pill source-poweron" title="Data e Hora do Último Registro no Equipes Brasil">
                             <div class="source-header">
                                 <span class="source-dot dot-poweron"></span>
-                                <strong class="source-name">PowerON:</strong>
+                                <strong class="source-name">Equipes Brasil:</strong>
                             </div>
                             <span class="source-time" id="headerSyncPoweron">--/--/---- --:--:--</span>
                         </div>
@@ -383,30 +383,10 @@
                             <span id="authLockTextModule">Bloqueado</span>
                         </button>
 
-                        <!-- 1. Ler TRBOnet (Ação Especial Protegida) -->
-                        <button class="btn btn-primary btn-with-icon special-action locked-action" id="btnLiveCapture" title="Capturar Rádios ao Vivo da tela do TRBOnet One" onclick="handleRestrictedAction(captureTRBOnetLive)">
-                            <i data-lucide="radio" id="liveCaptureIcon"></i>
-                            <span>Ler TRBOnet</span>
-                            <span class="lock-mini-badge"><i data-lucide="lock"></i></span>
-                        </button>
-
-                        <!-- 2. Ler PowerON (Ação Especial Protegida) -->
-                        <button class="btn btn-secondary btn-with-icon special-action locked-action" id="btnSyncPowerOn" title="Sincronizar Arquivo Calendário do PowerON" onclick="handleRestrictedAction(syncPowerOnCalendar)">
-                            <i data-lucide="clipboard-check" id="syncPowerOnIcon"></i>
-                            <span>Ler PowerON</span>
-                            <span class="lock-mini-badge"><i data-lucide="lock"></i></span>
-                        </button>
-
-                        <!-- 3. Sincronizar Painel (Livre para Leitura) -->
-                        <button class="btn btn-secondary btn-with-icon" id="btnRefresh" title="Sincronizar Painel" onclick="manualRefresh()">
-                            <i data-lucide="refresh-cw" id="refreshIcon"></i>
-                            <span>Sincronizar</span>
-                        </button>
-
-                        <!-- 4. Importar Planilha / Dados (Ação Especial Protegida) -->
-                        <button class="btn btn-secondary btn-with-icon special-action locked-action" id="btnUploadModal" title="Importar Planilha / Dados" onclick="handleRestrictedAction(() => openModal('uploadModal'))">
-                            <i data-lucide="upload-cloud"></i>
-                            <span>Importar</span>
+                        <!-- 1. Atualizar / Sincronizar (TRBOnet + Equipes Brasil) -->
+                        <button class="btn btn-primary btn-with-icon special-action locked-action" id="btnLiveCapture" title="Atualizar dados simultaneamente do TRBOnet One e Equipes Brasil ao vivo" onclick="handleRestrictedAction(syncUnifiedLive)">
+                            <i data-lucide="refresh-cw" id="liveCaptureIcon"></i>
+                            <span>Atualizar / Sincronizar</span>
                             <span class="lock-mini-badge"><i data-lucide="lock"></i></span>
                         </button>
 
@@ -456,16 +436,14 @@
                     <span class="quick-region-label">Região:</span>
                     <button class="btn-quick-region active" id="btnQuickRegAll" data-region="ALL" onclick="toggleRegionFilter('ALL', this)">🌍 Todas</button>
                     <button class="btn-quick-region btn-reg-north-alpitel" id="btnQuickRegNorthAlpitel" data-region="NORTE_ALPITEL" onclick="toggleRegionFilter('NORTE_ALPITEL', this)">🟢 Norte Alpitel</button>
-                    <button class="btn-quick-region btn-reg-north-propria" id="btnQuickRegNorthPropria" data-region="NORTE_PROPRIA" onclick="toggleRegionFilter('NORTE_PROPRIA', this)">🟣 Norte Própria</button>
                     <button class="btn-quick-region btn-reg-east-alpitel" id="btnQuickRegEastAlpitel" data-region="LESTE_ALPITEL" onclick="toggleRegionFilter('LESTE_ALPITEL', this)">🔵 Leste Alpitel</button>
-                    <button class="btn-quick-region btn-reg-east-propria" id="btnQuickRegEastPropria" data-region="LESTE_PROPRIA" onclick="toggleRegionFilter('LESTE_PROPRIA', this)">🌸 Leste Própria</button>
                 </div>
             </div>
 
             <!-- Grid de KPIs & Resumo Executivo -->
             <section class="kpi-section">
-                <!-- KPI 1: Equipes em PowerON -->
-                <div class="kpi-card glass-card">
+                <!-- KPI 1: Equipes em Equipes Brasil -->
+                <div class="kpi-card glass-card kpi-interactive-card" id="kpiCardPowerOn" onclick="toggleStatusFilter('ALL')" title="Clique para exibir todas as equipes">
                     <div class="kpi-header">
                         <div class="kpi-icon-wrap icon-blue">
                             <i data-lucide="clipboard-check"></i>
@@ -477,7 +455,7 @@
                             <h2 class="kpi-number" id="kpi-poweron">0</h2>
                             <span class="kpi-unit">equipes</span>
                         </div>
-                        <p class="kpi-label">Logadas no PowerON</p>
+                        <p class="kpi-label">Logadas no Equipes Brasil</p>
                     </div>
                     <div class="kpi-footer">
                         <span class="kpi-subtext"><i data-lucide="users" class="mini-icon"></i> Total em escala ativa</span>
@@ -486,7 +464,7 @@
                 </div>
 
                 <!-- KPI 2: Online no TRBOnet -->
-                <div class="kpi-card glass-card">
+                <div class="kpi-card glass-card kpi-interactive-card" id="kpiCardOnline" onclick="toggleStatusFilter('ONLINE')" title="Clique para filtrar/desfiltrar equipes Online no TRBOnet">
                     <div class="kpi-header">
                         <div class="kpi-icon-wrap icon-green">
                             <i data-lucide="radio"></i>
@@ -510,7 +488,7 @@
                 </div>
 
                 <!-- KPI 3: Offline no TRBOnet (Crítico) -->
-                <div class="kpi-card glass-card kpi-card-alert" id="cardOfflineAlert">
+                <div class="kpi-card glass-card kpi-card-alert kpi-interactive-card" id="cardOfflineAlert" onclick="toggleStatusFilter('OFFLINE')" title="Clique para filtrar/desfiltrar equipes Offline no TRBOnet">
                     <div class="kpi-header">
                         <div class="kpi-icon-wrap icon-rose">
                             <i data-lucide="shield-alert"></i>
@@ -531,12 +509,12 @@
                 </div>
 
                 <!-- KPI 4: Apenas no TRBOnet (Aviso) -->
-                <div class="kpi-card glass-card">
+                <div class="kpi-card glass-card kpi-interactive-card" id="kpiCardTrboOnly" onclick="toggleStatusFilter('TRBO_ONLY')" title="Clique para filtrar/desfiltrar rádios ativos sem escala">
                     <div class="kpi-header">
                         <div class="kpi-icon-wrap icon-amber">
                             <i data-lucide="help-circle"></i>
                         </div>
-                        <span class="kpi-category text-amber">SEM ESCALA POWERON</span>
+                        <span class="kpi-category text-amber">SEM ESCALA</span>
                     </div>
                     <div class="kpi-body">
                         <div class="kpi-metric-row">
@@ -546,7 +524,7 @@
                         <p class="kpi-label">Apenas no TRBOnet</p>
                     </div>
                     <div class="kpi-footer">
-                        <span class="kpi-subtext text-amber-light"><i data-lucide="info" class="mini-icon"></i> Rádio ativo sem turno no PowerON</span>
+                        <span class="kpi-subtext text-amber-light"><i data-lucide="info" class="mini-icon"></i> Rádio ativo sem turno</span>
                     </div>
                     <div class="card-accent-bar bar-amber"></div>
                 </div>
@@ -587,8 +565,8 @@
                     </div>
                 </div>
 
-                <!-- Grupos Regionais Interativos (14 Bases Oficiais) -->
-                <div class="regional-bases-container four-regions-grid">
+                <!-- Grupos Regionais Interativos (7 Bases Oficiais Alpitel) -->
+                <div class="regional-bases-container two-regions-grid">
                     
                     <!-- 1. Bloco Região Norte Alpitel -->
                     <div class="region-group-block" id="blockRegionNorthAlpitel">
@@ -618,34 +596,6 @@
                         </div>
                     </div>
 
-                    <!-- 3. Bloco Região Norte Própria -->
-                    <div class="region-group-block" id="blockRegionNorthPropria">
-                        <div class="region-group-header" onclick="toggleRegionFilter('NORTE_PROPRIA')" title="Clique para filtrar Região Norte Própria">
-                            <div class="region-title-wrap">
-                                <span class="region-indicator-dot dot-north-propria"></span>
-                                <h4>Região Norte Própria</h4>
-                            </div>
-                            <span class="region-count-badge" id="northPropriaBasesCountBadge">3 Bases</span>
-                        </div>
-                        <div class="region-cards-row" id="northPropriaBasesGrid">
-                            <!-- ENA (Fagundes Filho), ECA (Cajati), EEA (Vila Medeiros) -->
-                        </div>
-                    </div>
-
-                    <!-- 4. Bloco Região Leste Própria -->
-                    <div class="region-group-block" id="blockRegionEastPropria">
-                        <div class="region-group-header" onclick="toggleRegionFilter('LESTE_PROPRIA')" title="Clique para filtrar Região Leste Própria">
-                            <div class="region-title-wrap">
-                                <span class="region-indicator-dot dot-east-propria"></span>
-                                <h4>Região Leste Própria</h4>
-                            </div>
-                            <span class="region-count-badge" id="eastPropriaBasesCountBadge">4 Bases</span>
-                        </div>
-                        <div class="region-cards-row" id="eastPropriaBasesGrid">
-                            <!-- EMA (Monte Santo), EQA (Aricanduva), EVA (Catumbi), ESA (Santo André) -->
-                        </div>
-                    </div>
-
                 </div>
             </section>
 
@@ -655,7 +605,7 @@
                     <!-- Campo de Pesquisa -->
                     <div class="search-input-group">
                         <i data-lucide="search" class="search-icon"></i>
-                        <input type="text" id="searchInput" class="search-field" placeholder="Buscar equipe (ex: ENL100, ECL121, ENA, EMA) ou base..." oninput="handleSearchChange()">
+                        <input type="text" id="searchInput" class="search-field" placeholder="Buscar equipe (ex: ENL100, ECL121, EML, EVL) ou base..." oninput="handleSearchChange()">
                         <button class="btn-clear-search" id="btnClearSearch" onclick="clearSearch()" style="display: none;">
                             <i data-lucide="x"></i>
                         </button>
@@ -679,50 +629,39 @@
                 <div class="filter-pills-row">
                     <!-- Filtro por Região -->
                     <div class="filter-cluster">
-                        <span class="filter-cluster-label"><i data-lucide="compass" style="width: 13px;"></i> Região / Empresa:</span>
+                        <span class="filter-cluster-label"><i data-lucide="compass" style="width: 13px;"></i> Região:</span>
                         <div class="filter-chips" id="regionFiltersContainer">
                             <button class="chip-filter active" data-region="ALL" onclick="toggleRegionFilter('ALL', this)">🌍 Todas</button>
                             <button class="chip-filter chip-region-north" data-region="NORTE_ALPITEL" onclick="toggleRegionFilter('NORTE_ALPITEL', this)">🟢 Região Norte Alpitel</button>
-                            <button class="chip-filter chip-region-north-propria" data-region="NORTE_PROPRIA" onclick="toggleRegionFilter('NORTE_PROPRIA', this)">🟣 Região Norte Própria</button>
                             <button class="chip-filter chip-region-east" data-region="LESTE_ALPITEL" onclick="toggleRegionFilter('LESTE_ALPITEL', this)">🔵 Região Leste Alpitel</button>
-                            <button class="chip-filter chip-region-east-propria" data-region="LESTE_PROPRIA" onclick="toggleRegionFilter('LESTE_PROPRIA', this)">🌸 Região Leste Própria</button>
                         </div>
                     </div>
 
                     <!-- Filtro por Base -->
                     <div class="filter-cluster">
-                        <span class="filter-cluster-label"><i data-lucide="filter" style="width: 13px;"></i> Base:</span>
+                        <span class="filter-cluster-label"><i data-lucide="filter" style="width: 13px;"></i> Base Alpitel:</span>
                         <div class="filter-chips" id="baseFiltersContainer">
-                            <button class="chip-filter active" data-base="ALL" onclick="setBaseFilter('ALL', this)">Todas</button>
+                            <button class="chip-filter active" data-base="ALL" onclick="toggleBaseFilter('ALL', this)">Todas</button>
                             <!-- Norte Alpitel -->
-                            <button class="chip-filter" data-base="ENL" onclick="setBaseFilter('ENL', this)">Fagundes (ENL)</button>
-                            <button class="chip-filter" data-base="ECL" onclick="setBaseFilter('ECL', this)">Cajati (ECL)</button>
-                            <button class="chip-filter" data-base="EEL" onclick="setBaseFilter('EEL', this)">V. Medeiros (EEL)</button>
+                            <button class="chip-filter" data-base="ENL" onclick="toggleBaseFilter('ENL', this)">Fagundes (ENL)</button>
+                            <button class="chip-filter" data-base="ECL" onclick="toggleBaseFilter('ECL', this)">Cajati (ECL)</button>
+                            <button class="chip-filter" data-base="EEL" onclick="toggleBaseFilter('EEL', this)">V. Medeiros (EEL)</button>
                             <!-- Leste Alpitel -->
-                            <button class="chip-filter" data-base="EML" onclick="setBaseFilter('EML', this)">M. Santo (EML)</button>
-                            <button class="chip-filter" data-base="EQL" onclick="setBaseFilter('EQL', this)">Aricanduva (EQL)</button>
-                            <button class="chip-filter" data-base="EVL" onclick="setBaseFilter('EVL', this)">Catumbi (EVL)</button>
-                            <button class="chip-filter" data-base="ESL" onclick="setBaseFilter('ESL', this)">S. André (ESL)</button>
-                            <!-- Norte Própria -->
-                            <button class="chip-filter chip-propria" data-base="ENA" onclick="setBaseFilter('ENA', this)">Fagundes (ENA)</button>
-                            <button class="chip-filter chip-propria" data-base="ECA" onclick="setBaseFilter('ECA', this)">Cajati (ECA)</button>
-                            <button class="chip-filter chip-propria" data-base="EEA" onclick="setBaseFilter('EEA', this)">V. Medeiros (EEA)</button>
-                            <!-- Leste Própria -->
-                            <button class="chip-filter chip-propria" data-base="EMA" onclick="setBaseFilter('EMA', this)">M. Santo (EMA)</button>
-                            <button class="chip-filter chip-propria" data-base="EQA" onclick="setBaseFilter('EQA', this)">Aricanduva (EQA)</button>
-                            <button class="chip-filter chip-propria" data-base="EVA" onclick="setBaseFilter('EVA', this)">Catumbi (EVA)</button>
-                            <button class="chip-filter chip-propria" data-base="ESA" onclick="setBaseFilter('ESA', this)">S. André (ESA)</button>
+                            <button class="chip-filter" data-base="EML" onclick="toggleBaseFilter('EML', this)">M. Santo (EML)</button>
+                            <button class="chip-filter" data-base="EQL" onclick="toggleBaseFilter('EQL', this)">Aricanduva (EQL)</button>
+                            <button class="chip-filter" data-base="EVL" onclick="toggleBaseFilter('EVL', this)">Catumbi (EVL)</button>
+                            <button class="chip-filter" data-base="ESL" onclick="toggleBaseFilter('ESL', this)">S. André (ESL)</button>
                         </div>
                     </div>
 
                     <div class="filter-cluster">
                         <span class="filter-cluster-label"><i data-lucide="check-circle-2" style="width: 13px;"></i> Status:</span>
-                        <div class="filter-chips">
-                            <button class="chip-filter active" data-status="ALL" onclick="setStatusFilter('ALL', this)">Todos (<span id="count-all">0</span>)</button>
-                            <button class="chip-filter chip-success" data-status="ONLINE" onclick="setStatusFilter('ONLINE', this)">Online (<span id="count-online">0</span>)</button>
-                            <button class="chip-filter chip-danger" data-status="OFFLINE" onclick="setStatusFilter('OFFLINE', this)">Offline Crítico (<span id="count-offline">0</span>)</button>
-                            <button class="chip-filter chip-warning" data-status="TRBO_ONLY" onclick="setStatusFilter('TRBO_ONLY', this)">Apenas TRBOnet (<span id="count-trbo-only">0</span>)</button>
-                            <button class="chip-filter chip-info" data-status="GPS_ONLY" onclick="setStatusFilter('GPS_ONLY', this)">Com GPS (<span id="count-gps">0</span>)</button>
+                        <div class="filter-chips" id="statusFiltersContainer">
+                            <button class="chip-filter active" data-status="ALL" onclick="toggleStatusFilter('ALL', this)">Todos (<span id="count-all">0</span>)</button>
+                            <button class="chip-filter chip-success" data-status="ONLINE" onclick="toggleStatusFilter('ONLINE', this)">Online (<span id="count-online">0</span>)</button>
+                            <button class="chip-filter chip-danger" data-status="OFFLINE" onclick="toggleStatusFilter('OFFLINE', this)">Offline Crítico (<span id="count-offline">0</span>)</button>
+                            <button class="chip-filter chip-warning" data-status="TRBO_ONLY" onclick="toggleStatusFilter('TRBO_ONLY', this)">Apenas TRBOnet (<span id="count-trbo-only">0</span>)</button>
+                            <button class="chip-filter chip-info" data-status="GPS_ONLY" onclick="toggleStatusFilter('GPS_ONLY', this)">Com GPS (<span id="count-gps">0</span>)</button>
                         </div>
                     </div>
 
@@ -749,7 +688,7 @@
                                 <tr>
                                     <th onclick="sortTable('code')" class="sortable">Código Equipe <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
                                     <th onclick="sortTable('base')" class="sortable">Base Operacional <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
-                                    <th onclick="sortTable('poweron')" class="sortable">Escala PowerON <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                                    <th onclick="sortTable('poweron')" class="sortable">Escala Equipes Brasil <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
                                     <th onclick="sortTable('trbonet')" class="sortable">Rádio TRBOnet <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
                                     <th onclick="sortTable('gps')" class="sortable">Sinal GPS <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
                                     <th onclick="sortTable('status_code')" class="sortable">Status de Conformidade <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
@@ -798,7 +737,7 @@
                     <div class="analytics-kpi-data">
                         <span class="analytics-kpi-label">TOTAL DE QUEDAS / OFFLINE</span>
                         <h3 class="analytics-kpi-val text-rose" id="analyticsTotalDrops">0</h3>
-                        <span class="analytics-kpi-sub">Falhas com escala ativa no PowerON</span>
+                        <span class="analytics-kpi-sub">Falhas com escala ativa no Equipes Brasil</span>
                     </div>
                 </div>
 
@@ -807,7 +746,7 @@
                         <i data-lucide="percent"></i>
                     </div>
                     <div class="analytics-kpi-data">
-                        <span class="analytics-kpi-label">CONFORMIDADE POWERON × TRBONET</span>
+                        <span class="analytics-kpi-label">CONFORMIDADE EQUIPES BRASIL × TRBONET</span>
                         <h3 class="analytics-kpi-val text-emerald" id="analyticsGlobalCompliance">0%</h3>
                         <span class="analytics-kpi-sub">Equipes em escala com rádio ativo</span>
                     </div>
@@ -844,7 +783,7 @@
                     <div class="chart-header">
                         <div class="chart-title">
                             <i data-lucide="bar-chart-3" class="mini-icon text-emerald"></i>
-                            <h4>Comparativo por Base: Escala PowerON vs Rádio TRBOnet</h4>
+                            <h4>Comparativo por Base: Escala Equipes Brasil vs Rádio TRBOnet</h4>
                         </div>
                         <span class="chart-badge">Por Base Operacional</span>
                     </div>
@@ -862,7 +801,7 @@
                             <i data-lucide="history" class="text-cyan"></i>
                             <div>
                                 <h4>Auditoria Histórica de Equipes</h4>
-                                <p class="table-subtitle">Histórico de logins no PowerON, tempo online no TRBOnet e registros de instabilidade</p>
+                                <p class="table-subtitle">Histórico de logins no Equipes Brasil, tempo online no TRBOnet e registros de instabilidade</p>
                             </div>
                         </div>
                         <div class="history-table-actions">
@@ -876,7 +815,7 @@
                                 <tr>
                                     <th>Código Equipe</th>
                                     <th>Base / Região</th>
-                                    <th>Presença PowerON</th>
+                                    <th>Presença Equipes Brasil</th>
                                     <th>Presença TRBOnet</th>
                                     <th>Tempo Acumulado Online</th>
                                     <th>Quedas (Offline em Escala)</th>
@@ -895,7 +834,7 @@
         </div>
 
         <!-- ================================================================= -->
-        <!-- ABA 3: AUDITORIA & HISTÓRICO RELACIONAL (POSTGRESQL / SUPABASE)   -->
+        <!-- ABA 3: AUDITORIA OPERACIONAL & HISTÓRICO GRANULAR (SUPABASE CLOUD) -->
         <!-- ================================================================= -->
         <div id="tabViewAudit" class="tab-pane" style="display: none; flex-direction: column; gap: 20px;">
             
@@ -908,7 +847,7 @@
                         </div>
                         <div>
                             <h4>Auditoria de Presença & Compliance Operacional</h4>
-                            <p>Rastreamento relacional de conexões no TRBOnet vs Escalas do PowerON</p>
+                            <p>Rastreamento relacional de conexões no TRBOnet vs Escalas do Equipes Brasil</p>
                         </div>
                     </div>
 
@@ -936,7 +875,7 @@
                     <div class="audit-input-group">
                         <label><i data-lucide="map-pin" class="mini-icon"></i> Base Operacional:</label>
                         <select id="auditFilterBase" class="audit-select-input" onchange="loadAuditData()">
-                            <option value="ALL">Todas as 14 Bases Oficiais</option>
+                            <option value="ALL">Todas as 7 Bases Alpitel</option>
                             <optgroup label="Região Norte Alpitel">
                                 <option value="ENL">ENL - Base Fagundes Filho</option>
                                 <option value="ECL">ECL - Base Cajati</option>
@@ -948,17 +887,6 @@
                                 <option value="EVL">EVL - Base Catumbi</option>
                                 <option value="ESL">ESL - Base Santo André</option>
                             </optgroup>
-                            <optgroup label="Região Norte Própria">
-                                <option value="ENA">ENA - Base Fagundes Filho</option>
-                                <option value="ECA">ECA - Base Cajati</option>
-                                <option value="EEA">EEA - Base Vila Medeiros</option>
-                            </optgroup>
-                            <optgroup label="Região Leste Própria">
-                                <option value="EMA">EMA - Base Monte Santo</option>
-                                <option value="EQA">EQA - Base Aricanduva</option>
-                                <option value="EVA">EVA - Base Catumbi</option>
-                                <option value="ESA">ESA - Base Santo André</option>
-                            </optgroup>
                         </select>
                     </div>
 
@@ -967,8 +895,8 @@
                         <label><i data-lucide="filter" class="mini-icon"></i> Status:</label>
                         <select id="auditFilterStatus" class="audit-select-input" onchange="loadAuditData()">
                             <option value="ALL">Todos os Status</option>
-                            <option value="CONFORME">Conforme (PowerON + TRBOnet)</option>
-                            <option value="APENAS_POWERON">Apenas no PowerON</option>
+                            <option value="CONFORME">Conforme (Equipes Brasil + TRBOnet)</option>
+                            <option value="APENAS_POWERON">Apenas no Equipes Brasil</option>
                             <option value="APENAS_TRBONET">Apenas no TRBOnet</option>
                             <option value="OFFLINE">Offline</option>
                         </select>
@@ -1141,10 +1069,17 @@
                             <span class="lock-mini-badge"><i data-lucide="lock"></i></span>
                         </button>
 
-                        <!-- 2. Sincronizar Painel -->
-                        <button class="btn btn-secondary" id="btnRefreshDelivery" title="Atualizar Dados de Entrega" onclick="loadDeliveryData(true)">
-                            <span>SINCRONIZAR</span>
-                        </button>
+                        <!-- 2. Telemetria de Última Coleta CDP (CCO Live Telemetry) -->
+                        <div class="cdp-last-sync-pill" id="cdpLastSyncBadge" title="Data e hora da última coleta do Robô CDP. Clique para forçar conferência.">
+                            <span class="live-pulse-dot" id="cdpStatusPulse" title="Robô CDP Operacional"></span>
+                            <div class="cdp-sync-info">
+                                <span class="cdp-sync-tag">ÚLTIMA COLETA CDP</span>
+                                <strong class="cdp-sync-time" id="cdpLastSyncTime">--/--/---- --:--:--</strong>
+                            </div>
+                            <button class="btn-mini-refresh" id="btnRefreshDelivery" onclick="loadDeliveryData(true)" title="Forçar Atualização Imediata">
+                                <i data-lucide="refresh-cw"></i>
+                            </button>
+                        </div>
 
                         <!-- 3. Tela Cheia -->
                         <button class="btn btn-secondary" id="btnFullscreenDelivery" title="Alternar Modo Tela Cheia (Wallboard)" onclick="toggleFullscreen()">
@@ -1304,7 +1239,7 @@
                         <div class="chart-header">
                             <div>
                                 <h4 class="chart-title">COMPOSIÇÃO DA FROTA ENTREGUE</h4>
-                                <p class="chart-subtitle">Total de Equipes por Tipologia Veicular</p>
+                                <p class="chart-subtitle" id="deliveryFleetChartSubtitle">Total de Equipes por Tipologia Veicular</p>
                             </div>
                         </div>
                         <div class="chart-body" style="height: 280px; position: relative;">
@@ -1361,7 +1296,7 @@
                         </div>
                         <div class="geo-cards-layout">
                             <!-- Card Totalizador da Região Norte -->
-                            <div class="region-total-interactive-card" id="filterCardTotalNorte" onclick="toggleRegionFilter('Norte')">
+                            <div class="region-total-interactive-card" id="filterCardTotalNorte" onclick="toggleDeliveryRegionFilter('Norte')">
                                 <div class="region-total-header">
                                     <span class="region-total-label">TOTAL REGIÃO NORTE</span>
                                     <span class="region-total-count text-emerald" id="delNorteTotalNum">0</span>
@@ -1376,7 +1311,7 @@
                             <!-- Grid das 3 Bases do Norte -->
                             <div class="region-bases-grid" id="gridBasesNorte">
                                 <!-- Base Fagundes Filho -->
-                                <div class="base-interactive-card" data-base-name="Base Fagundes Filho" onclick="toggleBaseFilter('Base Fagundes Filho', this)">
+                                <div class="base-interactive-card" data-base-name="Base Fagundes Filho" onclick="toggleDeliveryBaseFilter('Base Fagundes Filho', this)">
                                     <div class="base-card-top">
                                         <span class="base-card-name">BASE FAGUNDES FILHO</span>
                                         <span class="base-card-total" id="delBaseFagundesTotal">0</span>
@@ -1389,7 +1324,7 @@
                                     </div>
                                 </div>
                                 <!-- Base Cajati -->
-                                <div class="base-interactive-card" data-base-name="Base Cajati" onclick="toggleBaseFilter('Base Cajati', this)">
+                                <div class="base-interactive-card" data-base-name="Base Cajati" onclick="toggleDeliveryBaseFilter('Base Cajati', this)">
                                     <div class="base-card-top">
                                         <span class="base-card-name">BASE CAJATI</span>
                                         <span class="base-card-total" id="delBaseCajatiTotal">0</span>
@@ -1402,7 +1337,7 @@
                                     </div>
                                 </div>
                                 <!-- Base Vila Medeiros -->
-                                <div class="base-interactive-card" data-base-name="Base Vila Medeiros" onclick="toggleBaseFilter('Base Vila Medeiros', this)">
+                                <div class="base-interactive-card" data-base-name="Base Vila Medeiros" onclick="toggleDeliveryBaseFilter('Base Vila Medeiros', this)">
                                     <div class="base-card-top">
                                         <span class="base-card-name">BASE VILA MEDEIROS</span>
                                         <span class="base-card-total" id="delBaseVilaMedeirosTotal">0</span>
@@ -1439,7 +1374,7 @@
                         </div>
                         <div class="geo-cards-layout">
                             <!-- Card Totalizador da Região Leste -->
-                            <div class="region-total-interactive-card" id="filterCardTotalLeste" onclick="toggleRegionFilter('Leste')">
+                            <div class="region-total-interactive-card" id="filterCardTotalLeste" onclick="toggleDeliveryRegionFilter('Leste')">
                                 <div class="region-total-header">
                                     <span class="region-total-label">TOTAL REGIÃO LESTE</span>
                                     <span class="region-total-count" style="color:#60a5fa;" id="delLesteTotalNum">0</span>
@@ -1454,7 +1389,7 @@
                             <!-- Grid das 4 Bases do Leste -->
                             <div class="region-bases-grid" id="gridBasesLeste">
                                 <!-- Base Monte Santo -->
-                                <div class="base-interactive-card" data-base-name="Base Monte Santo" onclick="toggleBaseFilter('Base Monte Santo', this)">
+                                <div class="base-interactive-card" data-base-name="Base Monte Santo" onclick="toggleDeliveryBaseFilter('Base Monte Santo', this)">
                                     <div class="base-card-top">
                                         <span class="base-card-name">BASE MONTE SANTO</span>
                                         <span class="base-card-total" id="delBaseMonteSantoTotal">0</span>
@@ -1467,7 +1402,7 @@
                                     </div>
                                 </div>
                                 <!-- Base Aricanduva -->
-                                <div class="base-interactive-card" data-base-name="Base Aricanduva" onclick="toggleBaseFilter('Base Aricanduva', this)">
+                                <div class="base-interactive-card" data-base-name="Base Aricanduva" onclick="toggleDeliveryBaseFilter('Base Aricanduva', this)">
                                     <div class="base-card-top">
                                         <span class="base-card-name">BASE ARICANDUVA</span>
                                         <span class="base-card-total" id="delBaseAricanduvaTotal">0</span>
@@ -1480,7 +1415,7 @@
                                     </div>
                                 </div>
                                 <!-- Base Catumbi -->
-                                <div class="base-interactive-card" data-base-name="Base Catumbi" onclick="toggleBaseFilter('Base Catumbi', this)">
+                                <div class="base-interactive-card" data-base-name="Base Catumbi" onclick="toggleDeliveryBaseFilter('Base Catumbi', this)">
                                     <div class="base-card-top">
                                         <span class="base-card-name">BASE CATUMBI</span>
                                         <span class="base-card-total" id="delBaseCatumbiTotal">0</span>
@@ -1493,7 +1428,7 @@
                                     </div>
                                 </div>
                                 <!-- Base Santo André -->
-                                <div class="base-interactive-card" data-base-name="Base Santo André" onclick="toggleBaseFilter('Base Santo André', this)">
+                                <div class="base-interactive-card" data-base-name="Base Santo André" onclick="toggleDeliveryBaseFilter('Base Santo André', this)">
                                     <div class="base-card-top">
                                         <span class="base-card-name">BASE SANTO ANDRÉ</span>
                                         <span class="base-card-total" id="delBaseSantoAndreTotal">0</span>
@@ -1518,7 +1453,7 @@
                                 RELAÇÃO DETALHADA DE EQUIPES ENTREGUES
                             </h4>
                             <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="deliveryTableStateSubtitle">
-                                Tabela recolhida por padrão para máxima performance. Clique em Expandir para visualizar.
+                                Exibindo relação nominal detalhada das equipes filtradas.
                             </p>
                         </div>
                         <div style="display: flex; gap: 10px; align-items: center;">
@@ -1526,7 +1461,7 @@
                             
                             <!-- Botão Recolher / Expandir -->
                             <button class="table-collapse-trigger-btn" id="btnToggleDeliveryTable" onclick="toggleDeliveryTableCollapse()">
-                                <span id="textToggleDeliveryTable">EXPANDIR TABELA</span>
+                                <span id="textToggleDeliveryTable">RECOLHER TABELA</span>
                             </button>
 
                             <!-- Botão Exportar Excel Filtrado -->
@@ -1536,21 +1471,22 @@
                         </div>
                     </div>
 
-                    <div class="delivery-table-body-container table-collapsed" id="deliveryTableCollapseBody">
+                    <div class="delivery-table-body-container" id="deliveryTableCollapseBody">
                         <div class="table-responsive" style="margin-top: 12px;">
                             <table class="data-table" id="deliveryMainTable">
                                 <thead>
                                     <tr>
                                         <th>EQUIPE</th>
-                                        <th>BASE OPERACIONAL</th>
-                                        <th>REGIÃO / EMPRESA</th>
-                                        <th>FROTA / VEÍCULO</th>
-                                        <th>LOGIN</th>
-                                        <th>LOGOFF</th>
+                                        <th>BASE</th>
+                                        <th>UT / FILIAL</th>
+                                        <th>FROTA</th>
                                         <th>TURNO</th>
+                                        <th>GPS</th>
                                         <th>STATUS</th>
+                                        <th>PLACA / FROTA</th>
+                                        <th>INÍCIO DESCANSO</th>
+                                        <th>ORDEM</th>
                                         <th>MOTORISTA</th>
-                                        <th>PLACA</th>
                                     </tr>
                                 </thead>
                                 <tbody id="deliveryTableBody">
@@ -1569,63 +1505,316 @@
             <!-- ============================================================= -->
             <div id="deliveryScreenHistory" class="delivery-screen-container" style="display: none;">
 
-                <!-- BARRA DE CONTROLE TEMPORAL DA AUDITORIA -->
-                <div class="history-control-glass-card">
-                    <div style="display: flex; gap: 16px; align-items: center;">
-                        <span style="font-size: 0.85rem; font-weight: 800; letter-spacing: 0.05em; color: var(--text-primary);">MODO DE CONSULTA:</span>
-                        <div class="delivery-screen-switcher" style="padding: 2px;">
-                            <button class="screen-switch-btn active" id="btnHistModeDay" onclick="setHistoryAuditMode('day')">VISÃO POR DIA</button>
-                            <button class="screen-switch-btn" id="btnHistModeMonth" onclick="setHistoryAuditMode('month')">VISÃO POR MÊS</button>
+                <!-- ============================================================= -->
+                <!-- 1. HEADER EXECUTIVO DE METAS & AUDITORIA (LIQUID GLASS)       -->
+                <!-- ============================================================= -->
+                <div class="report-header-glass">
+                    <div class="report-title-block">
+                        <div class="report-icon-badge">
+                            <i data-lucide="clipboard-list" style="width: 26px; height: 26px;"></i>
+                        </div>
+                        <div class="report-header-text">
+                            <h3>Relatório de Entrega de Equipes</h3>
+                            <p>ACOMPANHAMENTO E COMPARATIVO DE METAS DE PRODUTIVIDADE</p>
+                            <div class="report-status-badge">
+                                <span class="report-status-dot"></span>
+                                <span>Última atualização no banco: <strong id="histReportLastUpdated">04/09/2026 09:30</strong></span>
+                            </div>
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        <!-- Seletor de Dia(s) com Multi-seleção -->
-                        <div id="histDaySelectorWrap" style="display: flex; align-items: center; gap: 8px;">
-                            <input type="text" id="histDateInput" class="history-date-input" placeholder="Selecione data(s) no calendário..." readonly style="cursor: pointer; min-width: 250px;">
-                            <button class="btn btn-secondary btn-sm" id="btnHistClearDates" type="button" onclick="clearSelectedAuditDates()" style="font-weight: 800; border-radius: 8px; display: none;">
-                                LIMPAR
-                            </button>
-                        </div>
-                        <!-- Seletor de Mês -->
-                        <div id="histMonthSelectorWrap" style="display: none;">
-                            <input type="month" id="histMonthInput" class="history-date-input" onchange="loadMonthlyHistoryAudit()">
-                        </div>
-                        <button class="btn btn-primary" onclick="refreshCurrentHistoryAudit()" style="padding: 8px 18px; font-weight: 800;">
-                            CONSULTAR
+                    <div class="report-actions-row">
+                        <!-- Botão Carregar Base -->
+                        <button class="btn-action-emerald" id="btnCarregarBase" onclick="handleCarregarBaseClick()" title="Iniciar robô CDP do Scanner 5.0 para atualizar base">
+                            <i data-lucide="refresh-cw" id="iconCarregarBase" style="width: 16px; height: 16px;"></i>
+                            <span id="txtCarregarBase">Carregar Base</span>
                         </button>
+
+                        <!-- Botão Importar/Editar Metas -->
+                        <button class="btn-action-purple" onclick="openMasterPlanningModal()" title="Editar metas e planejamento operacional (Acesso Master)">
+                            <i data-lucide="sliders-horizontal" style="width: 16px; height: 16px;"></i>
+                            <span>Importar Metas</span>
+                        </button>
+
+                        <!-- Seletor de Data -->
+                        <div class="report-date-pill" id="reportDatePill" title="Clique para escolher a data de auditoria">
+                            <i data-lucide="calendar" style="width: 16px; height: 16px; color: #2563eb;"></i>
+                            <input type="text" id="histDateInput" placeholder="Selecione a data..." readonly>
+                        </div>
+
+                        <!-- Switcher de Região em Pílula (Região Norte vs Região Leste) -->
+                        <div class="btn-pill-region-group" id="regionSwitchPills">
+                            <button class="btn-pill-region active" id="btnRegionNorte" onclick="switchHistoryRegion('Norte')">Região Norte</button>
+                            <button class="btn-pill-region" id="btnRegionLeste" onclick="switchHistoryRegion('Leste')">Região Leste</button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- SUB-TELA A: VISÃO DIÁRIA (1 DATA) -->
-                <div id="histViewDayContainer">
-                    <div class="delivery-dual-hero-grid" style="margin-bottom: 20px;">
-                        <div class="hero-liquid-card hero-card-total" style="grid-column: span 2;">
-                            <span class="hero-tag">TOTAL ENTREGUE NA DATA SELECIONADA</span>
-                            <div class="hero-number-row">
-                                <span class="hero-big-number text-cyan" id="histDayTotalNum">0</span>
-                                <span class="hero-unit">equipes</span>
+                <!-- ============================================================= -->
+                <!-- 2. TABELAS COMPARATIVAS (BASES, TURNO, TIPO VEÍCULO)           -->
+                <!-- ============================================================= -->
+                <div class="targets-tables-grid">
+                    <!-- Tabela 1: BASES -->
+                    <div class="targets-table-card">
+                        <div class="targets-card-header">BASES</div>
+                        <div style="overflow-x: auto;">
+                            <table class="targets-data-table">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align: left;">CATEGORIA</th>
+                                        <th style="text-align: center;">PLAN</th>
+                                        <th style="text-align: center;">REAL</th>
+                                        <th style="text-align: center;">GAP</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="targetBasesTableBody">
+                                    <!-- Inserido dinamicamente via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Tabela 2: TURNO -->
+                    <div class="targets-table-card">
+                        <div class="targets-card-header">TURNO</div>
+                        <div style="overflow-x: auto;">
+                            <table class="targets-data-table">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align: left;">CATEGORIA</th>
+                                        <th style="text-align: center;">PLAN</th>
+                                        <th style="text-align: center;">REAL</th>
+                                        <th style="text-align: center;">GAP</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="targetTurnoTableBody">
+                                    <!-- Inserido dinamicamente via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Tabela 3: TIPO VEÍCULO -->
+                    <div class="targets-table-card">
+                        <div class="targets-card-header">TIPO VEÍCULO</div>
+                        <div style="overflow-x: auto;">
+                            <table class="targets-data-table">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align: left;">CATEGORIA</th>
+                                        <th style="text-align: center;">PLAN</th>
+                                        <th style="text-align: center;">REAL</th>
+                                        <th style="text-align: center;">GAP</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="targetVeiculoTableBody">
+                                    <!-- Inserido dinamicamente via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============================================================= -->
+                <!-- 3. FILTROS GERAIS DO PERÍODO & CARDS DE INFORMAÇÕES RÁPIDAS   -->
+                <!-- ============================================================= -->
+                <div class="period-filters-bar">
+                    <div class="period-filters-title">
+                        <i data-lucide="filter" class="period-filter-icon"></i>
+                        <span>FILTROS GERAIS DO PERÍODO</span>
+                    </div>
+
+                    <div class="period-filters-controls">
+                        <!-- FILTRO 1: SELECIONAR MÊS -->
+                        <div class="period-filter-group">
+                            <span class="period-filter-label">SELECIONAR MÊS</span>
+                            <div class="period-filter-select-wrap">
+                                <select id="wfFilterMonth" class="period-filter-select">
+                                    <!-- Opções de meses preenchidas dinamicamente -->
+                                </select>
+                                <i data-lucide="chevron-down" class="period-select-arrow"></i>
                             </div>
-                            <span class="hero-subtext" id="histDayDateLabel">Consultando data...</span>
                         </div>
-                        <div class="fleet-liquid-card">
-                            <span class="fleet-liquid-title text-cyan">CESTO AÉREO</span>
-                            <strong class="hero-big-number text-cyan" style="font-size: 1.5rem;" id="histDayCestoNum">0</strong>
+
+                        <!-- FILTRO 2: REGIÃO (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">REGIÃO</span>
+                            <button type="button" class="period-filter-pill-btn" id="wfFilterRegionBtn" data-target="wfFilterRegionMenu">
+                                <span id="wfFilterRegionLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="wfFilterRegionMenu">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-filter="region">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-filter="region">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="wfFilterRegionList">
+                                    <!-- Checkboxes preenchidos via JS -->
+                                </div>
+                            </div>
                         </div>
-                        <div class="fleet-liquid-card">
-                            <span class="fleet-liquid-title" style="color: #60a5fa;">VEÍCULO LEVE</span>
-                            <strong class="hero-big-number" style="color: #60a5fa; font-size: 1.5rem;" id="histDayLeveNum">0</strong>
+
+                        <!-- FILTRO 3: BASE / UT (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">BASE / UT</span>
+                            <button type="button" class="period-filter-pill-btn" id="wfFilterBaseBtn" data-target="wfFilterBaseMenu">
+                                <span id="wfFilterBaseLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="wfFilterBaseMenu">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-filter="base">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-filter="base">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="wfFilterBaseList">
+                                    <!-- Checkboxes preenchidos via JS -->
+                                </div>
+                            </div>
                         </div>
-                        <div class="fleet-liquid-card">
-                            <span class="fleet-liquid-title text-emerald">MOTO</span>
-                            <strong class="hero-big-number text-emerald" style="font-size: 1.5rem;" id="histDayMotoNum">0</strong>
+
+                        <!-- FILTRO 4: TURNO (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">TURNO</span>
+                            <button type="button" class="period-filter-pill-btn" id="wfFilterShiftBtn" data-target="wfFilterShiftMenu">
+                                <span id="wfFilterShiftLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="wfFilterShiftMenu">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-filter="shift">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-filter="shift">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="wfFilterShiftList">
+                                    <!-- Checkboxes preenchidos via JS -->
+                                </div>
+                            </div>
                         </div>
-                        <div class="fleet-liquid-card">
-                            <span class="fleet-liquid-title" style="color: #c084fc;">LINHA VIVA + MUNK</span>
-                            <strong class="hero-big-number" style="color: #c084fc; font-size: 1.5rem;" id="histDayPesadoNum">0</strong>
+
+                        <!-- FILTRO 5: TIPO VEÍCULO (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">TIPO VEÍCULO</span>
+                            <button type="button" class="period-filter-pill-btn" id="wfFilterVehicleBtn" data-target="wfFilterVehicleMenu">
+                                <span id="wfFilterVehicleLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="wfFilterVehicleMenu">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-filter="vehicle">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-filter="vehicle">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="wfFilterVehicleList">
+                                    <!-- Checkboxes preenchidos via JS -->
+                                </div>
+                            </div>
                         </div>
-                    <!-- DECK DE CONCILIAÇÃO & CONFRONTO FORENSE (TIBCO SPOTFIRE vs EQUIPESBRASIL) -->
-                    <div class="delivery-dual-hero-grid" style="margin-bottom: 20px;">
+                    </div>
+                </div>
+
+                <!-- 4 CARDS DE INFORMAÇÕES RÁPIDAS (100% REATIVOS) -->
+                <div class="period-kpi-grid">
+                    <!-- CARD 1: MÉDIA DE EQUIPES -->
+                    <div class="period-kpi-card">
+                        <div class="period-kpi-icon-box icon-blue">
+                            <i data-lucide="clipboard-check"></i>
+                        </div>
+                        <div class="period-kpi-content">
+                            <div class="period-kpi-label">MÉDIA DE EQUIPES</div>
+                            <div class="period-kpi-val-row">
+                                <span class="period-kpi-main-val" id="wfKpiAvgTeams">0</span>
+                                <span class="period-kpi-unit">equipes/dia</span>
+                            </div>
+                            <div class="period-kpi-subtext">Entrega real diária média</div>
+                        </div>
+                    </div>
+
+                    <!-- CARD 2: ADESÃO DIÁRIA -->
+                    <div class="period-kpi-card">
+                        <div class="period-kpi-icon-box icon-orange">
+                            <i data-lucide="shield-check"></i>
+                        </div>
+                        <div class="period-kpi-content">
+                            <div class="period-kpi-label">ADESÃO DIÁRIA</div>
+                            <div class="period-kpi-val-row">
+                                <span class="period-kpi-main-val text-adherence" id="wfKpiAdherence">0%</span>
+                            </div>
+                            <div class="period-kpi-subtext">
+                                <span class="mini-progress-track"><span class="mini-progress-fill" id="wfKpiAdherenceBar" style="width: 0%;"></span></span>
+                                <span>vs Plan (<strong id="wfKpiPlanMeta">226</strong> eq.)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CARD 3: PICO DE ENTREGA -->
+                    <div class="period-kpi-card">
+                        <div class="period-kpi-icon-box icon-purple">
+                            <i data-lucide="trending-up"></i>
+                        </div>
+                        <div class="period-kpi-content">
+                            <div class="period-kpi-label">PICO DE ENTREGA</div>
+                            <div class="period-kpi-val-row">
+                                <span class="period-kpi-main-val" id="wfKpiPeakTeams">0</span>
+                                <span class="period-kpi-unit">equipes</span>
+                            </div>
+                            <div class="period-kpi-subtext">Dia <strong id="wfKpiPeakDate">--/--</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- CARD 4: TOTAL DE ENTREGAS -->
+                    <div class="period-kpi-card">
+                        <div class="period-kpi-icon-box icon-amber">
+                            <i data-lucide="activity"></i>
+                        </div>
+                        <div class="period-kpi-content">
+                            <div class="period-kpi-label">TOTAL DE ENTREGAS</div>
+                            <div class="period-kpi-val-row">
+                                <span class="period-kpi-main-val" id="wfKpiTotalTeams">0</span>
+                                <span class="period-kpi-unit">equipes</span>
+                            </div>
+                            <div class="period-kpi-subtext">Registradas em <strong id="wfKpiDaysCount">0</strong> dias</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============================================================= -->
+                <!-- 4. GRÁFICO DE EVOLUÇÃO DIÁRIA DA ENTREGA                      -->
+                <!-- ============================================================= -->
+                <div class="chart-workforce-card">
+                    <div class="chart-workforce-header">
+                        <div class="chart-workforce-title-wrap">
+                            <h4>Evolução Diária da Entrega</h4>
+                            <p>Entrega Real vs Planejado e Média Geral no Mês</p>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 18px; flex-wrap: wrap;">
+                            <!-- Legendas Oficiais -->
+                            <div class="chart-workforce-legend">
+                                <div class="legend-item">
+                                    <span class="legend-dot-real"></span>
+                                    <span>REAL</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-box-plan"></span>
+                                    <span>PLANEJADO (<span id="legendPlannedNumber">226</span>)</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-line-avg"></span>
+                                    <span>MÉDIA REAL (<span id="legendAvgNumber">--</span>)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chart-workforce-canvas-wrap">
+                        <canvas id="histWorkforceChart"></canvas>
+                        <!-- Tooltip Customizado Flutuante -->
+                        <div id="workforceCustomTooltip" class="workforce-custom-tooltip" style="opacity: 0;"></div>
+                    </div>
+                </div>
+
+                <!-- ============================================================= -->
+                <!-- 5. SEGMENTO DE CONFRONTO FORENSE (EQUIPESBRASIL vs SPOTFIRE)  -->
+                <!-- ============================================================= -->
+                <div id="histViewDayContainer">
+                    <div class="delivery-dual-hero-grid" style="margin-bottom: 20px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
                         <!-- Card 1: Assertividade Operacional -->
                         <div class="hero-liquid-card" style="border-color: rgba(56, 189, 248, 0.4); background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(15, 23, 42, 0.6) 100%);">
                             <span class="hero-tag" style="color: #38bdf8;"><span class="live-status-dot" style="background:#38bdf8;"></span> CONFRONTO FORENSE</span>
@@ -1633,20 +1822,55 @@
                                 <span class="hero-big-number" style="color: #38bdf8;" id="histReconcileAssertividade">--%</span>
                                 <span class="hero-unit">assertividade</span>
                             </div>
-                            <span class="hero-subtext" id="histReconcileRateSub">Taxa de conciliação Spotfire vs EquipesBrasil</span>
+                            <span class="hero-subtext" id="histReconcileRateSub">Convergência entre Spotfire e EquipesBrasil</span>
                         </div>
 
-                        <!-- Card 2: LogOff Real Confirmado -->
+                        <!-- Card 2: Conciliadas em Ambos -->
                         <div class="hero-liquid-card" style="border-color: rgba(16, 185, 129, 0.4); background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.6) 100%);">
-                            <span class="hero-tag" style="color: #10b981;">LOGOFF REAL CONFIRMADO</span>
+                            <span class="hero-tag" style="color: #10b981;">CONCILIADAS EM AMBOS</span>
                             <div class="hero-number-row">
-                                <span class="hero-big-number text-emerald" id="histReconcileLogoffCount">0</span>
-                                <span class="hero-unit">equipes encerradas</span>
+                                <span class="hero-big-number text-emerald" id="histReconcileAmbosCount">0</span>
+                                <span class="hero-unit">equipes</span>
                             </div>
-                            <span class="hero-subtext">Horário oficial calibrado de encerramento</span>
+                            <span class="hero-subtext">Presentes tanto no Spotfire quanto no EB</span>
                         </div>
 
-                        <!-- Card 3: Produtividade de OS -->
+                        <!-- Card 3: Apenas no Spotfire -->
+                        <div class="hero-liquid-card" style="border-color: rgba(245, 158, 11, 0.4); background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(15, 23, 42, 0.6) 100%);">
+                            <span class="hero-tag" style="color: #fbbf24;">APENAS NO SPOTFIRE</span>
+                            <div class="hero-number-row">
+                                <span class="hero-big-number" style="color: #fbbf24;" id="histReconcileOnlySpotfireCount">0</span>
+                                <span class="hero-unit">equipes</span>
+                            </div>
+                            <span class="hero-subtext">Presentes no Spotfire, ausentes no EB</span>
+                        </div>
+
+                        <!-- Card 4: Apenas no EquipesBrasil -->
+                        <div class="hero-liquid-card" style="border-color: rgba(239, 68, 68, 0.4); background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(15, 23, 42, 0.6) 100%);">
+                            <span class="hero-tag" style="color: #f87171;">APENAS NO EQUIPESBRASIL</span>
+                            <div class="hero-number-row">
+                                <span class="hero-big-number" style="color: #f87171;" id="histReconcileOnlyEbCount">0</span>
+                                <span class="hero-unit">equipes</span>
+                            </div>
+                            <span class="hero-subtext">Registradas no EB, ausentes no Spotfire</span>
+                        </div>
+
+                        <!-- Card 5: LogOff Real Confirmado -->
+                        <div class="fleet-liquid-card" style="border-color: rgba(99, 102, 241, 0.35);">
+                            <span class="fleet-liquid-title" style="color: #818cf8;">LOGOFF CONFIRMADO</span>
+                            <div class="fleet-liquid-vals">
+                                <div class="fleet-val-block">
+                                    <span>ENCERRADAS</span>
+                                    <strong style="color: #818cf8;" id="histReconcileLogoffCount">0</strong>
+                                </div>
+                                <div class="fleet-val-block" style="text-align: right;">
+                                    <span>TOTAL AUDITADO</span>
+                                    <strong style="color: #94a3b8;" id="histReconcileTotalAuditCount">0</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card 6: Produtividade de OS -->
                         <div class="fleet-liquid-card" style="border-color: rgba(168, 85, 247, 0.35);">
                             <span class="fleet-liquid-title" style="color: #c084fc;">OS PRODUTIVAS (SPOTFIRE)</span>
                             <div class="fleet-liquid-vals">
@@ -1660,21 +1884,6 @@
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Card 4: Base Spotfire vs EquipesBrasil -->
-                        <div class="fleet-liquid-card" style="border-color: rgba(245, 158, 11, 0.35);">
-                            <span class="fleet-liquid-title" style="color: #fbbf24;">BASE SPOTFIRE</span>
-                            <div class="fleet-liquid-vals">
-                                <div class="fleet-val-block">
-                                    <span>DETECTADAS</span>
-                                    <strong style="color: #fbbf24;" id="histReconcileSpotfireCount">0</strong>
-                                </div>
-                                <div class="fleet-val-block" style="text-align: right;">
-                                    <span>EQUIPESBRASIL</span>
-                                    <strong style="color: #94a3b8;" id="histReconcileEbCount">0</strong>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- BARRA DE FILTROS RÁPIDOS DE CONCILIAÇÃO -->
@@ -1684,10 +1893,10 @@
                                 <span class="filter-group-label" style="font-size: 0.76rem; font-weight: 800; color: var(--text-secondary); letter-spacing: 0.05em;">FILTRAR CONFRONTO:</span>
                                 <div class="delivery-screen-switcher" style="padding: 2px;">
                                     <button class="screen-switch-btn active" id="btnFilterReconcileAll" onclick="setAuditReconciliationFilter('all')">TODAS AS EQUIPES</button>
-                                    <button class="screen-switch-btn" id="btnFilterReconcileSuccess" onclick="setAuditReconciliationFilter('reconciled')">100% CONCILIADAS (COM LOGOFF)</button>
-                                    <button class="screen-switch-btn" id="btnFilterReconcileActive" onclick="setAuditReconciliationFilter('in_progress')">TURNO EM ANDAMENTO</button>
-                                    <button class="screen-switch-btn" id="btnFilterReconcileWaiting" onclick="setAuditReconciliationFilter('waiting')">AGUARDANDO DESH (DELAY)</button>
+                                    <button class="screen-switch-btn" id="btnFilterReconcileBoth" onclick="setAuditReconciliationFilter('both')">CONCILIADAS EM AMBOS</button>
                                     <button class="screen-switch-btn" id="btnFilterReconcileExtra" onclick="setAuditReconciliationFilter('spotfire_only')">APENAS SPOTFIRE</button>
+                                    <button class="screen-switch-btn" id="btnFilterReconcileEbOnly" onclick="setAuditReconciliationFilter('eb_only')">APENAS EQUIPESBRASIL</button>
+                                    <button class="screen-switch-btn" id="btnFilterReconcileSuccess" onclick="setAuditReconciliationFilter('logoff')">COM LOGOFF REAL</button>
                                 </div>
                             </div>
                             <div style="display: flex; gap: 10px; align-items: center;">
@@ -1700,14 +1909,32 @@
 
                     <!-- Tabela Nominal do Dia Consultado -->
                     <div class="delivery-table-collapsible-wrapper">
-                        <div class="delivery-table-collapsible-header">
+                        <div class="delivery-table-collapsible-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                             <div>
-                                <h4 style="font-size: 1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">EQUIPES ENTREGUES NA DATA (CONCILIAÇÃO FORENSE)</h4>
-                                <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="histTableSubtitle">Confronto linha a linha entre EquipesBrasil e TIBCO Spotfire</p>
+                                <h4 style="font-size: 1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">EQUIPES ENTREGUES NA DATA</h4>
+                                <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="histTableSubtitle">Confronto nominal entre EquipesBrasil e TIBCO Spotfire</p>
                             </div>
-                            <button class="btn btn-secondary btn-sm" onclick="exportHistoryExcel()">EXPORTAR EXCEL</button>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button class="btn btn-secondary btn-sm" id="btnToggleHistTable" onclick="toggleHistTableCollapse()" title="Recolher / Expandir tabela para otimizar carregamento" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+                                    <i data-lucide="chevron-down" id="iconToggleHistTable" style="width:14px; height:14px; margin-right:4px;"></i> <span id="textToggleHistTable">EXPANDIR TABELA</span>
+                                </button>
+                                <button class="btn btn-secondary btn-sm" onclick="exportHistoryExcel()">
+                                    <i data-lucide="download" style="width:14px; height:14px; margin-right:4px;"></i> EXPORTAR EXCEL
+                                </button>
+                            </div>
                         </div>
-                        <div class="table-responsive" style="margin-top: 14px;">
+
+                        <!-- Placeholder Otimizado quando Recolhido -->
+                        <div id="histTablePlaceholder" class="table-collapsed-placeholder" onclick="toggleHistTableCollapse()" style="cursor: pointer; padding: 24px; text-align: center; border-radius: 12px; margin-top: 14px; background: rgba(30, 41, 59, 0.45); border: 1px dashed rgba(56, 189, 248, 0.3); transition: all 0.2s ease;">
+                            <i data-lucide="chevrons-up-down" style="width: 22px; height: 22px; color: #38bdf8; margin-bottom: 6px;"></i>
+                            <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary);">Tabela nominal recolhida para otimização de performance</div>
+                            <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px;">
+                                Total de <strong id="histTablePlaceholderCount" style="color: #38bdf8;">0</strong> equipes auditadas na data. Clique aqui para <strong>EXPANDIR TABELA</strong>.
+                            </div>
+                        </div>
+
+                        <!-- Container da Tabela Nominal (Recolhido por padrão) -->
+                        <div id="histTableCollapseBody" class="table-responsive" style="margin-top: 14px; display: none;">
                             <table class="data-table">
                                 <thead>
                                     <tr>
@@ -2441,11 +2668,234 @@
     </div>
 </div>
 
+<!-- Modal: Configuração e Edição de Metas de Planejamento (Acesso Master) -->
+<div class="modal-backdrop" id="planningMasterModal">
+    <div class="modal-card glass-card" style="max-width: 860px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(147, 51, 234, 0.15); color: #c084fc; border: 1px solid rgba(147, 51, 234, 0.4);">
+                    <i data-lucide="sliders-horizontal"></i>
+                </div>
+                <div>
+                    <h3>Configuração de Metas Operacionais</h3>
+                    <p class="modal-subtitle">Defina e edite os valores planejados (PLAN) para as Regiões Norte e Leste</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeModal('planningMasterModal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body" style="overflow-y: auto; padding: 20px 24px;">
+            <!-- Painel de Desbloqueio Master (se bloqueado) -->
+            <div id="planningLockPanel" class="auth-notice-banner" style="margin-bottom: 20px; border-left-color: #a855f7;">
+                <div style="display: flex; align-items: flex-start; gap: 14px; width: 100%;">
+                    <i data-lucide="shield-alert" style="width: 28px; height: 28px; color: #a855f7; flex-shrink: 0; margin-top: 2px;"></i>
+                    <div style="flex: 1;">
+                        <h5 style="margin: 0 0 6px 0; font-size: 0.95rem; font-weight: 800; color: #e2e8f0;">Área de Governança de Metas (Acesso Restrito)</h5>
+                        <p style="margin: 0 0 12px 0; font-size: 0.82rem; color: #94a3b8; line-height: 1.4;">
+                            A alteração do planejamento operacional requer autenticação Master. Insira a senha Master para desbloquear os campos de edição.
+                        </p>
+                        <div id="planningAuthInputs" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <input type="password" id="planningMasterPassword" class="form-input" placeholder="Digite a Senha Master..." style="width: 220px; padding: 8px 12px; font-size: 0.85rem;" onkeydown="if(event.key==='Enter') verifyAndUnlockPlanning()">
+                            <button class="btn-action-purple" type="button" onclick="verifyAndUnlockPlanning()" style="padding: 8px 16px;">
+                                <i data-lucide="unlock" style="width: 15px; height: 15px;"></i>
+                                <span>Desbloquear Edição</span>
+                            </button>
+                        </div>
+                        <div id="planningUnlockedBadge" style="display: none; align-items: center; gap: 8px; color: #10b981; font-weight: 800; font-size: 0.85rem;">
+                            <i data-lucide="check-circle" style="width: 18px; height: 18px;"></i>
+                            <span>Acesso Master Liberado — Você pode alterar e salvar o planejamento abaixo.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Formulário de Planejamento (Desabilitado até desbloquear) -->
+            <fieldset id="planningFieldset" disabled style="border: none; margin: 0; padding: 0; transition: opacity 0.3s ease;">
+                <!-- Meta Global Diária -->
+                <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(30, 41, 59, 0.6); padding: 12px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 20px;">
+                    <div>
+                        <span style="font-weight: 800; font-size: 0.9rem; color: var(--text-primary); display: block;">META DIÁRIA TOTAL GERAL</span>
+                        <small style="color: var(--text-secondary); font-size: 0.78rem;">Soma total das equipes de campo planejadas por dia</small>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" id="planInputDailyMeta" class="form-input" style="width: 90px; text-align: center; font-weight: 900; font-size: 1.1rem; color: #f59e0b;" value="226" min="1">
+                        <span style="font-weight: 700; color: #94a3b8; font-size: 0.85rem;">eq</span>
+                    </div>
+                </div>
+
+                <!-- Abas Regionais do Modal de Metas -->
+                <div style="display: flex; gap: 10px; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+                    <button type="button" class="btn-pill-region active" id="btnPlanTabNorte" onclick="switchPlanningModalTab('Norte')">Região Norte</button>
+                    <button type="button" class="btn-pill-region" id="btnPlanTabLeste" onclick="switchPlanningModalTab('Leste')">Região Leste</button>
+                </div>
+
+                <!-- Painel Norte -->
+                <div id="planPaneNorte">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px;">
+                        <!-- Bases Norte -->
+                        <div class="targets-table-card" style="padding: 14px;">
+                            <div class="targets-card-header" style="margin-bottom: 10px;">BASES (NORTE)</div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Fagundes Filho:</label>
+                                <input type="number" id="planNorteBaseFagundes" class="form-input" value="42" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Cajati:</label>
+                                <input type="number" id="planNorteBaseCajati" class="form-input" value="24" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Vila Medeiros:</label>
+                                <input type="number" id="planNorteBaseVilaMedeiros" class="form-input" value="28" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem; color: #c084fc;">Linha Viva (LV):</label>
+                                <input type="number" id="planNorteBaseLv" class="form-input" value="10" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label" style="font-size: 0.78rem; color: #f59e0b;">Munck:</label>
+                                <input type="number" id="planNorteBaseMunk" class="form-input" value="5" min="0">
+                            </div>
+                        </div>
+
+                        <!-- Turno Norte -->
+                        <div class="targets-table-card" style="padding: 14px;">
+                            <div class="targets-card-header" style="margin-bottom: 10px;">TURNO (NORTE)</div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Manhã:</label>
+                                <input type="number" id="planNorteTurnoManha" class="form-input" value="54" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Tarde:</label>
+                                <input type="number" id="planNorteTurnoTarde" class="form-input" value="42" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label" style="font-size: 0.78rem;">Noite:</label>
+                                <input type="number" id="planNorteTurnoNoite" class="form-input" value="13" min="0">
+                            </div>
+                        </div>
+
+                        <!-- Tipo Veículo Norte -->
+                        <div class="targets-table-card" style="padding: 14px;">
+                            <div class="targets-card-header" style="margin-bottom: 10px;">TIPO VEÍCULO (NORTE)</div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Cesto Aéreo:</label>
+                                <input type="number" id="planNorteVehCesto" class="form-input" value="68" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Veículo Leve:</label>
+                                <input type="number" id="planNorteVehLeve" class="form-input" value="13" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Moto:</label>
+                                <input type="number" id="planNorteVehMoto" class="form-input" value="13" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem; color: #c084fc;">Linha Viva (LV):</label>
+                                <input type="number" id="planNorteVehLv" class="form-input" value="10" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label" style="font-size: 0.78rem; color: #f59e0b;">Munck:</label>
+                                <input type="number" id="planNorteVehMunk" class="form-input" value="5" min="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Painel Leste -->
+                <div id="planPaneLeste" style="display: none;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px;">
+                        <!-- Bases Leste -->
+                        <div class="targets-table-card" style="padding: 14px;">
+                            <div class="targets-card-header" style="margin-bottom: 10px;">BASES (LESTE)</div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Monte Santo:</label>
+                                <input type="number" id="planLesteBaseMonteSanto" class="form-input" value="33" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Catumbi:</label>
+                                <input type="number" id="planLesteBaseCatumbi" class="form-input" value="21" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Aricanduva:</label>
+                                <input type="number" id="planLesteBaseAricanduva" class="form-input" value="34" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Santo André:</label>
+                                <input type="number" id="planLesteBaseSantoAndre" class="form-input" value="7" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem; color: #c084fc;">Linha Viva (LV):</label>
+                                <input type="number" id="planLesteBaseLv" class="form-input" value="0" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label" style="font-size: 0.78rem; color: #f59e0b;">Munck:</label>
+                                <input type="number" id="planLesteBaseMunk" class="form-input" value="0" min="0">
+                            </div>
+                        </div>
+
+                        <!-- Turno Leste -->
+                        <div class="targets-table-card" style="padding: 14px;">
+                            <div class="targets-card-header" style="margin-bottom: 10px;">TURNO (LESTE)</div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Manhã:</label>
+                                <input type="number" id="planLesteTurnoManha" class="form-input" value="35" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Tarde:</label>
+                                <input type="number" id="planLesteTurnoTarde" class="form-input" value="35" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label" style="font-size: 0.78rem;">Noite:</label>
+                                <input type="number" id="planLesteTurnoNoite" class="form-input" value="25" min="0">
+                            </div>
+                        </div>
+
+                        <!-- Tipo Veículo Leste -->
+                        <div class="targets-table-card" style="padding: 14px;">
+                            <div class="targets-card-header" style="margin-bottom: 10px;">TIPO VEÍCULO (LESTE)</div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Cesto Aéreo:</label>
+                                <input type="number" id="planLesteVehCesto" class="form-input" value="75" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Veículo Leve:</label>
+                                <input type="number" id="planLesteVehLeve" class="form-input" value="15" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem;">Moto:</label>
+                                <input type="number" id="planLesteVehMoto" class="form-input" value="5" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 8px;">
+                                <label class="form-label" style="font-size: 0.78rem; color: #c084fc;">Linha Viva (LV):</label>
+                                <input type="number" id="planLesteVehLv" class="form-input" value="0" min="0">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label" style="font-size: 0.78rem; color: #f59e0b;">Munck:</label>
+                                <input type="number" id="planLesteVehMunk" class="form-input" value="0" min="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="modal-footer" style="padding: 14px 24px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: flex-end; gap: 12px; background: rgba(15, 23, 42, 0.4);">
+            <button class="btn btn-secondary btn-sm" onclick="closeModal('planningMasterModal')">Fechar</button>
+            <button class="btn-action-emerald" id="btnSavePlanningModal" onclick="savePlanningTargets()" disabled style="padding: 9px 20px;">
+                <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                <span>Salvar Planejamento</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Notification Container -->
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=3.3.2"></script>
+<script src="/static/js/app.js?v=3.5.0"></script>
 
 </body>
 </html>

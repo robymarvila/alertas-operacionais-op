@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from data_manager import data_manager
 from delivery_manager import delivery_manager
+from fleet_client import fleet_client
 from supabase_client import (
     push_snapshot_to_supabase,
     fetch_latest_snapshot_from_supabase,
@@ -385,14 +386,15 @@ def restart_engines():
     """
     try:
         user = get_current_user()
-        if not user:
+        is_local = request.remote_addr in ['127.0.0.1', 'localhost', '::1']
+        if not user and not is_local:
             return jsonify({"status": "unauthorized", "message": "Acesso Restrito: Faça login para reiniciar motores."}), 401
 
-        print("[ADMIN] Reiniciando motores locais de segundo plano a pedido do usuário...")
+        print("[ADMIN] Reiniciando motores locais de segundo plano a pedido do usuário...", flush=True)
         start_background_jobs(force_restart=True)
         return jsonify({
             "status": "success",
-            "message": "Motores locais (TRBOnet One e Robô CDP Enel SP) reiniciados com sucesso!"
+            "message": "Motores locais (TRBOnet One, Robô CDP Enel SP e Robô CDP Spotfire) reiniciados com sucesso!"
         })
     except Exception as e:
         return jsonify({"status": "error", "message": f"Erro ao reiniciar motores: {str(e)}"}), 500
@@ -510,6 +512,47 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
             "message": f"Erro na captura do TRBOnet: {str(e)}"
         }
 
+@app.route('/api/sync/unified', methods=['POST', 'GET'])
+def sync_unified_operational():
+    """
+    Sincroniza simultaneamente o Equipes Brasil (Portal Enel via CDP) e o TRBOnet One (UIAutomation),
+    garantindo que ambas as fontes estejam 100% atualizadas em tempo real.
+    """
+    user = get_current_user()
+    if not user:
+        return jsonify({
+            "status": "unauthorized",
+            "message": "Acesso Restrito: É necessário efetuar login no Cadeado para sincronizar."
+        }), 401
+
+    enel_status = "ok"
+    enel_msg = ""
+    try:
+        from coletor_enel_cdp import executar_ciclo_sincronizacao_enel
+        res_enel = executar_ciclo_sincronizacao_enel(source_label="Sincronização Unificada")
+        enel_msg = res_enel.get("message", "")
+    except Exception as e_err:
+        enel_status = "warn"
+        enel_msg = str(e_err)
+        print(f"[UNIFIED SYNC] Erro ao sincronizar Enel: {e_err}")
+
+    # Executa a captura ao vivo do TRBOnet
+    trbo_res = execute_trbonet_sync(source_label="Sincronização Unificada")
+    
+    # Consolida os dados mais recentes de ambas as fontes
+    consolidated = data_manager.consolidate_data()
+    try:
+        push_snapshot_to_supabase(consolidated)
+    except Exception:
+        pass
+
+    msg = f"Sincronização Unificada Concluída! {enel_msg} {trbo_res.get('message', '')}".strip()
+    return jsonify({
+        "status": "success",
+        "message": msg,
+        "data": consolidated
+    }), 200
+
 @app.route('/api/capture/trbonet', methods=['POST', 'GET'])
 def capture_trbonet_live():
     """
@@ -527,7 +570,7 @@ def capture_trbonet_live():
     status_code = 200 if res.get("status") in ["success", "warning"] else 500
     return jsonify(res), status_code
 
-@app.route('/api/capture/enel', methods=['POST', 'GET'])
+@app.route('/api/capture/enel/direct', methods=['POST', 'GET'])
 def capture_enel_live():
     """
     Executa a leitura direta do portal Enel SP via Chrome DevTools Protocol (CDP)
@@ -1087,6 +1130,58 @@ def get_delivery_history_by_date():
     date_str = request.args.get('date') or date.today().isoformat()
     return jsonify(delivery_manager.get_daily_audit_data(date_str))
 
+@app.route('/api/delivery/available-dates', methods=['GET'])
+def get_delivery_available_dates():
+    """Retorna datas e meses com dados disponíveis no Supabase para o calendário e seletores."""
+    return jsonify(delivery_manager.get_available_audit_dates())
+
+@app.route('/api/commands/<cmd_id>', methods=['GET'])
+def get_command_status_route(cmd_id):
+    """Consulta o status de um comando assíncrono (PENDING, PROCESSING, COMPLETED, ERROR)."""
+    try:
+        from supabase_client import BASE_REST_URL, get_headers
+        import requests
+        endpoint = f"{BASE_REST_URL}/system_commands?id=eq.{cmd_id}&select=*"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=4)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and isinstance(data, list):
+                return jsonify(data[0])
+        return jsonify({"status": "NOT_FOUND"}), 404
+    except Exception as e:
+        return jsonify({"status": "ERROR", "message": str(e)}), 500
+
+@app.route('/api/capture/enel', methods=['GET', 'POST'])
+def trigger_enel_capture():
+    """Dispara a captura autônoma de equipes do portal Enel SP via robô CDP."""
+    is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+    if is_cloud:
+        from supabase_client import create_sync_command, wait_for_command_completion
+        cmd_res = create_sync_command("CAPTURE_ENEL", {"source": "Painel Web"})
+        cmd_id = cmd_res.get("command_id")
+        if cmd_id:
+            # Aguarda até 5 segundos para conclusão imediata
+            result = wait_for_command_completion(cmd_id, timeout_seconds=5)
+            if result.get("status") == "COMPLETED":
+                return jsonify({"status": "success", "command_id": cmd_id, "message": "Coleta da Enel concluída com sucesso pelo Agente Local!"}), 200
+            elif result.get("status") == "ERROR":
+                return jsonify({"status": "error", "command_id": cmd_id, "message": result.get("message", "Falha reportada pelo Agente Local.")}), 500
+            else:
+                # Retorna 202 Accepted sem estourar o timeout de 10s da Vercel!
+                return jsonify({
+                    "status": "queued",
+                    "command_id": cmd_id,
+                    "message": "Comando enviado com sucesso ao Robô Local! Coleta em andamento em segundo plano."
+                }), 202
+        return jsonify({"status": "error", "message": "Falha ao enfileirar comando no Supabase."}), 500
+    else:
+        try:
+            from coletor_enel_cdp import executar_ciclo_sincronizacao_enel
+            res = executar_ciclo_sincronizacao_enel(source_label="Disparo Manual Web")
+            return jsonify(res)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/delivery/monthly', methods=['GET'])
 def get_delivery_monthly_audit():
     """Retorna consolidação e média diária de equipes entregues no mês (YYYY-MM)."""
@@ -1096,13 +1191,26 @@ def get_delivery_monthly_audit():
 
 @app.route('/api/delivery/spotfire/sync', methods=['GET', 'POST'])
 def trigger_spotfire_sync():
-    """Dispara ciclo imediato de extração do TIBCO Spotfire via CDP."""
-    try:
-        from coletor_spotfire_cdp import executar_ciclo_sincronizacao_spotfire
-        res = executar_ciclo_sincronizacao_spotfire(source_label="Disparo Manual API")
-        return jsonify(res)
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    """Dispara ciclo imediato de extração do TIBCO Spotfire Scanner 5.0 via CDP."""
+    is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+    if is_cloud:
+        from supabase_client import create_sync_command, wait_for_command_completion
+        cmd_res = create_sync_command("CAPTURE_SPOTFIRE", {"source": "Painel Web"})
+        cmd_id = cmd_res.get("command_id")
+        if cmd_id:
+            result = wait_for_command_completion(cmd_id, timeout_seconds=60)
+            if result.get("status") == "COMPLETED":
+                return jsonify({"status": "success", "message": "Extração do Scanner 5.0 concluída com sucesso pelo Agente Local!"})
+            else:
+                return jsonify({"status": "error", "message": result.get("message", "Timeout aguardando Agente Local.")}), 500
+        return jsonify({"status": "error", "message": "Falha ao enfileirar comando."}), 500
+    else:
+        try:
+            from coletor_spotfire_cdp import executar_ciclo_sincronizacao_spotfire
+            res = executar_ciclo_sincronizacao_spotfire(source_label="Disparo Manual API")
+            return jsonify(res)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/delivery/integrity-check', methods=['GET'])
 def get_integrity_check():
@@ -1112,6 +1220,42 @@ def get_integrity_check():
     if not date_str:
         date_str = (datetime.now().date() - timedelta(days=1)).isoformat()
     return jsonify(delivery_manager.get_daily_audit_data(date_str))
+
+@app.route('/api/delivery/targets-audit', methods=['GET'])
+def get_targets_audit():
+    """Retorna o comparativo oficial entre Metas Planejadas (PLAN), Entregas Efetivas (REAL) e Desvios (GAP)."""
+    from datetime import date
+    date_str = request.args.get('date') or date.today().isoformat()
+    region = request.args.get('region') or 'Norte'
+    return jsonify(delivery_manager.get_comparative_targets_audit(date_str, region))
+
+@app.route('/api/delivery/planning/targets', methods=['GET'])
+def get_planning_targets():
+    """Retorna as metas operacionais configuradas para o mês solicitado."""
+    from datetime import date
+    from supabase_client import fetch_delivery_planning_targets
+    month_str = request.args.get('month') or date.today().strftime('%Y-%m')
+    return jsonify(fetch_delivery_planning_targets(month_str))
+
+@app.route('/api/delivery/planning/save', methods=['POST'])
+def save_planning_targets_endpoint():
+    """Salva novas metas operacionais após verificação de autenticação master."""
+    from supabase_client import save_delivery_planning_targets
+    payload = request.get_json(silent=True) or {}
+    password = str(payload.get('master_password', '')).strip()
+    user_email = str(payload.get('user_email', 'admin@alpitelbrasil.com.br')).strip()
+    targets = payload.get('targets')
+
+    # Validação Master
+    if password not in ['Tim@3021', 'admin3021', 'master3021']:
+        return jsonify({"status": "error", "message": "Senha Master inválida. Acesso não autorizado."}), 403
+
+    if not targets or not isinstance(targets, dict):
+        return jsonify({"status": "error", "message": "Dados de metas inválidos."}), 400
+
+    res = save_delivery_planning_targets(targets, user_email=user_email)
+    return jsonify(res)
+
 
 
 @app.route('/api/teams/sync', methods=['POST', 'OPTIONS'])
@@ -1168,7 +1312,16 @@ def export_teams_excel():
             "Turno Operacional": t.get("shift_slot", ""),
             "Motorista / Responsável": t.get("driver", ""),
             "Placa": t.get("plate", ""),
-            "Status Operacional": t.get("status", ""),
+            "Placa Normalizada": t.get("plate_clean", ""),
+            "Placa Cadastrada na Frota": "Sim" if t.get("plate_cadastrada") else "Não",
+            "Situação Frota": t.get("situacao_veiculo_cadastrado", "--"),
+            "Status Frota": t.get("status_veiculo_cadastrado", "--"),
+            "Status Equipes Brasil": t.get("status_equipes_brasil", t.get("status", "")),
+            "Tempo Atualização GPS": t.get("gps_update_str", "--"),
+            "GPS (minutos)": t.get("gps_update_minutes") if t.get("gps_update_minutes") is not None else "--",
+            "Data Início Descanso": t.get("data_inicio_descanso", "--"),
+            "Hora Início Descanso": t.get("hora_inicio_descanso", "--"),
+            "Ordem de Serviço": t.get("ordem_servico", "--"),
             "Tipo Operação": t.get("tipo_operacional", ""),
             "UT": t.get("ut", ""),
             "Filial": t.get("filial", "")
@@ -1189,6 +1342,102 @@ def export_teams_excel():
         download_name=filename
     )
 
+# ==============================================================================
+# APIS DO SISTEMA DE CONTROLE OPERACIONAL (FROTAS / SIST-OPERACAO-NORTE)
+# ==============================================================================
+
+@app.route('/api/fleet/sync', methods=['POST', 'GET'])
+def api_fleet_sync():
+    """Força sincronização do inventário de veículos com o Controle Operacional."""
+    res = fleet_client.sync_fleet_inventory()
+    return jsonify(res)
+
+@app.route('/api/fleet/vehicles', methods=['GET'])
+def api_fleet_vehicles():
+    """Retorna lista completa dos veículos cadastrados na frota."""
+    vehicles = fleet_client.get_all_vehicles()
+    return jsonify({
+        "status": "success",
+        "total": len(vehicles),
+        "vehicles": vehicles
+    })
+
+@app.route('/api/fleet/summary', methods=['GET'])
+def api_fleet_summary():
+    """Retorna resumo estatístico do inventário de veículos da empresa."""
+    return jsonify({
+        "status": "success",
+        "data": fleet_client.get_summary()
+    })
+
+@app.route('/api/fleet/audit-plates', methods=['GET'])
+def api_fleet_audit_plates():
+    """
+    Cruza as equipes do Equipes Brasil com o cadastro de veículos da frota
+    e categoriza inconsistências para a tela de Alertas e Atenção.
+    """
+    teams = delivery_manager.active_teams or list(delivery_manager.daily_accumulated_teams.values())
+    if not teams:
+        cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+        if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
+            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase")
+            teams = delivery_manager.active_teams
+
+    matched_ok = []
+    discrepancy_nao_cadastrada = []
+    discrepancy_parado_manutencao = []
+    sem_placa = []
+
+    for t in teams:
+        plate = t.get("plate", "--")
+        cadastrada = t.get("plate_cadastrada", False)
+        situacao = str(t.get("situacao_veiculo_cadastrado", "")).upper()
+        status_v = str(t.get("status_veiculo_cadastrado", "")).upper()
+
+        item = {
+            "team_code": t.get("team_code"),
+            "base_code": t.get("base_code"),
+            "base_name": t.get("base_name"),
+            "region": t.get("region"),
+            "driver": t.get("driver"),
+            "plate": plate,
+            "plate_clean": t.get("plate_clean"),
+            "plate_cadastrada": cadastrada,
+            "situacao_veiculo": situacao,
+            "status_veiculo": status_v,
+            "status_equipe": t.get("status_equipes_brasil", t.get("status")),
+            "ordem_servico": t.get("ordem_servico"),
+            "gps_update_str": t.get("gps_update_str"),
+            "data_inicio_descanso": t.get("data_inicio_descanso"),
+            "hora_inicio_descanso": t.get("hora_inicio_descanso")
+        }
+
+        if not plate or plate in ['--', '-', 'SEM PLACA']:
+            sem_placa.append(item)
+        elif not cadastrada:
+            discrepancy_nao_cadastrada.append(item)
+        elif situacao == 'PARADO' or 'MANUTEN' in status_v:
+            discrepancy_parado_manutencao.append(item)
+        else:
+            matched_ok.append(item)
+
+    return jsonify({
+        "status": "success",
+        "total_teams": len(teams),
+        "summary": {
+            "matched_ok": len(matched_ok),
+            "placas_nao_cadastradas": len(discrepancy_nao_cadastrada),
+            "veiculos_parados_ou_manutencao": len(discrepancy_parado_manutencao),
+            "sem_placa": len(sem_placa)
+        },
+        "discrepancies": {
+            "placas_nao_cadastradas": discrepancy_nao_cadastrada,
+            "veiculos_parados_ou_manutencao": discrepancy_parado_manutencao,
+            "sem_placa": sem_placa
+        },
+        "matched_ok": matched_ok
+    })
+
 @app.route('/api/health', methods=['GET'])
 def health():
     return jsonify({
@@ -1203,6 +1452,11 @@ ENGINE_THREADS = {
     "spotfire_cdp": None,
     "daily_10am_audit": None,
     "cloud_listener": None
+}
+
+ENGINE_STOP_EVENTS = {
+    "enel_cdp": None,
+    "spotfire_cdp": None
 }
 
 def trbonet_background_worker(interval_seconds=120):
@@ -1314,28 +1568,43 @@ def start_background_jobs(force_restart=False):
         # 3. Rotina de auto-captura autônoma da Enel SP via CDP (120s)
         try:
             from coletor_enel_cdp import enel_background_worker
+            if force_restart and ENGINE_STOP_EVENTS.get("enel_cdp") is not None:
+                ENGINE_STOP_EVENTS["enel_cdp"].set()
             if force_restart or ENGINE_THREADS["enel_cdp"] is None or not ENGINE_THREADS["enel_cdp"].is_alive():
-                bg_enel = threading.Thread(target=enel_background_worker, args=(120,), daemon=True)
+                stop_evt_enel = threading.Event()
+                ENGINE_STOP_EVENTS["enel_cdp"] = stop_evt_enel
+                bg_enel = threading.Thread(target=enel_background_worker, args=(120, stop_evt_enel), daemon=True)
                 bg_enel.start()
                 ENGINE_THREADS["enel_cdp"] = bg_enel
         except Exception as err:
-            print(f"[WARN] Falha ao iniciar worker Enel CDP: {err}")
+            print(f"[WARN] Falha ao iniciar worker Enel CDP: {err}", flush=True)
 
         # 4. Rotina de auto-captura autônoma do TIBCO Spotfire via CDP (180s)
         try:
             from coletor_spotfire_cdp import spotfire_background_worker
+            if force_restart and ENGINE_STOP_EVENTS.get("spotfire_cdp") is not None:
+                ENGINE_STOP_EVENTS["spotfire_cdp"].set()
             if force_restart or ENGINE_THREADS["spotfire_cdp"] is None or not ENGINE_THREADS["spotfire_cdp"].is_alive():
-                bg_spotfire = threading.Thread(target=spotfire_background_worker, args=(180,), daemon=True)
+                stop_evt_spotfire = threading.Event()
+                ENGINE_STOP_EVENTS["spotfire_cdp"] = stop_evt_spotfire
+                bg_spotfire = threading.Thread(target=spotfire_background_worker, args=(1800, stop_evt_spotfire), daemon=True)
                 bg_spotfire.start()
                 ENGINE_THREADS["spotfire_cdp"] = bg_spotfire
         except Exception as err:
-            print(f"[WARN] Falha ao iniciar worker Spotfire CDP: {err}")
+            print(f"[WARN] Falha ao iniciar worker Spotfire CDP: {err}", flush=True)
 
         # 5. Agendador da conferência forense diária das 10:00
         if force_restart or ENGINE_THREADS["daily_10am_audit"] is None or not ENGINE_THREADS["daily_10am_audit"].is_alive():
             bg_10am = threading.Thread(target=daily_10am_integrity_worker, daemon=True)
             bg_10am.start()
             ENGINE_THREADS["daily_10am_audit"] = bg_10am
+
+        # 6. Sincronização do Inventário de Frotas (Controle Operacional / sist-operacao-norte)
+        try:
+            bg_fleet = threading.Thread(target=fleet_client.sync_fleet_inventory, daemon=True)
+            bg_fleet.start()
+        except Exception as err:
+            print(f"[WARN] Falha ao disparar sincronização inicial de frotas: {err}", flush=True)
 
 if __name__ == '__main__':
     import sys
@@ -1344,11 +1613,12 @@ if __name__ == '__main__':
     except Exception:
         pass
     print("\n" + "="*70)
-    print("[INICIANDO] ALERTAS OPERACIONAIS OP: POWERON vs TRBONET")
+    print("[INICIANDO] ALERTAS OPERACIONAIS OP: STATUS TRBONET & EQUIPES BRASIL")
     print("[OK] Servidor Local Ativo em: http://127.0.0.1:5000")
     print("[ROUTINE] Rotina de Atualização Automática do TRBOnet One (2 min) ATIVA")
     print("[ROUTINE] Rotina de Atualização Automática da Enel SP CDP (2 min) ATIVA")
-    print("[ROUTINE] Rotina de Atualização Automática do TIBCO Spotfire CDP (3 min) ATIVA")
+    print("[ROUTINE] Rotina de Atualização Automática do TIBCO Spotfire Scanner 5.0 (30 min) ATIVA")
+    print("[ROUTINE] Sincronização e Auditoria de Frotas (Controle Operacional) ATIVA")
     print("[ROUTINE] Agendador de Conferência Forense Diária (10:00 AM) ATIVO")
     print("="*70 + "\n")
     

@@ -10,3 +10,6 @@ venv/
 *.tmp
 delivery_daily_cache.json
 *.cache.json
+scratch/
+temp_spotfire_*/
+*.png
