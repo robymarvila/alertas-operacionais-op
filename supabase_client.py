@@ -23,13 +23,13 @@ def format_datetime_br(val) -> str:
             clean_val = val.replace('Z', '+00:00')
             dt = datetime.fromisoformat(clean_val)
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=BR_TZ)
             return dt.astimezone(BR_TZ).strftime('%d/%m/%Y %H:%M:%S')
         except Exception:
             return val
     elif isinstance(val, datetime):
         if val.tzinfo is None:
-            val = val.replace(tzinfo=timezone.utc)
+            val = val.replace(tzinfo=BR_TZ)
         return val.astimezone(BR_TZ).strftime('%d/%m/%Y %H:%M:%S')
     return str(val)
 
@@ -57,7 +57,7 @@ def push_snapshot_to_supabase(consolidated_data, sync_source="Sincronização Au
     try:
         summary = consolidated_data.get("summary", {})
         teams = consolidated_data.get("teams", [])
-        now = datetime.now()
+        now = datetime.now(BR_TZ)
         date_today = now.strftime("%Y-%m-%d")
 
         # 1. Inserir Sessão na tabela 'operational_sync_sessions'
@@ -260,8 +260,8 @@ def create_sync_command(command_name: str, payload: dict = None) -> dict:
             "command": command_name,
             "status": "PENDING",
             "payload": payload or {},
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": datetime.now(BR_TZ).isoformat(),
+            "updated_at": datetime.now(BR_TZ).isoformat()
         }
         endpoint = f"{BASE_REST_URL}/system_commands"
         resp = requests.post(endpoint, headers=get_headers(), json=body, timeout=5)
@@ -290,7 +290,7 @@ def update_command_status(command_id: str, status: str, result: dict = None) -> 
         body = {
             "status": status,
             "result": result or {},
-            "updated_at": datetime.now().isoformat()
+            "updated_at": datetime.now(BR_TZ).isoformat()
         }
         endpoint = f"{BASE_REST_URL}/system_commands?id=eq.{command_id}"
         resp = requests.patch(endpoint, headers=get_headers(), json=body, timeout=5)
@@ -327,7 +327,7 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
         active_teams = delivery_data.get("active_teams") or delivery_data.get("teams") or []
         daily_total = delivery_data.get("daily_total_teams") or []
         summary_active = delivery_data.get("summary_active") or delivery_data.get("summary") or {}
-        now = datetime.now()
+        now = datetime.now(BR_TZ)
         date_today = delivery_data.get("date") or now.strftime("%Y-%m-%d")
 
         counts_v = summary_active.get("counts_vehicle", {})
@@ -679,7 +679,7 @@ def upsert_user_session(session_data: dict) -> dict:
             "geo_city": session_data.get("geo_city", "São Paulo"),
             "geo_region": session_data.get("geo_region", "SP"),
             "geo_country": session_data.get("geo_country", "Brasil"),
-            "last_heartbeat": datetime.now().isoformat(),
+            "last_heartbeat": datetime.now(BR_TZ).isoformat(),
             "is_active": True
         }
 
@@ -706,8 +706,8 @@ def log_user_access(access_data: dict) -> dict:
             "browser_name": access_data.get("browser_name", "Navegador"),
             "geo_city": access_data.get("geo_city", "São Paulo"),
             "endpoint": access_data.get("endpoint", "/"),
-            "accessed_at": datetime.now().isoformat(),
-            "date_ref": datetime.now().strftime("%Y-%m-%d")
+            "accessed_at": datetime.now(BR_TZ).isoformat(),
+            "date_ref": datetime.now(BR_TZ).strftime("%Y-%m-%d")
         }
         endpoint = f"{BASE_REST_URL}/system_user_access_logs"
         resp = requests.post(endpoint, headers=get_headers(), json=payload, timeout=6)
@@ -723,7 +723,7 @@ def fetch_session_telemetry_metrics() -> dict:
     além da lista forense de sessões auditadas.
     """
     try:
-        now = datetime.now()
+        now = datetime.now(BR_TZ)
         date_today = now.strftime("%Y-%m-%d")
         
         # 1. Sessões com heartbeat nos últimos 5 minutos (Ativos Agora)
@@ -844,7 +844,8 @@ def save_delivery_planning_targets(targets_payload: dict, user_email: str = "adm
     Grava as metas operacionais atualizadas no cache em disco e no Supabase.
     """
     try:
-        targets_payload["updated_at"] = datetime.now().isoformat()
+        now_iso = datetime.now(BR_TZ).isoformat()
+        targets_payload["updated_at"] = now_iso
         targets_payload["updated_by"] = user_email
         with open(PLANNING_TARGETS_FILE, "w", encoding="utf-8") as f:
             json.dump(targets_payload, f, ensure_ascii=False, indent=2)
@@ -859,7 +860,7 @@ def save_delivery_planning_targets(targets_payload: dict, user_email: str = "adm
             "item_key": "daily_meta",
             "target_val": int(targets_payload.get("daily_meta", 226)),
             "updated_by": user_email,
-            "updated_at": datetime.now().isoformat()
+            "updated_at": now_iso
         })
 
         for reg in ["Norte", "Leste"]:
@@ -872,7 +873,7 @@ def save_delivery_planning_targets(targets_payload: dict, user_email: str = "adm
                     "item_key": b_name,
                     "target_val": int(b_val),
                     "updated_by": user_email,
-                    "updated_at": datetime.now().isoformat()
+                    "updated_at": now_iso
                 })
             for s_name, s_val in r_data.get("turno", {}).items():
                 rows_to_save.append({
@@ -882,7 +883,7 @@ def save_delivery_planning_targets(targets_payload: dict, user_email: str = "adm
                     "item_key": s_name,
                     "target_val": int(s_val),
                     "updated_by": user_email,
-                    "updated_at": datetime.now().isoformat()
+                    "updated_at": now_iso
                 })
             for v_name, v_val in r_data.get("veiculo", {}).items():
                 rows_to_save.append({
@@ -892,7 +893,7 @@ def save_delivery_planning_targets(targets_payload: dict, user_email: str = "adm
                     "item_key": v_name,
                     "target_val": int(v_val),
                     "updated_by": user_email,
-                    "updated_at": datetime.now().isoformat()
+                    "updated_at": now_iso
                 })
 
         try:

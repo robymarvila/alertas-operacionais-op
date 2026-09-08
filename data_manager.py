@@ -8,9 +8,11 @@ Gerencia dados em memória, regras de conciliação, agrupamento regional exclus
 Desconsidera totalmente quaisquer outros códigos não oficiais.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import os
+
+BR_TZ = timezone(timedelta(hours=-3))
 
 class DataManager:
     def __init__(self):
@@ -36,7 +38,7 @@ class DataManager:
         # Registro histórico por equipe
         self.team_history = {}
 
-        self.last_update = datetime.now()
+        self.last_update = datetime.now(BR_TZ)
         self.last_trbonet_sync = "--"
         self.last_poweron_login = "--"
         self.update_count = 0
@@ -441,14 +443,26 @@ class DataManager:
         if tr_dict and not self.trbonet_teams:
             self.trbonet_teams = tr_dict
             
-        if summary.get("last_poweron_login") and summary.get("last_poweron_login") != "--":
-            self.last_poweron_login = summary.get("last_poweron_login")
+        snap_pw = summary.get("last_poweron_login")
+        if snap_pw and snap_pw != "--":
+            try:
+                parts = snap_pw.split()
+                if len(parts) == 2:
+                    d_parts = parts[0].split('/')
+                    t_parts = parts[1].split(':')
+                    snap_dt = datetime(int(d_parts[2]), int(d_parts[1]), int(d_parts[0]), int(t_parts[0]), int(t_parts[1]), tzinfo=BR_TZ)
+                    if snap_dt > datetime.now(BR_TZ) + timedelta(minutes=10):
+                        snap_pw = self.last_update.strftime("%d/%m/%Y %H:%M:%S")
+            except Exception:
+                pass
+            self.last_poweron_login = snap_pw
+
         if summary.get("last_trbonet_sync") and summary.get("last_trbonet_sync") != "--":
             self.last_trbonet_sync = summary.get("last_trbonet_sync")
 
     def update_data(self, poweron_list=None, trbonet_dict=None, source_label="Atualização Manual"):
         """Atualiza os dados em memória filtrando ESTRITAMENTE as 14 bases oficiais e preservando o outro fluxo."""
-        self.last_update = datetime.now()
+        self.last_update = datetime.now(BR_TZ)
         hoje_str = self.last_update.strftime("%d/%m/%Y")
 
         if poweron_list is not None:
@@ -516,8 +530,8 @@ class DataManager:
         Atualiza a lista de equipes ativas diretamente do Módulo de Entrega Enel SP.
         Elimina a necessidade de upload ou leitura de planilhas do PowerON.
         """
-        self.last_update = datetime.now()
-        hoje_str = self.last_update.strftime("%d/%m/%Y")
+        self.last_update = datetime.now(BR_TZ)
+        self.last_poweron_login = self.last_update.strftime("%d/%m/%Y %H:%M:%S")
 
         if active_codes is not None:
             self.poweron_teams = sorted(list(set([
@@ -527,14 +541,6 @@ class DataManager:
 
         if active_details:
             self.enel_team_details.update(active_details)
-            logins = [
-                d.get("login_time") for d in active_details.values() 
-                if d.get("login_time") and d.get("login_time") != "--:--"
-            ]
-            if logins:
-                self.last_poweron_login = f"{hoje_str} {max(logins)}"
-            else:
-                self.last_poweron_login = self.last_update.strftime("%d/%m/%Y %H:%M:%S")
 
         self._init_team_history()
         self.update_count += 1
@@ -553,7 +559,7 @@ class DataManager:
         self.trbonet_teams = {}
         self.team_history = {}
         self.audit_log = []
-        self.last_update = datetime.now()
+        self.last_update = datetime.now(BR_TZ)
         self.last_trbonet_sync = "--"
         self.last_poweron_login = "--"
         self.update_count = 0

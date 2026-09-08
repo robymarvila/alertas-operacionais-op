@@ -751,6 +751,13 @@ function initSupabaseRealtime(retryCount = 0) {
 
     try {
         setRealtimeBadgeStatus('CONNECTING');
+        if (supabaseClient && realtimeSyncChannel) {
+            try {
+                supabaseClient.removeChannel(realtimeSyncChannel);
+            } catch (ignore) {}
+            realtimeSyncChannel = null;
+        }
+
         supabaseClient = window.supabase.createClient(SUPABASE_REALTIME_CONFIG.url, SUPABASE_REALTIME_CONFIG.anonKey);
 
         realtimeSyncChannel = supabaseClient
@@ -795,6 +802,38 @@ function initSupabaseRealtime(retryCount = 0) {
         setRealtimeBadgeStatus('ERROR');
     }
 }
+
+// Re-conexão automática ao restaurar do Back-Forward Cache (bfcache) do navegador
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+        console.log('[REALTIME WS] Página restaurada do bfcache. Reconectando WebSocket...');
+        setTimeout(() => {
+            if (typeof initSupabaseRealtime === 'function') initSupabaseRealtime();
+            if (typeof fetchDashboardData === 'function') fetchDashboardData(false);
+            if (typeof loadDeliveryData === 'function') loadDeliveryData(false);
+        }, 500);
+    }
+});
+
+// Verificação de visibilidade da aba
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        if (!realtimeSyncChannel || realtimeSyncChannel.state === 'closed' || realtimeSyncChannel.state === 'errored') {
+            console.log('[REALTIME WS] Aba reativada. Reconectando WebSocket...');
+            if (typeof initSupabaseRealtime === 'function') initSupabaseRealtime();
+        }
+    }
+});
+
+// Intercepta e silencia erros externos do observador de performance/vitals do navegador no bfcache
+window.addEventListener('error', (event) => {
+    const msg = event?.message || '';
+    if (msg.includes('startTime') || msg.includes('reportAllChanges') || msg.includes('Back-Forward Cache')) {
+        console.warn('[BROWSER BFCACHE/VITALS HANDLER] Erro de telemetria externa do navegador interceptado:', msg);
+        if (event.preventDefault) event.preventDefault();
+        return true;
+    }
+});
 
 function showRealtimeIndicator(message) {
     const toasts = document.getElementById('toastContainer');
