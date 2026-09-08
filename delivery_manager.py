@@ -1284,8 +1284,16 @@ class DeliveryManager:
             "total_regiao": len(reg_teams)
         }
 
-        from coletor_spotfire_cdp import get_last_scanner_sync_time
-        last_scanner_sync = get_last_scanner_sync_time() or format_datetime_br(datetime.now())
+        last_scanner_sync = None
+        try:
+            sync_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanner_last_sync.json")
+            if os.path.exists(sync_file):
+                with open(sync_file, "r", encoding="utf-8") as f:
+                    last_scanner_sync = json.load(f).get("last_sync")
+        except Exception:
+            pass
+        if not last_scanner_sync:
+            last_scanner_sync = format_datetime_br(datetime.now())
 
         return {
             "status": "success",

@@ -5150,6 +5150,10 @@ async function loadTargetsComparativeAudit(targetDate = null, targetRegion = nul
 
     try {
         const resp = await fetch(`/api/delivery/targets-audit?date=${dateVal}&region=${region}`);
+        if (!resp.ok) {
+            console.warn(`[TARGETS AUDIT] HTTP ${resp.status} ao consultar metas.`);
+            return;
+        }
         const data = await resp.json();
 
         if (data.status === 'success') {

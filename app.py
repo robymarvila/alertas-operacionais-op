@@ -1182,6 +1182,7 @@ def trigger_enel_capture():
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/delivery/history/monthly', methods=['GET'])
 @app.route('/api/delivery/monthly', methods=['GET'])
 def get_delivery_monthly_audit():
     """Retorna consolidação e média diária de equipes entregues no mês (YYYY-MM)."""
@@ -1224,10 +1225,21 @@ def get_integrity_check():
 @app.route('/api/delivery/targets-audit', methods=['GET'])
 def get_targets_audit():
     """Retorna o comparativo oficial entre Metas Planejadas (PLAN), Entregas Efetivas (REAL) e Desvios (GAP)."""
-    from datetime import date
-    date_str = request.args.get('date') or date.today().isoformat()
-    region = request.args.get('region') or 'Norte'
-    return jsonify(delivery_manager.get_comparative_targets_audit(date_str, region))
+    try:
+        from datetime import date
+        date_str = request.args.get('date') or date.today().isoformat()
+        region = request.args.get('region') or 'Norte'
+        return jsonify(delivery_manager.get_comparative_targets_audit(date_str, region))
+    except Exception as e:
+        print(f"[ERROR TARGETS AUDIT] {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "date": request.args.get('date') or "",
+            "region": request.args.get('region') or "Norte",
+            "tables": {"bases": [], "turno": [], "veiculo": []},
+            "fleet_cards": {}
+        }), 200
 
 @app.route('/api/delivery/planning/targets', methods=['GET'])
 def get_planning_targets():

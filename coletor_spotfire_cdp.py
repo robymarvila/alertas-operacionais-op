@@ -26,7 +26,11 @@ import time
 import re
 import urllib.request
 from datetime import datetime, date, timedelta
-import websocket
+try:
+    import websocket
+except ImportError:
+    websocket = None
+
 import pandas as pd
 
 CDP_HOST = "127.0.0.1"
@@ -36,7 +40,10 @@ SPOTFIRE_DOMAIN = "elabziplra00.enelint.global"
 
 WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS_DIR = os.path.join(WORKSPACE_DIR, "temp_spotfire_downloads")
-os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+try:
+    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+except Exception:
+    pass
 
 # 7 Bases Oficiais Definidas para Data Quality e Confronto Operacional (Região Norte e Região Leste)
 # Região Norte: ENL (Base Fagundes Filho), ECL (Base Cajati), EEL (Base Vila Medeiros)
