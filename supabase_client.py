@@ -7,7 +7,31 @@ e consultas relacionais para a tela de Auditoria & Histórico.
 import os
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+# Fuso Horário Oficial de Operação (Horário de Brasília - UTC-3)
+BR_TZ = timezone(timedelta(hours=-3))
+
+def format_datetime_br(val) -> str:
+    """Converte com segurança qualquer timestamp (ISO, string ou datetime) para Horário de Brasília."""
+    if not val or val == '--':
+        return '--'
+    if isinstance(val, str):
+        if '/' in val and ':' in val:
+            return val
+        try:
+            clean_val = val.replace('Z', '+00:00')
+            dt = datetime.fromisoformat(clean_val)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(BR_TZ).strftime('%d/%m/%Y %H:%M:%S')
+        except Exception:
+            return val
+    elif isinstance(val, datetime):
+        if val.tzinfo is None:
+            val = val.replace(tzinfo=timezone.utc)
+        return val.astimezone(BR_TZ).strftime('%d/%m/%Y %H:%M:%S')
+    return str(val)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://xgfawbqllikosyngfvwa.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sb_publishable_uDfIgt5BLYkRJMU540FMcA_LbaubJox")
@@ -409,10 +433,12 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
         resp_sess = requests.get(endpoint_sess, headers=get_headers(), timeout=10)
         
         latest_session_id = None
+        captured_at = None
         if resp_sess.status_code == 200:
             sessions = resp_sess.json() or []
             if sessions:
                 latest_session_id = sessions[0].get("id")
+                captured_at = sessions[0].get("captured_at")
 
         if latest_session_id:
             endpoint_recs = f"{BASE_REST_URL}/team_delivery_records?session_id=eq.{latest_session_id}&order=team_code.asc&limit=1000"
@@ -420,7 +446,7 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
             if resp_recs.status_code == 200:
                 records = resp_recs.json() or []
                 if records:
-                    return {"status": "success", "data": records, "session_id": latest_session_id}
+                    return {"status": "success", "data": records, "session_id": latest_session_id, "captured_at": captured_at}
 
         # Fallback: busca os últimos registros deduplicando por team_code
         endpoint = f"{BASE_REST_URL}/team_delivery_records?order=captured_at.desc&limit=300"
@@ -576,32 +602,40 @@ def fetch_spotfire_records_by_date(date_str: str) -> list:
 
 def update_engine_health(engine_name: str, status: str, is_running: bool = True,
                          error_type: str = "NONE", last_error: str = None,
-                         records_count: int = 0) -> dict:
+                         records_count: int = 0, engine_label: str = None,
+                         details_json: dict = None) -> dict:
     """
-    Atualiza o estado de um motor na tabela 'system_engine_health'.
+    Atualiza ou insere o estado de um motor na tabela 'system_engine_health' com fuso de Brasília.
     status: 'OPERATIONAL', 'ERROR_CONNECTION', 'STOPPED', 'WARNING'
     error_type: 'NONE', 'CONNECTION_REFUSED', 'TIMEOUT', 'PROCESS_STOPPED'
     """
     try:
+        now_iso = datetime.now(BR_TZ).isoformat()
         payload = {
+            "engine_name": engine_name,
             "status": status,
             "is_running": is_running,
             "error_type": error_type,
-            "last_heartbeat": datetime.now().isoformat(),
+            "last_heartbeat": now_iso,
             "records_count": records_count
         }
+        if engine_label:
+            payload["engine_label"] = engine_label
+        if details_json is not None:
+            payload["details_json"] = details_json
+
         if status == "OPERATIONAL":
-            payload["last_success_sync"] = datetime.now().isoformat()
+            payload["last_success_sync"] = now_iso
             payload["consecutive_errors"] = 0
             payload["last_error_message"] = None
         else:
             payload["last_error_message"] = str(last_error or "")
 
         headers = get_headers()
-        headers["Prefer"] = "return=representation"
-        endpoint = f"{BASE_REST_URL}/system_engine_health?engine_name=eq.{engine_name}"
-        resp = requests.patch(endpoint, headers=headers, json=payload, timeout=6)
-        if resp.status_code in [200, 204]:
+        headers["Prefer"] = "resolution=merge-duplicates"
+        endpoint = f"{BASE_REST_URL}/system_engine_health"
+        resp = requests.post(endpoint, headers=headers, json=payload, timeout=6)
+        if resp.status_code in [200, 201, 204]:
             return {"status": "success"}
         return {"status": "error", "message": resp.text}
     except Exception as e:

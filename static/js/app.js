@@ -550,6 +550,43 @@ async function syncUnifiedLive() {
             showToast(result.message || 'Dados atualizados com sucesso!', 'success');
             fetchDashboardData(false);
             if (typeof fetchDeliveryState === 'function') fetchDeliveryState(false);
+        } else if (response.status === 202 || result?.status === 'queued') {
+            const cmdId = result.command_id;
+            showToast('Ordem enviada ao Robô Local Windows via Nuvem! Aguardando execução...', 'info');
+            
+            let completed = false;
+            if (cmdId) {
+                for (let attempt = 1; attempt <= 15; attempt++) {
+                    if (btn) btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Robô Local executando (${attempt * 2}s)...</span>`;
+                    initIcons();
+                    await new Promise(r => setTimeout(r, 2000));
+                    try {
+                        const checkResp = await fetch(`/api/commands/${cmdId}`);
+                        if (checkResp.ok) {
+                            const cmdStatus = await checkResp.json();
+                            if (cmdStatus.status === 'COMPLETED') {
+                                showToast('Sincronização unificada concluída pelo Robô Local Windows com sucesso!', 'success');
+                                fetchDashboardData(false);
+                                if (typeof fetchDeliveryState === 'function') fetchDeliveryState(false);
+                                completed = true;
+                                break;
+                            } else if (cmdStatus.status === 'ERROR') {
+                                showToast('O robô local reportou erro: ' + (cmdStatus.message || 'Falha na sincronização.'), 'danger');
+                                completed = true;
+                                break;
+                            }
+                        }
+                    } catch (pollErr) {
+                        console.warn('[POLL WARN]', pollErr);
+                    }
+                }
+            }
+
+            if (!completed) {
+                showToast('Comando em processamento pelo robô local. Os dados serão atualizados em instantes via Realtime!', 'info');
+                fetchDashboardData(false);
+                if (typeof fetchDeliveryState === 'function') fetchDeliveryState(false);
+            }
         } else if (result.status === 'warning') {
             showToast(result.message, 'danger');
         } else {
@@ -6220,7 +6257,21 @@ async function loadAdminEngineStatus() {
         if (sEnel) sEnel.textContent = enel.last_sync || '--:--:--';
         if (rEnel) rEnel.textContent = `${enel.records || 0} equipes`;
 
-        // 3. Supabase Cloud
+        // 3. Robô CDP Scanner 5.0 (TIBCO Spotfire)
+        const spot = engines.spotfire_cdp || {};
+        const bSpot = document.getElementById('engineBadgeSpotfire');
+        const mSpot = document.getElementById('engineMsgSpotfire');
+        const sSpot = document.getElementById('engineSyncSpotfire');
+        const rSpot = document.getElementById('engineRecordsSpotfire');
+        if (bSpot) {
+            bSpot.className = `engine-status-badge ${spot.status === 'OPERATIONAL' ? 'badge-operational' : (spot.status === 'ERROR_CONNECTION' ? 'badge-error-connection' : 'badge-stopped')}`;
+            bSpot.textContent = spot.status === 'OPERATIONAL' ? 'OPERACIONAL' : (spot.status === 'ERROR_CONNECTION' ? 'FALHA DE CONEXÃO' : 'MOTOR PARADO');
+        }
+        if (mSpot) mSpot.textContent = spot.message || '--';
+        if (sSpot) sSpot.textContent = spot.last_sync || '--:--:--';
+        if (rSpot) rSpot.textContent = `${spot.records || 0} metas`;
+
+        // 4. Supabase Cloud
         const cloud = engines.cloud_sync || {};
         const bCloud = document.getElementById('engineBadgeCloud');
         const mCloud = document.getElementById('engineMsgCloud');
@@ -6235,8 +6286,334 @@ async function loadAdminEngineStatus() {
     }
 }
 
+let currentSelectedEngine = null;
+
+async function openEngineDetailsModal(engineKey) {
+    currentSelectedEngine = engineKey;
+    const modal = document.getElementById('modalEngineDetails');
+    if (!modal) return;
+    
+    modal.classList.add('active');
+    
+    // Elementos do Modal
+    const titleEl = document.getElementById('engineDetailTitle');
+    const subtitleEl = document.getElementById('engineDetailSubtitle');
+    const badgeEl = document.getElementById('engineDetailStatusBadge');
+    const syncTimeEl = document.getElementById('engineDetailSyncTime');
+    const commTagEl = document.getElementById('engineDetailCommTag');
+    const kpisEl = document.getElementById('engineDetailKpis');
+    const contentEl = document.getElementById('engineDetailContent');
+    const actionText = document.getElementById('btnEngineDetailActionText');
+    const iconEl = document.getElementById('engineDetailIcon');
+    const badgeBox = document.getElementById('engineDetailIconBadge');
+
+    if (kpisEl) kpisEl.innerHTML = '';
+    if (contentEl) {
+        contentEl.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <i data-lucide="loader" class="spin-animation" style="width: 28px; height: 28px; margin-bottom: 12px; color: #00f2fe;"></i>
+                <p style="margin: 0; font-size: 0.9rem;">Consultando telemetria e diagnóstico do motor...</p>
+            </div>
+        `;
+        initIcons();
+    }
+
+    try {
+        const resp = await fetch(`/api/admin/engine_details/${engineKey}`);
+        const data = await resp.json();
+        if (data.status !== 'success') {
+            if (contentEl) contentEl.innerHTML = `<p style="color: #ef4444; padding: 20px; text-align: center;">Erro ao carregar detalhes: ${data.message || 'Falha desconhecida'}</p>`;
+            return;
+        }
+
+        const summ = data.summary || {};
+        if (titleEl) titleEl.textContent = data.label || data.engine_name || 'Detalhes do Motor';
+        if (syncTimeEl) syncTimeEl.textContent = data.last_sync || '--:--:--';
+        if (badgeEl) {
+            const isOp = data.engine_status === 'OPERATIONAL';
+            badgeEl.className = `engine-status-badge ${isOp ? 'badge-operational' : (data.engine_status === 'ERROR_CONNECTION' ? 'badge-error-connection' : 'badge-stopped')}`;
+            badgeEl.textContent = isOp ? 'OPERACIONAL' : (data.engine_status === 'ERROR_CONNECTION' ? 'FALHA DE CONEXÃO' : 'MOTOR PARADO');
+        }
+
+        // Setup Engine Specifics
+        if (engineKey === 'trbonet') {
+            if (subtitleEl) subtitleEl.textContent = 'Leitura nativa silenciosa UIAutomation em segundo plano do rádio console';
+            if (iconEl) iconEl.setAttribute('data-lucide', 'radio');
+            if (badgeBox) { badgeBox.style.background = 'rgba(16, 185, 129, 0.15)'; badgeBox.style.borderColor = 'rgba(16, 185, 129, 0.35)'; }
+            if (commTagEl) commTagEl.textContent = 'UIAutomation Local (Windows)';
+            if (actionText) actionText.textContent = data.action_label || 'Atualizar / Sincronizar Rádios Agora';
+            
+            const totalRadios = summ.total_radios ?? data.radios_total ?? 0;
+            const withGps = summ.online_with_gps ?? data.radios_with_gps ?? 0;
+            const compRate = summ.compliance_rate ?? (data.compliance_summary?.conformes ?? 0);
+            const totalPo = summ.total_poweron ?? data.radios_in_poweron ?? 0;
+
+            if (kpisEl) {
+                kpisEl.innerHTML = `
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">TOTAL RÁDIOS</span>
+                        <strong style="font-size: 1.35rem; color: #00f2fe; font-family: 'JetBrains Mono';">${totalRadios}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">COM SINAL GPS</span>
+                        <strong style="font-size: 1.35rem; color: #10b981; font-family: 'JetBrains Mono';">${withGps}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">CONFORMIDADE</span>
+                        <strong style="font-size: 1.35rem; color: #3b82f6; font-family: 'JetBrains Mono';">${typeof compRate === 'number' && compRate <= 100 ? compRate + '%' : compRate}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">POWERON / ESCALA</span>
+                        <strong style="font-size: 1.35rem; color: #f59e0b; font-family: 'JetBrains Mono';">${totalPo}</strong>
+                    </div>
+                `;
+            }
+
+            const samples = data.sample_records || data.sample_teams || [];
+            if (contentEl) {
+                let rowsHtml = samples.map(t => `
+                    <tr>
+                        <td><strong style="color: var(--text-primary); font-family: 'JetBrains Mono';">${t.code || '--'}</strong></td>
+                        <td>${t.base || t.status || '--'}</td>
+                        <td><code style="color: #00f2fe;">${t.radio_id || '--'}</code></td>
+                        <td><span style="font-size: 0.75rem; color: var(--text-secondary);">${t.channel || t.speed || '--'}</span></td>
+                        <td><span class="status-badge ${t.has_gps ? 'badge-online-gps' : 'badge-offline-gray'}">${t.has_gps ? 'GPS OK' : 'SEM GPS'}</span></td>
+                        <td><span class="status-badge ${t.poweron !== false ? 'badge-online-gps' : 'badge-offline-gray'}">${t.poweron ? 'ESCALADA' : 'ONLINE'}</span></td>
+                    </tr>
+                `).join('');
+
+                contentEl.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <strong style="font-size: 0.88rem; color: var(--text-primary);"><i data-lucide="list" style="width: 15px; height: 15px; margin-right: 6px; vertical-align: middle;"></i> Amostragem de Rádios Monitorados</strong>
+                        <small style="color: var(--text-secondary);">Exibindo ${samples.length} de ${totalRadios}</small>
+                    </div>
+                    <div style="max-height: 240px; overflow-y: auto;">
+                        <table class="data-table" style="width: 100%; font-size: 0.8rem;">
+                            <thead>
+                                <tr>
+                                    <th>Equipe</th>
+                                    <th>Base / Status</th>
+                                    <th>ID Rádio</th>
+                                    <th>Canal / Vel</th>
+                                    <th>GPS</th>
+                                    <th>PowerON</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml || '<tr><td colspan="6" style="text-align: center;">Nenhum rádio registrado</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+        } else if (engineKey === 'enel_cdp') {
+            if (subtitleEl) subtitleEl.textContent = 'Automação Chrome DevTools Protocol na porta 9222 (500 linhas, F5 e turnos)';
+            if (iconEl) iconEl.setAttribute('data-lucide', 'users');
+            if (badgeBox) { badgeBox.style.background = 'rgba(0, 242, 254, 0.15)'; badgeBox.style.borderColor = 'rgba(0, 242, 254, 0.35)'; }
+            if (commTagEl) commTagEl.textContent = 'Chrome CDP 9222 (Enel)';
+            if (actionText) actionText.textContent = data.action_label || 'Disparar Coleta Imediata Enel (CDP)';
+
+            const totalTeams = summ.total_teams ?? data.active_teams_count ?? 0;
+            const cesto = summ.cesto_count ?? (data.active_by_type?.CESTO ?? 0);
+            const leve = summ.leve_count ?? (data.active_by_type?.LEVE ?? 0);
+            const norte = summ.norte_count ?? (data.active_by_region?.Norte ?? 0);
+
+            if (kpisEl) {
+                kpisEl.innerHTML = `
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">ATIVAS NO TURNO</span>
+                        <strong style="font-size: 1.35rem; color: #10b981; font-family: 'JetBrains Mono';">${totalTeams}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">CESTO AÉREO</span>
+                        <strong style="font-size: 1.35rem; color: #a855f7; font-family: 'JetBrains Mono';">${cesto}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">VEÍCULO LEVE</span>
+                        <strong style="font-size: 1.35rem; color: #3b82f6; font-family: 'JetBrains Mono';">${leve}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">REG. NORTE</span>
+                        <strong style="font-size: 1.35rem; color: #00f2fe; font-family: 'JetBrains Mono';">${norte}</strong>
+                    </div>
+                `;
+            }
+
+            const samples = data.sample_records || data.sample_teams || [];
+            if (contentEl) {
+                let rowsHtml = samples.map(t => `
+                    <tr>
+                        <td><strong style="color: var(--text-primary); font-family: 'JetBrains Mono';">${t.code || '--'}</strong></td>
+                        <td>${t.base || '--'}</td>
+                        <td><span style="font-size: 0.75rem; color: #00f2fe;">${t.region || t.ut || '--'}</span></td>
+                        <td><span class="type-pill pill-${(t.type || t.vehicle_type || 'cesto').toLowerCase()}">${t.type || t.vehicle_type || 'Equipe'}</span></td>
+                        <td><code style="color: #f59e0b; font-family: 'JetBrains Mono';">${t.plate || '--'}</code></td>
+                        <td><small style="color: var(--text-secondary);">${t.turn || t.status_op || '--'}</small></td>
+                    </tr>
+                `).join('');
+
+                contentEl.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <strong style="font-size: 0.88rem; color: var(--text-primary);"><i data-lucide="truck" style="width: 15px; height: 15px; margin-right: 6px; vertical-align: middle;"></i> Amostragem de Equipes Coletadas na Enel</strong>
+                        <small style="color: var(--text-secondary);">Exibindo ${samples.length} de ${totalTeams}</small>
+                    </div>
+                    <div style="max-height: 240px; overflow-y: auto;">
+                        <table class="data-table" style="width: 100%; font-size: 0.8rem;">
+                            <thead>
+                                <tr>
+                                    <th>Equipe</th>
+                                    <th>Base</th>
+                                    <th>Região</th>
+                                    <th>Tipologia</th>
+                                    <th>Placa</th>
+                                    <th>Status / Turno</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml || '<tr><td colspan="6" style="text-align: center;">Nenhuma equipe ativa</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+        } else if (engineKey === 'spotfire_cdp') {
+            if (subtitleEl) subtitleEl.textContent = 'Leitura automatizada via CDP do TIBCO Spotfire Scanner 5.0 (Metas & Produtividade)';
+            if (iconEl) iconEl.setAttribute('data-lucide', 'bar-chart-2');
+            if (badgeBox) { badgeBox.style.background = 'rgba(245, 158, 11, 0.15)'; badgeBox.style.borderColor = 'rgba(245, 158, 11, 0.35)'; }
+            if (commTagEl) commTagEl.textContent = 'Chrome CDP 9222 (Spotfire)';
+            if (actionText) actionText.textContent = data.action_label || 'Forçar Extração do Scanner 5.0 Agora';
+
+            const spotfireRows = summ.total_records ?? data.spotfire_rows ?? 0;
+
+            if (kpisEl) {
+                kpisEl.innerHTML = `
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">METAS SINCRONIZADAS</span>
+                        <strong style="font-size: 1.35rem; color: #f59e0b; font-family: 'JetBrains Mono';">${spotfireRows}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">INTERVALO ROBÔ</span>
+                        <strong style="font-size: 1.35rem; color: #00f2fe; font-family: 'JetBrains Mono';">${summ.interval || '30 min'}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">FORMATO PERSISTIDO</span>
+                        <strong style="font-size: 1.35rem; color: #10b981; font-family: 'JetBrains Mono';">JSON + DB</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">STATUS CONEXÃO</span>
+                        <strong style="font-size: 1.35rem; color: #3b82f6; font-family: 'JetBrains Mono';">${data.engine_status || 'OK'}</strong>
+                    </div>
+                `;
+            }
+
+            if (contentEl) {
+                contentEl.innerHTML = `
+                    <div style="padding: 12px; line-height: 1.6;">
+                        <h4 style="margin: 0 0 8px 0; color: #f59e0b; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Integração TIBCO Spotfire Ativa
+                        </h4>
+                        <p style="font-size: 0.84rem; color: var(--text-secondary); margin: 0 0 12px 0;">
+                            O robô local conecta-se silenciosamente ao Chrome corporativo onde o <strong>Scanner 5.0 (TIBCO Spotfire)</strong> está carregado, extraindo a tabela analítica de metas operacionais e persistindo na base de dados e no Supabase.
+                        </p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.06);">
+                                <span style="font-size: 0.72rem; color: var(--text-secondary); display: block;">ARQUIVO LOCAL DE AUDITORIA</span>
+                                <strong style="font-size: 0.82rem; color: #00f2fe; font-family: 'JetBrains Mono';">scanner_last_sync.json</strong>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.06);">
+                                <span style="font-size: 0.72rem; color: var(--text-secondary); display: block;">TABELA SUPABASE</span>
+                                <strong style="font-size: 0.82rem; color: #10b981; font-family: 'JetBrains Mono';">spotfire_records</strong>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+        } else if (engineKey === 'cloud_sync') {
+            if (subtitleEl) subtitleEl.textContent = 'Banco de dados relacional PostgreSQL & WebSocket Realtime na Nuvem';
+            if (iconEl) iconEl.setAttribute('data-lucide', 'database');
+            if (badgeBox) { badgeBox.style.background = 'rgba(192, 132, 252, 0.15)'; badgeBox.style.borderColor = 'rgba(192, 132, 252, 0.35)'; }
+            if (commTagEl) commTagEl.textContent = 'Supabase REST & WSS';
+            if (actionText) actionText.textContent = 'Forçar Sincronização com a Nuvem';
+
+            if (kpisEl) {
+                kpisEl.innerHTML = `
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">BANCO DE DADOS</span>
+                        <strong style="font-size: 1.35rem; color: #c084fc; font-family: 'JetBrains Mono';">PostgreSQL</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">REALTIME WS</span>
+                        <strong style="font-size: 1.35rem; color: #10b981; font-family: 'JetBrains Mono';">ATIVO</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">SEGURANÇA</span>
+                        <strong style="font-size: 1.35rem; color: #3b82f6; font-family: 'JetBrains Mono';">RLS ON</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">FILA DE COMANDOS</span>
+                        <strong style="font-size: 1.35rem; color: #00f2fe; font-family: 'JetBrains Mono';">Bidirecional</strong>
+                    </div>
+                `;
+            }
+
+            if (contentEl) {
+                contentEl.innerHTML = `
+                    <div style="padding: 12px; line-height: 1.6;">
+                        <h4 style="margin: 0 0 8px 0; color: #c084fc; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="cloud" style="width: 16px; height: 16px;"></i> Conectividade Supabase em Alta Disponibilidade
+                        </h4>
+                        <p style="font-size: 0.84rem; color: var(--text-secondary); margin: 0 0 12px 0;">
+                            Garante a comunicação fluida entre o robô local no Windows e os usuários em produção na web (Vercel). Todos os comandos disparados na nuvem são propagados e escutados em milissegundos via Postgres Realtime e HTTP REST.
+                        </p>
+                    </div>
+                `;
+            }
+        }
+
+        initIcons();
+
+    } catch (err) {
+        if (contentEl) contentEl.innerHTML = `<p style="color: #ef4444; padding: 20px; text-align: center;">Falha de comunicação: ${err.message}</p>`;
+    }
+}
+
+async function triggerCurrentEngineAction() {
+    if (!currentSelectedEngine) return;
+    closeModal('modalEngineDetails');
+
+    if (currentSelectedEngine === 'trbonet') {
+        syncUnifiedLive();
+    } else if (currentSelectedEngine === 'enel_cdp') {
+        triggerEnelCdpCapture();
+    } else if (currentSelectedEngine === 'spotfire_cdp') {
+        triggerSpotfireCdpCapture();
+    } else if (currentSelectedEngine === 'cloud_sync') {
+        showToast('Sincronizando estado operacional com o Supabase...', 'info');
+        if (typeof fetchDashboardData === 'function') fetchDashboardData(true);
+        if (typeof loadDeliveryData === 'function') loadDeliveryData(true);
+    }
+}
+
+async function triggerSpotfireCdpCapture() {
+    showToast('Iniciando extração do Scanner 5.0 (TIBCO Spotfire)...', 'info');
+    try {
+        const resp = await fetch('/api/delivery/spotfire/sync', { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+            showToast(data.message || 'Dados do Spotfire extraídos com sucesso!', 'success');
+            loadAdminEngineStatus();
+            if (currentSelectedEngine === 'spotfire_cdp') {
+                openEngineDetailsModal('spotfire_cdp');
+            }
+        } else {
+            showToast(data.message || 'Falha ao sincronizar Spotfire.', 'danger');
+        }
+    } catch (err) {
+        showToast('Erro ao comunicar com Robô Spotfire: ' + err.message, 'danger');
+    }
+}
+
 async function triggerRestartEngines() {
-    if (!confirm('Deseja enviar comando para reiniciar os motores locais de captura (TRBOnet One e Robô CDP Enel SP)?\nO servidor web continuará funcionando normalmente.')) {
+    if (!confirm('Deseja enviar comando para reiniciar os motores locais de captura em segundo plano no Windows (TRBOnet One, Robô CDP Enel SP e Scanner 5.0)?\nO servidor web continuará funcionando normalmente.')) {
         return;
     }
 
@@ -6508,6 +6885,9 @@ window.toggleHistTableCollapse = toggleHistTableCollapse;
 window.setAuditReconciliationFilter = setAuditReconciliationFilter;
 window.handleCarregarBaseClick = handleCarregarBaseClick;
 window.reloadAuditAvailableDates = reloadAuditAvailableDates;
+window.openEngineDetailsModal = openEngineDetailsModal;
+window.triggerCurrentEngineAction = triggerCurrentEngineAction;
+window.triggerSpotfireCdpCapture = triggerSpotfireCdpCapture;
 
 
 

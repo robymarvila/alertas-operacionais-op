@@ -966,6 +966,15 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
         set_last_scanner_sync_time(timestamp_str)
         print(f"[{timestamp_str}] [SCANNER 5.0 SYNC CDP] {count_saved} equipes sincronizadas com sucesso no Supabase ({source_label}).", flush=True)
 
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health("spotfire_cdp_collector", "OPERATIONAL", is_running=True,
+                                 error_type="NONE", last_error=None,
+                                 records_count=count_saved,
+                                 engine_label="Robô CDP Scanner 5.0 (Spotfire)")
+        except Exception:
+            pass
+
         return {
             "status": "success",
             "count": count_saved,
@@ -974,6 +983,13 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
         }
     except Exception as e:
         print(f"[SCANNER SYNC ERROR] {e}", flush=True)
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health("spotfire_cdp_collector", "ERROR_CONNECTION", is_running=True,
+                                 error_type="CONNECTION_REFUSED", last_error=str(e),
+                                 engine_label="Robô CDP Scanner 5.0 (Spotfire)")
+        except Exception:
+            pass
         return {"status": "error", "message": str(e)}
 
 LAST_SYNC_FILE = os.path.join(WORKSPACE_DIR, "scanner_last_sync.json")

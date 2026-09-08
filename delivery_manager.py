@@ -5,11 +5,13 @@ diferenciação entre Equipes ATIVAS (ao vivo) e Equipes TOTAL (acumulado do dia
 agrupamento hierárquico das 14 bases por região (Norte e Leste) e auditoria histórica.
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 import json
 import os
-
 import re
+
+# Fuso Horário Oficial de Operação (Horário de Brasília - UTC-3)
+BR_TZ = timezone(timedelta(hours=-3))
 
 CACHE_FILE = "delivery_daily_cache.json"
 
@@ -204,7 +206,7 @@ class DeliveryManager:
         - Das 05:00 às 23:59: pertence ao dia operacional atual.
         """
         if dt is None:
-            dt = datetime.now()
+            dt = datetime.now(BR_TZ)
         if dt.hour < 5:
             return (dt.date() - timedelta(days=1)).isoformat()
         return dt.date().isoformat()
@@ -527,12 +529,12 @@ class DeliveryManager:
             "outras_bases": _base_block(outras_teams)
         }
 
-    def process_raw_enel_records(self, raw_records: list, source_label="Portal Enel SP") -> dict:
+    def process_raw_enel_records(self, raw_records: list, source_label="Portal Enel SP", captured_at=None) -> dict:
         """
         Processa linhas brutas extraídas do portal Enel, atualiza a lista de Equipes ATIVAS
         e adiciona de forma cumulativa e deduplicada ao histórico diário (Equipes TOTAL).
         """
-        now = datetime.now()
+        now = datetime.now(BR_TZ)
         op_date = self.get_operational_date(now)
         
         # Se virou o dia, reinicia o acumulado diário
@@ -542,7 +544,11 @@ class DeliveryManager:
             self.daily_accumulated_teams = {}
             self.intraday_curve = {}
 
-        self.last_sync_time = now.strftime("%d/%m/%Y %H:%M:%S")
+        if captured_at:
+            from supabase_client import format_datetime_br
+            self.last_sync_time = format_datetime_br(captured_at)
+        else:
+            self.last_sync_time = now.strftime("%d/%m/%Y %H:%M:%S")
         self.sync_source = source_label
 
         active_dict = {}

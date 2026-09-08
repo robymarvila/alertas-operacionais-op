@@ -284,6 +284,15 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
         timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         print(f"[{timestamp_str}] [ENEL SYNC CDP] {len(records)} equipes sincronizadas ({source_label}).", flush=True)
 
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health("enel_cdp_collector", "OPERATIONAL", is_running=True,
+                                 error_type="NONE", last_error=None,
+                                 records_count=len(records),
+                                 engine_label="Robô CDP Enel SP (Equipes & Turnos)")
+        except Exception:
+            pass
+
         return {
             "status": "success",
             "message": f"{len(records)} equipes sincronizadas com sucesso!",
@@ -291,6 +300,13 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
         }
     except Exception as e:
         print(f"[ENEL SYNC ERROR] {e}", flush=True)
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health("enel_cdp_collector", "ERROR_CONNECTION", is_running=True,
+                                 error_type="CONNECTION_REFUSED", last_error=str(e),
+                                 engine_label="Robô CDP Enel SP (Equipes & Turnos)")
+        except Exception:
+            pass
         return {
             "status": "error",
             "message": str(e)

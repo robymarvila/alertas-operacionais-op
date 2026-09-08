@@ -284,19 +284,107 @@ def check_port_listening(host="127.0.0.1", port=9222, timeout=1.0) -> bool:
 @app.route('/api/admin/engine_status', methods=['GET'])
 def get_engine_status():
     """
-    Retorna o status detalhado em tempo real de todos os motores:
+    Retorna o status detalhado em tempo real de todos os 4 motores:
     1. Motor TRBOnet One (Rádios & GPS)
     2. Robô CDP Enel SP (Equipes & Turnos - Porta 9222)
-    3. Sincronizador em Nuvem Supabase
+    3. Robô CDP Scanner 5.0 (TIBCO Spotfire - Porta 9222)
+    4. Sincronizador em Nuvem Supabase
     Discrimina se a falha é de CONEXÃO ou se o PROCESSO PAROU.
     """
-    from supabase_client import fetch_all_engine_health, update_engine_health, BASE_REST_URL, get_headers
+    from supabase_client import fetch_all_engine_health, update_engine_health, BASE_REST_URL, get_headers, format_datetime_br, BR_TZ
     from delivery_manager import delivery_manager
+    from datetime import datetime, timezone
 
-    # 1. Motor Enel CDP
+    is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+
+    if is_cloud:
+        # AMBIENTE NUVEM / VERCEL:
+        # Consulta os heartbeats enviados pelo Agente Local Windows.
+        engines_from_db = fetch_all_engine_health() or []
+        db_map = {e.get("engine_name"): e for e in engines_from_db}
+
+        now_utc = datetime.now(timezone.utc)
+
+        def parse_engine_cloud(eng_key, default_label, default_msg):
+            eng = db_map.get(eng_key, {})
+            hb_str = eng.get("last_heartbeat")
+            is_alive = False
+            last_sync_formatted = "--:--:--"
+
+            if hb_str:
+                try:
+                    hb_dt = datetime.fromisoformat(hb_str.replace("Z", "+00:00"))
+                    if hb_dt.tzinfo is None:
+                        hb_dt = hb_dt.replace(tzinfo=timezone.utc)
+                    diff_secs = (now_utc - hb_dt).total_seconds()
+                    # Threshold: 40 min para Spotfire (ciclo de 30 min), 6 min para TRBOnet e Enel (ciclo de 2 min)
+                    threshold = 2400 if "spotfire" in eng_key else 360
+                    is_alive = diff_secs <= threshold
+                except Exception:
+                    is_alive = False
+
+            succ_str = eng.get("last_success_sync") or hb_str
+            if succ_str:
+                last_sync_formatted = format_datetime_br(succ_str)
+
+            raw_status = eng.get("status", "STOPPED")
+            if is_alive and raw_status in ["OPERATIONAL", "WARNING"]:
+                status = raw_status
+                msg = eng.get("last_error_message") or default_msg
+            elif is_alive:
+                status = raw_status
+                msg = eng.get("last_error_message") or "Falha de conexão no Agente Local."
+            else:
+                status = "STOPPED"
+                msg = "Agente Local Desconectado: Sem comunicação com o Windows nos últimos minutos."
+
+            return {
+                "name": eng_key,
+                "label": eng.get("engine_label") or default_label,
+                "status": status,
+                "is_running": is_alive,
+                "error_type": eng.get("error_type", "NONE" if is_alive else "PROCESS_STOPPED"),
+                "message": msg,
+                "last_sync": last_sync_formatted,
+                "records": eng.get("records_count", 0)
+            }
+
+        # Teste de conexão Supabase Cloud
+        try:
+            resp = requests.get(f"{BASE_REST_URL}/system_engine_health?select=engine_name&limit=1", headers=get_headers(), timeout=6)
+            cloud_ok = resp.status_code in [200, 206]
+        except Exception:
+            cloud_ok = False
+
+        cloud_status = "OPERATIONAL" if cloud_ok else "ERROR_CONNECTION"
+        cloud_msg = "Operacional: Conexão REST com banco Supabase ativa." if cloud_ok else "Falha de Conexão: Supabase inacessível."
+
+        return jsonify({
+            "status": "success",
+            "engines": {
+                "trbonet": parse_engine_cloud("trbonet_collector", "Motor TRBOnet One (Rádios & GPS)", "Operacional: Rádios e telemetria GPS sendo conciliados a cada 2 min."),
+                "enel_cdp": parse_engine_cloud("enel_cdp_collector", "Robô CDP Enel SP (Equipes & Turnos)", "Operacional: Conexão CDP ativa lendo 500 linhas a cada 2 min."),
+                "spotfire_cdp": parse_engine_cloud("spotfire_cdp_collector", "Robô CDP Scanner 5.0 (TIBCO Spotfire)", "Operacional: Extração automatizada do Scanner 5.0 a cada 30 min."),
+                "cloud_sync": {
+                    "name": "cloud_sync_listener",
+                    "label": "Banco em Nuvem Supabase",
+                    "status": cloud_status,
+                    "is_running": True,
+                    "error_type": "NONE" if cloud_ok else "CONNECTION_REFUSED",
+                    "message": cloud_msg,
+                    "last_sync": datetime.now(BR_TZ).strftime("%H:%M:%S"),
+                    "records": 0
+                }
+            }
+        })
+
+    # AMBIENTE LOCAL WINDOWS:
     port_9222_open = check_port_listening("127.0.0.1", 9222)
     thread_enel_alive = ENGINE_THREADS.get("enel_cdp") is not None and ENGINE_THREADS["enel_cdp"].is_alive()
+    thread_trbo_alive = ENGINE_THREADS.get("trbonet") is not None and ENGINE_THREADS["trbonet"].is_alive()
+    thread_spotfire_alive = ENGINE_THREADS.get("spotfire_cdp") is not None and ENGINE_THREADS["spotfire_cdp"].is_alive()
 
+    # 1. Motor Enel CDP
     if not thread_enel_alive:
         enel_status = "STOPPED"
         enel_error_type = "PROCESS_STOPPED"
@@ -312,10 +400,10 @@ def get_engine_status():
 
     update_engine_health("enel_cdp_collector", enel_status, is_running=thread_enel_alive,
                          error_type=enel_error_type, last_error=enel_msg,
-                         records_count=len(delivery_manager.active_teams))
+                         records_count=len(delivery_manager.active_teams),
+                         engine_label="Robô CDP Enel SP (Equipes & Turnos)")
 
     # 2. Motor TRBOnet One
-    thread_trbo_alive = ENGINE_THREADS.get("trbonet") is not None and ENGINE_THREADS["trbonet"].is_alive()
     if not thread_trbo_alive:
         trbo_status = "STOPPED"
         trbo_error_type = "PROCESS_STOPPED"
@@ -327,21 +415,47 @@ def get_engine_status():
 
     update_engine_health("trbonet_collector", trbo_status, is_running=thread_trbo_alive,
                          error_type=trbo_error_type, last_error=trbo_msg,
-                         records_count=len(data_manager.trbonet_teams))
+                         records_count=len(data_manager.trbonet_teams),
+                         engine_label="Motor TRBOnet One (Rádios & GPS)")
 
-    # 3. Sincronizador Nuvem Supabase
+    # 3. Motor Spotfire CDP
+    if not thread_spotfire_alive:
+        spotfire_status = "STOPPED"
+        spotfire_error_type = "PROCESS_STOPPED"
+        spotfire_msg = "Motor Parado: A rotina de auto-captura do Scanner 5.0 está inativa."
+    elif not port_9222_open:
+        spotfire_status = "ERROR_CONNECTION"
+        spotfire_error_type = "CONNECTION_REFUSED"
+        spotfire_msg = "Falha de Conexão: Porta 9222 fechada no navegador Spotfire."
+    else:
+        spotfire_status = "OPERATIONAL"
+        spotfire_error_type = "NONE"
+        spotfire_msg = "Operacional: Extração automatizada do Scanner 5.0 a cada 30 min."
+
+    try:
+        from coletor_spotfire_cdp import get_last_scanner_sync_time
+        spotfire_sync_time = get_last_scanner_sync_time() or "--:--:--"
+    except Exception:
+        spotfire_sync_time = "--:--:--"
+
+    update_engine_health("spotfire_cdp_collector", spotfire_status, is_running=thread_spotfire_alive,
+                         error_type=spotfire_error_type, last_error=spotfire_msg,
+                         records_count=len(delivery_manager.spotfire_cache) if hasattr(delivery_manager, "spotfire_cache") else 0,
+                         engine_label="Robô CDP Scanner 5.0 (Spotfire)")
+
+    # 4. Sincronizador Nuvem Supabase
     try:
         resp = requests.get(f"{BASE_REST_URL}/system_engine_health?select=engine_name&limit=1", headers=get_headers(), timeout=6)
         cloud_ok = resp.status_code in [200, 206]
-    except Exception as exc:
-        print(f"[ENGINE_STATUS ERROR] Supabase check failed: {exc}")
+    except Exception:
         cloud_ok = False
 
     cloud_status = "OPERATIONAL" if cloud_ok else "ERROR_CONNECTION"
-    cloud_msg = "Operacional: Conexão REST com banco Supabase ativa." if cloud_ok else "Falha de Conexão: Supabase inacessível ou sem internet."
+    cloud_msg = "Operacional: Conexão REST com banco Supabase ativa." if cloud_ok else "Falha de Conexão: Supabase inacessível."
     update_engine_health("cloud_sync_listener", cloud_status, is_running=True,
                          error_type="NONE" if cloud_ok else "CONNECTION_REFUSED",
-                         last_error=cloud_msg, records_count=0)
+                         last_error=cloud_msg, records_count=0,
+                         engine_label="Banco em Nuvem Supabase")
 
     return jsonify({
         "status": "success",
@@ -353,7 +467,7 @@ def get_engine_status():
                 "is_running": thread_trbo_alive,
                 "error_type": trbo_error_type,
                 "message": trbo_msg,
-                "last_sync": data_manager.last_trbonet_sync,
+                "last_sync": format_datetime_br(data_manager.last_trbonet_sync),
                 "records": len(data_manager.trbonet_teams)
             },
             "enel_cdp": {
@@ -363,32 +477,215 @@ def get_engine_status():
                 "is_running": thread_enel_alive,
                 "error_type": enel_error_type,
                 "message": enel_msg,
-                "last_sync": delivery_manager.last_sync_time,
+                "last_sync": format_datetime_br(delivery_manager.last_sync_time),
                 "records": len(delivery_manager.active_teams)
+            },
+            "spotfire_cdp": {
+                "name": "spotfire_cdp_collector",
+                "label": "Robô CDP Scanner 5.0 (TIBCO Spotfire)",
+                "status": spotfire_status,
+                "is_running": thread_spotfire_alive,
+                "error_type": spotfire_error_type,
+                "message": spotfire_msg,
+                "last_sync": format_datetime_br(spotfire_sync_time),
+                "records": len(delivery_manager.spotfire_cache) if hasattr(delivery_manager, "spotfire_cache") else 0
             },
             "cloud_sync": {
                 "name": "cloud_sync_listener",
-                "label": "Sincronizador Nuvem Supabase",
+                "label": "Banco em Nuvem Supabase",
                 "status": cloud_status,
                 "is_running": True,
                 "error_type": "NONE" if cloud_ok else "CONNECTION_REFUSED",
                 "message": cloud_msg,
-                "last_sync": datetime.now().strftime("%H:%M:%S"),
+                "last_sync": datetime.now(BR_TZ).strftime("%H:%M:%S"),
                 "records": 0
             }
         }
     })
 
+@app.route('/api/admin/engine_details/<engine_key>', methods=['GET'])
+def get_engine_details(engine_key):
+    """
+    Retorna o resumo detalhado e métricas analíticas aprofundadas do motor selecionado:
+    - trbonet
+    - enel_cdp
+    - spotfire_cdp
+    - cloud_sync
+    """
+    from supabase_client import fetch_all_engine_health, format_datetime_br, BR_TZ
+    from delivery_manager import delivery_manager
+    from datetime import datetime
+
+    engines_db = {e.get("engine_name"): e for e in (fetch_all_engine_health() or [])}
+
+    if engine_key in ["trbonet", "trbonet_collector"]:
+        db_rec = engines_db.get("trbonet_collector", {})
+        last_sync = format_datetime_br(db_rec.get("last_success_sync") or data_manager.last_trbonet_sync)
+        summary = data_manager.consolidate_data().get("summary", {})
+        sample_teams = []
+        for t_code, t_data in list(data_manager.trbonet_teams.items())[:12]:
+            sample_teams.append({
+                "code": t_code,
+                "radio_id": t_data.get("radio_id") or "--",
+                "status": t_data.get("status") or "Online",
+                "has_gps": bool(t_data.get("latitude") and t_data.get("longitude")),
+                "speed": t_data.get("speed") or "0 km/h"
+            })
+        return jsonify({
+            "status": "success",
+            "engine_key": "trbonet",
+            "name": "trbonet_collector",
+            "label": "Motor TRBOnet One (Rádios & GPS)",
+            "icon": "radio",
+            "last_sync": last_sync,
+            "engine_status": db_rec.get("status", "OPERATIONAL"),
+            "is_running": db_rec.get("is_running", True),
+            "summary": {
+                "total_radios": len(data_manager.trbonet_teams),
+                "online_with_gps": summary.get("online_with_gps", 0),
+                "online_without_gps": summary.get("online_without_gps", 0),
+                "compliance_rate": summary.get("compliance_rate", 0),
+                "gps_rate": summary.get("gps_rate", 0),
+                "total_poweron": summary.get("total_poweron", 0)
+            },
+            "sample_records": sample_teams,
+            "action_command": "CAPTURE_TRBONET",
+            "action_label": "Disparar Leitura TRBOnet Agora"
+        })
+
+    elif engine_key in ["enel_cdp", "enel_cdp_collector"]:
+        db_rec = engines_db.get("enel_cdp_collector", {})
+        last_sync = format_datetime_br(db_rec.get("last_success_sync") or delivery_manager.last_sync_time)
+        active_teams = delivery_manager.active_teams or []
+        norte_count = sum(1 for t in active_teams if "NORTE" in str(t.get("region", "")).upper() or "NORTE" in str(t.get("ut", "")).upper())
+        leste_count = sum(1 for t in active_teams if "LESTE" in str(t.get("region", "")).upper() or "LESTE" in str(t.get("ut", "")).upper())
+        cesto_count = sum(1 for t in active_teams if "CESTO" in str(t.get("vehicle_type", "")).upper())
+        leve_count = sum(1 for t in active_teams if "LEVE" in str(t.get("vehicle_type", "")).upper())
+        munck_count = sum(1 for t in active_teams if "MUNCK" in str(t.get("vehicle_type", "")).upper())
+        plate_ok = sum(1 for t in active_teams if t.get("plate_cadastrada"))
+
+        sample_teams = []
+        for t in active_teams[:12]:
+            sample_teams.append({
+                "code": t.get("team_code"),
+                "base": t.get("base_name"),
+                "ut": t.get("ut"),
+                "filial": t.get("company"),
+                "driver": t.get("driver"),
+                "plate": t.get("plate"),
+                "plate_status": t.get("situacao_veiculo_cadastrado", "NÃO CADASTRADO"),
+                "status_op": t.get("status_equipes_brasil", "Logada")
+            })
+
+        return jsonify({
+            "status": "success",
+            "engine_key": "enel_cdp",
+            "name": "enel_cdp_collector",
+            "label": "Robô CDP Enel SP (Equipes & Turnos)",
+            "icon": "users",
+            "last_sync": last_sync,
+            "engine_status": db_rec.get("status", "OPERATIONAL"),
+            "is_running": db_rec.get("is_running", True),
+            "summary": {
+                "total_teams": len(active_teams),
+                "norte_count": norte_count,
+                "leste_count": leste_count,
+                "cesto_count": cesto_count,
+                "leve_count": leve_count,
+                "munck_count": munck_count,
+                "plate_matched_count": plate_ok,
+                "sync_source": delivery_manager.sync_source
+            },
+            "sample_records": sample_teams,
+            "action_command": "CAPTURE_ENEL",
+            "action_label": "Disparar Coleta CDP Enel SP Agora"
+        })
+
+    elif engine_key in ["spotfire_cdp", "spotfire_cdp_collector"]:
+        db_rec = engines_db.get("spotfire_cdp_collector", {})
+        try:
+            from coletor_spotfire_cdp import get_last_scanner_sync_time
+            last_sync_raw = get_last_scanner_sync_time()
+        except Exception:
+            last_sync_raw = None
+        last_sync = format_datetime_br(db_rec.get("last_success_sync") or last_sync_raw)
+
+        return jsonify({
+            "status": "success",
+            "engine_key": "spotfire_cdp",
+            "name": "spotfire_cdp_collector",
+            "label": "Robô CDP Scanner 5.0 (TIBCO Spotfire)",
+            "icon": "bar-chart-2",
+            "last_sync": last_sync,
+            "engine_status": db_rec.get("status", "OPERATIONAL"),
+            "is_running": db_rec.get("is_running", True),
+            "summary": {
+                "total_records": db_rec.get("records_count", 0),
+                "protocol": "Chrome DevTools Protocol (CDP)",
+                "target": "TIBCO Spotfire Scanner 5.0 (Tab Completa)",
+                "interval": "30 minutos (1800s)",
+                "output_table": "public.team_scanner_records"
+            },
+            "sample_records": [],
+            "action_command": "CAPTURE_SPOTFIRE",
+            "action_label": "Disparar Extração Spotfire Scanner 5.0 Agora"
+        })
+
+    elif engine_key in ["cloud_sync", "cloud_sync_listener"]:
+        db_rec = engines_db.get("cloud_sync_listener", {})
+        return jsonify({
+            "status": "success",
+            "engine_key": "cloud_sync",
+            "name": "cloud_sync_listener",
+            "label": "Banco em Nuvem Supabase",
+            "icon": "database",
+            "last_sync": datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S"),
+            "engine_status": "OPERATIONAL",
+            "is_running": True,
+            "summary": {
+                "provider": "Supabase PostgreSQL 15 (AWS Cloud)",
+                "realtime_ws": "Ativo (wss://xgfawbqllikosyngfvwa.supabase.co)",
+                "security": "Row Level Security (RLS) habilitado",
+                "tables": ["team_delivery_records", "team_delivery_sessions", "team_scanner_records", "system_engine_health", "system_commands"]
+            },
+            "sample_records": [],
+            "action_command": "TEST_CLOUD",
+            "action_label": "Testar Conexão Supabase"
+        })
+
+    return jsonify({"status": "error", "message": "Motor não encontrado."}), 404
+
 @app.route('/api/admin/restart_engines', methods=['POST'])
 def restart_engines():
     """
     Reinicia os motores autônomos locais sem derrubar o servidor web.
+    Se estiver na nuvem (Vercel), envia comando remoto para a máquina Windows executar.
     """
     try:
         user = get_current_user()
         is_local = request.remote_addr in ['127.0.0.1', 'localhost', '::1']
         if not user and not is_local:
             return jsonify({"status": "unauthorized", "message": "Acesso Restrito: Faça login para reiniciar motores."}), 401
+
+        is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+        if is_cloud:
+            from supabase_client import create_sync_command, wait_for_command_completion
+            user_name = (user.get("nome") if user else "Admin")
+            cmd_res = create_sync_command("RESTART_ENGINES", {"requested_by": user_name})
+            cmd_id = cmd_res.get("command_id")
+            if cmd_id:
+                finished = wait_for_command_completion(cmd_id, timeout_seconds=8)
+                if finished.get("status") == "COMPLETED":
+                    return jsonify({
+                        "status": "success",
+                        "message": "Motores locais reiniciados com sucesso pelo Agente Windows!"
+                    })
+                else:
+                    return jsonify({
+                        "status": "success",
+                        "message": "Ordem de reinício enviada ao Agente Windows! Os motores estão reiniciando em segundo plano."
+                    })
+            return jsonify({"status": "error", "message": "Falha ao enfileirar comando no Supabase."}), 500
 
         print("[ADMIN] Reiniciando motores locais de segundo plano a pedido do usuário...", flush=True)
         start_background_jobs(force_restart=True)
@@ -498,6 +795,15 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
         except Exception as err:
             print(f"[WARN] Falha ao enviar snapshot para o Supabase: {err}")
 
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health("trbonet_collector", "OPERATIONAL", is_running=True,
+                                 error_type="NONE", last_error=None,
+                                 records_count=len(radios),
+                                 engine_label="Motor TRBOnet One (Rádios & GPS)")
+        except Exception:
+            pass
+
         timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         print(f"[{timestamp_str}] [TRBONET SYNC] {len(radios)} rádios sincronizados ({source_label}).")
         return {
@@ -507,6 +813,13 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
         }
     except Exception as e:
         print(f"[TRBONET SYNC ERROR] {e}")
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health("trbonet_collector", "ERROR_CONNECTION", is_running=True,
+                                 error_type="CONNECTION_REFUSED", last_error=str(e),
+                                 engine_label="Motor TRBOnet One (Rádios & GPS)")
+        except Exception:
+            pass
         return {
             "status": "error",
             "message": f"Erro na captura do TRBOnet: {str(e)}"
@@ -517,6 +830,7 @@ def sync_unified_operational():
     """
     Sincroniza simultaneamente o Equipes Brasil (Portal Enel via CDP) e o TRBOnet One (UIAutomation),
     garantindo que ambas as fontes estejam 100% atualizadas em tempo real.
+    Se estiver na nuvem (Vercel), despacha a ordem para o Agente Local Windows via Supabase.
     """
     user = get_current_user()
     if not user:
@@ -524,6 +838,31 @@ def sync_unified_operational():
             "status": "unauthorized",
             "message": "Acesso Restrito: É necessário efetuar login no Cadeado para sincronizar."
         }), 401
+
+    is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+    if is_cloud:
+        from supabase_client import create_sync_command, wait_for_command_completion, fetch_latest_snapshot_from_supabase
+        cmd_res = create_sync_command("SYNC_UNIFIED", {"source": "Painel Web (Nuvem)"})
+        cmd_id = cmd_res.get("command_id")
+        if cmd_id:
+            finished = wait_for_command_completion(cmd_id, timeout_seconds=9)
+            if finished.get("status") == "COMPLETED":
+                latest_cloud = fetch_latest_snapshot_from_supabase()
+                if latest_cloud.get("status") == "success" and latest_cloud.get("data"):
+                    data_manager.load_from_snapshot(latest_cloud["data"])
+                return jsonify({
+                    "status": "success",
+                    "message": "Agente Local Windows executou a sincronização unificada com sucesso!",
+                    "data": data_manager.consolidate_data()
+                }), 200
+            else:
+                return jsonify({
+                    "status": "queued",
+                    "command_id": cmd_id,
+                    "message": "Ordem de sincronização enviada ao Robô Local! Processando em segundo plano.",
+                    "data": data_manager.consolidate_data()
+                }), 202
+        return jsonify({"status": "error", "message": "Falha ao enfileirar comando unificado no Supabase."}), 500
 
     enel_status = "ok"
     enel_msg = ""
@@ -1107,7 +1446,7 @@ def get_teams_data():
     if is_cloud or (not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams):
         cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
         if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
-            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase")
+            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase", captured_at=cloud_snap.get("captured_at"))
 
         try:
             from supabase_client import fetch_delivery_records_by_date
@@ -1306,7 +1645,7 @@ def export_teams_excel():
     if not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams:
         cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
         if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
-            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase")
+            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase", captured_at=cloud_snap.get("captured_at"))
 
     teams = list(delivery_manager.daily_accumulated_teams.values()) if delivery_manager.daily_accumulated_teams else delivery_manager.active_teams
     rows = []
@@ -1392,7 +1731,7 @@ def api_fleet_audit_plates():
     if not teams:
         cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
         if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
-            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase")
+            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase", captured_at=cloud_snap.get("captured_at"))
             teams = delivery_manager.active_teams
 
     matched_ok = []
@@ -1527,6 +1866,20 @@ def remote_command_listener_worker(poll_interval=2.5):
                     res = executar_ciclo_sincronizacao_spotfire(source_label="Disparo Remoto Solicitado na Nuvem")
                     status = "COMPLETED" if res.get("status") == "success" else "ERROR"
                     update_command_status(cmd_id, status, res)
+                elif cmd_name in ["RESTART_ENGINES", "REINICIAR_MOTORES"]:
+                    print("[REMOTE COMMAND] Reiniciando motores locais em segundo plano no Windows...", flush=True)
+                    start_background_jobs(force_restart=True)
+                    update_command_status(cmd_id, "COMPLETED", {"message": "Motores locais reiniciados com sucesso no Windows!"})
+                elif cmd_name in ["SYNC_UNIFIED", "UNIFIED_SYNC"]:
+                    print("[REMOTE COMMAND] Executando Sincronização Unificada no Windows...", flush=True)
+                    try:
+                        from coletor_enel_cdp import executar_ciclo_sincronizacao_enel
+                        executar_ciclo_sincronizacao_enel(source_label="Disparo Remoto Unificado")
+                    except Exception as e_enel:
+                        print(f"[REMOTE UNIFIED ENEL WARN] {e_enel}")
+                    trbo_res = execute_trbonet_sync(source_label="Disparo Remoto Unificado")
+                    status = "COMPLETED" if trbo_res.get("status") in ["success", "warning"] else "ERROR"
+                    update_command_status(cmd_id, status, {"message": "Sincronização unificada concluída no Windows!"})
         except Exception:
             pass
         time.sleep(poll_interval)
