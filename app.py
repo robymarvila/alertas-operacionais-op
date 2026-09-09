@@ -671,18 +671,34 @@ def get_engine_details(engine_key):
         if last_sync and "-" in str(last_sync) and "T" in str(last_sync):
             last_sync = format_datetime_br(last_sync)
 
-        bid_records = list(delivery_manager.bid_cache.values()) if hasattr(delivery_manager, "bid_cache") else []
+        bid_records = list(delivery_manager.bid_cache.values()) if hasattr(delivery_manager, "bid_cache") and delivery_manager.bid_cache else []
+        if not bid_records:
+            try:
+                from supabase_client import fetch_bid_records_by_date
+                bid_records = fetch_bid_records_by_date() or []
+            except Exception:
+                bid_records = []
+
+        def norm_st(s):
+            up = str(s or "").upper()
+            if "OPERA" in up: return "Em Operação"
+            if "CHECKLIST" in up: return "Em Checklist"
+            if "PLANEJAD" in up: return "Planejada"
+            if "RETORNAD" in up: return "Retornada"
+            if "BLOQUEAD" in up: return "Bloqueada"
+            return str(s)
+
         total_teams = len(bid_records)
-        em_operacao = sum(1 for r in bid_records if r.get("status_bid") == "Em Operação")
-        em_checklist = sum(1 for r in bid_records if r.get("status_bid") == "Em Checklist")
-        planejadas = sum(1 for r in bid_records if r.get("status_bid") == "Planejada")
-        bloqueadas = sum(1 for r in bid_records if r.get("status_bid") in ["Bloqueada", "Retornada"])
+        em_operacao = sum(1 for r in bid_records if norm_st(r.get("status_bid")) == "Em Operação")
+        em_checklist = sum(1 for r in bid_records if norm_st(r.get("status_bid")) == "Em Checklist")
+        planejadas = sum(1 for r in bid_records if norm_st(r.get("status_bid")) == "Planejada")
+        bloqueadas = sum(1 for r in bid_records if norm_st(r.get("status_bid")) in ["Bloqueada", "Retornada"])
 
         sample_teams = []
         for r in bid_records[:15]:
             sample_teams.append({
                 "code": r.get("team_code", "--"),
-                "status_bid": r.get("status_bid", "--"),
+                "status_bid": norm_st(r.get("status_bid", "--")),
                 "base": r.get("base", "--"),
                 "driver": r.get("driver", "--"),
                 "plate": r.get("plate", "--"),

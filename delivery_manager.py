@@ -935,24 +935,79 @@ class DeliveryManager:
             date_str = self.current_date_str
 
         is_today = (date_str == self.current_date_str)
+        is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
 
-        # 1. Obtém universo do EquipesBrasil e da Visão Operacional BID
-        if is_today:
+        # 1. Obtém universo do EquipesBrasil
+        eb_teams = {}
+        if is_today and self.daily_accumulated_teams and not is_cloud:
             eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values()}
+        else:
+            try:
+                from supabase_client import fetch_delivery_records_by_date, fetch_latest_delivery_snapshot_from_supabase
+                if is_today and not self.daily_accumulated_teams:
+                    cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+                    if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
+                        self.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase", captured_at=cloud_snap.get("captured_at"))
+
+                deliv_records = fetch_delivery_records_by_date(date_str)
+                if deliv_records:
+                    eb_teams = {r["team_code"]: r for r in deliv_records if r.get("team_code")}
+                    if is_today:
+                        for r in deliv_records:
+                            t_code = r.get("team_code")
+                            if t_code and t_code not in self.daily_accumulated_teams:
+                                self.daily_accumulated_teams[t_code] = r
+                elif self.daily_accumulated_teams:
+                    eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values()}
+            except Exception as err:
+                print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para EB {date_str}: {err}")
+                eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values()}
+
+        # 2. Obtém universo da Visão Operacional BID
+        bid_records_map = {}
+        bid_last_sync_time = self.last_bid_sync
+        if is_today and self.bid_cache and not is_cloud:
             bid_records_map = dict(self.bid_cache)
         else:
             try:
-                from supabase_client import fetch_delivery_records_by_date, fetch_bid_records_by_date
-                deliv_records = fetch_delivery_records_by_date(date_str)
-                eb_teams = {r["team_code"]: r for r in deliv_records if r.get("team_code")}
+                from supabase_client import fetch_bid_records_by_date, format_datetime_br
                 bid_list = fetch_bid_records_by_date(date_str)
-                bid_records_map = {r["team_code"]: r for r in bid_list if r.get("team_code")}
+                if bid_list:
+                    bid_records_map = {r["team_code"]: r for r in bid_list if r.get("team_code")}
+                    if not bid_last_sync_time:
+                        cap = bid_list[0].get("captured_at") or bid_list[0].get("updated_at")
+                        if cap:
+                            bid_last_sync_time = format_datetime_br(cap)
+                    if is_today:
+                        for r in bid_list:
+                            code = str(r.get("team_code", "")).strip().upper()
+                            if code:
+                                self.bid_cache[code] = dict(r)
+                elif self.bid_cache:
+                    bid_records_map = dict(self.bid_cache)
             except Exception as err:
-                print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para {date_str}: {err}")
-                eb_teams = {}
-                bid_records_map = {}
+                print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para BID {date_str}: {err}")
+                if self.bid_cache:
+                    bid_records_map = dict(self.bid_cache)
 
-        # 2. Cruzamento Forense Linha a Linha
+        def normalize_bid_status(raw_status):
+            if not raw_status or str(raw_status).strip() in ["--", "NONE", "NULL", ""]:
+                return "Não Encontrada"
+            st = str(raw_status).strip()
+            s_up = st.upper()
+            if "OPERA" in s_up:
+                return "Em Operação"
+            elif "CHECKLIST" in s_up:
+                return "Em Checklist"
+            elif "PLANEJAD" in s_up:
+                return "Planejada"
+            elif "RETORNAD" in s_up:
+                return "Retornada"
+            elif "BLOQUEAD" in s_up:
+                return "Bloqueada"
+            return st
+
+        # 3. Cruzamento Forense Linha a Linha
         all_team_codes = set(eb_teams.keys()) | set(bid_records_map.keys())
         reconciled_rows = []
 
@@ -979,7 +1034,7 @@ class DeliveryManager:
 
             is_eb_active = eb.get("is_active", True) if eb else False
             eb_status = eb.get("status", "Deslogada") if eb else "Não Logada"
-            bid_status = bid.get("status_bid", "Não Encontrada") if bid else "Não Encontrada"
+            bid_status = normalize_bid_status(bid.get("status_bid") if bid else "Não Encontrada")
 
             cross_status = "NÃO_CLASSIFICADO"
             cross_severity = "neutral"
@@ -1108,7 +1163,7 @@ class DeliveryManager:
         return {
             "status": "success",
             "date": date_str,
-            "last_bid_sync": self.last_bid_sync,
+            "last_bid_sync": bid_last_sync_time or self.last_bid_sync or "--:--:--",
             "last_eb_sync": self.last_sync_time,
             "kpis": kpis,
             "rows": reconciled_rows,

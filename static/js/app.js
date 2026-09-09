@@ -7022,11 +7022,12 @@ async function openEngineDetailsModal(engineKey) {
             if (contentEl) {
                 let rowsHtml = samples.map(t => {
                     const st = t.status_bid || '--';
+                    const stUp = st.toUpperCase();
                     let badgeClass = 'badge-neutral';
-                    if (st === 'Em Operação') badgeClass = 'badge-conforme';
-                    else if (st === 'Em Checklist') badgeClass = 'badge-alerta-critico';
-                    else if (st === 'Planejada') badgeClass = 'badge-alerta-grave';
-                    else if (st === 'Bloqueada' || st === 'Retornada') badgeClass = 'badge-alerta-impeditivo';
+                    if (stUp.includes('OPERA')) badgeClass = 'badge-conforme';
+                    else if (stUp.includes('CHECKLIST')) badgeClass = 'badge-alerta-critico';
+                    else if (stUp.includes('PLANEJAD')) badgeClass = 'badge-alerta-grave';
+                    else if (stUp.includes('BLOQUEAD') || stUp.includes('RETORNAD')) badgeClass = 'badge-alerta-impeditivo';
 
                     return `
                     <tr>
@@ -7981,13 +7982,14 @@ function filterOnlineBidTable() {
         // Status BID
         let bBadge = '';
         const bStatus = r.status_bid || 'Não Encontrada';
-        if (bStatus === 'Em Operação') {
+        const bUpper = bStatus.toUpperCase();
+        if (bUpper.includes('OPERA')) {
             bBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">✓ Em Operação</span>`;
-        } else if (bStatus === 'Em Checklist') {
+        } else if (bUpper.includes('CHECKLIST')) {
             bBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.18); color: #f59e0b; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">⏱️ Em Checklist</span>`;
-        } else if (bStatus === 'Planejada') {
+        } else if (bUpper.includes('PLANEJAD')) {
             bBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">⚠️ Planejada</span>`;
-        } else if (bStatus === 'Bloqueada' || bStatus === 'Retornada') {
+        } else if (bUpper.includes('BLOQUEAD') || bUpper.includes('RETORNAD')) {
             bBadge = `<span class="badge" style="background: rgba(225, 29, 72, 0.18); color: #e11d48; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">⛔ ${bStatus}</span>`;
         } else {
             bBadge = `<span class="badge" style="background: rgba(192, 132, 252, 0.15); color: #c084fc; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">🟣 Não Cadastrada</span>`;
