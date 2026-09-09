@@ -193,34 +193,84 @@ def extrair_dados_enel_via_cdp():
         else:
             time.sleep(1.0)
 
-        # 4. Extrai todas as linhas da tabela
+        # 4. Extrai todas as linhas da tabela (14 colunas oficiais com Marcação e Desvio)
         js_extract = """
         (() => {
             const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
             const headers = Array.from(document.querySelectorAll('table thead th, [role="columnheader"]')).map(h => h.innerText.trim());
             const results = [];
 
+            // Mapeamento dinâmico de cabeçalhos
+            const colMap = {};
+            headers.forEach((h, idx) => {
+                const cleanH = h.toUpperCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+                if (cleanH.includes('UT') && colMap['ut'] === undefined) colMap['ut'] = idx;
+                else if (cleanH.includes('BASE') && colMap['base'] === undefined) colMap['base'] = idx;
+                else if (cleanH.includes('FILIAL') && colMap['filial'] === undefined) colMap['filial'] = idx;
+                else if (cleanH.includes('VEIC') && colMap['veiculo'] === undefined) colMap['veiculo'] = idx;
+                else if (cleanH.includes('EQUIPE') && colMap['equipe'] === undefined) colMap['equipe'] = idx;
+                else if (cleanH.includes('TIPO') && colMap['tipo'] === undefined) colMap['tipo'] = idx;
+                else if (cleanH.includes('MOTORISTA') && colMap['motorista'] === undefined) colMap['motorista'] = idx;
+                else if (cleanH.includes('TURNO') && colMap['turno'] === undefined) colMap['turno'] = idx;
+                else if (cleanH.includes('MARCA') && colMap['marcacao'] === undefined) colMap['marcacao'] = idx;
+                else if (cleanH.includes('DESVIO') && colMap['desvio'] === undefined) colMap['desvio'] = idx;
+                else if (cleanH.includes('GPS') && colMap['gps'] === undefined) colMap['gps'] = idx;
+                else if (cleanH.includes('STATUS') && colMap['status'] === undefined) colMap['status'] = idx;
+                else if (cleanH.includes('PLACA') && colMap['placa'] === undefined) colMap['placa'] = idx;
+                else if (cleanH.includes('DESCANSO') && colMap['descanso'] === undefined) colMap['descanso'] = idx;
+                else if (cleanH.includes('ORDEM') && colMap['ordem'] === undefined) colMap['ordem'] = idx;
+            });
+
             rows.forEach(r => {
                 const cells = Array.from(r.querySelectorAll('td, [role="cell"]')).map(c => c.innerText.trim());
                 if (cells.length >= 8) {
+                    const getVal = (key, fallbackIdx) => {
+                        if (colMap[key] !== undefined && colMap[key] < cells.length && cells[colMap[key]]) {
+                            return cells[colMap[key]];
+                        }
+                        return (fallbackIdx !== undefined && fallbackIdx < cells.length) ? cells[fallbackIdx] : '';
+                    };
+
                     const obj = {};
                     headers.forEach((h, idx) => {
-                        if (h) obj[h] = cells[idx] || '';
+                        if (h && idx < cells.length) obj[h] = cells[idx] || '';
                     });
-                    // Mapeamento posicional oficial (13 colunas da tabela Equipes Brasil)
-                    obj['UT'] = cells[0] || '';
-                    obj['BASE'] = cells[1] || '';
-                    obj['FILIAL'] = cells[2] || '';
-                    obj['VEÍCULO'] = cells[3] || '';
-                    obj['EQUIPE'] = cells[4] || '';
-                    obj['TIPO'] = cells[5] || '';
-                    obj['MOTORISTA'] = cells[6] || '';
-                    obj['TURNO'] = cells[7] || '';
-                    obj['GPS'] = cells[8] || '';
-                    obj['STATUS'] = cells[9] || 'Logada';
-                    obj['PLACA'] = cells[10] || '';
-                    obj['INICIO_DESCANSO'] = cells[11] || '';
-                    obj['ORDEM'] = cells[12] || '';
+
+                    // Extração estruturada das 14 colunas oficiais
+                    obj['UT'] = getVal('ut', 0);
+                    obj['BASE'] = getVal('base', 1);
+                    obj['FILIAL'] = getVal('filial', 2);
+                    obj['VEÍCULO'] = getVal('veiculo', 3);
+                    obj['EQUIPE'] = getVal('equipe', 4);
+                    obj['TIPO'] = getVal('tipo', 5);
+                    obj['MOTORISTA'] = getVal('motorista', 6);
+                    obj['TURNO'] = getVal('turno', 7);
+
+                    // Coluna Marcação e Desvio
+                    const rawMarcacao = getVal('marcacao', 8);
+                    let horaMarcacao = rawMarcacao;
+                    let desvioStr = getVal('desvio', -1);
+
+                    // Se marcação contiver desvio embutido (ex: '07:31 (+32min)')
+                    if (rawMarcacao && rawMarcacao.includes('(')) {
+                        const parts = rawMarcacao.split('(');
+                        horaMarcacao = parts[0].trim();
+                        if (!desvioStr) {
+                            desvioStr = '(' + parts.slice(1).join('(').trim();
+                            desvioStr = desvioStr.replace(/^[()]+|[()]+$/g, '').trim();
+                        }
+                    }
+
+                    obj['MARCACAO'] = horaMarcacao || '--';
+                    obj['DESVIO'] = desvioStr || '--';
+                    obj['RAW_MARCACAO'] = rawMarcacao || '--';
+
+                    obj['GPS'] = getVal('gps', 9);
+                    obj['STATUS'] = getVal('status', 10) || 'Logada';
+                    obj['PLACA'] = getVal('placa', 11);
+                    obj['INICIO_DESCANSO'] = getVal('descanso', 12);
+                    obj['ORDEM'] = getVal('ordem', 13);
+
                     results.push(obj);
                 }
             });
@@ -292,6 +342,14 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
                                  engine_label="Robô CDP Enel SP (Equipes & Turnos)")
         except Exception:
             pass
+
+        # Dispara a sincronização sequencial do CDP BidTech Visão Operacional logo após Equipes Brasil
+        try:
+            from coletor_bid_cdp import executar_ciclo_sincronizacao_bid
+            import threading
+            threading.Thread(target=executar_ciclo_sincronizacao_bid, kwargs={"source_label": "Gatilho Pós-EquipesBrasil"}, daemon=True).start()
+        except Exception as b_err:
+            print(f"[BID CDP AUTO TRIGGER ERROR] {b_err}", flush=True)
 
         return {
             "status": "success",

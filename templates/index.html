@@ -20,7 +20,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=3.5.0">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=4.3.0">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -1023,7 +1023,7 @@
                     <div class="brand-badge" onclick="navigateToView('hub')" style="cursor: pointer;" title="Ir para o Hub de Módulos CCO">
                         <div class="brand-text">
                             <h2>ENTREGA DE EQUIPES</h2>
-                            <span>Monitoramento de Frota & Turnos (Enel SP)</span>
+                            <span>Monitoramento de Equipes</span>
                         </div>
                     </div>
 
@@ -1032,6 +1032,10 @@
                         <button class="screen-switch-btn active" id="btnSwitchOnline" onclick="switchDeliveryScreen('online')">
                             <span class="live-status-dot"></span>
                             <span>ONLINE / TEMPO REAL</span>
+                        </button>
+                        <button class="screen-switch-btn" id="btnSwitchOnlineBid" onclick="switchDeliveryScreen('online_bid')">
+                            <i data-lucide="clipboard-check" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                            <span>EQUIPES LOGADAS x CHECKLIST</span>
                         </button>
                         <button class="screen-switch-btn" id="btnSwitchHistory" onclick="switchDeliveryScreen('history')">
                             <span>AUDITORIA & HISTÓRICO</span>
@@ -1476,17 +1480,21 @@
                             <table class="data-table" id="deliveryMainTable">
                                 <thead>
                                     <tr>
-                                        <th>EQUIPE</th>
+                                        <th>UT</th>
                                         <th>BASE</th>
-                                        <th>UT / FILIAL</th>
-                                        <th>FROTA</th>
-                                        <th>TURNO</th>
-                                        <th>GPS</th>
+                                        <th>FILIAL</th>
+                                        <th>VEÍCULO</th>
+                                        <th>EQUIPE</th>
+                                        <th>MOTORISTA</th>
+                                        <th>TURNO PROGRAMADO</th>
+                                        <th>MARCAÇÃO</th>
+                                        <th>DESVIO</th>
+                                        <th>GPS (MIN)</th>
                                         <th>STATUS</th>
-                                        <th>PLACA / FROTA</th>
+                                        <th>STATUS BID</th>
+                                        <th>PLACA</th>
                                         <th>INÍCIO DESCANSO</th>
                                         <th>ORDEM</th>
-                                        <th>MOTORISTA</th>
                                     </tr>
                                 </thead>
                                 <tbody id="deliveryTableBody">
@@ -2067,6 +2075,259 @@
             </div>
             <!-- FIM DE deliveryScreenHistory -->
 
+            <!-- ============================================================= -->
+            <!-- TELA 3: ONLINE x BID (AUDITORIA FORENSE DE CHECKLIST)       -->
+            <!-- ============================================================= -->
+            <!-- TELA 3: EQUIPES LOGADAS x CHECKLIST (AUDITORIA FORENSE)      -->
+            <!-- ============================================================= -->
+            <div id="deliveryScreenOnlineBid" class="delivery-screen-container" style="display: none;">
+                <!-- 1. HEADER EXECUTIVO EQUIPES LOGADAS x CHECKLIST -->
+                <div class="delivery-screen-header-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 14px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <h2 style="font-family: var(--font-main); font-size: 1.18rem; font-weight: 800; color: var(--text-primary); margin: 0; letter-spacing: -0.01em;">
+                            EQUIPES LOGADAS x CHECKLIST
+                        </h2>
+                    </div>
+
+                    <!-- Controles Rápidos -->
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <div class="audit-control-group" style="display: flex; align-items: center; gap: 8px;">
+                            <label for="onlineBidDateInput" style="font-family: var(--font-main); font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">DATA OPERACIONAL:</label>
+                            <input type="date" id="onlineBidDateInput" class="audit-date-input" onchange="loadOnlineXBidData()" style="font-family: var(--font-main);" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. GRID DE KPIS LIQUID GLASS (6 CARDS INTERATIVOS COM CLICK-TO-FILTER) -->
+                <div class="online-bid-kpi-grid">
+                    <!-- Card 1: CONFORME (Taxa de Conformidade) -->
+                    <div class="fleet-liquid-card kpi-card-conforme" id="kpiCardBidConforme" onclick="toggleBidCardFilter('CONFORME')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para filtrar apenas equipes Conformes">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <span class="fleet-liquid-title" style="color: #10b981;">CONFORMES (EM OPERAÇÃO)</span>
+                            <span class="badge" id="onlineBidConformidadeRateBadge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; font-weight: 800; font-size: 0.75rem;">0.0%</span>
+                        </div>
+                        <strong class="hero-big-number" style="color: #10b981;" id="kpiBidConforme">0</strong>
+                        <span class="fleet-liquid-sub">Logadas • Checklist Concluído</span>
+                    </div>
+
+                    <!-- Card 2: ALERTA CRÍTICO (Em Checklist) -->
+                    <div class="fleet-liquid-card kpi-card-critico" id="kpiCardBidCritico" onclick="toggleBidCardFilter('ALERTA CRÍTICO')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para filtrar equipes em Alerta Crítico">
+                        <span class="fleet-liquid-title" style="color: #f59e0b;">ALERTA CRÍTICO</span>
+                        <strong class="hero-big-number" style="color: #f59e0b;" id="kpiBidCritico">0</strong>
+                        <span class="fleet-liquid-sub">Logadas • Checklist em Andamento</span>
+                    </div>
+
+                    <!-- Card 3: ALERTA GRAVE (Planejada) -->
+                    <div class="fleet-liquid-card kpi-card-grave" id="kpiCardBidGrave" onclick="toggleBidCardFilter('ALERTA GRAVE')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para filtrar equipes em Alerta Grave">
+                        <span class="fleet-liquid-title" style="color: #ef4444;">ALERTA GRAVE</span>
+                        <strong class="hero-big-number" style="color: #ef4444;" id="kpiBidGrave">0</strong>
+                        <span class="fleet-liquid-sub">Logadas • Sem Iniciar Checklist</span>
+                    </div>
+
+                    <!-- Card 4: ALERTA GRAVÍSSIMO (Não Encontrada) -->
+                    <div class="fleet-liquid-card kpi-card-gravissimo" id="kpiCardBidGravissimo" onclick="toggleBidCardFilter('ALERTA GRAVÍSSIMO')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para filtrar equipes Não Encontradas no Checklist">
+                        <span class="fleet-liquid-title" style="color: #c084fc;">ALERTA GRAVÍSSIMO</span>
+                        <strong class="hero-big-number" style="color: #c084fc;" id="kpiBidGravissimo">0</strong>
+                        <span class="fleet-liquid-sub">Logadas • Não Encontradas no Checklist</span>
+                    </div>
+
+                    <!-- Card 5: IMPEDITIVOS (Bloqueada / Retornada) -->
+                    <div class="fleet-liquid-card kpi-card-impeditivo" id="kpiCardBidImpeditivo" onclick="toggleBidCardFilter('ALERTA IMPEDITIVO')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para filtrar equipes com Checklist Bloqueado ou Retornado">
+                        <span class="fleet-liquid-title" style="color: #f43f5e;">IMPEDITIVOS</span>
+                        <strong class="hero-big-number" style="color: #f43f5e;" id="kpiBidImpeditivo">0</strong>
+                        <span class="fleet-liquid-sub">Logadas • Bloqueada / Retornada</span>
+                    </div>
+
+                    <!-- Card 6: TOTAL LOGADAS -->
+                    <div class="fleet-liquid-card kpi-card-total-eb" id="kpiCardBidTotalEb" onclick="toggleBidCardFilter('TOTAL_EB')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para ver todas as equipes logadas">
+                        <span class="fleet-liquid-title" style="color: #38bdf8;">TOTAL LOGADAS</span>
+                        <strong class="hero-big-number" style="color: #38bdf8;" id="kpiBidTotalEb">0</strong>
+                        <span class="fleet-liquid-sub" id="kpiBidTotalEmOperacaoSub">0 em operação no Checklist</span>
+                    </div>
+                </div>
+
+                <!-- 3. BARRA DE FILTROS DA RECONCILIAÇÃO (PADRÃO AUDITORIA & HISTÓRICO) -->
+                <div class="period-filters-bar online-bid-filters-bar" style="margin-bottom: 20px; flex-direction: column; align-items: stretch;">
+                    <!-- LINHA 1: TÍTULO E CONTAGEM ISOLADOS (SEM DESLOCAMENTO) -->
+                    <div class="period-filters-title-row" style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                        <div class="period-filters-title" style="margin: 0;">
+                            <i data-lucide="filter" class="period-filter-icon"></i>
+                            <span>FILTROS DA RECONCILIAÇÃO</span>
+                        </div>
+                        <span id="onlineBidTableCountBadge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 800; font-size: 0.76rem; padding: 5px 12px; border-radius: 9999px;">
+                            0 equipes listadas
+                        </span>
+                    </div>
+
+                    <!-- LINHA 2: CONTROLES MULTI-FILTRO -->
+                    <div class="period-filters-controls" style="width: 100%; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px;">
+                        <!-- FILTRO 1: REGIÃO (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">REGIÃO</span>
+                            <button type="button" class="period-filter-pill-btn" id="bidFilterRegionBtn" data-target="bidFilterRegionMenu">
+                                <span id="bidFilterRegionLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="bidFilterRegionMenu">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-bid-filter="region">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-bid-filter="region">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="bidFilterRegionList">
+                                    <!-- Checkboxes preenchidos via JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 2: BASE / UT (MULTI-SELEÇÃO HIERÁRQUICA: NORTE / LESTE) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">BASE / UT</span>
+                            <button type="button" class="period-filter-pill-btn" id="bidFilterBaseBtn" data-target="bidFilterBaseMenu">
+                                <span id="bidFilterBaseLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="bidFilterBaseMenu" style="min-width: 250px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-bid-filter="base">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-bid-filter="base">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="bidFilterBaseList">
+                                    <!-- Checkboxes hierárquicos preenchidos via JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 3: STATUS EB (NOVO - MULTI-SELEÇÃO: LOGADA / NÃO LOGADA) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">STATUS EB</span>
+                            <button type="button" class="period-filter-pill-btn" id="bidFilterEbStatusBtn" data-target="bidFilterEbStatusMenu">
+                                <span id="bidFilterEbStatusLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="bidFilterEbStatusMenu">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-bid-filter="eb-status">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-bid-filter="eb-status">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="bidFilterEbStatusList">
+                                    <!-- Checkboxes preenchidos via JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 4: STATUS BID (NOVO - MULTI-SELEÇÃO: CHECKLIST STATUS) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">STATUS BID</span>
+                            <button type="button" class="period-filter-pill-btn" id="bidFilterBidStatusBtn" data-target="bidFilterBidStatusMenu">
+                                <span id="bidFilterBidStatusLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="bidFilterBidStatusMenu" style="min-width: 220px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-bid-filter="bid-status">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-bid-filter="bid-status">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="bidFilterBidStatusList">
+                                    <!-- Checkboxes preenchidos via JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 5: STATUS CRUZADO (MULTI-SELEÇÃO FORENSE) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">STATUS CRUZADO</span>
+                            <button type="button" class="period-filter-pill-btn" id="bidFilterCrossStatusBtn" data-target="bidFilterCrossStatusMenu">
+                                <span id="bidFilterCrossStatusLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="bidFilterCrossStatusMenu" style="min-width: 260px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-bid-filter="cross-status">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-bid-filter="cross-status">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="bidFilterCrossStatusList">
+                                    <!-- Checkboxes preenchidos via JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 6: TURNO (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">TURNO</span>
+                            <button type="button" class="period-filter-pill-btn" id="bidFilterTurnoBtn" data-target="bidFilterTurnoMenu">
+                                <span id="bidFilterTurnoLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="bidFilterTurnoMenu">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-bid-filter="turno">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-bid-filter="turno">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="bidFilterTurnoList">
+                                    <!-- Checkboxes preenchidos via JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- BUSCA TEXTUAL -->
+                        <div class="period-filter-group" style="min-width: 240px;">
+                            <span class="period-filter-label">BUSCAR EQUIPE / PLACA / COMPONENTE</span>
+                            <div class="period-filter-select-wrap">
+                                <input type="text" id="filterBidSearch" class="period-filter-select" style="padding-right: 12px;" placeholder="Ex: EML117, TXE5G81, CESAR..." oninput="filterOnlineBidTable()" />
+                            </div>
+                        </div>
+
+                        <!-- BOTÃO LIMPAR -->
+                        <div class="period-filter-group" style="justify-content: flex-end;">
+                            <button type="button" class="btn btn-secondary" style="height: 38px; border-radius: 12px; font-weight: 800; font-size: 0.78rem; padding: 0 16px;" onclick="clearOnlineBidFilters()" title="Limpar todos os filtros">
+                                LIMPAR
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. TABELA NOMINAL FORENSE ONLINE x CHECKLIST -->
+                <div class="delivery-table-card glass-card">
+                    <div class="delivery-table-header" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+                        <div class="delivery-table-title-wrap">
+                            <div class="delivery-table-title">
+                                <i data-lucide="table-properties" class="table-title-icon" style="color: #38bdf8;"></i>
+                                <h3 style="font-size: 0.95rem; font-weight: 800; color: var(--text-primary);">RECONCILIAÇÃO FORENSE ONLINE x CHECKLIST</h3>
+                            </div>
+                            <span class="delivery-table-subtitle" id="onlineBidTableStateSubtitle" style="font-size: 0.76rem; color: var(--text-secondary);">
+                                Cruzamento nominal em tempo real entre equipes ativas no despacho e checklist
+                            </span>
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="exportOnlineXBidExcel()" title="Baixar relatório completo da reconciliação em Excel" style="height: 36px; padding: 0 16px; font-weight: 700; border-radius: 10px; display: inline-flex; align-items: center; gap: 6px;">
+                            <i data-lucide="file-spreadsheet" style="width: 14px; height: 14px;"></i>
+                            <span>EXPORTAR EXCEL</span>
+                        </button>
+                    </div>
+                    <div class="table-responsive" id="onlineBidTableContainer" style="min-height: 520px; max-height: 600px; overflow-y: auto; position: relative;">
+                        <table class="data-table" id="onlineBidTable">
+                            <thead>
+                                <tr>
+                                    <th>STATUS CRUZADO</th>
+                                    <th>EQUIPE</th>
+                                    <th>STATUS EB</th>
+                                    <th>STATUS BID</th>
+                                    <th>TEMPO NO BID</th>
+                                    <th>BASE</th>
+                                    <th>TURNO</th>
+                                    <th>PLACA</th>
+                                    <th>COMPONENTES (BID)</th>
+                                    <th>ORDEM SERVIÇO</th>
+                                </tr>
+                            </thead>
+                            <tbody id="onlineBidTableBody">
+                                <!-- Preenchido dinamicamente via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <!-- FIM DE deliveryScreenOnlineBid -->
+
         </div>
         <!-- FIM DO MÓDULO 2 (moduleDeliveryView) -->
 
@@ -2215,7 +2476,33 @@
                         </div>
                     </div>
 
-                    <!-- Motor 4: Supabase Cloud -->
+                    <!-- Motor 4: Robô CDP BidTech (Checklist Operacional) -->
+                    <div class="engine-health-card glass-card clickable-engine-card" id="engineCardBid" onclick="openEngineDetailsModal('bid_cdp')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para ver o resumo dos dados do BidTech">
+                        <div class="engine-card-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div class="engine-icon-wrap" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(236, 72, 153, 0.15); border: 1px solid rgba(236, 72, 153, 0.35); display: flex; align-items: center; justify-content: center; color: #ec4899;">
+                                <i data-lucide="clipboard-check"></i>
+                            </div>
+                            <span class="engine-status-badge badge-operational" id="engineBadgeBid">OPERACIONAL</span>
+                        </div>
+                        <h4 class="engine-title" style="font-size: 1.05rem; font-weight: 800; margin: 0 0 6px 0;">Robô CDP BidTech (Checklist Operacional)</h4>
+                        <p class="engine-diag-msg" id="engineMsgBid" style="font-size: 0.8rem; color: var(--text-secondary); min-height: 38px;">Aguardando leitura do portal...</p>
+                        <div class="engine-metrics-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid var(--border-glass); padding-top: 12px; margin-top: 10px;">
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">ÚLTIMA LEITURA CDP</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--text-primary);" id="engineSyncBid">--:--:--</strong>
+                            </div>
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">EQUIPES CHECKLIST</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: #ec4899;" id="engineRecordsBid">--</strong>
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-top: 10px; font-size: 0.72rem; color: var(--text-secondary); opacity: 0.8;">
+                            <i data-lucide="info" style="width: 12px; height: 12px;"></i>
+                            <span>Clique para detalhes</span>
+                        </div>
+                    </div>
+
+                    <!-- Motor 5: Supabase Cloud -->
                     <div class="engine-health-card glass-card clickable-engine-card" id="engineCardCloud" onclick="openEngineDetailsModal('cloud_sync')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para ver o status da conexão em nuvem">
                         <div class="engine-card-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                             <div class="engine-icon-wrap" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(192, 132, 252, 0.15); border: 1px solid rgba(192, 132, 252, 0.35); display: flex; align-items: center; justify-content: center; color: #c084fc;">
@@ -2412,6 +2699,221 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeModal('teamDetailModal')">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ultra-Premium: Detalhes da Equipe Entregue (Enel × TRBOnet × Ordens) -->
+<div class="modal-backdrop" id="deliveryTeamDetailModal" onclick="if (event.target === this) closeModal('deliveryTeamDetailModal')">
+    <div class="modal-card glass-card ultra-premium-modal" style="max-width: 860px; width: 95%;">
+        <div class="modal-header del-modal-header">
+            <div class="modal-title-wrap" style="display: flex; align-items: center; gap: 14px;">
+                <div class="modal-icon-badge-glow">
+                    <i data-lucide="shield-alert" class="modal-icon text-cyan" id="delModalHeaderIcon"></i>
+                </div>
+                <div>
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <h3 id="delModalTeamCode" class="del-modal-team-title">
+                            EQUIPE ---
+                        </h3>
+                        <span id="delModalBaseBadge" class="badge" style="background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 0.75rem; font-weight: 800; padding: 3px 10px; border-radius: 9999px;">
+                            Base ---
+                        </span>
+                        <span id="delModalRegionBadge" class="badge" style="background: rgba(139, 92, 246, 0.18); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.4); font-size: 0.75rem; font-weight: 800; padding: 3px 10px; border-radius: 9999px;">
+                            Região ---
+                        </span>
+                    </div>
+                    <p id="delModalSubtitle" class="modal-subtitle" style="margin-top: 4px; font-size: 0.8rem; color: var(--text-secondary);">
+                        Monitoramento Unificado: EquipesBrasil • Telemetria TRBOnet • Histórico de Ordens
+                    </p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeModal('deliveryTeamDetailModal')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body" style="max-height: 75vh; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px;">
+            
+            <!-- Banner de Alertas Críticos Operacionais (se houver) -->
+            <div id="delModalAlertsContainer" style="display: none;"></div>
+
+            <!-- Card Destaque: Status TRBOnet One (Telemetria & Rádio em Tempo Real) -->
+            <div class="ultra-card-trbonet" id="delModalTrboCard">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="radio" style="width: 18px; height: 18px; color: #38bdf8;"></i>
+                        <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.04em; color: var(--text-primary);">
+                            STATUS NO TRBONET ONE (RÁDIO & GPS)
+                        </h4>
+                    </div>
+                    <div id="delModalTrboConnectionBadge">
+                        <!-- Inserido dinamicamente: Conectado / Desconectado -->
+                    </div>
+                </div>
+                <div class="telemetry-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Rádio ID</span>
+                        <div class="telemetry-value text-cyan" id="delModalRadioId" style="font-family: 'JetBrains Mono', monospace;">--</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Canal / Repetidora</span>
+                        <div class="telemetry-value" id="delModalRadioChannel">--</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Sinal GPS TRBOnet</span>
+                        <div class="telemetry-value" id="delModalRadioGps">--</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <span class="telemetry-label">Última Transmissão</span>
+                        <div class="telemetry-value" id="delModalRadioLastSignal" style="font-family: 'JetBrains Mono', monospace;">--</div>
+                    </div>
+                </div>
+                <p id="delModalTrboNote" style="font-size: 0.76rem; color: var(--text-secondary); margin: 10px 0 0 0; line-height: 1.4;">
+                    <!-- Nota explicativa sobre a telemetria -->
+                </p>
+            </div>
+
+            <!-- Grade de Dados Operacionais da Equipe (Escala, Marcação, Desvio, Frota) -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+                
+                <!-- Bloco 1: Escala & Apontamento de Ponto -->
+                <div class="telemetry-subcard">
+                    <div class="subcard-title">
+                        <i data-lucide="clock" style="width: 15px; height: 15px; color: #10b981;"></i>
+                        <span>ESCALA & MARCAÇÃO</span>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Turno Programado:</span>
+                        <strong class="info-row-val" id="delModalTurnoProg">--</strong>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Horário Marcação:</span>
+                        <strong class="info-row-val text-cyan" id="delModalMarcacao" style="font-family: 'JetBrains Mono', monospace;">--</strong>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Desvio do Turno:</span>
+                        <div id="delModalDesvioBadge">--</div>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Status Operacional:</span>
+                        <div id="delModalStatusOper">--</div>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">GPS EquipesBrasil:</span>
+                        <strong class="info-row-val" id="delModalGpsEb">--</strong>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Início de Descanso:</span>
+                        <strong class="info-row-val" id="delModalDescanso">--</strong>
+                    </div>
+                </div>
+
+                <!-- Bloco 2: Frota, Veículo & Motorista -->
+                <div class="telemetry-subcard">
+                    <div class="subcard-title">
+                        <i data-lucide="truck" style="width: 15px; height: 15px; color: #f59e0b;"></i>
+                        <span>VEÍCULO, PLACA & FROTA</span>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Motorista Responsável:</span>
+                        <strong class="info-row-val" id="delModalMotorista" style="color: var(--text-primary);">--</strong>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Tipo Veículo / Frota:</span>
+                        <strong class="info-row-val" id="delModalVeiculoTipo">--</strong>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Placa Informada:</span>
+                        <strong class="info-row-val" id="delModalPlaca" style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem;">--</strong>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Cadastro na Frota:</span>
+                        <div id="delModalFrotaSituacao">--</div>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">UT / Filial:</span>
+                        <strong class="info-row-val" id="delModalUtFilial">--</strong>
+                    </div>
+                </div>
+
+                <!-- Bloco 3: BID Visão Operacional (Checklist) -->
+                <div class="telemetry-subcard" id="delModalBidCard">
+                    <div class="subcard-title">
+                        <i data-lucide="clipboard-check" style="width: 15px; height: 15px; color: #10b981;"></i>
+                        <span>CHECKLIST BIDTECH (VISÃO OPERACIONAL)</span>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Status Checklist:</span>
+                        <div id="delModalBidStatusBadge">--</div>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Tempo em Operação:</span>
+                        <strong class="info-row-val text-cyan" id="delModalBidTimer" style="font-family: 'JetBrains Mono', monospace;">--</strong>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Telefone BID:</span>
+                        <strong class="info-row-val" id="delModalBidPhone" style="font-family: 'JetBrains Mono', monospace;">--</strong>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Tipo / Base BID:</span>
+                        <strong class="info-row-val" id="delModalBidTipoBase">--</strong>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Veículo no BID:</span>
+                        <strong class="info-row-val" id="delModalBidVehicle">--</strong>
+                    </div>
+                    <div class="info-row-item" style="flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 4px;">
+                        <span class="info-row-label">Componentes / Eletricistas no BID:</span>
+                        <div id="delModalBidMembersList" style="width: 100%; font-size: 0.76rem; color: var(--text-primary); line-height: 1.4;">--</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Bloco 3: HISTÓRICO DE ORDENS DE SERVIÇO (OS) ATENDIDAS NO DIA -->
+            <div class="ultra-card-orders">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="list-ordered" style="width: 17px; height: 17px; color: #38bdf8;"></i>
+                        <h4 style="margin: 0; font-size: 0.92rem; font-weight: 800; color: var(--text-primary); letter-spacing: 0.04em;">
+                            HISTÓRICO DE ORDENS DE SERVIÇO
+                        </h4>
+                    </div>
+                    <span id="delModalOrderCountBadge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 9999px;">
+                        0 Ordens
+                    </span>
+                </div>
+                <p style="font-size: 0.76rem; color: var(--text-secondary); margin: 0 0 10px 0;">
+                    Ordens registradas pelo CDP
+                </p>
+                <div class="table-responsive" style="max-height: 220px; overflow-y: auto; border-radius: 8px;">
+                    <table class="data-table" style="margin: 0; font-size: 0.78rem;">
+                        <thead>
+                            <tr class="del-modal-orders-th">
+                                <th>ORDEM DE SERVIÇO</th>
+                                <th>PRIMEIRO REGISTRO</th>
+                                <th>ÚLTIMA CONFIRMAÇÃO</th>
+                                <th>STATUS</th>
+                                <th>CICLOS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="delModalOrdersTableBody">
+                            <!-- Inserido dinamicamente via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="modal-footer del-modal-footer">
+            <div style="font-size: 0.74rem; color: var(--text-secondary);">
+                Auditoria em tempo real: <span class="text-cyan">EquipesBrasil • TRBOnet One</span>
+            </div>
+            <button class="btn btn-secondary" onclick="closeModal('deliveryTeamDetailModal')">
+                Fechar Detalhes
+            </button>
         </div>
     </div>
 </div>
@@ -2988,7 +3490,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=3.7.0"></script>
+<script src="/static/js/app.js?v=4.4.1"></script>
 
 </body>
 </html>

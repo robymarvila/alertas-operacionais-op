@@ -365,6 +365,7 @@ def get_engine_status():
                 "trbonet": parse_engine_cloud("trbonet_collector", "Motor TRBOnet One (Rádios & GPS)", "Operacional: Rádios e telemetria GPS sendo conciliados a cada 2 min."),
                 "enel_cdp": parse_engine_cloud("enel_cdp_collector", "Robô CDP Enel SP (Equipes & Turnos)", "Operacional: Conexão CDP ativa lendo 500 linhas a cada 2 min."),
                 "spotfire_cdp": parse_engine_cloud("spotfire_cdp_collector", "Robô CDP Scanner 5.0 (TIBCO Spotfire)", "Operacional: Extração automatizada do Scanner 5.0 a cada 30 min."),
+                "bid_cdp": parse_engine_cloud("bid_cdp_collector", "Robô CDP BidTech (Checklist Operacional)", "Operacional: Leitura automatizada da Visão Operacional BidTech a cada 2 min."),
                 "cloud_sync": {
                     "name": "cloud_sync_listener",
                     "label": "Banco em Nuvem Supabase",
@@ -383,6 +384,7 @@ def get_engine_status():
     thread_enel_alive = ENGINE_THREADS.get("enel_cdp") is not None and ENGINE_THREADS["enel_cdp"].is_alive()
     thread_trbo_alive = ENGINE_THREADS.get("trbonet") is not None and ENGINE_THREADS["trbonet"].is_alive()
     thread_spotfire_alive = ENGINE_THREADS.get("spotfire_cdp") is not None and ENGINE_THREADS["spotfire_cdp"].is_alive()
+    thread_bid_alive = ENGINE_THREADS.get("bid_cdp") is not None and ENGINE_THREADS["bid_cdp"].is_alive()
 
     # 1. Motor Enel CDP
     if not thread_enel_alive:
@@ -443,7 +445,29 @@ def get_engine_status():
                          records_count=len(delivery_manager.spotfire_cache) if hasattr(delivery_manager, "spotfire_cache") else 0,
                          engine_label="Robô CDP Scanner 5.0 (Spotfire)")
 
-    # 4. Sincronizador Nuvem Supabase
+    # 4. Motor BidTech CDP (Visão Operacional)
+    if not thread_bid_alive:
+        bid_status = "STOPPED"
+        bid_error_type = "PROCESS_STOPPED"
+        bid_msg = "Motor Parado: A rotina de auto-captura da Visão Operacional BidTech está inativa."
+    elif not port_9222_open:
+        bid_status = "ERROR_CONNECTION"
+        bid_error_type = "CONNECTION_REFUSED"
+        bid_msg = "Falha de Conexão: Porta 9222 fechada no navegador BidTech."
+    else:
+        bid_status = "OPERATIONAL"
+        bid_error_type = "NONE"
+        bid_msg = "Operacional: Leitura automatizada da Visão Operacional BidTech a cada 2 min."
+
+    bid_records_count = len(delivery_manager.bid_cache) if hasattr(delivery_manager, "bid_cache") else 0
+    bid_sync_time = delivery_manager.last_bid_sync or "--:--:--"
+
+    update_engine_health("bid_cdp_collector", bid_status, is_running=thread_bid_alive,
+                         error_type=bid_error_type, last_error=bid_msg,
+                         records_count=bid_records_count,
+                         engine_label="Robô CDP BidTech (Checklist Operacional)")
+
+    # 5. Sincronizador Nuvem Supabase
     try:
         resp = requests.get(f"{BASE_REST_URL}/system_engine_health?select=engine_name&limit=1", headers=get_headers(), timeout=6)
         cloud_ok = resp.status_code in [200, 206]
@@ -489,6 +513,16 @@ def get_engine_status():
                 "message": spotfire_msg,
                 "last_sync": format_datetime_br(spotfire_sync_time),
                 "records": len(delivery_manager.spotfire_cache) if hasattr(delivery_manager, "spotfire_cache") else 0
+            },
+            "bid_cdp": {
+                "name": "bid_cdp_collector",
+                "label": "Robô CDP BidTech (Checklist Operacional)",
+                "status": bid_status,
+                "is_running": thread_bid_alive,
+                "error_type": bid_error_type,
+                "message": bid_msg,
+                "last_sync": bid_sync_time,
+                "records": bid_records_count
             },
             "cloud_sync": {
                 "name": "cloud_sync_listener",
@@ -631,6 +665,56 @@ def get_engine_details(engine_key):
             "action_label": "Disparar Extração Spotfire Scanner 5.0 Agora"
         })
 
+    elif engine_key in ["bid_cdp", "bid_cdp_collector"]:
+        db_rec = engines_db.get("bid_cdp_collector", {})
+        last_sync = db_rec.get("last_success_sync") or delivery_manager.last_bid_sync or "--:--:--"
+        if last_sync and "-" in str(last_sync) and "T" in str(last_sync):
+            last_sync = format_datetime_br(last_sync)
+
+        bid_records = list(delivery_manager.bid_cache.values()) if hasattr(delivery_manager, "bid_cache") else []
+        total_teams = len(bid_records)
+        em_operacao = sum(1 for r in bid_records if r.get("status_bid") == "Em Operação")
+        em_checklist = sum(1 for r in bid_records if r.get("status_bid") == "Em Checklist")
+        planejadas = sum(1 for r in bid_records if r.get("status_bid") == "Planejada")
+        bloqueadas = sum(1 for r in bid_records if r.get("status_bid") in ["Bloqueada", "Retornada"])
+
+        sample_teams = []
+        for r in bid_records[:15]:
+            sample_teams.append({
+                "code": r.get("team_code", "--"),
+                "status_bid": r.get("status_bid", "--"),
+                "base": r.get("base", "--"),
+                "driver": r.get("driver", "--"),
+                "plate": r.get("plate", "--"),
+                "tipo_operacional": r.get("tipo_operacional", "--"),
+                "turno": r.get("turno", "--"),
+                "timer_value": r.get("timer_value", "--")
+            })
+
+        return jsonify({
+            "status": "success",
+            "engine_key": "bid_cdp",
+            "name": "bid_cdp_collector",
+            "label": "Robô CDP BidTech (Checklist Operacional)",
+            "icon": "clipboard-check",
+            "last_sync": last_sync,
+            "engine_status": db_rec.get("status", "OPERATIONAL"),
+            "is_running": db_rec.get("is_running", True),
+            "summary": {
+                "total_teams": total_teams,
+                "em_operacao": em_operacao,
+                "em_checklist": em_checklist,
+                "planejadas": planejadas,
+                "bloqueadas": bloqueadas,
+                "protocol": "Chrome DevTools Protocol (CDP)",
+                "target": "suite360.bidtech.com.br (Visão Operacional)",
+                "interval": "2 minutos (120s)"
+            },
+            "sample_records": sample_teams,
+            "action_command": "CAPTURE_BID",
+            "action_label": "Disparar Sincronização BidTech (CDP) Agora"
+        })
+
     elif engine_key in ["cloud_sync", "cloud_sync_listener"]:
         db_rec = engines_db.get("cloud_sync_listener", {})
         return jsonify({
@@ -691,7 +775,7 @@ def restart_engines():
         start_background_jobs(force_restart=True)
         return jsonify({
             "status": "success",
-            "message": "Motores locais (TRBOnet One, Robô CDP Enel SP e Robô CDP Spotfire) reiniciados com sucesso!"
+            "message": "Motores locais (TRBOnet One, Robô CDP Enel SP, Robô CDP Spotfire e Robô CDP BidTech) reiniciados com sucesso!"
         })
     except Exception as e:
         return jsonify({"status": "error", "message": f"Erro ao reiniciar motores: {str(e)}"}), 500
@@ -1002,6 +1086,165 @@ def get_team_timeline():
         return jsonify({"status": "error", "message": "Parâmetro 'team' é obrigatório"}), 400
     res = fetch_team_timeline(team_code=team_code, date_ref=date_ref)
     return jsonify(res)
+
+@app.route('/api/delivery/team_details/<team_code>', methods=['GET'])
+@app.route('/api/delivery/team-details/<team_code>', methods=['GET'])
+def get_delivery_team_details(team_code):
+    """
+    Retorna os detalhes completos da equipe entregue no dia:
+    - Informações cadastrais do portal EquipesBrasil (UT, Base, Filial, Turno, etc.)
+    - Marcação e Desvio de escala
+    - Histórico deduplicado de Ordens de Serviço (OS) do dia
+    - Status de conexão em tempo real no TRBOnet One (rádio ID, repetidora, último sinal, GPS)
+    - Situação do veículo no inventário de frotas Alpitel
+    - Status do checklist na Visão Operacional BidTech (em operação, em checklist, planejada, etc.)
+    - Alertas operacionais forenses consolidados
+    """
+    try:
+        code = str(team_code).strip().upper()
+        details = delivery_manager.get_team_details(code)
+        team_data = details.get("team_data", {})
+        order_hist = details.get("order_history", [])
+        bid_info = details.get("bid_info", {})
+
+        # Se não houver histórico em memória (ex: reinício), busca do Supabase como contingência
+        if not order_hist:
+            try:
+                from supabase_client import fetch_team_order_history
+                cloud_hist = fetch_team_order_history(code)
+                if cloud_hist:
+                    order_hist = [
+                        {
+                            "ordem": o.get("ordem_servico"),
+                            "first_seen": (o.get("first_seen_at") or "")[-8:],
+                            "last_seen": (o.get("last_seen_at") or "")[-8:],
+                            "status": o.get("status", "Em atendimento"),
+                            "cycles_count": o.get("cycles_count", 1)
+                        }
+                        for o in cloud_hist
+                    ]
+            except Exception:
+                pass
+
+        # 2. Checagem em tempo real no TRBOnet One
+        trbo_teams = getattr(data_manager, "trbonet_teams", {})
+        in_trbonet = code in trbo_teams
+        trbo_info = trbo_teams.get(code, {}) if in_trbonet else {}
+        has_gps = bool(trbo_info.get("gps", False)) if in_trbonet else False
+        last_signal = trbo_info.get("last_signal", "--:--:--") if in_trbonet else None
+        radio_id = trbo_info.get("radio_id", "N/A") if in_trbonet else None
+        channel = trbo_info.get("channel", "N/A") if in_trbonet else None
+
+        if in_trbonet:
+            if has_gps:
+                trbo_status_label = "Conectado com GPS Ativo"
+                trbo_status_code = "CONNECTED_GPS"
+                trbo_details = "Rádio comunicando normalmente com coordenadas GPS transmitidas em tempo real."
+            else:
+                trbo_status_label = "Conectado sem Sinal GPS"
+                trbo_status_code = "CONNECTED_NO_GPS"
+                trbo_details = "Rádio ativo no TRBOnet, porém sem fixação de coordenadas de satélite no momento."
+        else:
+            trbo_status_label = "Desconectado / Sem Sinal de Rádio"
+            trbo_status_code = "DISCONNECTED"
+            trbo_details = "Equipe sem transmissão de sinal ou rádio desligado/fora de área no TRBOnet One."
+
+        # 3. Cruzamento de Frota
+        plate = team_data.get("plate", "--")
+        fleet_match = fleet_client.cross_reference_plate(plate)
+
+        # 4. Alertas Operacionais Forenses
+        alerts = []
+        is_active = team_data.get("is_active", True)
+
+        # 4.1 Alertas do BID (Visão Operacional)
+        if is_active:
+            bid_st = bid_info.get("status_bid")
+            if not bid_info:
+                alerts.append({
+                    "type": "danger",
+                    "title": "Alerta Gravíssimo: Não Encontrada no BID",
+                    "message": "Equipe ativa no Equipes Brasil sem nenhum card na Visão Operacional BidTech."
+                })
+            elif bid_st == "Planejada":
+                alerts.append({
+                    "type": "danger",
+                    "title": "Alerta Grave: Sem Checklist Iniciado",
+                    "message": "Equipe logada no Equipes Brasil mas ainda consta como 'Planejada' no BID (checklist pendente)."
+                })
+            elif bid_st == "Em Checklist":
+                alerts.append({
+                    "type": "warning",
+                    "title": "Alerta Crítico: Checklist em Andamento",
+                    "message": "Equipe logada no Equipes Brasil enquanto o checklist ainda está sendo preenchido no BID."
+                })
+            elif bid_st in ["Bloqueada", "Retornada"]:
+                alerts.append({
+                    "type": "danger",
+                    "title": f"Alerta Impeditivo: Status BID {bid_st.upper()}",
+                    "message": f"Equipe logada no Equipes Brasil mas com status impeditivo '{bid_st}' na plataforma BID."
+                })
+
+        # 4.2 Alertas de TRBOnet
+        if is_active and not in_trbonet:
+            alerts.append({
+                "type": "danger",
+                "title": "Alerta de Rádio TRBOnet",
+                "message": "Equipe ativa no EquipesBrasil mas SEM conexão no TRBOnet One!"
+            })
+        elif in_trbonet and not has_gps:
+            alerts.append({
+                "type": "warning",
+                "title": "Alerta de GPS TRBOnet",
+                "message": "Rádio conectado no TRBOnet One, porém sem transmissão de sinal GPS."
+            })
+
+        # 4.3 Alertas de Frota
+        situacao_frota = str(fleet_match.get("situacao_veiculo_cadastrado", "")).upper()
+        if not fleet_match.get("plate_cadastrada", False) and plate not in ["--", "", "Sem placa", "SEM PLACA"]:
+            alerts.append({
+                "type": "danger",
+                "title": "Veículo Não Cadastrado",
+                "message": f"Placa {plate} não consta no inventário oficial de frotas da Alpitel."
+            })
+        elif situacao_frota in ["PARADO", "MANUTENÇÃO", "MANUTENCAO"]:
+            alerts.append({
+                "type": "danger",
+                "title": "Restrição de Frota",
+                "message": f"Veículo placa {plate} está registrado na frota como {situacao_frota}!"
+            })
+
+        # 4.4 Alertas de Desvio
+        desvio_min = team_data.get("desvio_minutos", 0)
+        if desvio_min is not None and abs(desvio_min) > 30:
+            alerts.append({
+                "type": "warning",
+                "title": "Desvio Elevado de Escala",
+                "message": f"A equipe registrou marcação com desvio de {team_data.get('desvio', '')} em relação ao turno programado."
+            })
+
+        return jsonify({
+            "status": "success",
+            "team_code": code,
+            "found": details.get("found", False),
+            "delivery": team_data,
+            "order_history": order_hist,
+            "bid_info": bid_info,
+            "trbonet": {
+                "connected": in_trbonet,
+                "status_code": trbo_status_code,
+                "status_label": trbo_status_label,
+                "details": trbo_details,
+                "radio_id": radio_id,
+                "channel": channel,
+                "last_signal": last_signal,
+                "has_gps": has_gps
+            },
+            "fleet": fleet_match,
+            "alerts": alerts
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/update_data', methods=['POST'])
 def update_data():
@@ -1674,6 +1917,7 @@ def export_teams_excel():
             "Hora Início Descanso": t.get("hora_inicio_descanso", "--"),
             "Ordem de Serviço": t.get("ordem_servico", "--"),
             "Tipo Operação": t.get("tipo_operacional", ""),
+            "Status BID": t.get("status_bid", "--"),
             "UT": t.get("ut", ""),
             "Filial": t.get("filial", "")
         })
@@ -1686,6 +1930,79 @@ def export_teams_excel():
 
     output.seek(0)
     filename = f"Entrega_Equipes_Enel_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename
+    )
+
+@app.route('/api/bid/data', methods=['GET'])
+def get_bid_reconciliation_data():
+    """Retorna o estado da reconciliação forense ONLINE x BID (Equipes Brasil vs BidTech)."""
+    date_str = request.args.get('date') or delivery_manager.current_date_str
+    return jsonify(delivery_manager.get_online_x_bid_state(date_str))
+
+@app.route('/api/capture/bid/direct', methods=['POST', 'GET'])
+def trigger_bid_capture_direct():
+    """Dispara a extração imediata do portal BidTech (Visão Operacional) via robô CDP."""
+    is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+    if is_cloud:
+        from supabase_client import create_sync_command, wait_for_command_completion
+        cmd_res = create_sync_command("CAPTURE_BID", {"source": "Painel Web"})
+        cmd_id = cmd_res.get("command_id")
+        if cmd_id:
+            result = wait_for_command_completion(cmd_id, timeout_seconds=15)
+            if result.get("status") == "COMPLETED":
+                return jsonify({"status": "success", "message": "Coleta do BidTech concluída com sucesso pelo Agente Local!"})
+            else:
+                return jsonify({"status": "queued", "command_id": cmd_id, "message": "Coleta do BidTech disparada em segundo plano."}), 202
+        return jsonify({"status": "error", "message": "Falha ao enfileirar comando de captura do BID."}), 500
+    else:
+        try:
+            from coletor_bid_cdp import executar_ciclo_sincronizacao_bid
+            res = executar_ciclo_sincronizacao_bid()
+            return jsonify(res)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/bid/export_excel', methods=['GET'])
+def export_bid_reconciliation_excel():
+    """Gera e faz download de planilha Excel (.xlsx) da reconciliação forense ONLINE x BID."""
+    date_str = request.args.get('date') or delivery_manager.current_date_str
+    state = delivery_manager.get_online_x_bid_state(date_str)
+    rows = state.get("rows", [])
+
+    excel_rows = []
+    for r in rows:
+        excel_rows.append({
+            "Código Equipe": r.get("team_code", ""),
+            "Status Cruzado": r.get("cross_status", ""),
+            "Diagnóstico / Regra": r.get("cross_desc", ""),
+            "Base Operacional": r.get("base_display", ""),
+            "Região": r.get("geo", ""),
+            "Turno": r.get("turno", ""),
+            "Status Equipes Brasil": r.get("status_eb", ""),
+            "Status Visão Operacional BID": r.get("status_bid", ""),
+            "Tempo no Status BID": r.get("bid_timer_value", "--"),
+            "Motorista": r.get("driver", ""),
+            "Placa": r.get("plate", ""),
+            "Tipo Veículo": r.get("vehicle_type", ""),
+            "Telefone": r.get("bid_phone", "--"),
+            "Tipo Operacional": r.get("bid_tipo_operacional", "--"),
+            "Horário Login EB": r.get("login_time_eb", "--"),
+            "Marcação Ponto": r.get("marcacao_eb", "--"),
+            "Ordem de Serviço Atual": r.get("ordem_servico", "--")
+        })
+
+    import pandas as pd
+    df = pd.DataFrame(excel_rows)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Online_x_BID')
+
+    output.seek(0)
+    filename = f"Reconciliacao_Online_x_BID_{date_str}_{datetime.now().strftime('%H%M%S')}.xlsx"
     return send_file(
         output,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1801,13 +2118,15 @@ ENGINE_THREADS = {
     "trbonet": None,
     "enel_cdp": None,
     "spotfire_cdp": None,
+    "bid_cdp": None,
     "daily_10am_audit": None,
     "cloud_listener": None
 }
 
 ENGINE_STOP_EVENTS = {
     "enel_cdp": None,
-    "spotfire_cdp": None
+    "spotfire_cdp": None,
+    "bid_cdp": None
 }
 
 def trbonet_background_worker(interval_seconds=120):
@@ -1864,6 +2183,11 @@ def remote_command_listener_worker(poll_interval=2.5):
                 elif cmd_name in ["CAPTURE_SPOTFIRE", "SYNC_SPOTFIRE", "COLETAR_SPOTFIRE"]:
                     from coletor_spotfire_cdp import executar_ciclo_sincronizacao_spotfire
                     res = executar_ciclo_sincronizacao_spotfire(source_label="Disparo Remoto Solicitado na Nuvem")
+                    status = "COMPLETED" if res.get("status") == "success" else "ERROR"
+                    update_command_status(cmd_id, status, res)
+                elif cmd_name in ["CAPTURE_BID", "SYNC_BID", "COLETAR_BID"]:
+                    from coletor_bid_cdp import executar_ciclo_sincronizacao_bid
+                    res = executar_ciclo_sincronizacao_bid()
                     status = "COMPLETED" if res.get("status") == "success" else "ERROR"
                     update_command_status(cmd_id, status, res)
                 elif cmd_name in ["RESTART_ENGINES", "REINICIAR_MOTORES"]:
@@ -1944,7 +2268,7 @@ def start_background_jobs(force_restart=False):
         except Exception as err:
             print(f"[WARN] Falha ao iniciar worker Enel CDP: {err}", flush=True)
 
-        # 4. Rotina de auto-captura autônoma do TIBCO Spotfire via CDP (180s)
+        # 4. Rotina de auto-captura autônoma do TIBCO Spotfire via CDP (1800s)
         try:
             from coletor_spotfire_cdp import spotfire_background_worker
             if force_restart and ENGINE_STOP_EVENTS.get("spotfire_cdp") is not None:
@@ -1958,13 +2282,27 @@ def start_background_jobs(force_restart=False):
         except Exception as err:
             print(f"[WARN] Falha ao iniciar worker Spotfire CDP: {err}", flush=True)
 
-        # 5. Agendador da conferência forense diária das 10:00
+        # 5. Rotina de auto-captura autônoma do portal BidTech (Visão Operacional) via CDP (120s)
+        try:
+            from coletor_bid_cdp import bid_background_worker
+            if force_restart and ENGINE_STOP_EVENTS.get("bid_cdp") is not None:
+                ENGINE_STOP_EVENTS["bid_cdp"].set()
+            if force_restart or ENGINE_THREADS["bid_cdp"] is None or not ENGINE_THREADS["bid_cdp"].is_alive():
+                stop_evt_bid = threading.Event()
+                ENGINE_STOP_EVENTS["bid_cdp"] = stop_evt_bid
+                bg_bid = threading.Thread(target=bid_background_worker, args=(120, stop_evt_bid), daemon=True)
+                bg_bid.start()
+                ENGINE_THREADS["bid_cdp"] = bg_bid
+        except Exception as err:
+            print(f"[WARN] Falha ao iniciar worker BidTech CDP: {err}", flush=True)
+
+        # 6. Agendador da conferência forense diária das 10:00
         if force_restart or ENGINE_THREADS["daily_10am_audit"] is None or not ENGINE_THREADS["daily_10am_audit"].is_alive():
             bg_10am = threading.Thread(target=daily_10am_integrity_worker, daemon=True)
             bg_10am.start()
             ENGINE_THREADS["daily_10am_audit"] = bg_10am
 
-        # 6. Sincronização do Inventário de Frotas (Controle Operacional / sist-operacao-norte)
+        # 7. Sincronização do Inventário de Frotas (Controle Operacional / sist-operacao-norte)
         try:
             bg_fleet = threading.Thread(target=fleet_client.sync_fleet_inventory, daemon=True)
             bg_fleet.start()
@@ -1983,6 +2321,7 @@ if __name__ == '__main__':
     print("[ROUTINE] Rotina de Atualização Automática do TRBOnet One (2 min) ATIVA")
     print("[ROUTINE] Rotina de Atualização Automática da Enel SP CDP (2 min) ATIVA")
     print("[ROUTINE] Rotina de Atualização Automática do TIBCO Spotfire Scanner 5.0 (30 min) ATIVA")
+    print("[ROUTINE] Rotina de Atualização Automática do BidTech Visão Operacional (2 min) ATIVA")
     print("[ROUTINE] Sincronização e Auditoria de Frotas (Controle Operacional) ATIVA")
     print("[ROUTINE] Agendador de Conferência Forense Diária (10:00 AM) ATIVO")
     print("="*70 + "\n")

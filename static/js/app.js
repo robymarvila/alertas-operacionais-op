@@ -1834,12 +1834,23 @@ function openTeamModal(code) {
 
 function openModal(modalId) {
     const modal = document.getElementById(modalId);
-    if (modal) modal.classList.add('active');
+    if (modal) {
+        modal.style.display = 'flex';
+        void modal.offsetWidth;
+        modal.classList.add('active');
+    }
 }
 
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
-    if (modal) modal.classList.remove('active');
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => {
+            if (!modal.classList.contains('active')) {
+                modal.style.display = '';
+            }
+        }, 250);
+    }
 }
 
 // ==========================================================================
@@ -3306,24 +3317,38 @@ const deliveryState = {
     workforceChart: null
 };
 
-// Alternador de Telas (ONLINE vs AUDITORIA & HISTÓRICO)
+// Alternador de Telas (ONLINE vs ONLINE x BID vs AUDITORIA & HISTÓRICO)
 async function switchDeliveryScreen(screenName) {
     deliveryState.currentScreen = screenName;
     const btnOnline = document.getElementById('btnSwitchOnline');
+    const btnOnlineBid = document.getElementById('btnSwitchOnlineBid');
     const btnHist = document.getElementById('btnSwitchHistory');
     const scrOnline = document.getElementById('deliveryScreenOnline');
+    const scrOnlineBid = document.getElementById('deliveryScreenOnlineBid');
     const scrHist = document.getElementById('deliveryScreenHistory');
 
     if (screenName === 'online') {
         if (btnOnline) btnOnline.classList.add('active');
+        if (btnOnlineBid) btnOnlineBid.classList.remove('active');
         if (btnHist) btnHist.classList.remove('active');
         if (scrOnline) scrOnline.style.display = 'block';
+        if (scrOnlineBid) scrOnlineBid.style.display = 'none';
         if (scrHist) scrHist.style.display = 'none';
         renderDeliveryCharts();
+    } else if (screenName === 'online_bid') {
+        if (btnOnline) btnOnline.classList.remove('active');
+        if (btnOnlineBid) btnOnlineBid.classList.add('active');
+        if (btnHist) btnHist.classList.remove('active');
+        if (scrOnline) scrOnline.style.display = 'none';
+        if (scrOnlineBid) scrOnlineBid.style.display = 'block';
+        if (scrHist) scrHist.style.display = 'none';
+        await loadOnlineXBidData();
     } else {
         if (btnOnline) btnOnline.classList.remove('active');
+        if (btnOnlineBid) btnOnlineBid.classList.remove('active');
         if (btnHist) btnHist.classList.add('active');
         if (scrOnline) scrOnline.style.display = 'none';
+        if (scrOnlineBid) scrOnlineBid.style.display = 'none';
         if (scrHist) scrHist.style.display = 'block';
 
         // Garante carga das datas e meses disponíveis do Supabase
@@ -4223,7 +4248,7 @@ function renderDeliveryTable() {
         const hasAnyFilter = deliveryState.filters.regions.size > 0 || deliveryState.filters.bases.size > 0 || deliveryState.filters.shifts.size > 0 || deliveryState.filters.vehicles.size > 0 || deliveryState.filters.search;
         tbody.innerHTML = `
             <tr>
-                <td colspan="11" style="text-align: center; padding: 36px 20px; color: var(--text-secondary);">
+                <td colspan="15" style="text-align: center; padding: 36px 20px; color: var(--text-secondary);">
                     <p style="font-weight: 700; font-size: 0.95rem; margin: 0 0 6px 0; color: var(--text-primary);">Nenhuma equipe encontrada para os filtros selecionados.</p>
                     <p style="font-size: 0.8rem; margin: 0; color: var(--text-secondary);">
                         ${hasAnyFilter ? 'Tente desmarcar alguns filtros ou clique em <strong style="color: #38bdf8; cursor: pointer; text-decoration: underline;" onclick="clearDeliveryBaseFilters()">LIMPAR SELEÇÃO</strong>.' : 'Nenhuma equipe registrada no momento.'}
@@ -4278,58 +4303,121 @@ function renderDeliveryTable() {
             `;
         }
 
+        // Marcação & Desvio
+        const marcacaoVal = t.marcacao && t.marcacao !== '--' ? t.marcacao : '--';
+        const desvioVal = t.desvio && t.desvio !== '--' ? t.desvio : '--';
+        let desvioHtml = `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
+        if (desvioVal !== '--') {
+            const minVal = t.desvio_minutos || 0;
+            let dStyle = 'background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);';
+            if (Math.abs(minVal) > 30) {
+                dStyle = 'background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4);';
+            } else if (desvioVal.includes('+')) {
+                dStyle = 'background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);';
+            }
+            desvioHtml = `<span class="badge" style="${dStyle} font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">${desvioVal}</span>`;
+        }
+
         // GPS
         const gpsStr = t.gps_update_str && t.gps_update_str !== '--' ? t.gps_update_str : '--';
         const gpsMin = t.gps_update_minutes;
         const gpsColor = gpsMin !== null && gpsMin !== undefined && gpsMin > 60 ? '#f59e0b' : '#10b981';
+
+        // 11.2 Badge de Status BID (Visão Operacional)
+        const stBid = t.status_bid || (t.bid_info && t.bid_info.status_bid) || '--';
+        let bidBadge = '';
+        if (stBid === 'Em Operação') {
+            bidBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;"><span class="live-status-dot" style="width:6px;height:6px;background:#10b981;"></span> Em Operação</span>`;
+        } else if (stBid === 'Em Checklist') {
+            bidBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.18); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;">⏱️ Em Checklist</span>`;
+        } else if (stBid === 'Planejada') {
+            bidBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;">⚠️ Planejada</span>`;
+        } else if (stBid === 'Bloqueada' || stBid === 'Retornada') {
+            bidBadge = `<span class="badge" style="background: rgba(225, 29, 72, 0.18); color: #e11d48; border: 1px solid rgba(225, 29, 72, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;">⛔ ${stBid}</span>`;
+        } else if (stBid === 'Não Encontrada') {
+            bidBadge = `<span class="badge" style="background: rgba(192, 132, 252, 0.15); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;">🟣 Não Cadastrada</span>`;
+        } else {
+            bidBadge = `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
+        }
 
         // Descanso
         const descansoHtml = t.data_inicio_descanso
             ? `<div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 700; color: #8b5cf6;">${t.data_inicio_descanso}</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-secondary);">${t.hora_inicio_descanso || '--:--'}</div>`
             : `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
 
-        // Ordem
+        // Ordem (com indicador de histórico deduplicado)
+        const orderHist = t.order_history || [];
+        const orderCount = orderHist.length;
         const ordemHtml = t.ordem_servico
-            ? `<span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.78rem; color: #0284c7;">${t.ordem_servico}</span>`
+            ? `<div>
+                 <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.78rem; color: #0284c7;">${t.ordem_servico}</span>
+                 ${orderCount > 1 ? `<div style="font-size: 0.65rem; color: #38bdf8; font-weight: 800; cursor: pointer;" onclick="openDeliveryTeamModal('${t.team_code}')">(${orderCount} OSs hoje)</div>` : ''}
+               </div>`
             : `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
 
         return `
             <tr>
+                <!-- 1. UT -->
                 <td>
-                    <span class="team-badge" style="font-weight: 800;">${t.team_code}</span>
+                    <div style="font-weight: 700; font-size: 0.76rem; color: var(--text-primary);">${t.ut || '--'}</div>
                 </td>
+                <!-- 2. BASE -->
                 <td>
-                    <div style="font-weight: 800; color: var(--text-primary);">${t.base_display || t.base_name}</div>
-                    <small style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-weight: 700;">${t.base_code}</small>
+                    <div style="font-weight: 800; color: var(--text-primary);">${t.base_display || t.base_name || '--'}</div>
+                    <small style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-weight: 700;">${t.base_code || ''}</small>
                 </td>
+                <!-- 3. FILIAL -->
                 <td>
-                    <div style="font-weight: 700; font-size: 0.76rem;">${t.ut || '--'}</div>
                     <small style="font-weight: 800; color: #0ea5e9;">${t.filial || '--'}</small>
                 </td>
+                <!-- 4. VEÍCULO -->
                 <td>
-                    <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type}</span>
+                    <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type || t.veiculo_portal || '--'}</span>
                 </td>
+                <!-- 5. EQUIPE (Clicável para abrir Modal Ultra-Premium) -->
+                <td>
+                    <button type="button" class="team-badge clickable-team-badge" onclick="event.stopPropagation(); openDeliveryTeamModal('${t.team_code}')" title="Clique para ver Diagnóstico Completo, TRBOnet e Histórico de Ordens" style="cursor: pointer; transition: all 0.2s ease;">
+                        ${t.team_code}
+                    </button>
+                </td>
+                <!-- 6. MOTORISTA -->
+                <td>
+                    <div style="font-weight: 600; font-size: 0.76rem; color: var(--text-primary);">${t.driver || '--'}</div>
+                </td>
+                <!-- 7. TURNO PROGRAMADO -->
                 <td>
                     <span class="shift-pill ${t.shift_pill_class}" style="font-size: 0.74rem;">${t.shift_slot}</span>
                 </td>
+                <!-- 8. MARCAÇÃO -->
+                <td>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.8rem; color: #38bdf8;">${marcacaoVal}</span>
+                </td>
+                <!-- 9. DESVIO -->
+                <td>
+                    ${desvioHtml}
+                </td>
+                <!-- 10. GPS (MIN) -->
                 <td>
                     <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.76rem; color: ${gpsColor};">
                         ${gpsStr}
                     </span>
                 </td>
+                <!-- 11. STATUS -->
                 <td>${statusBadge}</td>
+                <!-- 12. STATUS BID -->
+                <td>${bidBadge}</td>
+                <!-- 13. PLACA -->
                 <td>${plateHtml}</td>
+                <!-- 14. INÍCIO DESCANSO -->
                 <td>${descansoHtml}</td>
+                <!-- 15. ORDEM -->
                 <td>${ordemHtml}</td>
-                <td>
-                    <div style="font-weight: 600; font-size: 0.76rem; color: var(--text-primary);">${t.driver || '--'}</div>
-                </td>
             </tr>
         `;
     }).join('');
 }
 
-// Exportação Excel (.xlsx) Sensível aos Filtros Ativos
+// Exportação Excel (.xlsx) Sensível aos Filtros Ativos (14 Colunas Oficiais)
 function exportDeliveryExcelFiltered() {
     const list = deliveryState.filteredTeams;
     if (!list || list.length === 0) {
@@ -4338,21 +4426,20 @@ function exportDeliveryExcelFiltered() {
     }
 
     const rows = list.map(t => ({
-        "Código Equipe": t.team_code || "",
-        "Base Operacional": t.base_display || t.base_name || "",
-        "Sigla Base": t.base_code || "",
-        "Região": t.region || "",
-        "Empresa": t.company || "",
-        "Frota / Veículo": t.vehicle_type || "",
-        "Categoria": t.vehicle_category || "",
-        "Horário Login": t.login_time || "",
-        "Horário Logoff": t.logoff_time || "",
-        "Turno": t.shift_slot || "",
-        "Status Atual": t.is_active ? "Logada / Ativa" : (t.status || "Turno Concluído"),
-        "Motorista": t.driver || "",
-        "Placa": t.plate || "",
         "UT": t.ut || "",
-        "Filial": t.filial || ""
+        "Base": t.base_display || t.base_name || "",
+        "Filial": t.filial || "",
+        "Veículo": t.vehicle_type || t.veiculo_portal || "",
+        "Equipe": t.team_code || "",
+        "Motorista": t.driver || "",
+        "Turno Programado": t.shift_slot || t.raw_shift || "",
+        "Marcação": t.marcacao || "",
+        "Desvio": t.desvio || "",
+        "GPS (min)": t.gps_update_str || "",
+        "Status": t.status_equipes_brasil || t.status || (t.is_active ? "Logada" : "Turno Concluído"),
+        "Placa": t.plate || "",
+        "Início Descanso": t.data_inicio_descanso ? `${t.data_inicio_descanso} ${t.hora_inicio_descanso || ''}`.trim() : "",
+        "Ordem": t.ordem_servico || ""
     }));
 
     if (window.XLSX) {
@@ -4363,8 +4450,317 @@ function exportDeliveryExcelFiltered() {
         XLSX.writeFile(wb, `Entrega_Equipes_Enel_${dateStr}.xlsx`);
         showToast(`Planilha gerada com sucesso (${rows.length} equipes filtradas)!`, 'success');
     } else {
-        // Fallback para endpoint nativo
         window.location.href = '/api/delivery/export_excel';
+    }
+}
+
+// Modal Ultra-Premium de Detalhes da Equipe Entregue (Enel × TRBOnet × Ordens)
+async function openDeliveryTeamModal(teamCode) {
+    if (!teamCode) return;
+    const code = String(teamCode).trim().toUpperCase();
+
+    // 1. Abre o modal imediatamente com backdrop blur
+    const modal = document.getElementById('deliveryTeamDetailModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        void modal.offsetWidth;
+        modal.classList.add('active');
+    } else {
+        openModal('deliveryTeamDetailModal');
+    }
+
+    // Elementos do Modal
+    const codeEl = document.getElementById('delModalTeamCode');
+    const baseBadgeEl = document.getElementById('delModalBaseBadge');
+    const regionBadgeEl = document.getElementById('delModalRegionBadge');
+    const alertsContainer = document.getElementById('delModalAlertsContainer');
+
+    // TRBOnet Card
+    const trboBadgeEl = document.getElementById('delModalTrboConnectionBadge');
+    const radioIdEl = document.getElementById('delModalRadioId');
+    const radioChannelEl = document.getElementById('delModalRadioChannel');
+    const radioGpsEl = document.getElementById('delModalRadioGps');
+    const radioLastSignalEl = document.getElementById('delModalRadioLastSignal');
+    const trboNoteEl = document.getElementById('delModalTrboNote');
+
+    // BID Visão Operacional Card
+    const bidBadgeEl = document.getElementById('delModalBidStatusBadge');
+    const bidTimerEl = document.getElementById('delModalBidTimer');
+    const bidPhoneEl = document.getElementById('delModalBidPhone');
+    const bidTipoBaseEl = document.getElementById('delModalBidTipoBase');
+    const bidVehicleEl = document.getElementById('delModalBidVehicle');
+    const bidMembersListEl = document.getElementById('delModalBidMembersList');
+
+    // Escala e Marcação
+    const turnoProgEl = document.getElementById('delModalTurnoProg');
+    const marcacaoEl = document.getElementById('delModalMarcacao');
+    const desvioBadgeEl = document.getElementById('delModalDesvioBadge');
+    const statusOperEl = document.getElementById('delModalStatusOper');
+    const gpsEbEl = document.getElementById('delModalGpsEb');
+    const descansoEl = document.getElementById('delModalDescanso');
+
+    // Frota e Veículo
+    const motoristaEl = document.getElementById('delModalMotorista');
+    const veiculoTipoEl = document.getElementById('delModalVeiculoTipo');
+    const placaEl = document.getElementById('delModalPlaca');
+    const frotaSituacaoEl = document.getElementById('delModalFrotaSituacao');
+    const utFilialEl = document.getElementById('delModalUtFilial');
+
+    // Tabela de Ordens
+    const ordersTbody = document.getElementById('delModalOrdersTableBody');
+    const orderCountBadge = document.getElementById('delModalOrderCountBadge');
+
+    // Estado inicial de carregamento
+    if (codeEl) codeEl.textContent = `EQUIPE ${code}`;
+    if (baseBadgeEl) baseBadgeEl.textContent = `Carregando...`;
+    if (regionBadgeEl) regionBadgeEl.textContent = `...`;
+    if (alertsContainer) { alertsContainer.innerHTML = ''; alertsContainer.style.display = 'none'; }
+    if (trboBadgeEl) trboBadgeEl.innerHTML = `<span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; font-weight: 800;">Consultando TRBOnet...</span>`;
+    if (bidBadgeEl) bidBadgeEl.innerHTML = `<span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; font-weight: 800;">Consultando BID...</span>`;
+    if (bidTimerEl) bidTimerEl.textContent = '--';
+    if (bidPhoneEl) bidPhoneEl.textContent = '--';
+    if (bidTipoBaseEl) bidTipoBaseEl.textContent = '--';
+    if (bidVehicleEl) bidVehicleEl.textContent = '--';
+    if (bidMembersListEl) bidMembersListEl.textContent = '--';
+    if (ordersTbody) {
+        ordersTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 18px; color: var(--text-secondary);">Buscando histórico de ordens...</td></tr>`;
+    }
+
+    // Busca rápida nos dados locais em memória (<1ms) para pré-preencher
+    const localTeam = (deliveryState.filteredTeams || []).find(t => t.team_code === code) ||
+                      (deliveryState.activeTeams || []).find(t => t.team_code === code) ||
+                      (deliveryState.dailyTotalTeams || []).find(t => t.team_code === code);
+
+    if (localTeam) {
+        if (baseBadgeEl) baseBadgeEl.textContent = localTeam.base_display || localTeam.base_name || `Base ${localTeam.base_code}`;
+        if (regionBadgeEl) regionBadgeEl.textContent = localTeam.region || 'Região';
+        if (turnoProgEl) turnoProgEl.textContent = localTeam.shift_slot || localTeam.raw_shift || '--';
+        if (marcacaoEl) marcacaoEl.textContent = localTeam.marcacao || '--';
+        if (motoristaEl) motoristaEl.textContent = localTeam.driver || '--';
+        if (veiculoTipoEl) veiculoTipoEl.textContent = localTeam.vehicle_type || localTeam.veiculo_portal || '--';
+        if (placaEl) placaEl.textContent = localTeam.plate || '--';
+        if (utFilialEl) utFilialEl.textContent = `${localTeam.ut || '--'} • ${localTeam.filial || '--'}`;
+        if (gpsEbEl) gpsEbEl.textContent = localTeam.gps_update_str || '--';
+        if (descansoEl) descansoEl.textContent = localTeam.data_inicio_descanso ? `${localTeam.data_inicio_descanso} ${localTeam.hora_inicio_descanso || ''}` : '--';
+        
+        if (statusOperEl) {
+            statusOperEl.innerHTML = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 800;">${localTeam.status_equipes_brasil || localTeam.status || 'Ativa'}</span>`;
+        }
+
+        if (desvioBadgeEl) {
+            const desv = localTeam.desvio || '--';
+            let dClass = 'background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3);';
+            if (desv !== '--') {
+                if (desv.includes('+')) dClass = 'background: rgba(245, 158, 11, 0.18); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);';
+                else dClass = 'background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);';
+            }
+            desvioBadgeEl.innerHTML = `<span class="badge" style="${dClass} font-weight: 800; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px;">${desv}</span>`;
+        }
+    }
+
+    // 2. Consulta a API Unificada de Detalhes
+    try {
+        const resp = await fetch(`/api/delivery/team_details/${encodeURIComponent(code)}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const result = await resp.json();
+
+        if (result.status === 'success') {
+            const d = result.delivery || localTeam || {};
+            const trbo = result.trbonet || {};
+            const fleet = result.fleet || {};
+            const orders = result.order_history || [];
+            const alerts = result.alerts || [];
+
+            // Cabeçalho
+            if (codeEl) codeEl.textContent = `EQUIPE ${code}`;
+            if (baseBadgeEl) baseBadgeEl.textContent = d.base_display || d.base_name || `Base ${d.base_code || ''}`;
+            if (regionBadgeEl) regionBadgeEl.textContent = d.region || 'Região';
+
+            // Alertas Críticos
+            if (alertsContainer) {
+                if (alerts.length > 0) {
+                    alertsContainer.style.display = 'block';
+                    alertsContainer.innerHTML = alerts.map(a => `
+                        <div class="del-modal-alert ${a.type === 'danger' ? 'del-modal-alert-danger' : 'del-modal-alert-warning'}">
+                            <i data-lucide="${a.type === 'danger' ? 'alert-triangle' : 'alert-circle'}" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+                            <div><strong>${a.title}:</strong> ${a.message}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    alertsContainer.style.display = 'none';
+                    alertsContainer.innerHTML = '';
+                }
+            }
+
+            // TRBOnet One Card
+            if (trboBadgeEl) {
+                if (trbo.connected) {
+                    trboBadgeEl.innerHTML = `
+                        <span class="badge badge-trbo-online">
+                            <span class="live-status-dot" style="background: #10b981;"></span> ${trbo.status_label}
+                        </span>
+                    `;
+                } else {
+                    trboBadgeEl.innerHTML = `
+                        <span class="badge badge-trbo-offline">
+                            <span class="live-status-dot" style="background: #ef4444;"></span> Desconectado no TRBOnet
+                        </span>
+                    `;
+                }
+            }
+            if (radioIdEl) radioIdEl.textContent = trbo.radio_id || '--';
+            if (radioChannelEl) radioChannelEl.textContent = trbo.channel || '--';
+            if (radioGpsEl) {
+                radioGpsEl.innerHTML = trbo.has_gps
+                    ? `<span class="text-emerald" style="font-weight: 800;">✓ Sinal Ativo</span>`
+                    : `<span class="text-amber" style="font-weight: 800;">⚠️ Sem GPS</span>`;
+            }
+            if (radioLastSignalEl) radioLastSignalEl.textContent = trbo.last_signal || '--:--:--';
+            if (trboNoteEl) trboNoteEl.textContent = trbo.details || '';
+
+            // Escala e Marcação
+            if (turnoProgEl) turnoProgEl.textContent = d.shift_slot || d.raw_shift || '--';
+            if (marcacaoEl) marcacaoEl.textContent = d.marcacao || '--';
+            if (gpsEbEl) gpsEbEl.textContent = d.gps_update_str || '--';
+            if (descansoEl) descansoEl.textContent = d.data_inicio_descanso ? `${d.data_inicio_descanso} ${d.hora_inicio_descanso || ''}` : '--';
+            if (statusOperEl) {
+                const s = d.status_equipes_brasil || d.status || 'Ativa';
+                statusOperEl.innerHTML = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 800; padding: 2px 8px; border-radius: 9999px;">${s}</span>`;
+            }
+            if (desvioBadgeEl) {
+                const desv = d.desvio || '--';
+                let dClass = 'background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3);';
+                if (desv !== '--') {
+                    const minVal = d.desvio_minutos || 0;
+                    if (Math.abs(minVal) > 30) {
+                        dClass = 'background: rgba(239, 68, 68, 0.18); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.45);';
+                    } else if (desv.includes('+')) {
+                        dClass = 'background: rgba(245, 158, 11, 0.18); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.45);';
+                    } else {
+                        dClass = 'background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.45);';
+                    }
+                }
+                desvioBadgeEl.innerHTML = `<span class="badge" style="${dClass} font-weight: 800; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px;">${desv}</span>`;
+            }
+
+            // Frota e Veículo
+            if (motoristaEl) motoristaEl.textContent = d.driver || '--';
+            if (veiculoTipoEl) veiculoTipoEl.textContent = d.vehicle_type || d.veiculo_portal || '--';
+            if (placaEl) placaEl.textContent = d.plate || '--';
+            if (utFilialEl) utFilialEl.textContent = `${d.ut || '--'} • ${d.filial || '--'}`;
+
+            if (frotaSituacaoEl) {
+                const isCad = fleet.plate_cadastrada;
+                const sit = (fleet.situacao_veiculo_cadastrado || '').toUpperCase();
+                const st = (fleet.status_veiculo_cadastrado || '').toUpperCase();
+                if (!isCad) {
+                    frotaSituacaoEl.innerHTML = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.35); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800;">Não Cadastrada</span>`;
+                } else if (sit === 'PARADO' || st.includes('MANUTEN') || st.includes('ANÁLISE') || st.includes('ANALISE')) {
+                    frotaSituacaoEl.innerHTML = `<span class="badge" style="background: rgba(245, 158, 11, 0.18); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.45); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800;">⚠️ ${sit} (${st || '--'})</span>`;
+                } else {
+                    frotaSituacaoEl.innerHTML = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800;">✓ ${sit} (${st || 'OPERACIONAL'})</span>`;
+                }
+            }
+
+            // Histórico de Ordens de Serviço (OS)
+            if (orderCountBadge) orderCountBadge.textContent = `${orders.length} ${orders.length === 1 ? 'Ordem' : 'Ordens'}`;
+            if (ordersTbody) {
+                if (orders.length === 0) {
+                    ordersTbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                                Nenhuma ordem de serviço registrada para esta equipe no dia operacional atual.
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    const currentOS = d.ordem_servico;
+                    ordersTbody.innerHTML = orders.map((o, idx) => {
+                        const isCurrent = currentOS && String(o.ordem).trim() === String(currentOS).trim();
+                        const isLatest = idx === orders.length - 1;
+                        const highlight = isCurrent || isLatest;
+                        return `
+                            <tr style="${highlight ? 'background: rgba(14, 165, 233, 0.08);' : ''}">
+                                <td>
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <strong class="del-modal-order-strong ${highlight ? 'order-current' : ''}" style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">${o.ordem}</strong>
+                                        ${highlight ? '<span class="badge del-modal-order-badge-current" style="background: rgba(14, 165, 233, 0.2); color: #0284c7; font-size: 0.62rem; font-weight: 800; padding: 1px 5px; border-radius: 4px;">Atual</span>' : ''}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; color: var(--text-secondary);">${o.first_seen || '--:--:--'}</span>
+                                </td>
+                                <td>
+                                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; color: var(--text-secondary);">${o.last_seen || '--:--:--'}</span>
+                                </td>
+                                <td>
+                                    <span style="font-size: 0.74rem; font-weight: 700; color: #10b981;">${o.status || 'Atendida'}</span>
+                                </td>
+                                <td>
+                                    <span class="badge del-modal-cycle-badge">${o.cycles_count || 1}x (${((o.cycles_count || 1) * 2)}min)</span>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // BID Visão Operacional (Checklist)
+            const bid = result.bid_info || (localTeam && localTeam.bid_info) || {};
+            if (bid && Object.keys(bid).length > 0 && (bid.status_bid || bid.tipo_operacional || bid.plate)) {
+                const st = bid.status_bid || 'Não Encontrada';
+                let bBadge = '';
+                if (st === 'Em Operação') {
+                    bBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 8px; border-radius: 9999px; font-weight: 800;"><span class="live-status-dot" style="width:6px;height:6px;background:#10b981;"></span> Em Operação</span>`;
+                } else if (st === 'Em Checklist') {
+                    bBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); padding: 3px 8px; border-radius: 9999px; font-weight: 800;">⏱️ Em Checklist</span>`;
+                } else if (st === 'Planejada') {
+                    bBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.18); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); padding: 3px 8px; border-radius: 9999px; font-weight: 800;">⚠️ Planejada (Pendente)</span>`;
+                } else if (st === 'Bloqueada' || st === 'Retornada') {
+                    bBadge = `<span class="badge" style="background: rgba(225, 29, 72, 0.2); color: #e11d48; border: 1px solid rgba(225, 29, 72, 0.4); padding: 3px 8px; border-radius: 9999px; font-weight: 800;">⛔ ${st}</span>`;
+                } else {
+                    bBadge = `<span class="badge" style="background: rgba(192, 132, 252, 0.18); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.4); padding: 3px 8px; border-radius: 9999px; font-weight: 800;">🟣 Não Cadastrada</span>`;
+                }
+                if (bidBadgeEl) bidBadgeEl.innerHTML = bBadge;
+
+                const timerVal = bid.timer_value || bid.tempo_operacao || '--';
+                const timerLbl = bid.timer_label || (st === 'Em Operação' ? 'Tempo em operação' : 'Tempo');
+                if (bidTimerEl) bidTimerEl.textContent = timerVal !== '--' ? `${timerVal} (${timerLbl})` : '--';
+                if (bidPhoneEl) bidPhoneEl.textContent = bid.phone || '--';
+                if (bidTipoBaseEl) bidTipoBaseEl.textContent = `${bid.tipo_operacional || bid.tipo || '--'} • Base ${bid.base || '--'}`;
+                if (bidVehicleEl) bidVehicleEl.textContent = `${bid.plate || '--'} ${bid.vehicle_desc ? '• ' + bid.vehicle_desc : ''}`;
+
+                if (bidMembersListEl) {
+                    const members = bid.members || [];
+                    if (Array.isArray(members) && members.length > 0) {
+                        bidMembersListEl.innerHTML = members.map(m => {
+                            const name = typeof m === 'object' ? (m.name || '--') : String(m);
+                            const role = typeof m === 'object' ? (m.role || '') : '';
+                            const grp = typeof m === 'object' ? (m.group || '') : '';
+                            return `<div style="margin-bottom: 3px;"><strong>👤 ${name}</strong> ${role ? `<span style="color: var(--text-secondary);">(${role}${grp ? ' • ' + grp : ''})</span>` : ''}</div>`;
+                        }).join('');
+                    } else if (typeof members === 'string' && members.trim()) {
+                        bidMembersListEl.textContent = members;
+                    } else {
+                        bidMembersListEl.textContent = 'Nenhum componente especificado no card.';
+                    }
+                }
+            } else {
+                if (bidBadgeEl) bidBadgeEl.innerHTML = `<span class="badge" style="background: rgba(192, 132, 252, 0.18); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.4); padding: 3px 8px; border-radius: 9999px; font-weight: 800;">🟣 Não Encontrada no BID</span>`;
+                if (bidTimerEl) bidTimerEl.textContent = '--';
+                if (bidPhoneEl) bidPhoneEl.textContent = '--';
+                if (bidTipoBaseEl) bidTipoBaseEl.textContent = '--';
+                if (bidVehicleEl) bidVehicleEl.textContent = '--';
+                if (bidMembersListEl) bidMembersListEl.textContent = 'Sem dados de checklist no BID hoje.';
+            }
+
+        }
+    } catch (err) {
+        console.warn('[DELIVERY MODAL ERROR]', err);
+    }
+
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
     }
 }
 
@@ -6161,6 +6557,9 @@ async function triggerEnelCdpCapture() {
         if (resp.ok && data.status === 'success') {
             showToast(`Sucesso! ${data.message || 'Dados sincronizados com o Supabase!'}`, 'success');
             await loadDeliveryData(false);
+            if (typeof loadOnlineXBidData === 'function') {
+                loadOnlineXBidData().catch(() => {});
+            }
             closeModal('deliveryCollectModal');
         } else if (resp.status === 202 || data?.status === 'queued') {
             const cmdId = data.command_id;
@@ -6179,6 +6578,9 @@ async function triggerEnelCdpCapture() {
                             if (cmdStatus.status === 'COMPLETED') {
                                 showToast('Coleta concluída pelo robô local com sucesso!', 'success');
                                 await loadDeliveryData(false);
+                                if (typeof loadOnlineXBidData === 'function') {
+                                    loadOnlineXBidData().catch(() => {});
+                                }
                                 closeModal('deliveryCollectModal');
                                 completed = true;
                                 break;
@@ -6197,6 +6599,9 @@ async function triggerEnelCdpCapture() {
             if (!completed) {
                 showToast('Comando em processamento pelo robô local. Os dados serão atualizados em instantes via Realtime!', 'info');
                 await loadDeliveryData(false);
+                if (typeof loadOnlineXBidData === 'function') {
+                    loadOnlineXBidData().catch(() => {});
+                }
                 closeModal('deliveryCollectModal');
             }
         } else {
@@ -6310,7 +6715,21 @@ async function loadAdminEngineStatus() {
         if (sSpot) sSpot.textContent = spot.last_sync || '--:--:--';
         if (rSpot) rSpot.textContent = `${spot.records || 0} metas`;
 
-        // 4. Supabase Cloud
+        // 4. Robô CDP BidTech (Checklist Operacional)
+        const bid = engines.bid_cdp || {};
+        const bBid = document.getElementById('engineBadgeBid');
+        const mBid = document.getElementById('engineMsgBid');
+        const sBid = document.getElementById('engineSyncBid');
+        const rBid = document.getElementById('engineRecordsBid');
+        if (bBid) {
+            bBid.className = `engine-status-badge ${bid.status === 'OPERATIONAL' ? 'badge-operational' : (bid.status === 'ERROR_CONNECTION' ? 'badge-error-connection' : 'badge-stopped')}`;
+            bBid.textContent = bid.status === 'OPERATIONAL' ? 'OPERACIONAL' : (bid.status === 'ERROR_CONNECTION' ? 'FALHA DE CONEXÃO' : 'MOTOR PARADO');
+        }
+        if (mBid) mBid.textContent = bid.message || '--';
+        if (sBid) sBid.textContent = bid.last_sync || '--:--:--';
+        if (rBid) rBid.textContent = `${bid.records || 0} equipes`;
+
+        // 5. Supabase Cloud
         const cloud = engines.cloud_sync || {};
         const bCloud = document.getElementById('engineBadgeCloud');
         const mCloud = document.getElementById('engineMsgCloud');
@@ -6566,6 +6985,84 @@ async function openEngineDetailsModal(engineKey) {
                 `;
             }
 
+        } else if (engineKey === 'bid_cdp') {
+            if (subtitleEl) subtitleEl.textContent = 'Automação Chrome DevTools Protocol na porta 9222 (Checklist & Visão Operacional BidTech)';
+            if (iconEl) iconEl.setAttribute('data-lucide', 'clipboard-check');
+            if (badgeBox) { badgeBox.style.background = 'rgba(236, 72, 153, 0.15)'; badgeBox.style.borderColor = 'rgba(236, 72, 153, 0.35)'; }
+            if (commTagEl) commTagEl.textContent = 'Chrome CDP 9222 (BidTech)';
+            if (actionText) actionText.textContent = data.action_label || 'Disparar Sincronização BidTech (CDP) Agora';
+
+            const totalTeams = summ.total_teams ?? 0;
+            const emOperacao = summ.em_operacao ?? 0;
+            const emChecklist = summ.em_checklist ?? 0;
+            const bloqueadas = summ.bloqueadas ?? 0;
+
+            if (kpisEl) {
+                kpisEl.innerHTML = `
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">TOTAL CHECKLIST</span>
+                        <strong style="font-size: 1.35rem; color: #ec4899; font-family: 'JetBrains Mono';">${totalTeams}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">EM OPERAÇÃO</span>
+                        <strong style="font-size: 1.35rem; color: #10b981; font-family: 'JetBrains Mono';">${emOperacao}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">EM CHECKLIST</span>
+                        <strong style="font-size: 1.35rem; color: #f59e0b; font-family: 'JetBrains Mono';">${emChecklist}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">BLOQ. / RETORNADAS</span>
+                        <strong style="font-size: 1.35rem; color: #ef4444; font-family: 'JetBrains Mono';">${bloqueadas}</strong>
+                    </div>
+                `;
+            }
+
+            const samples = data.sample_records || [];
+            if (contentEl) {
+                let rowsHtml = samples.map(t => {
+                    const st = t.status_bid || '--';
+                    let badgeClass = 'badge-neutral';
+                    if (st === 'Em Operação') badgeClass = 'badge-conforme';
+                    else if (st === 'Em Checklist') badgeClass = 'badge-alerta-critico';
+                    else if (st === 'Planejada') badgeClass = 'badge-alerta-grave';
+                    else if (st === 'Bloqueada' || st === 'Retornada') badgeClass = 'badge-alerta-impeditivo';
+
+                    return `
+                    <tr>
+                        <td><strong style="color: var(--text-primary); font-family: 'JetBrains Mono';">${t.code || '--'}</strong></td>
+                        <td>${t.base || '--'}</td>
+                        <td><span class="status-badge ${badgeClass}">${st}</span></td>
+                        <td><small style="color: var(--text-primary);">${t.driver || '--'}</small></td>
+                        <td><code style="color: #00f2fe; font-family: 'JetBrains Mono';">${t.plate || '--'}</code></td>
+                        <td><span style="font-size: 0.75rem; color: var(--text-secondary);">${t.tipo_operacional || '--'}${t.timer_value ? ' (' + t.timer_value + ')' : ''}</span></td>
+                    </tr>
+                    `;
+                }).join('');
+
+                contentEl.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <strong style="font-size: 0.88rem; color: var(--text-primary);"><i data-lucide="clipboard-check" style="width: 15px; height: 15px; margin-right: 6px; vertical-align: middle; color: #ec4899;"></i> Amostragem de Equipes no Checklist BidTech</strong>
+                        <small style="color: var(--text-secondary);">Exibindo ${samples.length} de ${totalTeams}</small>
+                    </div>
+                    <div style="max-height: 240px; overflow-y: auto;">
+                        <table class="data-table" style="width: 100%; font-size: 0.8rem;">
+                            <thead>
+                                <tr>
+                                    <th>Equipe</th>
+                                    <th>Base</th>
+                                    <th>Status Checklist</th>
+                                    <th>Motorista</th>
+                                    <th>Placa</th>
+                                    <th>Tipologia / Tempo</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml || '<tr><td colspan="6" style="text-align: center;">Nenhuma equipe no checklist</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
         } else if (engineKey === 'cloud_sync') {
             if (subtitleEl) subtitleEl.textContent = 'Banco de dados relacional PostgreSQL & WebSocket Realtime na Nuvem';
             if (iconEl) iconEl.setAttribute('data-lucide', 'database');
@@ -6625,10 +7122,32 @@ async function triggerCurrentEngineAction() {
         triggerEnelCdpCapture();
     } else if (currentSelectedEngine === 'spotfire_cdp') {
         triggerSpotfireCdpCapture();
+    } else if (currentSelectedEngine === 'bid_cdp') {
+        triggerBidCdpCapture();
     } else if (currentSelectedEngine === 'cloud_sync') {
         showToast('Sincronizando estado operacional com o Supabase...', 'info');
         if (typeof fetchDashboardData === 'function') fetchDashboardData(true);
         if (typeof loadDeliveryData === 'function') loadDeliveryData(true);
+    }
+}
+
+async function triggerBidCdpCapture() {
+    showToast('Iniciando sincronização da Visão Operacional BidTech...', 'info');
+    try {
+        const resp = await fetch('/api/capture/bid/direct', { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok && (data.status === 'success' || data.total_extracted >= 0)) {
+            showToast(data.message || 'Dados do BidTech sincronizados com sucesso!', 'success');
+            loadAdminEngineStatus();
+            if (typeof loadOnlineXBidData === 'function') loadOnlineXBidData();
+            if (currentSelectedEngine === 'bid_cdp') {
+                openEngineDetailsModal('bid_cdp');
+            }
+        } else {
+            showToast(data.message || 'Falha ao sincronizar BidTech.', 'danger');
+        }
+    } catch (err) {
+        showToast('Erro de comunicação ao disparar BidTech: ' + err.message, 'danger');
     }
 }
 
@@ -6652,7 +7171,7 @@ async function triggerSpotfireCdpCapture() {
 }
 
 async function triggerRestartEngines() {
-    if (!confirm('Deseja enviar comando para reiniciar os motores locais de captura em segundo plano no Windows (TRBOnet One, Robô CDP Enel SP e Scanner 5.0)?\nO servidor web continuará funcionando normalmente.')) {
+    if (!confirm('Deseja enviar comando para reiniciar os motores locais de captura em segundo plano no Windows (TRBOnet One, Robô CDP Enel SP, Scanner 5.0 e Robô CDP BidTech)?\nO servidor web continuará funcionando normalmente.')) {
         return;
     }
 
@@ -6869,6 +7388,782 @@ async function sendTelemetryHeartbeat() {
     }
 }
 
+
+// ==============================================================================
+// ==============================================================================
+// MÓDULO: ONLINE (EQUIPES BRASIL) x BIDTECH (CHECKLIST VISÃO OPERACIONAL)
+// ==============================================================================
+const onlineBidState = {
+    allRows: [],
+    kpis: {},
+    date: '',
+    lastBidSync: '',
+    isLoading: false,
+    activeCardFilter: ''
+};
+
+function toggleBidCardFilter(filterType) {
+    const selStatus = document.getElementById('filterBidCrossStatus');
+    
+    // Toggle: se clicar no mesmo card já ativo, desativa o filtro
+    if (onlineBidState.activeCardFilter === filterType) {
+        onlineBidState.activeCardFilter = '';
+        if (selStatus) selStatus.value = '';
+    } else {
+        onlineBidState.activeCardFilter = filterType;
+        if (selStatus) {
+            if (filterType === 'TOTAL_EB') {
+                selStatus.value = ''; // Limpa filtro de status cruzado para mostrar todas logadas EB
+            } else {
+                selStatus.value = filterType;
+            }
+        }
+    }
+    
+    updateActiveKpiCardHighlight(onlineBidState.activeCardFilter);
+    filterOnlineBidTable();
+}
+
+function onSelectBidCrossStatus(val) {
+    onlineBidState.activeCardFilter = val || '';
+    updateActiveKpiCardHighlight(onlineBidState.activeCardFilter);
+    filterOnlineBidTable();
+}
+
+function updateActiveKpiCardHighlight(type) {
+    const cardMap = {
+        'CONFORME': 'kpiCardBidConforme',
+        'ALERTA CRÍTICO': 'kpiCardBidCritico',
+        'ALERTA GRAVE': 'kpiCardBidGrave',
+        'ALERTA GRAVÍSSIMO': 'kpiCardBidGravissimo',
+        'ALERTA IMPEDITIVO': 'kpiCardBidImpeditivo',
+        'TOTAL_EB': 'kpiCardBidTotalEb'
+    };
+
+    // Remove destaque de todos os cards
+    document.querySelectorAll('.online-bid-kpi-grid .fleet-liquid-card').forEach(c => {
+        c.classList.remove('active-kpi-card');
+    });
+
+    if (type && cardMap[type]) {
+        const target = document.getElementById(cardMap[type]);
+        if (target) {
+            target.classList.add('active-kpi-card');
+        }
+    }
+}
+
+function toggleBidCardFilter(cardType) {
+    if (onlineBidState.activeCardFilter === cardType) {
+        // Desmarca filtro ativo (toggle off)
+        onlineBidState.activeCardFilter = '';
+        updateActiveKpiCardHighlight('');
+        // Restaura todos os status cruzados e status EB
+        document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="cross-status"]').forEach(cb => {
+            cb.checked = true;
+        });
+        document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="eb-status"]').forEach(cb => {
+            cb.checked = true;
+        });
+    } else {
+        onlineBidState.activeCardFilter = cardType;
+        updateActiveKpiCardHighlight(cardType);
+
+        if (cardType === 'TOTAL_EB') {
+            // Seleciona apenas "Logada" no filtro de Status EB
+            document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="eb-status"]').forEach(cb => {
+                cb.checked = (cb.value === 'Logada');
+            });
+        } else {
+            // Seleciona apenas o status cruzado correspondente
+            document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="cross-status"]').forEach(cb => {
+                cb.checked = (cb.value === cardType);
+            });
+        }
+    }
+
+    syncOnlineBidFiltersFromDOM();
+    filterOnlineBidTable();
+}
+
+function updateOnlineBidPillLabel(filterType, totalCount, selectedCount, firstValue) {
+    const labelMap = {
+        'region': 'bidFilterRegionLabel',
+        'base': 'bidFilterBaseLabel',
+        'eb-status': 'bidFilterEbStatusLabel',
+        'bid-status': 'bidFilterBidStatusLabel',
+        'cross-status': 'bidFilterCrossStatusLabel',
+        'turno': 'bidFilterTurnoLabel'
+    };
+    const el = document.getElementById(labelMap[filterType]);
+    if (!el) return;
+
+    if (selectedCount === totalCount || (selectedCount === 0 && totalCount === 0)) {
+        el.textContent = 'Todos';
+    } else if (selectedCount === 0) {
+        el.textContent = 'Nenhum';
+    } else if (selectedCount === 1) {
+        let clean = (firstValue || '').replace('Região ', '').replace('Base ', '').replace('Turno ', '');
+        el.textContent = clean || '1 sel.';
+    } else {
+        el.textContent = `${selectedCount} sel.`;
+    }
+}
+
+function syncOnlineBidFiltersFromDOM() {
+    if (!onlineBidState.filters) {
+        onlineBidState.filters = { regions: [], bases: [], ebStatuses: [], bidStatuses: [], crossStatuses: [], turnos: [] };
+    }
+
+    const getSelected = (filterType) => {
+        const cbs = Array.from(document.querySelectorAll(`#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="${filterType}"]`));
+        const checked = cbs.filter(c => c.checked).map(c => c.value);
+        updateOnlineBidPillLabel(filterType, cbs.length, checked.length, checked[0] || '');
+        return checked;
+    };
+
+    onlineBidState.filters.regions = getSelected('region');
+    onlineBidState.filters.bases = getSelected('base');
+    onlineBidState.filters.ebStatuses = getSelected('eb-status');
+    onlineBidState.filters.bidStatuses = getSelected('bid-status');
+    onlineBidState.filters.crossStatuses = getSelected('cross-status');
+    onlineBidState.filters.turnos = getSelected('turno');
+}
+
+function updateOnlineBidGroupCheckboxesState() {
+    document.querySelectorAll('#deliveryScreenOnlineBid .popover-group-checkbox').forEach(gcb => {
+        const grp = gcb.getAttribute('data-bid-group');
+        const children = Array.from(document.querySelectorAll(`#deliveryScreenOnlineBid .popover-checkbox[data-bid-group="${grp}"]`));
+        if (children.length === 0) return;
+        const checkedCount = children.filter(c => c.checked).length;
+        gcb.checked = (checkedCount === children.length);
+        gcb.indeterminate = (checkedCount > 0 && checkedCount < children.length);
+    });
+}
+
+function setupOnlineBidFilterDropdowns() {
+    // 1. Toggle de popovers ao clicar no botão da pílula
+    document.querySelectorAll('#deliveryScreenOnlineBid .period-filter-pill-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const targetId = btn.getAttribute('data-target');
+            const targetMenu = document.getElementById(targetId);
+            const isAlreadyActive = targetMenu && targetMenu.classList.contains('active');
+
+            // Fecha outros popovers
+            document.querySelectorAll('#deliveryScreenOnlineBid .period-filter-popover').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('#deliveryScreenOnlineBid .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+
+            if (!isAlreadyActive && targetMenu) {
+                targetMenu.classList.add('active');
+                btn.classList.add('active');
+            }
+        };
+    });
+
+    // 2. Ações de "Todos" e "Limpar" no cabeçalho do popover
+    document.querySelectorAll('#deliveryScreenOnlineBid .popover-action-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const action = btn.getAttribute('data-action');
+            const filterType = btn.getAttribute('data-bid-filter');
+            const cbs = document.querySelectorAll(`#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="${filterType}"]`);
+
+            cbs.forEach(cb => {
+                cb.checked = (action === 'select-all');
+            });
+
+            if (filterType === 'base') {
+                updateOnlineBidGroupCheckboxesState();
+            }
+
+            syncOnlineBidFiltersFromDOM();
+            filterOnlineBidTable();
+        };
+    });
+
+    // 3. Hierarquia: selecionar grupo pai marca/desmarca todas as filhas
+    document.querySelectorAll('#deliveryScreenOnlineBid .popover-group-checkbox').forEach(gcb => {
+        gcb.onchange = (e) => {
+            const grp = gcb.getAttribute('data-bid-group');
+            const isChecked = gcb.checked;
+            document.querySelectorAll(`#deliveryScreenOnlineBid .popover-checkbox[data-bid-group="${grp}"]`).forEach(cb => {
+                cb.checked = isChecked;
+            });
+            syncOnlineBidFiltersFromDOM();
+            filterOnlineBidTable();
+        };
+    });
+
+    // 4. Checkboxes individuais disparam re-filtro e sincronizam rótulo
+    document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox').forEach(cb => {
+        cb.onchange = () => {
+            updateOnlineBidGroupCheckboxesState();
+            syncOnlineBidFiltersFromDOM();
+            filterOnlineBidTable();
+        };
+    });
+
+    // 5. Clique interno no popover não propaga (mantém o popover aberto enquanto clica nos itens)
+    document.querySelectorAll('#deliveryScreenOnlineBid .period-filter-popover').forEach(p => {
+        p.onclick = (e) => {
+            e.stopPropagation();
+        };
+    });
+
+    // 6. Clique FORA fecha qualquer popover que estiver aberto
+    if (!window._onlineBidClosePopoverBound) {
+        window._onlineBidClosePopoverBound = true;
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#deliveryScreenOnlineBid .dropdown-popover-container')) {
+                document.querySelectorAll('#deliveryScreenOnlineBid .period-filter-popover').forEach(p => p.classList.remove('active'));
+                document.querySelectorAll('#deliveryScreenOnlineBid .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+            }
+        });
+    }
+}
+
+function initOnlineBidMultiFilters(rows) {
+    if (!rows) return;
+
+    // 1. REGIÃO (Multi-seleção)
+    const regList = document.getElementById('bidFilterRegionList');
+    if (regList) {
+        regList.innerHTML = `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-bid-filter="region" value="Norte" checked>
+                <span>Região Norte</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-bid-filter="region" value="Leste" checked>
+                <span>Região Leste</span>
+            </label>
+        `;
+    }
+
+    // 2. BASE / UT (Hierarquia com Região Norte e Região Leste)
+    const baseList = document.getElementById('bidFilterBaseList');
+    if (baseList) {
+        // Separação oficial de bases por região
+        const allBases = Array.from(new Set(rows.map(r => r.base_display).filter(Boolean))).sort();
+        const norteDefault = ['Base Fagundes Filho', 'Base Cajati', 'Base Vila Medeiros'];
+        const lesteDefault = ['Base Monte Santo', 'Base Catumbi', 'Base Aricanduva', 'Base Santo André'];
+
+        const norteBases = Array.from(new Set([
+            ...norteDefault,
+            ...rows.filter(r => (r.geo || '').toLowerCase().includes('norte')).map(r => r.base_display).filter(Boolean)
+        ])).sort();
+
+        const lesteBases = Array.from(new Set([
+            ...lesteDefault,
+            ...rows.filter(r => (r.geo || '').toLowerCase().includes('leste')).map(r => r.base_display).filter(Boolean)
+        ])).sort();
+
+        baseList.innerHTML = `
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Clique para selecionar/desmarcar todas as bases da Região Norte">
+                    <input type="checkbox" class="popover-group-checkbox" data-bid-group="regiao-norte" checked>
+                    <span>Região Norte</span>
+                </label>
+                <div class="popover-group-children">
+                    ${norteBases.map(b => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-bid-filter="base" data-bid-group="regiao-norte" value="${b}" checked>
+                            <span>${b}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Clique para selecionar/desmarcar todas as bases da Região Leste">
+                    <input type="checkbox" class="popover-group-checkbox" data-bid-group="regiao-leste" checked>
+                    <span>Região Leste</span>
+                </label>
+                <div class="popover-group-children">
+                    ${lesteBases.map(b => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-bid-filter="base" data-bid-group="regiao-leste" value="${b}" checked>
+                            <span>${b}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // 3. STATUS EB (NOVO - Logada vs Não Logada)
+    const ebList = document.getElementById('bidFilterEbStatusList');
+    if (ebList) {
+        ebList.innerHTML = `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-bid-filter="eb-status" value="Logada" checked>
+                <span>Logada</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-bid-filter="eb-status" value="Não Logada" checked>
+                <span>Não Logada</span>
+            </label>
+        `;
+    }
+
+    // 4. STATUS BID (NOVO - Status do Checklist BidTech)
+    const bidList = document.getElementById('bidFilterBidStatusList');
+    if (bidList) {
+        const defaultBidStatuses = ['Em Operação', 'Em Checklist', 'Planejada', 'Não Encontrada', 'Bloqueada', 'Retornada'];
+        const fromData = Array.from(new Set(rows.map(r => r.status_bid).filter(Boolean)));
+        const allBidStatuses = Array.from(new Set([...defaultBidStatuses, ...fromData])).sort();
+
+        bidList.innerHTML = allBidStatuses.map(s => `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-bid-filter="bid-status" value="${s}" checked>
+                <span>${s}</span>
+            </label>
+        `).join('');
+    }
+
+    // 5. STATUS CRUZADO (Forense)
+    const crossList = document.getElementById('bidFilterCrossStatusList');
+    if (crossList) {
+        const crossOptions = [
+            { val: 'CONFORME', label: '🟢 Conforme (Em Operação)' },
+            { val: 'ALERTA CRÍTICO', label: '🟡 Alerta Crítico (Em Checklist)' },
+            { val: 'ALERTA GRAVE', label: '🔴 Alerta Grave (Planejada)' },
+            { val: 'ALERTA GRAVÍSSIMO', label: '🟣 Alerta Gravíssimo (Não Encontrada)' },
+            { val: 'ALERTA IMPEDITIVO', label: '⛔ Alerta Impeditivo (Bloqueada/Retornada)' },
+            { val: 'BID SEM LOGIN EB', label: '🟠 Sem Login no Despacho' },
+            { val: 'AGUARDANDO APRESENTAÇÃO', label: '🔵 Aguardando Apresentação' }
+        ];
+
+        crossList.innerHTML = crossOptions.map(opt => `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-bid-filter="cross-status" value="${opt.val}" checked>
+                <span>${opt.label}</span>
+            </label>
+        `).join('');
+    }
+
+    // 6. TURNO (Multi-seleção)
+    const turnoList = document.getElementById('bidFilterTurnoList');
+    if (turnoList) {
+        const fromData = Array.from(new Set(rows.map(r => r.turno).filter(Boolean))).sort();
+        const defaultTurnos = ['Turno 06:00', 'Turno 08:00', 'Turno 14:00', 'Turno 15:00', 'Turno 16:00', '--'];
+        const allTurnos = Array.from(new Set([...fromData, ...defaultTurnos])).sort();
+
+        turnoList.innerHTML = allTurnos.map(t => `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-bid-filter="turno" value="${t}" checked>
+                <span>${t}</span>
+            </label>
+        `).join('');
+    }
+
+    // Configura todos os dropdowns e listeners
+    setupOnlineBidFilterDropdowns();
+    syncOnlineBidFiltersFromDOM();
+}
+
+function renderOnlineBidKpis(k) {
+    if (!k) return;
+    const elRate = document.getElementById('onlineBidConformidadeRateBadge');
+    const elConforme = document.getElementById('kpiBidConforme');
+    const elCritico = document.getElementById('kpiBidCritico');
+    const elGrave = document.getElementById('kpiBidGrave');
+    const elGravissimo = document.getElementById('kpiBidGravissimo');
+    const elImpeditivo = document.getElementById('kpiBidImpeditivo');
+    const elTotalEb = document.getElementById('kpiBidTotalEb');
+    const elTotalEmOperacaoSub = document.getElementById('kpiBidTotalEmOperacaoSub');
+
+    if (elRate) elRate.textContent = `${k.indice_conformidade || 0.0}%`;
+    if (elConforme) elConforme.textContent = k.conforme || 0;
+    if (elCritico) elCritico.textContent = k.alerta_critico || 0;
+    if (elGrave) elGrave.textContent = k.alerta_grave || 0;
+    if (elGravissimo) elGravissimo.textContent = k.alerta_gravissimo || 0;
+    if (elImpeditivo) elImpeditivo.textContent = k.alerta_impeditivo || 0;
+    if (elTotalEb) elTotalEb.textContent = k.total_logadas_eb || 0;
+    if (elTotalEmOperacaoSub) {
+        elTotalEmOperacaoSub.textContent = `${k.total_em_operacao_bid || 0} em operação no Checklist`;
+    }
+}
+
+async function loadOnlineXBidData() {
+    const dateInput = document.getElementById('onlineBidDateInput');
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (dateInput && !dateInput.value) {
+        dateInput.value = todayStr;
+    }
+    const targetDate = (dateInput && dateInput.value) ? dateInput.value : todayStr;
+
+    try {
+        const resp = await fetch(`/api/bid/data?date=${encodeURIComponent(targetDate)}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const result = await resp.json();
+
+        if (result.status === 'success') {
+            onlineBidState.allRows = result.rows || [];
+            onlineBidState.kpis = result.kpis || {};
+            onlineBidState.date = result.date || targetDate;
+            onlineBidState.lastBidSync = result.last_bid_sync || '--:--:--';
+
+            renderOnlineBidKpis(onlineBidState.kpis);
+            initOnlineBidMultiFilters(onlineBidState.allRows);
+            updateActiveKpiCardHighlight(onlineBidState.activeCardFilter);
+            filterOnlineBidTable();
+        }
+    } catch (err) {
+        console.error('[ONLINE x BID ERROR]', err);
+        showToast('Falha ao carregar dados da Reconciliação ONLINE x BID', 'danger');
+    }
+}
+
+function filterOnlineBidTable() {
+    const prevScrollY = window.scrollY;
+    const tbody = document.getElementById('onlineBidTableBody');
+    const countBadge = document.getElementById('onlineBidTableCountBadge');
+    if (!tbody) return;
+
+    const f = onlineBidState.filters || {
+        regions: [],
+        bases: [],
+        ebStatuses: [],
+        bidStatuses: [],
+        crossStatuses: [],
+        turnos: []
+    };
+
+    const totalReg = document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="region"]').length;
+    const totalBase = document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="base"]').length;
+    const totalEb = document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="eb-status"]').length;
+    const totalBid = document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="bid-status"]').length;
+    const totalCross = document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="cross-status"]').length;
+    const totalTurno = document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="turno"]').length;
+
+    const search = (document.getElementById('filterBidSearch')?.value || '').trim().toLowerCase();
+
+    let list = onlineBidState.allRows || [];
+
+    // Filtro ativado via Card "TOTAL LOGADAS (EB)"
+    if (onlineBidState.activeCardFilter === 'TOTAL_EB') {
+        list = list.filter(r => r.is_eb_active);
+    }
+
+    // Interseção com Multi-Filtros
+    list = list.filter(r => {
+        // 1. Região
+        if (totalReg > 0) {
+            if (f.regions.length === 0) return false;
+            if (f.regions.length < totalReg) {
+                const rGeo = (r.geo || '').toLowerCase();
+                const matchReg = f.regions.some(reg => rGeo.includes(reg.toLowerCase()));
+                if (!matchReg) return false;
+            }
+        }
+
+        // 2. Base / UT
+        if (totalBase > 0) {
+            if (f.bases.length === 0) return false;
+            if (f.bases.length < totalBase) {
+                if (!f.bases.includes(r.base_display)) return false;
+            }
+        }
+
+        // 3. Status EB (Logada vs Não Logada)
+        if (totalEb > 0) {
+            if (f.ebStatuses.length === 0) return false;
+            if (f.ebStatuses.length < totalEb) {
+                const ebVal = r.is_eb_active ? 'Logada' : 'Não Logada';
+                if (!f.ebStatuses.includes(ebVal)) return false;
+            }
+        }
+
+        // 4. Status BID (Checklist BidTech)
+        if (totalBid > 0) {
+            if (f.bidStatuses.length === 0) return false;
+            if (f.bidStatuses.length < totalBid) {
+                const bVal = r.status_bid || 'Não Encontrada';
+                if (!f.bidStatuses.includes(bVal)) return false;
+            }
+        }
+
+        // 5. Status Cruzado
+        if (totalCross > 0) {
+            if (f.crossStatuses.length === 0) return false;
+            if (f.crossStatuses.length < totalCross) {
+                if (!f.crossStatuses.includes(r.cross_status)) return false;
+            }
+        }
+
+        // 6. Turno
+        if (totalTurno > 0) {
+            if (f.turnos.length === 0) return false;
+            if (f.turnos.length < totalTurno) {
+                const tVal = r.turno || '--';
+                if (!f.turnos.includes(tVal)) return false;
+            }
+        }
+
+        // 7. Busca Textual
+        if (search) {
+            const team = (r.team_code || '').toLowerCase();
+            const plate = (r.plate || '').toLowerCase();
+            const plateEb = (r.plate_eb || '').toLowerCase();
+            const plateBid = (r.plate_bid || '').toLowerCase();
+            const driver = (r.driver || '').toLowerCase();
+            const members = Array.isArray(r.bid_members)
+                ? r.bid_members.map(m => (typeof m === 'object' ? m.name : String(m))).join(' ').toLowerCase()
+                : String(r.bid_members || '').toLowerCase();
+            const os = (r.ordem_servico || '').toLowerCase();
+            const baseDisp = (r.base_display || '').toLowerCase();
+            const matchSearch = team.includes(search) || plate.includes(search) || plateEb.includes(search) ||
+                                plateBid.includes(search) || driver.includes(search) || members.includes(search) ||
+                                os.includes(search) || baseDisp.includes(search);
+            if (!matchSearch) return false;
+        }
+
+        return true;
+    });
+
+    if (countBadge) {
+        countBadge.textContent = `${list.length} equipes listadas`;
+    }
+
+    if (list.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align: center; height: 420px; vertical-align: middle; padding: 40px 20px; color: var(--text-secondary);">
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                        <i data-lucide="filter-x" style="width: 36px; height: 36px; color: #94a3b8; margin-bottom: 12px; opacity: 0.6;"></i>
+                        <p style="font-weight: 700; font-size: 0.95rem; margin: 0 0 6px 0; color: var(--text-primary);">Nenhuma equipe encontrada para os filtros selecionados.</p>
+                        <p style="font-size: 0.8rem; margin: 0; color: var(--text-secondary);">
+                            Tente ajustar os filtros acima ou clique em <strong style="color: #38bdf8; cursor: pointer; text-decoration: underline;" onclick="clearOnlineBidFilters(event)">LIMPAR FILTROS</strong>.
+                        </p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+        if (Math.abs(window.scrollY - prevScrollY) > 5) {
+            window.scrollTo(0, prevScrollY);
+        }
+        return;
+    }
+
+    tbody.innerHTML = list.map(r => {
+        // Status Cruzado Badge
+        let crossBadgeHtml = '';
+        if (r.cross_status === 'CONFORME') {
+            crossBadgeHtml = `<span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 4px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.75rem;"><span class="live-status-dot" style="width:6px;height:6px;background:#10b981;"></span> CONFORME</span>`;
+        } else if (r.cross_status === 'ALERTA CRÍTICO') {
+            crossBadgeHtml = `<span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); padding: 4px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.75rem;">⏱️ ALERTA CRÍTICO</span>`;
+        } else if (r.cross_status === 'ALERTA GRAVE') {
+            crossBadgeHtml = `<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); padding: 4px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.75rem;">⚠️ ALERTA GRAVE</span>`;
+        } else if (r.cross_status === 'ALERTA GRAVÍSSIMO') {
+            crossBadgeHtml = `<span class="badge" style="background: rgba(192, 132, 252, 0.2); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.4); padding: 4px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.75rem;">🟣 ALERTA GRAVÍSSIMO</span>`;
+        } else if (r.cross_status === 'ALERTA IMPEDITIVO') {
+            crossBadgeHtml = `<span class="badge" style="background: rgba(225, 29, 72, 0.2); color: #e11d48; border: 1px solid rgba(225, 29, 72, 0.4); padding: 4px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.75rem;">⛔ IMPEDITIVO</span>`;
+        } else if (r.cross_status === 'BID SEM LOGIN EB') {
+            crossBadgeHtml = `<span class="badge" style="background: rgba(251, 146, 60, 0.2); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.4); padding: 4px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.75rem;">🟠 SEM LOGIN</span>`;
+        } else if (r.cross_status === 'AGUARDANDO APRESENTAÇÃO') {
+            crossBadgeHtml = `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 4px 10px; border-radius: 9999px; font-weight: 800; font-size: 0.75rem;">🔵 AGUARDANDO</span>`;
+        } else {
+            crossBadgeHtml = `<span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 0.75rem;">${r.cross_status || '--'}</span>`;
+        }
+
+        // Status EB (Logada vs Não Logada)
+        const isEb = r.is_eb_active;
+        const ebBadge = isEb
+            ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;"><span class="live-status-dot" style="width:5px;height:5px;background:#10b981;"></span> Logada</span>`
+            : `<span style="color: var(--text-secondary); font-size: 0.74rem;">Não Logada</span>`;
+
+        // Status BID
+        let bBadge = '';
+        const bStatus = r.status_bid || 'Não Encontrada';
+        if (bStatus === 'Em Operação') {
+            bBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">✓ Em Operação</span>`;
+        } else if (bStatus === 'Em Checklist') {
+            bBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.18); color: #f59e0b; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">⏱️ Em Checklist</span>`;
+        } else if (bStatus === 'Planejada') {
+            bBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">⚠️ Planejada</span>`;
+        } else if (bStatus === 'Bloqueada' || bStatus === 'Retornada') {
+            bBadge = `<span class="badge" style="background: rgba(225, 29, 72, 0.18); color: #e11d48; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">⛔ ${bStatus}</span>`;
+        } else {
+            bBadge = `<span class="badge" style="background: rgba(192, 132, 252, 0.15); color: #c084fc; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">🟣 Não Cadastrada</span>`;
+        }
+
+        // Timer BID
+        const timerVal = r.bid_timer_value && r.bid_timer_value !== '--' ? r.bid_timer_value : '--';
+
+        // Turno
+        const shiftPillClass = r.shift_pill_class || 'shift-pill-comercial';
+        const turnoHtml = (r.turno && r.turno !== '--')
+            ? `<span class="badge ${shiftPillClass}" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 6px;">${r.turno}</span>`
+            : `<span style="color: var(--text-secondary); font-size: 0.74rem;">--</span>`;
+
+        // Componentes (BID) - desconsiderando tags L e M
+        let componentesHtml = '<span style="color: var(--text-secondary); font-size: 0.74rem;">--</span>';
+        if (Array.isArray(r.bid_members) && r.bid_members.length > 0) {
+            componentesHtml = r.bid_members.map(m => {
+                const name = typeof m === 'object' ? (m.name || '') : String(m);
+                const role = typeof m === 'object' ? (m.role || '') : '';
+                return `
+                    <div style="margin-bottom: 4px;">
+                        <div style="font-weight: 700; font-size: 0.76rem; color: var(--text-primary); line-height: 1.2;">
+                            ${name}
+                        </div>
+                        ${role ? `<div style="font-size: 0.68rem; color: var(--text-secondary); line-height: 1.15; margin-top: 1px;">${role}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Placa com Validação Forense de Divergência
+        let placaHtml = '';
+        if (r.plate_divergent) {
+            placaHtml = `
+                <div class="plate-divergence-pill" title="DIVERGÊNCIA: Placa no Despacho (${r.plate_eb}) difere da Placa no Checklist (${r.plate_bid})">
+                    <div style="display: flex; align-items: center; gap: 4px; color: #ef4444; font-weight: 800; font-size: 0.68rem; margin-bottom: 2px;">
+                        <i data-lucide="alert-triangle" style="width: 12px; height: 12px;"></i>
+                        <span>PLACA DIVERGENTE</span>
+                    </div>
+                    <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.74rem; line-height: 1.25;">
+                        <div><span style="color: var(--text-secondary); font-size: 0.64rem;">DESP:</span> <strong style="color: var(--text-primary);">${r.plate_eb}</strong></div>
+                        <div><span style="color: var(--text-secondary); font-size: 0.64rem;">CHECK:</span> <strong style="color: #ef4444;">${r.plate_bid}</strong></div>
+                    </div>
+                </div>
+            `;
+        } else if (r.plate_match) {
+            placaHtml = `
+                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 800; color: var(--text-primary);">${r.plate}</span>
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; background: rgba(16, 185, 129, 0.18); color: #10b981;" title="Placa validada: Idêntica no Despacho e no Checklist">
+                        <i data-lucide="check" style="width: 10px; height: 10px;"></i>
+                    </span>
+                </div>
+            `;
+        } else if (r.plate && r.plate !== '--') {
+            placaHtml = `<span style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 800; color: var(--text-primary);">${r.plate}</span>`;
+        } else {
+            placaHtml = `<span style="color: var(--text-secondary); font-size: 0.74rem;">--</span>`;
+        }
+
+        return `
+            <tr>
+                <td>
+                    ${crossBadgeHtml}
+                    <div style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 3px;">${r.cross_desc || ''}</div>
+                </td>
+                <td>
+                    <button type="button" class="team-badge clickable-team-badge" onclick="event.stopPropagation(); openDeliveryTeamModal('${r.team_code}')" title="Clique para abrir Diagnóstico Forense Completo" style="cursor: pointer;">
+                        ${r.team_code}
+                    </button>
+                </td>
+                <td>${ebBadge}</td>
+                <td>${bBadge}</td>
+                <td>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #38bdf8; font-weight: 700;">${timerVal}</span>
+                </td>
+                <td>
+                    <strong style="color: var(--text-primary); font-size: 0.78rem;">${r.base_display || '--'}</strong>
+                    <div style="font-size: 0.68rem; color: #0ea5e9;">${r.geo || ''}</div>
+                </td>
+                <td>${turnoHtml}</td>
+                <td>${placaHtml}</td>
+                <td>${componentesHtml}</td>
+                <td>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #0284c7; font-weight: 700;">${r.ordem_servico || '--'}</span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+
+    if (Math.abs(window.scrollY - prevScrollY) > 5) {
+        window.scrollTo(0, prevScrollY);
+    }
+}
+
+function clearOnlineBidFilters(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    // 1. Marca todos os checkboxes
+    document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox').forEach(cb => {
+        cb.checked = true;
+    });
+    document.querySelectorAll('#deliveryScreenOnlineBid .popover-group-checkbox').forEach(gcb => {
+        gcb.checked = true;
+        gcb.indeterminate = false;
+    });
+
+    // 2. Limpa busca textual
+    const search = document.getElementById('filterBidSearch');
+    if (search) search.value = '';
+
+    // 3. Reseta card ativo
+    onlineBidState.activeCardFilter = '';
+    updateActiveKpiCardHighlight('');
+
+    // 4. Sincroniza labels e refiltra
+    syncOnlineBidFiltersFromDOM();
+    filterOnlineBidTable();
+}
+
+function onSelectBidCrossStatus(status) {
+    if (!status) {
+        document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="cross-status"]').forEach(cb => {
+            cb.checked = true;
+        });
+    } else {
+        document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="cross-status"]').forEach(cb => {
+            cb.checked = (cb.value === status);
+        });
+    }
+    syncOnlineBidFiltersFromDOM();
+    filterOnlineBidTable();
+}
+
+
+async function triggerBidCollect() {
+    const btn = document.getElementById('btnSyncBidDirect');
+    if (btn) {
+        btn.classList.add('loading-pulse');
+        btn.disabled = true;
+    }
+
+    try {
+        showToast('Iniciando extração do BID Visão Operacional via CDP...', 'info');
+        const resp = await fetch('/api/capture/bid/direct', { method: 'POST' });
+        const res = await resp.json();
+        if (res.status === 'success') {
+            showToast(`Extração concluída com sucesso! ${res.total_collected || 0} equipes sincronizadas.`, 'success');
+            await loadOnlineXBidData();
+        } else {
+            showToast(`Erro na extração BID: ${res.message || 'Falha ao comunicar com CDP'}`, 'danger');
+        }
+    } catch (err) {
+        console.error('[BID SYNC ERROR]', err);
+        showToast('Erro de rede ao disparar extração BID.', 'danger');
+    } finally {
+        if (btn) {
+            btn.classList.remove('loading-pulse');
+            btn.disabled = false;
+        }
+    }
+}
+
+function exportOnlineXBidExcel() {
+    const dateInput = document.getElementById('onlineBidDateInput');
+    const targetDate = (dateInput && dateInput.value) ? dateInput.value : (onlineBidState.date || new Date().toISOString().split('T')[0]);
+    window.location.href = `/api/bid/export_excel?date=${encodeURIComponent(targetDate)}`;
+    showToast('Download da planilha de reconciliação ONLINE x BID iniciado!', 'success');
+}
+
 // Binds Globais - Módulo TRBOnet x Equipes Brasil
 window.navigateToView = navigateToView;
 window.toggleRegionFilter = toggleRegionFilter;
@@ -6893,6 +8188,7 @@ window.debounceDeliverySearch = debounceDeliverySearch;
 window.toggleDeliveryTableCollapse = toggleDeliveryTableCollapse;
 window.exportDeliveryExcelFiltered = exportDeliveryExcelFiltered;
 window.exportDeliveryExcel = exportDeliveryExcel;
+window.openDeliveryTeamModal = openDeliveryTeamModal;
 window.setHistoryAuditMode = setHistoryAuditMode;
 window.refreshCurrentHistoryAudit = refreshCurrentHistoryAudit;
 window.loadDailyHistoryAudit = loadDailyHistoryAudit;
@@ -6927,6 +8223,14 @@ window.reloadAuditAvailableDates = reloadAuditAvailableDates;
 window.openEngineDetailsModal = openEngineDetailsModal;
 window.triggerCurrentEngineAction = triggerCurrentEngineAction;
 window.triggerSpotfireCdpCapture = triggerSpotfireCdpCapture;
+window.triggerBidCdpCapture = triggerBidCdpCapture;
 
-
+// Binds Globais - Módulo ONLINE x BID
+window.loadOnlineXBidData = loadOnlineXBidData;
+window.filterOnlineBidTable = filterOnlineBidTable;
+window.clearOnlineBidFilters = clearOnlineBidFilters;
+window.triggerBidCollect = triggerBidCollect;
+window.exportOnlineXBidExcel = exportOnlineXBidExcel;
+window.toggleBidCardFilter = toggleBidCardFilter;
+window.onSelectBidCrossStatus = onSelectBidCrossStatus;
 

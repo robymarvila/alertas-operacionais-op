@@ -258,10 +258,13 @@ class DeliveryManager:
         self.current_date_str = self.get_operational_date()
         self.active_teams = []                # Instantâneo da última coleta
         self.daily_accumulated_teams = {}     # Acumulado deduplicado do dia (team_code -> dict)
+        self.daily_team_order_history = {}    # Histórico deduplicado de ordens de serviço (team_code -> list)
         self.intraday_curve = {}              # Histórico horário das equipes que entraram
         self.last_sync_time = "--"
         self.sync_source = "Aguardando sincronização"
         self.spotfire_cache = {}              # (date_ref, norm_code) -> dict
+        self.bid_cache = {}                   # team_code -> dict (Visão Operacional BidTech)
+        self.last_bid_sync = "--"             # Última sincronização da BID
 
         # Caches de auditoria em memória de alta performance (<1ms)
         self._daily_audit_cache = {}          # date_str -> dict
@@ -307,6 +310,9 @@ class DeliveryManager:
                             self.daily_accumulated_teams[code] = t
 
                         self.intraday_curve = data.get("intraday_curve", {})
+                        self.daily_team_order_history = data.get("team_order_history", {})
+                        self.bid_cache = data.get("bid_cache", {})
+                        self.last_bid_sync = data.get("last_bid_sync", "--")
                         self.active_teams = [t for t in self.daily_accumulated_teams.values() if t.get("is_active", True)]
 
                         # Hidrata o Módulo TRBOnet com as equipes ativas do cache
@@ -321,7 +327,10 @@ class DeliveryManager:
                         print(f"[DELIVERY] Cache em disco ({cached_date}) é anterior ao dia operacional atual ({current_op_date}). Reiniciando acumulador...")
                         self.current_date_str = current_op_date
                         self.daily_accumulated_teams = {}
+                        self.daily_team_order_history = {}
                         self.intraday_curve = {}
+                        self.bid_cache = {}
+                        self.last_bid_sync = "--"
         except Exception as e:
             print(f"[WARN] Não foi possível ler cache diário de entrega: {e}")
 
@@ -332,7 +341,10 @@ class DeliveryManager:
                 "date": self.current_date_str,
                 "last_sync_time": self.last_sync_time,
                 "accumulated_teams": self.daily_accumulated_teams,
-                "intraday_curve": self.intraday_curve
+                "team_order_history": self.daily_team_order_history,
+                "intraday_curve": self.intraday_curve,
+                "bid_cache": self.bid_cache,
+                "last_bid_sync": self.last_bid_sync
             }
             with open(CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -542,6 +554,7 @@ class DeliveryManager:
             print(f"[DELIVERY] Virada de dia operacional detectada ({self.current_date_str} -> {op_date}). Reiniciando acumulador diário das 05:00...")
             self.current_date_str = op_date
             self.daily_accumulated_teams = {}
+            self.daily_team_order_history = {}
             self.intraday_curve = {}
 
         if captured_at:
@@ -569,6 +582,8 @@ class DeliveryManager:
                 gps_raw = rec.get("GPS") or rec.get("gps") or "--"
                 descanso_raw = rec.get("INICIO_DESCANSO") or rec.get("INÍCIO DESCANSO") or rec.get("inicio_descanso") or rec.get("data_inicio_descanso") or "--"
                 ordem_raw = rec.get("ORDEM") or rec.get("ordem") or rec.get("ordem_servico") or "--"
+                marcacao_raw = rec.get("MARCACAO") or rec.get("marcacao") or rec.get("MARCAÇÃO") or rec.get("marcação") or rec.get("RAW_MARCACAO") or "--"
+                desvio_raw = rec.get("DESVIO") or rec.get("desvio") or "--"
                 is_act_input = rec.get("is_active")
                 is_active_val = bool(is_act_input) if is_act_input is not None else True
             elif isinstance(rec, (list, tuple)) and len(rec) >= 5:
@@ -580,11 +595,13 @@ class DeliveryManager:
                 tipo_oper = rec[5] if len(rec) > 5 else "--"
                 driver = rec[6] if len(rec) > 6 else "--"
                 shift_raw = rec[7] if len(rec) > 7 else "--"
-                gps_raw = rec[8] if len(rec) > 8 else "--"
-                status_oper = rec[9] if len(rec) > 9 else "Logada"
-                plate = rec[10] if len(rec) > 10 else "--"
-                descanso_raw = rec[11] if len(rec) > 11 else "--"
-                ordem_raw = rec[12] if len(rec) > 12 else "--"
+                marcacao_raw = rec[8] if len(rec) > 8 else "--"
+                gps_raw = rec[9] if len(rec) > 9 else "--"
+                status_oper = rec[10] if len(rec) > 10 else "Logada"
+                plate = rec[11] if len(rec) > 11 else "--"
+                descanso_raw = rec[12] if len(rec) > 12 else "--"
+                ordem_raw = rec[13] if len(rec) > 13 else "--"
+                desvio_raw = "--"
                 is_active_val = True
             else:
                 continue
@@ -610,6 +627,30 @@ class DeliveryManager:
                 ut = "UT Leste"
             else:
                 ut = str(ut or "").strip() or "--"
+
+            # Tratamento de MARCAÇÃO e DESVIO (Nova Coluna EquipesBrasil)
+            m_str = str(marcacao_raw or "").strip()
+            d_str = str(desvio_raw or "").strip()
+            if "(" in m_str:
+                parts = m_str.split("(")
+                hora_marc = parts[0].strip()
+                if d_str in ["--", ""]:
+                    d_str = parts[1].replace(")", "").strip()
+            else:
+                hora_marc = m_str if m_str not in ['-', '', 'None', 'nan'] else "--"
+
+            desvio_display = d_str if d_str not in ['-', '', 'None', 'nan'] else "--"
+            desvio_minutos = 0
+            if desvio_display != "--":
+                try:
+                    clean_d = desvio_display.replace("(", "").replace(")", "").replace("min", "").replace(" ", "")
+                    is_neg = "-" in clean_d
+                    nums = re.findall(r'\d+', clean_d)
+                    if nums:
+                        val = int(nums[0])
+                        desvio_minutos = -val if is_neg else val
+                except Exception:
+                    desvio_minutos = 0
 
             # Tratamento de GPS (String original e Minutos inteiros)
             gps_str = str(gps_raw or "").strip()
@@ -647,7 +688,26 @@ class DeliveryManager:
 
             # Tratamento de ORDEM
             ordem_str = str(ordem_raw or "").strip()
-            ordem_servico = ordem_str if ordem_str and ordem_str not in ['-', '--'] else None
+            ordem_servico = ordem_str if ordem_str and ordem_str not in ['-', '--', 'NAN', 'nan'] else None
+
+            # Rastreamento do Histórico de Ordens de Serviço (Deduplicação Inteligente a cada 120s)
+            # Regra: Se a mesma ordem se repetir em várias atualizações, permanece registrada uma única vez!
+            order_history_list = self.daily_team_order_history.setdefault(team_code, [])
+            now_time_str = now.strftime("%H:%M:%S")
+            if ordem_servico:
+                existing_order = next((o for o in order_history_list if o.get("ordem") == ordem_servico), None)
+                if existing_order:
+                    existing_order["last_seen"] = now_time_str
+                    existing_order["status"] = status_oper
+                    existing_order["cycles_count"] = existing_order.get("cycles_count", 1) + 1
+                else:
+                    order_history_list.append({
+                        "ordem": ordem_servico,
+                        "first_seen": now_time_str,
+                        "last_seen": now_time_str,
+                        "status": status_oper,
+                        "cycles_count": 1
+                    })
 
             # Cruzamento de Placa com o Inventário de Frotas (Controle Operacional)
             plate_val = str(plate or "").strip()
@@ -677,6 +737,10 @@ class DeliveryManager:
             veh_info = self.classify_vehicle(team_code)
             shift_info = self.parse_shift_window(shift_raw)
 
+            # Enriquecimento com dados da Visão Operacional BidTech (Checklists)
+            bid_entry = self.bid_cache.get(team_code)
+            status_bid = bid_entry.get("status_bid") if bid_entry else ("Não Encontrada" if self.last_bid_sync != "--" else "--")
+
             team_obj = {
                 "team_code": team_code,
                 "prefix": prefix,
@@ -699,11 +763,17 @@ class DeliveryManager:
                 "tipo_operacional": tipo_oper,
                 "status": status_oper,
                 "status_equipes_brasil": status_oper,
+                "status_bid": status_bid,
+                "bid_info": bid_entry,
+                "marcacao": hora_marc,
+                "desvio": desvio_display,
+                "desvio_minutos": desvio_minutos,
                 "gps_update_str": gps_update_str,
                 "gps_update_minutes": gps_update_minutes,
                 "data_inicio_descanso": data_inicio_descanso,
                 "hora_inicio_descanso": hora_inicio_descanso,
                 "ordem_servico": ordem_servico,
+                "order_history": [dict(o) for o in order_history_list],
                 "is_active": is_active_val,
                 "vehicle_type": veh_info["type"],
                 "unified_group": veh_info["unified_group"],
@@ -801,6 +871,248 @@ class DeliveryManager:
             "intraday_curve": self.intraday_curve,
             # Estrutura hierárquica das bases para renderização ágil
             "geo_groups": self.geo_groups
+        }
+
+    def get_team_details(self, team_code: str) -> dict:
+        """
+        Retorna os detalhes completos da equipe no dia operacional,
+        incluindo o histórico deduplicado de ordens de serviço e dados da Visão Operacional BidTech.
+        """
+        code = str(team_code).strip().upper()
+        team_data = self.daily_accumulated_teams.get(code)
+        if not team_data:
+            for t in self.active_teams:
+                if t.get("team_code") == code:
+                    team_data = t
+                    break
+
+        history = self.daily_team_order_history.get(code, [])
+        bid_info = self.bid_cache.get(code)
+        return {
+            "team_code": code,
+            "found": bool(team_data or bid_info),
+            "team_data": team_data or {},
+            "order_history": list(history),
+            "bid_info": bid_info or {}
+        }
+
+    def process_raw_bid_records(self, raw_records: list, date_ref: str = None):
+        """
+        Recebe a lista de registros extraídos da Visão Operacional BidTech via CDP.
+        Atualiza o cache em memória e enriquece as equipes acumuladas e ativas.
+        """
+        if not date_ref:
+            date_ref = self.get_operational_date()
+
+        for r in raw_records:
+            code = str(r.get("team_code", "")).strip().upper()
+            if code:
+                self.bid_cache[code] = dict(r)
+
+        now = datetime.now(BR_TZ)
+        self.last_bid_sync = now.strftime("%d/%m/%Y %H:%M:%S")
+
+        # Atualiza o status_bid nas equipes acumuladas e ativas
+        for code, t in self.daily_accumulated_teams.items():
+            b_info = self.bid_cache.get(code)
+            t["status_bid"] = b_info.get("status_bid") if b_info else "Não Encontrada"
+            t["bid_info"] = b_info
+
+        for t in self.active_teams:
+            code = t.get("team_code")
+            b_info = self.bid_cache.get(code)
+            t["status_bid"] = b_info.get("status_bid") if b_info else "Não Encontrada"
+            t["bid_info"] = b_info
+
+        self.save_local_cache()
+
+    def get_online_x_bid_state(self, date_str: str = None) -> dict:
+        """
+        Retorna a reconciliação forense completa entre Equipes Brasil (Logadas/Ativas)
+        e a Visão Operacional BidTech (Checklists & Em Operação).
+        """
+        if not date_str:
+            date_str = self.current_date_str
+
+        is_today = (date_str == self.current_date_str)
+
+        # 1. Obtém universo do EquipesBrasil e da Visão Operacional BID
+        if is_today:
+            eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values()}
+            bid_records_map = dict(self.bid_cache)
+        else:
+            try:
+                from supabase_client import fetch_delivery_records_by_date, fetch_bid_records_by_date
+                deliv_records = fetch_delivery_records_by_date(date_str)
+                eb_teams = {r["team_code"]: r for r in deliv_records if r.get("team_code")}
+                bid_list = fetch_bid_records_by_date(date_str)
+                bid_records_map = {r["team_code"]: r for r in bid_list if r.get("team_code")}
+            except Exception as err:
+                print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para {date_str}: {err}")
+                eb_teams = {}
+                bid_records_map = {}
+
+        # 2. Cruzamento Forense Linha a Linha
+        all_team_codes = set(eb_teams.keys()) | set(bid_records_map.keys())
+        reconciled_rows = []
+
+        kpis = {
+            "total_logadas_eb": 0,
+            "total_em_operacao_bid": 0,
+            "conforme": 0,            # Logada no EB e Em Operação no BID
+            "alerta_critico": 0,      # Logada no EB e Em Checklist no BID
+            "alerta_grave": 0,        # Logada no EB e Planejada no BID
+            "alerta_gravissimo": 0,   # Logada no EB e Não Encontrada no BID
+            "alerta_impeditivo": 0,   # Logada no EB e Bloqueada/Retornada no BID
+            "aguardando_apresentacao": 0, # BID Planejada mas deslogada/não logada no EB
+            "bid_sem_login_eb": 0     # BID Em Operação mas deslogada no EB
+        }
+
+        for code in sorted(all_team_codes):
+            prefix = code[:3]
+            # Data Quality: Mantém foco nas 7 bases oficiais definidas
+            if prefix not in TARGET_PREFIXES:
+                continue
+
+            eb = eb_teams.get(code)
+            bid = bid_records_map.get(code)
+
+            is_eb_active = eb.get("is_active", True) if eb else False
+            eb_status = eb.get("status", "Deslogada") if eb else "Não Logada"
+            bid_status = bid.get("status_bid", "Não Encontrada") if bid else "Não Encontrada"
+
+            cross_status = "NÃO_CLASSIFICADO"
+            cross_severity = "neutral"
+            cross_badge = "badge-neutral"
+            cross_desc = ""
+
+            if is_eb_active:
+                kpis["total_logadas_eb"] += 1
+
+                if bid_status == "Em Operação":
+                    cross_status = "CONFORME"
+                    cross_severity = "success"
+                    cross_badge = "badge-conforme"
+                    cross_desc = "Checklist Concluído • Em Operação"
+                    kpis["conforme"] += 1
+                elif bid_status == "Em Checklist":
+                    cross_status = "ALERTA CRÍTICO"
+                    cross_severity = "warning"
+                    cross_badge = "badge-alerta-critico"
+                    cross_desc = "Logada • Checklist em Andamento"
+                    kpis["alerta_critico"] += 1
+                elif bid_status == "Planejada":
+                    cross_status = "ALERTA GRAVE"
+                    cross_severity = "danger"
+                    cross_badge = "badge-alerta-grave"
+                    cross_desc = "Logada • Sem Iniciar Checklist"
+                    kpis["alerta_grave"] += 1
+                elif bid_status in ["Bloqueada", "Retornada"]:
+                    cross_status = "ALERTA IMPEDITIVO"
+                    cross_severity = "danger"
+                    cross_badge = "badge-alerta-impeditivo"
+                    cross_desc = f"Logada • Status Checklist: {bid_status}"
+                    kpis["alerta_impeditivo"] += 1
+                else:
+                    cross_status = "ALERTA GRAVÍSSIMO"
+                    cross_severity = "purple"
+                    cross_badge = "badge-alerta-gravissimo"
+                    cross_desc = "Logada • Não Encontrada no Checklist"
+                    kpis["alerta_gravissimo"] += 1
+            else:
+                if bid_status == "Em Operação":
+                    cross_status = "BID SEM LOGIN EB"
+                    cross_severity = "orange"
+                    cross_badge = "badge-alerta-orange"
+                    cross_desc = "Em Operação no Checklist • Não Logada"
+                    kpis["bid_sem_login_eb"] += 1
+                elif bid_status == "Planejada":
+                    cross_status = "AGUARDANDO APRESENTAÇÃO"
+                    cross_severity = "info"
+                    cross_badge = "badge-aguardando"
+                    cross_desc = "Planejada no Checklist • Não Logada"
+                    kpis["aguardando_apresentacao"] += 1
+                elif bid_status == "Em Checklist":
+                    cross_status = "CHECKLIST PRÉVIO"
+                    cross_severity = "info"
+                    cross_badge = "badge-info"
+                    cross_desc = "Em Checklist • Não Logada"
+                else:
+                    continue
+
+            if bid_status == "Em Operação":
+                kpis["total_em_operacao_bid"] += 1
+
+            base_info = self.official_bases.get(prefix, {})
+            base_display = (eb.get("base_display") if eb else None) or base_info.get("base_display") or (f"Base {bid.get('base')}" if bid and bid.get("base") else f"Base {prefix}")
+            geo = (eb.get("geo") if eb else None) or base_info.get("geo") or "--"
+            # Turno estritamente do Equipes Brasil (conforme requisito operacional)
+            turno = (eb.get("shift_slot") or eb.get("shift_code") or eb.get("raw_shift") or "--") if eb else "--"
+            shift_pill_class = eb.get("shift_pill_class", "") if eb else ""
+            driver = (eb.get("driver") if eb else None) or (bid.get("driver") if bid else "--")
+            
+            # Validação Forense de Placas (Divergência entre Despacho e Checklist)
+            raw_plate_eb = (eb.get("plate") or "").strip().upper() if eb else ""
+            raw_plate_bid = (bid.get("plate") or "").strip().upper() if bid else ""
+            plate_eb = raw_plate_eb if raw_plate_eb not in ["--", "NONE", "NULL", ""] else ""
+            plate_bid = raw_plate_bid if raw_plate_bid not in ["--", "NONE", "NULL", ""] else ""
+            norm_eb = plate_eb.replace("-", "").replace(" ", "")
+            norm_bid = plate_bid.replace("-", "").replace(" ", "")
+
+            plate_divergent = False
+            plate_match = False
+            if norm_eb and norm_bid:
+                if norm_eb != norm_bid:
+                    plate_divergent = True
+                else:
+                    plate_match = True
+
+            plate_display = plate_eb or plate_bid or "--"
+            vehicle_type = (eb.get("vehicle_type") if eb else None) or (bid.get("vehicle_type") if bid else "--")
+
+            row_item = {
+                "team_code": code,
+                "prefix": prefix,
+                "base_display": base_display,
+                "geo": geo,
+                "turno": turno,
+                "shift_pill_class": shift_pill_class,
+                "driver": driver,
+                "plate": plate_display,
+                "plate_eb": plate_eb or "--",
+                "plate_bid": plate_bid or "--",
+                "plate_divergent": plate_divergent,
+                "plate_match": plate_match,
+                "vehicle_type": vehicle_type,
+                "is_eb_active": is_eb_active,
+                "status_eb": eb_status,
+                "status_bid": bid_status,
+                "cross_status": cross_status,
+                "cross_severity": cross_severity,
+                "cross_badge": cross_badge,
+                "cross_desc": cross_desc,
+                "bid_phone": bid.get("phone") if bid else "--",
+                "bid_tipo_operacional": bid.get("tipo_operacional") if bid else "--",
+                "bid_members": bid.get("members", []) if bid else [],
+                "bid_timer_label": bid.get("timer_label") if bid else "",
+                "bid_timer_value": bid.get("timer_value") if bid else "--",
+                "login_time_eb": eb.get("login_time") if eb else "--",
+                "marcacao_eb": eb.get("marcacao") if eb else "--",
+                "ordem_servico": eb.get("ordem_servico") if eb else "--"
+            }
+            reconciled_rows.append(row_item)
+
+        taxa = round((kpis["conforme"] / kpis["total_logadas_eb"] * 100), 1) if kpis["total_logadas_eb"] > 0 else 0.0
+        kpis["indice_conformidade"] = taxa
+
+        return {
+            "status": "success",
+            "date": date_str,
+            "last_bid_sync": self.last_bid_sync,
+            "last_eb_sync": self.last_sync_time,
+            "kpis": kpis,
+            "rows": reconciled_rows,
+            "total_rows": len(reconciled_rows)
         }
 
     def reconcile_with_spotfire_records(self, spotfire_records: list, date_ref: str = None):

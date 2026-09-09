@@ -392,6 +392,10 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                     "data_inicio_descanso": t.get("data_inicio_descanso"),
                     "hora_inicio_descanso": t.get("hora_inicio_descanso"),
                     "ordem_servico": t.get("ordem_servico"),
+                    "marcacao": str(t.get("marcacao", "--")),
+                    "desvio": str(t.get("desvio", "--")),
+                    "desvio_minutos": t.get("desvio_minutos", 0),
+                    "order_history": t.get("order_history", []),
                     "plate_clean": str(t.get("plate_clean", "")),
                     "plate_cadastrada": bool(t.get("plate_cadastrada", False)),
                     "situacao_veiculo_cadastrado": str(t.get("situacao_veiculo_cadastrado", "SEM PLACA INFORMADA")),
@@ -405,7 +409,8 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
             new_column_keys = {
                 "veiculo_portal", "gps_update_str", "gps_update_minutes",
                 "status_equipes_brasil", "data_inicio_descanso", "hora_inicio_descanso",
-                "ordem_servico", "plate_clean", "plate_cadastrada",
+                "ordem_servico", "marcacao", "desvio", "desvio_minutos", "order_history",
+                "plate_clean", "plate_cadastrada",
                 "situacao_veiculo_cadastrado", "status_veiculo_cadastrado"
             }
 
@@ -413,7 +418,7 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                 chunk = records_payload[i:i+100]
                 resp_rec = requests.post(endpoint_records, headers=get_headers(), json=chunk, timeout=10)
                 if resp_rec.status_code not in [200, 201]:
-                    # Caso o Supabase ainda não tenha aplicado o schema_cdp_fleet_v5.sql, faz fallback para colunas base
+                    # Caso o Supabase ainda não tenha aplicado o schema_cdp_fleet_v5 / v6, faz fallback para colunas base
                     if resp_rec.status_code == 400 and "Could not find" in resp_rec.text:
                         fallback_chunk = []
                         for item in chunk:
@@ -421,9 +426,47 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                             fallback_chunk.append(base_item)
                         requests.post(endpoint_records, headers=get_headers(), json=fallback_chunk, timeout=10)
 
+            # Persistência atômica do histórico de ordens na tabela dedicada team_order_history
+            try:
+                order_records_payload = []
+                for t in teams_to_save:
+                    t_code = str(t.get("team_code", "")).upper()
+                    hist_items = t.get("order_history") or []
+                    for item in hist_items:
+                        ordem_val = item.get("ordem")
+                        if ordem_val and str(ordem_val).strip() not in ["--", "-", "", "None", "nan"]:
+                            order_records_payload.append({
+                                "date_ref": date_today,
+                                "team_code": t_code,
+                                "ordem_servico": str(ordem_val).strip(),
+                                "status": item.get("status", "Em atendimento"),
+                                "cycles_count": item.get("cycles_count", 1)
+                            })
+                if order_records_payload:
+                    endpoint_orders = f"{BASE_REST_URL}/team_order_history?on_conflict=date_ref,team_code,ordem_servico"
+                    headers_upsert = get_headers()
+                    headers_upsert["Prefer"] = "resolution=merge-duplicates"
+                    for i in range(0, len(order_records_payload), 100):
+                        requests.post(endpoint_orders, headers=headers_upsert, json=order_records_payload[i:i+100], timeout=8)
+            except Exception:
+                pass
+
         return {"status": "success", "session_id": session_id, "total_records": len(teams_to_save)}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+def fetch_team_order_history(team_code: str, date_ref: str = None) -> list:
+    """Busca o histórico deduplicado de ordens de serviço de uma equipe no Supabase."""
+    try:
+        if not date_ref:
+            date_ref = datetime.now(BR_TZ).strftime("%Y-%m-%d")
+        url = f"{BASE_REST_URL}/team_order_history?team_code=eq.{team_code.upper()}&date_ref=eq.{date_ref}&order=first_seen_at.asc"
+        resp = requests.get(url, headers=get_headers(), timeout=5)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return []
 
 def fetch_latest_delivery_snapshot_from_supabase() -> dict:
     """Busca estritamente os registros da última sessão de entrega ativa gravada no Supabase."""
@@ -907,6 +950,90 @@ def save_delivery_planning_targets(targets_payload: dict, user_email: str = "adm
         return {"status": "success", "message": "Metas salvas com sucesso."}
     except Exception as err:
         return {"status": "error", "message": str(err)}
+
+
+# ==============================================================================
+# MÓDULO BIDTECH - VISÃO OPERACIONAL (CHECKLISTS & RECONCILIAÇÃO)
+# ==============================================================================
+
+def push_bid_records_to_supabase(records_list: list, date_ref: str = None) -> dict:
+    """
+    Insere ou atualiza (UPSERT) registros extraídos da Visão Operacional BidTech na tabela 'bid_visao_operacional_records'.
+    Usa a constraint única (date_ref, team_code) para merge atômico (1 registro por equipe no dia operacional).
+    """
+    if not records_list:
+        return {"status": "success", "count": 0}
+    try:
+        now_iso = datetime.now(BR_TZ).isoformat()
+        if not date_ref:
+            date_ref = datetime.now(BR_TZ).strftime("%Y-%m-%d")
+
+        endpoint = f"{BASE_REST_URL}/bid_visao_operacional_records?on_conflict=date_ref,team_code"
+        headers = get_headers().copy()
+        headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+
+        # Deduplica em memória para garantir unicidade estrita por (date_ref, team_code)
+        seen = {}
+        for r in records_list:
+            t_code = str(r.get("team_code", "")).strip().upper()
+            if not t_code:
+                continue
+            d_ref = str(r.get("date_ref") or date_ref)
+            payload_item = {
+                "date_ref": d_ref,
+                "captured_at": r.get("captured_at") or now_iso,
+                "team_code": t_code,
+                "status_bid": str(r.get("status_bid") or "Planejada"),
+                "col_title": str(r.get("col_title") or ""),
+                "base": str(r.get("base") or "--"),
+                "tipo_operacional": str(r.get("tipo_operacional") or "--"),
+                "turno": str(r.get("turno") or "--"),
+                "phone": str(r.get("phone") or "--"),
+                "driver": str(r.get("driver") or "--"),
+                "plate": str(r.get("plate") or "--"),
+                "vehicle_type": str(r.get("vehicle_type") or "--"),
+                "members": r.get("members") if isinstance(r.get("members"), list) else [],
+                "timer_label": str(r.get("timer_label") or ""),
+                "timer_value": str(r.get("timer_value") or "--"),
+                "updated_at": now_iso
+            }
+            seen[(d_ref, t_code)] = payload_item
+
+        clean_list = list(seen.values())
+        saved_count = 0
+        chunk_size = 200
+
+        for i in range(0, len(clean_list), chunk_size):
+            chunk = clean_list[i:i + chunk_size]
+            resp = requests.post(endpoint, headers=headers, json=chunk, timeout=20)
+            if resp.status_code in [200, 201]:
+                saved_count += len(chunk)
+            else:
+                print(f"[WARN SUPABASE BID UPSERT] Status {resp.status_code}: {resp.text}")
+
+        return {"status": "success", "count": saved_count}
+    except Exception as e:
+        print(f"[ERROR SUPABASE BID PUSH] {e}")
+        return {"status": "error", "message": str(e), "count": 0}
+
+
+def fetch_bid_records_by_date(date_str: str = None) -> list:
+    """
+    Busca registros da Visão Operacional BidTech para uma data específica (YYYY-MM-DD).
+    """
+    try:
+        if not date_str:
+            date_str = datetime.now(BR_TZ).strftime("%Y-%m-%d")
+
+        endpoint = f"{BASE_REST_URL}/bid_visao_operacional_records?date_ref=eq.{date_str}&order=team_code.asc&limit=2000"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=12)
+        if resp.status_code == 200:
+            return resp.json() or []
+        return []
+    except Exception as e:
+        print(f"[SUPABASE FETCH BID ERROR] {e}")
+        return []
+
 
 
 

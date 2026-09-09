@@ -19,6 +19,7 @@ CDP_PORT = 9222
 
 URL_ENEL = "https://equipesbrasil.enelint.global/teams-list"
 URL_SPOTFIRE = "http://elabziplra00.enelint.global:8090/spotfire/wp/analysis?file=/SP/COD/Scanner%205.0"
+URL_BID = "https://suite360.bidtech.com.br/app/checklists/visao-operacional"
 
 # Caminhos padrão do Google Chrome e Microsoft Edge no Windows
 CHROME_PATHS = [
@@ -158,6 +159,7 @@ def garantir_abas_operacionais():
     targets = listar_alvos_cdp()
     has_enel = False
     has_spotfire = False
+    has_bid = False
 
     for t in targets:
         if t.get('type') == 'page':
@@ -167,6 +169,8 @@ def garantir_abas_operacionais():
                 has_spotfire = True
             elif 'equipesbrasil.enelint.global' in u or 'filtro avançado' in title:
                 has_enel = True
+            elif 'suite360.bidtech.com.br' in u or 'visao-operacional' in u or 'visão operacional' in title:
+                has_bid = True
 
     # Abre aba do Enel SP se ausente
     if not has_enel:
@@ -187,5 +191,15 @@ def garantir_abas_operacionais():
                 print("[CDP MANAGER] Nova aba do TIBCO Spotfire criada com sucesso.", flush=True)
         except Exception as e:
             print(f"[CDP MANAGER WARN] Falha ao criar aba do Spotfire: {e}", flush=True)
+
+    # Abre aba do BidTech se ausente
+    if not has_bid:
+        try:
+            create_url = f"http://{CDP_HOST}:{CDP_PORT}/json/new?{urllib.parse.quote(URL_BID, safe=':/?=&')}"
+            req = urllib.request.Request(create_url, method='PUT')
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                print("[CDP MANAGER] Nova aba da Visão Operacional BidTech criada com sucesso.", flush=True)
+        except Exception as e:
+            print(f"[CDP MANAGER WARN] Falha ao criar aba do BidTech: {e}", flush=True)
 
     return True

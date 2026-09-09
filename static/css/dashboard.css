@@ -728,6 +728,7 @@ body {
 .text-rose { color: #fb7185 !important; }
 .text-amber { color: #fbbf24 !important; }
 .text-cyan { color: #38bdf8 !important; }
+body.theme-light .text-cyan { color: #0284c7 !important; }
 .text-rose-light { color: #fda4af !important; }
 .text-amber-light { color: #fde68a !important; }
 
@@ -1519,8 +1520,9 @@ body {
 }
 
 .modal-backdrop.active {
-    opacity: 1;
-    pointer-events: auto;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    display: flex !important;
 }
 
 .modal-card {
@@ -8072,10 +8074,682 @@ body.theme-light .btn-mini-refresh:hover {
     height: 14px;
 }
 
+/* ==============================================================================
+   MODAL ULTRA-PREMIUM DETALHES DA EQUIPE ENTREGUE (ENEL × TRBONET × ORDENS)
+   ============================================================================== */
 
+.clickable-team-badge {
+    background: rgba(14, 165, 233, 0.14);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.1);
+}
 
+.clickable-team-badge:hover {
+    background: rgba(14, 165, 233, 0.28);
+    color: #ffffff;
+    border-color: #38bdf8;
+    transform: translateY(-1px) scale(1.05);
+    box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
+}
 
+.ultra-premium-modal {
+    background: rgba(11, 19, 38, 0.94) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    border: 1px solid rgba(56, 189, 248, 0.3) !important;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), 0 0 32px rgba(56, 189, 248, 0.15) !important;
+    border-radius: 16px !important;
+}
 
+.del-modal-header {
+    border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+    padding-bottom: 16px;
+}
 
+.del-modal-team-title {
+    font-size: 1.4rem;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    color: #ffffff;
+    margin: 0;
+    font-family: 'JetBrains Mono', monospace;
+}
 
+.modal-icon-badge-glow {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(14, 165, 233, 0.15);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);
+}
+
+.ultra-card-trbonet {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.6));
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: 12px;
+    padding: 16px 20px;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+.telemetry-subcard {
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.subcard-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 4px;
+}
+
+.info-row-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 0.78rem;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.04);
+}
+
+.info-row-label {
+    color: var(--text-secondary);
+}
+
+.info-row-val {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.ultra-card-orders {
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+}
+
+.del-modal-orders-th {
+    background: rgba(15, 23, 42, 0.7);
+}
+
+.del-modal-cycle-badge {
+    background: rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+}
+
+.del-modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 14px 24px;
+}
+
+.badge-desvio {
+    display: inline-block;
+    font-weight: 800;
+    font-size: 0.72rem;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.badge-trbo-online {
+    background: rgba(16, 185, 129, 0.18);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.45);
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-weight: 800;
+    font-size: 0.76rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.badge-trbo-offline {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-weight: 800;
+    font-size: 0.76rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.del-modal-alert {
+    margin-bottom: 8px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.del-modal-alert-danger {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+}
+
+.del-modal-alert-warning {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #fde68a;
+}
+
+/* ==========================================================================
+   MODAL ULTRA-PREMIUM (TEMA CLARO / LIGHT THEME)
+   ========================================================================== */
+body.theme-light .ultra-premium-modal {
+    background: #ffffff !important;
+    border: 1px solid rgba(203, 213, 225, 0.95) !important;
+    box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.25), 0 0 25px rgba(14, 165, 233, 0.12) !important;
+    color: #0f172a !important;
+}
+
+body.theme-light .del-modal-header {
+    border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
+}
+
+body.theme-light .del-modal-team-title {
+    color: #0f172a !important;
+}
+
+body.theme-light .ultra-premium-modal .modal-subtitle {
+    color: #64748b !important;
+}
+
+body.theme-light .modal-icon-badge-glow {
+    background: rgba(14, 165, 233, 0.1) !important;
+    border: 1px solid rgba(14, 165, 233, 0.3) !important;
+    box-shadow: 0 0 12px rgba(14, 165, 233, 0.15) !important;
+}
+
+body.theme-light #delModalBaseBadge {
+    background: rgba(14, 165, 233, 0.1) !important;
+    color: #0284c7 !important;
+    border-color: rgba(14, 165, 233, 0.3) !important;
+}
+
+body.theme-light #delModalRegionBadge {
+    background: rgba(124, 58, 237, 0.1) !important;
+    color: #7c3aed !important;
+    border-color: rgba(124, 58, 237, 0.3) !important;
+}
+
+body.theme-light .ultra-card-trbonet {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+    border: 1px solid rgba(203, 213, 225, 0.95) !important;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04) !important;
+}
+
+body.theme-light .ultra-card-trbonet h4 {
+    color: #0f172a !important;
+}
+
+body.theme-light .ultra-card-trbonet .telemetry-item {
+    background: #ffffff !important;
+    border: 1px solid rgba(226, 232, 240, 0.95) !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+}
+
+body.theme-light .ultra-card-trbonet .telemetry-value {
+    color: #0f172a !important;
+}
+
+body.theme-light .ultra-card-trbonet .telemetry-label {
+    color: #64748b !important;
+}
+
+body.theme-light #delModalTrboNote {
+    color: #64748b !important;
+}
+
+body.theme-light .telemetry-subcard {
+    background: #f8fafc !important;
+    border: 1px solid rgba(226, 232, 240, 0.95) !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03) !important;
+}
+
+body.theme-light .subcard-title {
+    color: #475569 !important;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
+}
+
+body.theme-light .info-row-item {
+    border-bottom: 1px dashed rgba(203, 213, 225, 0.7) !important;
+}
+
+body.theme-light .info-row-label {
+    color: #64748b !important;
+}
+
+body.theme-light .info-row-val {
+    color: #0f172a !important;
+}
+
+body.theme-light .ultra-card-orders {
+    background: #f8fafc !important;
+    border: 1px solid rgba(226, 232, 240, 0.95) !important;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04) !important;
+}
+
+body.theme-light .ultra-card-orders h4 {
+    color: #0f172a !important;
+}
+
+body.theme-light .ultra-card-orders p {
+    color: #64748b !important;
+}
+
+body.theme-light #delModalOrderCountBadge {
+    background: rgba(14, 165, 233, 0.1) !important;
+    color: #0284c7 !important;
+    border-color: rgba(14, 165, 233, 0.35) !important;
+}
+
+body.theme-light .ultra-card-orders .table-responsive {
+    background: #ffffff !important;
+    border: 1px solid rgba(226, 232, 240, 0.95) !important;
+}
+
+body.theme-light .del-modal-orders-th {
+    background: #f1f5f9 !important;
+}
+
+body.theme-light .del-modal-orders-th th {
+    color: #475569 !important;
+    border-bottom: 1px solid rgba(203, 213, 225, 0.8) !important;
+}
+
+body.theme-light .ultra-card-orders tbody td {
+    color: #1e293b !important;
+    border-bottom: 1px solid rgba(241, 245, 249, 0.9) !important;
+}
+
+body.theme-light .del-modal-cycle-badge {
+    background: #e2e8f0 !important;
+    color: #334155 !important;
+}
+
+body.theme-light .del-modal-footer {
+    border-top: 1px solid rgba(226, 232, 240, 0.95) !important;
+    background: #f8fafc !important;
+}
+
+body.theme-light .del-modal-footer div {
+    color: #64748b !important;
+}
+
+body.theme-light .del-modal-alert-danger {
+    background: #fef2f2 !important;
+    border: 1px solid #fecaca !important;
+    color: #b91c1c !important;
+}
+
+body.theme-light .del-modal-alert-warning {
+    background: #fffbeb !important;
+    border: 1px solid #fde68a !important;
+    color: #b45309 !important;
+}
+
+body.theme-light .badge-trbo-online {
+    background: #ecfdf5 !important;
+    color: #047857 !important;
+    border-color: #a7f3d0 !important;
+}
+
+body.theme-light .badge-trbo-offline {
+    background: #fef2f2 !important;
+    color: #b91c1c !important;
+    border-color: #fecaca !important;
+}
+
+/* ==========================================================================
+   ESTILOS ULTRA-PREMIUM: ONLINE (EQUIPES BRASIL) x BIDTECH (CHECKLIST)
+   ========================================================================== */
+
+.online-bid-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (min-width: 1400px) {
+    .online-bid-kpi-grid {
+        grid-template-columns: repeat(6, 1fr);
+    }
+}
+
+.kpi-card-conforme {
+    border-left: 4px solid #10b981 !important;
+}
+
+.kpi-card-critico {
+    border-left: 4px solid #f59e0b !important;
+}
+
+.kpi-card-grave {
+    border-left: 4px solid #ef4444 !important;
+}
+
+.kpi-card-gravissimo {
+    border-left: 4px solid #c084fc !important;
+}
+
+.kpi-card-impeditivo {
+    border-left: 4px solid #f43f5e !important;
+}
+
+.kpi-card-total-eb {
+    border-left: 4px solid #38bdf8 !important;
+}
+
+/* Badges de Diagnóstico Forense Cruzado */
+.badge-conforme {
+    background: rgba(16, 185, 129, 0.15) !important;
+    color: #10b981 !important;
+    border: 1px solid rgba(16, 185, 129, 0.35) !important;
+}
+
+.badge-alerta-critico {
+    background: rgba(245, 158, 11, 0.18) !important;
+    color: #f59e0b !important;
+    border: 1px solid rgba(245, 158, 11, 0.4) !important;
+}
+
+.badge-alerta-grave {
+    background: rgba(239, 68, 68, 0.18) !important;
+    color: #ef4444 !important;
+    border: 1px solid rgba(239, 68, 68, 0.4) !important;
+}
+
+.badge-alerta-gravissimo {
+    background: rgba(192, 132, 252, 0.18) !important;
+    color: #c084fc !important;
+    border: 1px solid rgba(192, 132, 252, 0.4) !important;
+}
+
+.badge-alerta-impeditivo {
+    background: rgba(225, 29, 72, 0.2) !important;
+    color: #e11d48 !important;
+    border: 1px solid rgba(225, 29, 72, 0.4) !important;
+}
+
+.badge-alerta-orange {
+    background: rgba(251, 146, 60, 0.18) !important;
+    color: #fb923c !important;
+    border: 1px solid rgba(251, 146, 60, 0.4) !important;
+}
+
+.badge-aguardando {
+    background: rgba(56, 189, 248, 0.15) !important;
+    color: #38bdf8 !important;
+    border: 1px solid rgba(56, 189, 248, 0.35) !important;
+}
+
+/* Modo Claro: Reconciliação ONLINE x BID */
+body.theme-light .online-bid-kpi-grid .fleet-liquid-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.theme-light .kpi-card-conforme {
+    border-left: 4px solid #059669 !important;
+}
+
+body.theme-light .kpi-card-critico {
+    border-left: 4px solid #d97706 !important;
+}
+
+body.theme-light .kpi-card-grave {
+    border-left: 4px solid #dc2626 !important;
+}
+
+body.theme-light .kpi-card-gravissimo {
+    border-left: 4px solid #9333ea !important;
+}
+
+body.theme-light .kpi-card-impeditivo {
+    border-left: 4px solid #e11d48 !important;
+}
+
+body.theme-light .kpi-card-total-eb {
+    border-left: 4px solid #0284c7 !important;
+}
+
+body.theme-light #onlineBidTable thead th {
+    background: #f1f5f9 !important;
+    color: #334155 !important;
+    border-bottom: 1px solid #cbd5e1 !important;
+}
+
+body.theme-light #onlineBidTable tbody tr:hover {
+    background: rgba(14, 165, 233, 0.06) !important;
+}
+
+body.theme-light #delModalBidCard {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light #delModalBidCard .subcard-title {
+    color: #0f172a !important;
+}
+
+body.theme-light #delModalBidCard .info-row-label {
+    color: #64748b !important;
+}
+
+body.theme-light #delModalBidCard .info-row-val {
+    color: #0f172a !important;
+}
+
+body.theme-light #delModalBidCard .info-row-val.text-cyan {
+    color: #0284c7 !important;
+}
+
+/* Interatividade e Highlight dos Cards Online x BID */
+.online-bid-kpi-grid .fleet-liquid-card {
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    user-select: none;
+}
+
+.online-bid-kpi-grid .fleet-liquid-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+}
+
+.online-bid-kpi-grid .fleet-liquid-card.active-kpi-card {
+    transform: translateY(-3px);
+    outline: none;
+}
+
+.online-bid-kpi-grid .kpi-card-conforme.active-kpi-card {
+    box-shadow: 0 0 0 2px #10b981, 0 10px 25px rgba(16, 185, 129, 0.3) !important;
+    background: rgba(16, 185, 129, 0.08) !important;
+}
+
+.online-bid-kpi-grid .kpi-card-critico.active-kpi-card {
+    box-shadow: 0 0 0 2px #f59e0b, 0 10px 25px rgba(245, 158, 11, 0.3) !important;
+    background: rgba(245, 158, 11, 0.08) !important;
+}
+
+.online-bid-kpi-grid .kpi-card-grave.active-kpi-card {
+    box-shadow: 0 0 0 2px #ef4444, 0 10px 25px rgba(239, 68, 68, 0.3) !important;
+    background: rgba(239, 68, 68, 0.08) !important;
+}
+
+.online-bid-kpi-grid .kpi-card-gravissimo.active-kpi-card {
+    box-shadow: 0 0 0 2px #c084fc, 0 10px 25px rgba(192, 132, 252, 0.3) !important;
+    background: rgba(192, 132, 252, 0.08) !important;
+}
+
+.online-bid-kpi-grid .kpi-card-impeditivo.active-kpi-card {
+    box-shadow: 0 0 0 2px #f43f5e, 0 10px 25px rgba(244, 63, 94, 0.3) !important;
+    background: rgba(244, 63, 94, 0.08) !important;
+}
+
+.online-bid-kpi-grid .kpi-card-total-eb.active-kpi-card {
+    box-shadow: 0 0 0 2px #38bdf8, 0 10px 25px rgba(56, 189, 248, 0.3) !important;
+    background: rgba(56, 189, 248, 0.08) !important;
+}
+
+/* Modo Claro: Highlight dos Cards Online x BID */
+body.theme-light .online-bid-kpi-grid .fleet-liquid-card:hover {
+    box-shadow: 0 10px 20px -3px rgba(0, 0, 0, 0.08) !important;
+}
+
+body.theme-light .online-bid-kpi-grid .kpi-card-conforme.active-kpi-card {
+    box-shadow: 0 0 0 2px #059669, 0 10px 20px rgba(5, 150, 105, 0.2) !important;
+    background: rgba(5, 150, 105, 0.06) !important;
+}
+
+body.theme-light .online-bid-kpi-grid .kpi-card-critico.active-kpi-card {
+    box-shadow: 0 0 0 2px #d97706, 0 10px 20px rgba(217, 119, 6, 0.2) !important;
+    background: rgba(217, 119, 6, 0.06) !important;
+}
+
+body.theme-light .online-bid-kpi-grid .kpi-card-grave.active-kpi-card {
+    box-shadow: 0 0 0 2px #dc2626, 0 10px 20px rgba(220, 38, 38, 0.2) !important;
+    background: rgba(220, 38, 38, 0.06) !important;
+}
+
+body.theme-light .online-bid-kpi-grid .kpi-card-gravissimo.active-kpi-card {
+    box-shadow: 0 0 0 2px #9333ea, 0 10px 20px rgba(147, 51, 234, 0.2) !important;
+    background: rgba(147, 51, 234, 0.06) !important;
+}
+
+body.theme-light .online-bid-kpi-grid .kpi-card-impeditivo.active-kpi-card {
+    box-shadow: 0 0 0 2px #e11d48, 0 10px 20px rgba(225, 29, 72, 0.2) !important;
+    background: rgba(225, 29, 72, 0.06) !important;
+}
+
+body.theme-light .online-bid-kpi-grid .kpi-card-total-eb.active-kpi-card {
+    box-shadow: 0 0 0 2px #0284c7, 0 10px 20px rgba(2, 132, 199, 0.2) !important;
+    background: rgba(2, 132, 199, 0.06) !important;
+}
+
+/* ==========================================================================
+   PADRONIZAÇÃO TIPOGRÁFICA & FORENSE: EQUIPES LOGADAS x CHECKLIST
+   ========================================================================== */
+#deliveryScreenOnlineBid,
+#deliveryScreenOnlineBid * {
+    font-family: var(--font-main);
+}
+
+#deliveryScreenOnlineBid .hero-big-number,
+#deliveryScreenOnlineBid .team-badge,
+#deliveryScreenOnlineBid [class*='font-mono'],
+#deliveryScreenOnlineBid td:nth-child(2),
+#deliveryScreenOnlineBid td:nth-child(5),
+#deliveryScreenOnlineBid td:nth-child(7),
+#deliveryScreenOnlineBid td:nth-child(8),
+#deliveryScreenOnlineBid td:nth-child(10) {
+    font-family: var(--font-mono) !important;
+}
+
+/* Alerta de Divergência de Placa (Despacho vs Checklist) */
+.plate-divergence-pill {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 8px;
+    padding: 5px 8px;
+    display: inline-block;
+    text-align: left;
+    transition: all 0.2s ease;
+}
+
+.plate-divergence-pill:hover {
+    border-color: #ef4444;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
+}
+
+body.theme-light .plate-divergence-pill {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+body.theme-light .plate-divergence-pill:hover {
+    border-color: #dc2626;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
+}
+
+/* ==========================================================================
+   STICKY HEADER - RECONCILIAÇÃO FORENSE ONLINE x CHECKLIST
+   ========================================================================== */
+#onlineBidTable {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+}
+
+#onlineBidTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    background: #0f172a;
+    border-bottom: 2px solid rgba(56, 189, 248, 0.35);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.35);
+}
+
+body.theme-light #onlineBidTable thead th {
+    background: #ffffff;
+    border-bottom: 2px solid rgba(2, 132, 199, 0.35);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+}
+
+/* ==========================================================================
+   ESTABILIZAÇÃO DE LAYOUT E SEM DESLOCAMENTO DE TELA
+   ========================================================================== */
+.online-bid-filters-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+}
+
+body.theme-light .online-bid-filters-bar .period-filters-title-row {
+    border-bottom-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+#onlineBidTableContainer {
+    min-height: 520px;
+    max-height: 600px;
+    overflow-y: auto;
+    position: relative;
+}
 
