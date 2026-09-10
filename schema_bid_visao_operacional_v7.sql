@@ -44,3 +44,18 @@ DROP POLICY IF EXISTS "Service Role All BID Records" ON bid_visao_operacional_re
 CREATE POLICY "Service Role All BID Records" 
 ON bid_visao_operacional_records FOR ALL 
 USING (true);
+
+-- Habilitar Supabase Realtime (WebSocket CDC)
+ALTER TABLE public.bid_visao_operacional_records REPLICA IDENTITY FULL;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND schemaname = 'public' 
+        AND tablename = 'bid_visao_operacional_records'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.bid_visao_operacional_records;
+    END IF;
+END $$;
+

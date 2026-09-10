@@ -671,11 +671,16 @@ def get_engine_details(engine_key):
         if last_sync and "-" in str(last_sync) and "T" in str(last_sync):
             last_sync = format_datetime_br(last_sync)
 
-        bid_records = list(delivery_manager.bid_cache.values()) if hasattr(delivery_manager, "bid_cache") and delivery_manager.bid_cache else []
+        op_date = delivery_manager.get_operational_date()
+        bid_records = [
+            v for v in delivery_manager.bid_cache.values()
+            if str(v.get("date_ref") or op_date) == op_date
+        ] if hasattr(delivery_manager, "bid_cache") and delivery_manager.bid_cache else []
         if not bid_records:
             try:
                 from supabase_client import fetch_bid_records_by_date
-                bid_records = fetch_bid_records_by_date() or []
+                raw_sb = fetch_bid_records_by_date(op_date) or []
+                bid_records = [r for r in raw_sb if str(r.get("date_ref") or op_date) == op_date]
             except Exception:
                 bid_records = []
 

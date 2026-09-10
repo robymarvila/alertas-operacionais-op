@@ -779,7 +779,28 @@ function initSupabaseRealtime(retryCount = 0) {
                     console.log('[REALTIME WS] Nova coleta Enel SP gravada no Supabase!', payload);
                     loadDeliveryData(false);
                     updateDeliveryHubCard();
+                    const scrOnlineBid = document.getElementById('deliveryScreenOnlineBid');
+                    if (scrOnlineBid && scrOnlineBid.style.display !== 'none') {
+                        loadOnlineXBidData();
+                    }
                     showRealtimeIndicator('Entrega de Equipes Atualizada ao Vivo');
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'bid_visao_operacional_records' },
+                (payload) => {
+                    console.log('[REALTIME WS] Atualização na Visão Operacional BidTech (Checklist)!', payload);
+                    // Atualiza em tempo real a tela de Reconciliação ONLINE x BID
+                    const scrOnlineBid = document.getElementById('deliveryScreenOnlineBid');
+                    if (scrOnlineBid && scrOnlineBid.style.display !== 'none') {
+                        loadOnlineXBidData();
+                    }
+                    // Atualiza também os badges do checklist dentro da Entrega de Equipes ao vivo
+                    if (appState.currentView === 'delivery') {
+                        loadDeliveryData(false);
+                    }
+                    showRealtimeIndicator('Checklist BidTech Atualizado ao Vivo');
                 }
             )
             .on(
@@ -787,6 +808,20 @@ function initSupabaseRealtime(retryCount = 0) {
                 { event: '*', schema: 'public', table: 'system_engine_health' },
                 (payload) => {
                     console.log('[REALTIME WS] Estado do motor operacional atualizado:', payload);
+                    const engineName = payload?.new?.engine_name || '';
+                    if (engineName === 'bid_cdp_collector') {
+                        const scrOnlineBid = document.getElementById('deliveryScreenOnlineBid');
+                        if (scrOnlineBid && scrOnlineBid.style.display !== 'none') {
+                            loadOnlineXBidData();
+                        }
+                        if (appState.currentView === 'delivery') {
+                            loadDeliveryData(false);
+                        }
+                        showRealtimeIndicator('Robô BidTech Sincronizado');
+                    } else if (engineName === 'enel_cdp_collector') {
+                        loadDeliveryData(false);
+                        showRealtimeIndicator('Robô Enel SP Sincronizado');
+                    }
                     if (appState.currentView === 'admin') {
                         loadAdminEngineStatus();
                     }

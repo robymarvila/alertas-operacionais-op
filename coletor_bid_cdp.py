@@ -411,6 +411,24 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
         # 2. Atualiza o delivery_manager em memória
         delivery_manager.process_raw_bid_records(records, date_ref)
 
+        # 3. Notifica o monitor de saúde no Supabase
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health(
+                "bid_cdp_collector", "OPERATIONAL", is_running=True,
+                error_type="NONE", last_error=None,
+                records_count=len(records),
+                engine_label="Robô CDP BidTech (Checklist Operacional)",
+                details_json={
+                    "date_ref": date_ref,
+                    "status_counts": result.get("status_counts", {}),
+                    "total_extracted": len(records),
+                    "sync_source": source_label
+                }
+            )
+        except Exception:
+            pass
+
         elapsed = round(time.time() - start_t, 2)
         counts_str = ", ".join([f"{k}: {v}" for k, v in result.get("status_counts", {}).items()])
         msg = f"Sincronização BidTech concluída em {elapsed}s. {len(records)} equipes ({counts_str}). Supabase: {sb_res.get('status')}"
@@ -426,6 +444,17 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
         return _LAST_BID_SYNC_RESULT
     else:
         err_msg = result.get("message", "Erro desconhecido")
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health(
+                "bid_cdp_collector", "ERROR_CONNECTION", is_running=True,
+                error_type="CONNECTION_REFUSED", last_error=err_msg,
+                records_count=0,
+                engine_label="Robô CDP BidTech (Checklist Operacional)"
+            )
+        except Exception:
+            pass
+
         _LAST_BID_SYNC_RESULT = {
             "status": "error",
             "timestamp": datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S"),

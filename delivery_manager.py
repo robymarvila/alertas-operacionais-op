@@ -311,7 +311,12 @@ class DeliveryManager:
 
                         self.intraday_curve = data.get("intraday_curve", {})
                         self.daily_team_order_history = data.get("team_order_history", {})
-                        self.bid_cache = data.get("bid_cache", {})
+                        raw_bid_cache = data.get("bid_cache", {})
+                        # Purga estritamente qualquer registro que pertença a data anterior
+                        self.bid_cache = {
+                            k: v for k, v in raw_bid_cache.items()
+                            if str(v.get("date_ref") or current_op_date) == current_op_date
+                        }
                         self.last_bid_sync = data.get("last_bid_sync", "--")
                         self.active_teams = [t for t in self.daily_accumulated_teams.values() if t.get("is_active", True)]
 
@@ -904,10 +909,20 @@ class DeliveryManager:
         if not date_ref:
             date_ref = self.get_operational_date()
 
+        # Garante que o bid_cache mantenha apenas registros do dia operacional atual
+        new_bid_cache = {
+            k: v for k, v in self.bid_cache.items()
+            if str(v.get("date_ref") or date_ref) == date_ref
+        }
+
         for r in raw_records:
             code = str(r.get("team_code", "")).strip().upper()
             if code:
-                self.bid_cache[code] = dict(r)
+                r_copy = dict(r)
+                r_copy["date_ref"] = date_ref
+                new_bid_cache[code] = r_copy
+
+        self.bid_cache = new_bid_cache
 
         now = datetime.now(BR_TZ)
         self.last_bid_sync = now.strftime("%d/%m/%Y %H:%M:%S")
@@ -967,7 +982,11 @@ class DeliveryManager:
         bid_records_map = {}
         bid_last_sync_time = self.last_bid_sync
         if is_today and self.bid_cache and not is_cloud:
-            bid_records_map = dict(self.bid_cache)
+            # Filtra estritamente registros pertencentes à data operacional solicitada
+            bid_records_map = {
+                k: dict(v) for k, v in self.bid_cache.items()
+                if str(v.get("date_ref") or date_str) == date_str
+            }
         else:
             try:
                 from supabase_client import fetch_bid_records_by_date, format_datetime_br
@@ -984,11 +1003,17 @@ class DeliveryManager:
                             if code:
                                 self.bid_cache[code] = dict(r)
                 elif self.bid_cache:
-                    bid_records_map = dict(self.bid_cache)
+                    bid_records_map = {
+                        k: dict(v) for k, v in self.bid_cache.items()
+                        if str(v.get("date_ref") or date_str) == date_str
+                    }
             except Exception as err:
                 print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para BID {date_str}: {err}")
                 if self.bid_cache:
-                    bid_records_map = dict(self.bid_cache)
+                    bid_records_map = {
+                        k: dict(v) for k, v in self.bid_cache.items()
+                        if str(v.get("date_ref") or date_str) == date_str
+                    }
 
         def normalize_bid_status(raw_status):
             if not raw_status or str(raw_status).strip() in ["--", "NONE", "NULL", ""]:
