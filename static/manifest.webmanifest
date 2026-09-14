@@ -1,0 +1,62 @@
+{
+  "name": "Alertas Operacionais OP - CCO",
+  "short_name": "Alertas CCO",
+  "description": "Ambiente Unificado de Monitoramento Operacional, Entrega de Equipes e Checklist Forense Enel SP / CCO",
+  "start_url": "/#hub",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070A11",
+  "theme_color": "#0B0F19",
+  "lang": "pt-BR",
+  "categories": ["business", "utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Entrega de Equipes",
+      "short_name": "Entrega",
+      "description": "Acompanhamento em tempo real da entrega de equipes Enel SP",
+      "url": "/#delivery",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Checklist Forense (BID)",
+      "short_name": "Checklist",
+      "description": "Reconciliação de Equipes Logadas vs Visão Operacional BidTech",
+      "url": "/#delivery",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Alertas TRBOnet",
+      "short_name": "TRBOnet",
+      "description": "Painel de telemetria e comunicação de equipes",
+      "url": "/#module",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

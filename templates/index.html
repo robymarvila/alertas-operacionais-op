@@ -2,9 +2,20 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Alertas Operacionais OP - Equipes Brasil vs TRBOnet | CCO</title>
     
+    <!-- PWA & Mobile Web App Meta Tags -->
+    <meta name="theme-color" content="#0B0F19" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#F8FAFC" media="(prefers-color-scheme: light)">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Alertas CCO">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+
     <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,17 +31,17 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=4.3.0">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.3-mobile-nav-fix">
     <script>
         (function() {
             var hash = window.location.hash;
+            var route = 'route-hub';
             if (hash === '#delivery') {
-                document.documentElement.classList.add('route-delivery');
+                route = 'route-delivery';
             } else if (hash === '#module' || hash === '#trbonet') {
-                document.documentElement.classList.add('route-module');
-            } else {
-                document.documentElement.classList.add('route-hub');
+                route = 'route-module';
             }
+            document.documentElement.classList.add(route);
         })();
     </script>
 </head>
@@ -41,6 +52,73 @@
     <div class="ambient-glow glow-top-left"></div>
     <div class="ambient-glow glow-top-right"></div>
     <div class="ambient-glow glow-bottom-center"></div>
+
+    <!-- ================================================================= -->
+    <!-- MOBILE TOP APP BAR (Compacto, Glassmorphism, Telas <= 768px)      -->
+    <!-- ================================================================= -->
+    <header class="mobile-top-appbar glass-card" id="mobileTopAppBar">
+        <div class="mobile-appbar-brand" onclick="navigateToView('hub')">
+            <div class="mobile-logo-icon">
+                <i data-lucide="shield-check"></i>
+            </div>
+            <div class="mobile-brand-meta">
+                <span class="mobile-app-title" id="mobileAppTitle">ALERTAS CCO</span>
+                <span class="mobile-app-subtitle" id="mobileAppSubtitle">ONLINE • REALTIME</span>
+            </div>
+        </div>
+        <div class="mobile-appbar-actions">
+            <!-- Botão Filtro Móvel (Abre Sheet) -->
+            <button class="btn-mobile-icon" id="btnMobileFilterTrigger" onclick="openBottomSheet('sheetFilters')" title="Filtros Operacionais">
+                <i data-lucide="sliders-horizontal"></i>
+                <span class="mobile-filter-badge" id="mobileFilterBadge" style="display: none;"></span>
+            </button>
+            <!-- Botão Atualizar -->
+            <button class="btn-mobile-icon" id="btnMobileRefresh" onclick="handleMobileRefresh()" title="Atualizar Dados">
+                <i data-lucide="refresh-cw"></i>
+            </button>
+            <!-- Botão Menu / Mais -->
+            <button class="btn-mobile-icon" id="btnMobileMoreTrigger" onclick="openBottomSheet('sheetMoreMenu')" title="Menu & Configurações">
+                <i data-lucide="more-vertical"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ================================================================= -->
+    <!-- MOBILE SUB-NAVIGATION BAR (Sub-Módulos Entrega e Alertas <= 768px) -->
+    <!-- ================================================================= -->
+    <nav class="mobile-subnav-bar glass-card" id="mobileSubnavBar" style="display: none;">
+        <!-- Sub-Módulo Entrega de Equipes: 3 Opções Oficiais -->
+        <div class="mobile-subnav-group" id="mobileDeliverySubnav" style="display: none;">
+            <button class="mobile-subnav-pill active" id="mobSubDeliveryOnline" onclick="handleMobileDeliverySub('online')">
+                <span class="live-dot-pulse"></span>
+                <span>TEMPO REAL</span>
+            </button>
+            <button class="mobile-subnav-pill" id="mobSubDeliveryBid" onclick="handleMobileDeliverySub('online_bid')">
+                <i data-lucide="clipboard-check"></i>
+                <span>LOGADAS x CHECKLIST</span>
+            </button>
+            <button class="mobile-subnav-pill" id="mobSubDeliveryHistory" onclick="handleMobileDeliverySub('history')">
+                <i data-lucide="history"></i>
+                <span>AUDITORIA & HISTÓRICO</span>
+            </button>
+        </div>
+
+        <!-- Sub-Módulo Alertas / TRBOnet: 3 Opções Oficiais -->
+        <div class="mobile-subnav-group" id="mobileAlertsSubnav" style="display: none;">
+            <button class="mobile-subnav-pill active" id="mobSubAlertsLive" onclick="handleMobileAlertsSub('live')">
+                <span class="live-dot-pulse"></span>
+                <span>AO VIVO</span>
+            </button>
+            <button class="mobile-subnav-pill" id="mobSubAlertsDash" onclick="handleMobileAlertsSub('dashboard')">
+                <i data-lucide="layout-dashboard"></i>
+                <span>DASHBOARD</span>
+            </button>
+            <button class="mobile-subnav-pill" id="mobSubAlertsAudit" onclick="handleMobileAlertsSub('audit')">
+                <i data-lucide="history"></i>
+                <span>AUDITORIA & HISTÓRICO</span>
+            </button>
+        </div>
+    </nav>
 
     <!-- Main Container -->
     <main class="dashboard-content">
@@ -1181,6 +1259,22 @@
                     </div>
                 </div>
 
+                <!-- ALTERNADOR MOBILE DE SEÇÕES (Apenas Telas <= 768px: Equipes / Gráficos / Bases) -->
+                <div class="mobile-section-switcher" id="mobileDeliverySectionSwitcher">
+                    <button class="mobile-subtab-btn active" id="subtabBtnFeed" data-subtab="feed" onclick="switchMobileDeliverySubTab('feed')">
+                        <i data-lucide="users"></i>
+                        <span>Equipes</span>
+                    </button>
+                    <button class="mobile-subtab-btn" id="subtabBtnCharts" data-subtab="charts" onclick="switchMobileDeliverySubTab('charts')">
+                        <i data-lucide="bar-chart-3"></i>
+                        <span>Gráficos</span>
+                    </button>
+                    <button class="mobile-subtab-btn" id="subtabBtnBases" data-subtab="bases" onclick="switchMobileDeliverySubTab('bases')">
+                        <i data-lucide="map-pin"></i>
+                        <span>Bases (14)</span>
+                    </button>
+                </div>
+
                 <!-- BARRA DE ESCOPO E FILTROS RÁPIDOS M3 EXPRESSIVE -->
                 <div class="delivery-filter-bar glass-card" id="deliveryFilterBar" style="margin-bottom: 20px;">
                     <div class="delivery-filter-row">
@@ -1501,6 +1595,11 @@
                                     <!-- Inserido dinamicamente via JS -->
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- FEED DE CARDS MOBILE (Estilo Instagram/WhatsApp - Telas <= 768px) -->
+                        <div class="mobile-team-feed" id="deliveryMobileCardsFeed">
+                            <!-- Cards de equipes gerados dinamicamente via JS -->
                         </div>
                     </div>
                 </div>
@@ -2323,6 +2422,10 @@
                                 <!-- Preenchido dinamicamente via JS -->
                             </tbody>
                         </table>
+                    </div>
+                    <!-- FEED DE CARDS MOBILE (Cruzamento BID - Telas <= 768px) -->
+                    <div class="mobile-team-feed" id="onlineBidMobileCardsFeed">
+                        <!-- Cards do Cruzamento gerados dinamicamente via JS -->
                     </div>
                 </div>
             </div>
@@ -3486,11 +3589,268 @@
     </div>
 </div>
 
+<!-- ================================================================= -->
+<!-- MOBILE BOTTOM NAVIGATION (Estilo Instagram/WhatsApp - Telas <= 768px) -->
+<!-- ================================================================= -->
+<nav class="mobile-bottom-nav" id="mobileBottomNav">
+    <button class="nav-item active" id="navItemHub" onclick="handleMobileNav('hub')">
+        <div class="nav-item-icon-wrapper">
+            <i data-lucide="layout-grid"></i>
+        </div>
+        <span class="nav-label">HUB</span>
+    </button>
+    <button class="nav-item" id="navItemTrbonet" onclick="handleMobileNav('trbonet')">
+        <div class="nav-item-icon-wrapper">
+            <i data-lucide="radio"></i>
+            <span class="nav-badge" id="navBadgeAlerts" style="display: none;">0</span>
+        </div>
+        <span class="nav-label">TRBOnet</span>
+    </button>
+    <button class="nav-item" id="navItemDelivery" onclick="handleMobileNav('delivery')">
+        <div class="nav-item-icon-wrapper">
+            <i data-lucide="truck"></i>
+        </div>
+        <span class="nav-label">Entrega</span>
+    </button>
+    <button class="nav-item" id="navItemMore" onclick="openBottomSheet('sheetMoreMenu')">
+        <div class="nav-item-icon-wrapper">
+            <i data-lucide="menu"></i>
+        </div>
+        <span class="nav-label">Mais</span>
+    </button>
+</nav>
+
+<!-- ================================================================= -->
+<!-- BACKDROP DE BOTTOM SHEETS (Liquid Glass Blur)                      -->
+<!-- ================================================================= -->
+<div class="bottom-sheet-backdrop" id="bottomSheetBackdrop" onclick="closeAllBottomSheets()"></div>
+
+<!-- ================================================================= -->
+<!-- BOTTOM SHEET 1: FILTROS OPERACIONAIS MÓVEIS (Material 3 Expressive)-->
+<!-- ================================================================= -->
+<div class="bottom-sheet glass-sheet" id="sheetFilters" role="dialog" aria-modal="true" aria-labelledby="sheetFiltersTitle">
+    <div class="sheet-drag-handle" onclick="closeBottomSheet('sheetFilters')"></div>
+    <div class="sheet-header">
+        <div class="sheet-title-group">
+            <i data-lucide="sliders-horizontal" class="sheet-header-icon"></i>
+            <h3 id="sheetFiltersTitle">Filtros Operacionais</h3>
+        </div>
+        <button class="btn-sheet-close" onclick="closeBottomSheet('sheetFilters')" title="Fechar">
+            <i data-lucide="x"></i>
+        </button>
+    </div>
+    <div class="sheet-body">
+        <!-- Campo de Pesquisa Rápida -->
+        <div class="sheet-section">
+            <label class="sheet-label">BUSCA POR EQUIPE OU PLACA</label>
+            <div class="sheet-search-wrapper">
+                <i data-lucide="search" class="sheet-search-icon"></i>
+                <input type="text" id="mobileSearchInput" class="sheet-search-input" placeholder="Ex: EML117, EEL320, TXE5G81..." oninput="handleMobileSearch(this.value)" />
+                <button class="sheet-search-clear" onclick="clearMobileSearch()" id="mobileSearchClear" style="display: none;">
+                    <i data-lucide="x-circle"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Filtro de Região / Base -->
+        <div class="sheet-section">
+            <label class="sheet-label">BASE OPERACIONAL</label>
+            <div class="m3-chip-group" id="mobileRegionChips">
+                <button class="m3-chip active" data-region="" onclick="selectMobileRegion('')">Todas</button>
+                <button class="m3-chip" data-region="Norte" onclick="selectMobileRegion('Norte')">Norte</button>
+                <button class="m3-chip" data-region="Sul" onclick="selectMobileRegion('Sul')">Sul</button>
+                <button class="m3-chip" data-region="Leste" onclick="selectMobileRegion('Leste')">Leste</button>
+                <button class="m3-chip" data-region="Centro" onclick="selectMobileRegion('Centro')">Centro</button>
+            </div>
+        </div>
+
+        <!-- Filtro de Status Operacional -->
+        <div class="sheet-section">
+            <label class="sheet-label">STATUS OPERAÇÃO</label>
+            <div class="m3-chip-group" id="mobileStatusChips">
+                <button class="m3-chip active" data-status="" onclick="selectMobileStatus('')">Todos</button>
+                <button class="m3-chip chip-emerald" data-status="EM OPERAÇÃO" onclick="selectMobileStatus('EM OPERAÇÃO')">Em Operação</button>
+                <button class="m3-chip chip-cyan" data-status="EM CHECKLIST" onclick="selectMobileStatus('EM CHECKLIST')">Em Checklist</button>
+                <button class="m3-chip chip-purple" data-status="RETORNADA" onclick="selectMobileStatus('RETORNADA')">Retornadas</button>
+                <button class="m3-chip chip-rose" data-status="BLOQUEADA" onclick="selectMobileStatus('BLOQUEADA')">Bloqueadas</button>
+                <button class="m3-chip chip-amber" data-status="BID SEM LOGIN EB" onclick="selectMobileStatus('BID SEM LOGIN EB')">BID Sem EB</button>
+            </div>
+        </div>
+    </div>
+    <div class="sheet-footer">
+        <button class="btn-sheet-secondary" onclick="resetMobileFilters()">Limpar Filtros</button>
+        <button class="btn-sheet-primary" onclick="applyMobileFiltersAndClose()">Aplicar (<span id="mobileFilteredCount">--</span>)</button>
+    </div>
+</div>
+
+<!-- ================================================================= -->
+<!-- BOTTOM SHEET 2: DETALHES DA EQUIPE (Liquid Glass Card Detail)    -->
+<!-- ================================================================= -->
+<div class="bottom-sheet glass-sheet" id="sheetTeamDetails" role="dialog" aria-modal="true" aria-labelledby="sheetTeamDetailsTitle">
+    <div class="sheet-drag-handle" onclick="closeBottomSheet('sheetTeamDetails')"></div>
+    <div class="sheet-header">
+        <div class="sheet-title-group">
+            <div class="team-avatar-badge" id="sheetTeamAvatar">EQ</div>
+            <div>
+                <h3 id="sheetTeamDetailsTitle">Detalhes da Equipe</h3>
+                <span class="sheet-subtitle" id="sheetTeamSubtitle">CCO • Telemetria Realtime</span>
+            </div>
+        </div>
+        <button class="btn-sheet-close" onclick="closeBottomSheet('sheetTeamDetails')" title="Fechar">
+            <i data-lucide="x"></i>
+        </button>
+    </div>
+    <div class="sheet-body" id="sheetTeamDetailsBody">
+        <!-- Renderizado dinamicamente via JS (openMobileTeamDetails) -->
+    </div>
+    <div class="sheet-footer">
+        <button class="btn-sheet-secondary" style="width: 100%;" onclick="closeBottomSheet('sheetTeamDetails')">Fechar Detalhes</button>
+    </div>
+</div>
+
+<!-- ================================================================= -->
+<!-- BOTTOM SHEET 3: MENU & FERRAMENTAS DO OPERADOR (Atalhos Rápidos)   -->
+<!-- ================================================================= -->
+<div class="bottom-sheet glass-sheet" id="sheetMoreMenu" role="dialog" aria-modal="true" aria-labelledby="sheetMoreMenuTitle">
+    <div class="sheet-drag-handle" onclick="closeBottomSheet('sheetMoreMenu')"></div>
+    <div class="sheet-header">
+        <div class="sheet-title-group">
+            <i data-lucide="settings" class="sheet-header-icon"></i>
+            <h3 id="sheetMoreMenuTitle">Menu & Configurações</h3>
+        </div>
+        <button class="btn-sheet-close" onclick="closeBottomSheet('sheetMoreMenu')" title="Fechar">
+            <i data-lucide="x"></i>
+        </button>
+    </div>
+    <div class="sheet-body">
+        <div class="mobile-menu-list">
+            <!-- Alternar Tema -->
+            <div class="mobile-menu-item" onclick="toggleTheme(); initIcons();">
+                <div class="menu-item-icon">
+                    <i data-lucide="sun-medium" id="mobileThemeIcon"></i>
+                </div>
+                <div class="menu-item-text">
+                    <span class="menu-item-title">Modo Claro / Escuro</span>
+                    <span class="menu-item-desc">Alternar aparência visual da plataforma</span>
+                </div>
+                <div class="menu-item-trailing">
+                    <span class="badge" id="mobileThemeBadge">Dark</span>
+                </div>
+            </div>
+
+            <!-- Gerenciamento Master -->
+            <div class="mobile-menu-item" onclick="switchView('admin'); closeAllBottomSheets();">
+                <div class="menu-item-icon icon-amber">
+                    <i data-lucide="cpu"></i>
+                </div>
+                <div class="menu-item-text">
+                    <span class="menu-item-title">Painel de Motores & CDP</span>
+                    <span class="menu-item-desc">Telemetria master e status dos coletores</span>
+                </div>
+                <i data-lucide="chevron-right" class="menu-chevron"></i>
+            </div>
+
+            <!-- Instalar PWA -->
+            <div class="mobile-menu-item" onclick="openBottomSheet('sheetPwaInstallGuide');">
+                <div class="menu-item-icon icon-blue">
+                    <i data-lucide="download"></i>
+                </div>
+                <div class="menu-item-text">
+                    <span class="menu-item-title">Instalar App no Dispositivo</span>
+                    <span class="menu-item-desc">Acesso rápido estilo nativo no iPhone/Android</span>
+                </div>
+                <span class="badge badge-pulse">PWA</span>
+            </div>
+
+            <!-- Atualizar Cache & Realtime -->
+            <div class="mobile-menu-item" onclick="handleMobileRefresh(); closeAllBottomSheets();">
+                <div class="menu-item-icon icon-cyan">
+                    <i data-lucide="refresh-cw"></i>
+                </div>
+                <div class="menu-item-text">
+                    <span class="menu-item-title">Atualizar Dados Agora</span>
+                    <span class="menu-item-desc">Sincroniza telemetria e checklists</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="sheet-footer">
+        <button class="btn-sheet-secondary" style="width: 100%;" onclick="closeBottomSheet('sheetMoreMenu')">Fechar Menu</button>
+    </div>
+</div>
+
+<!-- ================================================================= -->
+<!-- BOTTOM SHEET 4: GUIA DE INSTALAÇÃO PWA (iOS / Android)            -->
+<!-- ================================================================= -->
+<div class="bottom-sheet glass-sheet" id="sheetPwaInstallGuide" role="dialog" aria-modal="true" aria-labelledby="sheetPwaTitle">
+    <div class="sheet-drag-handle" onclick="closeBottomSheet('sheetPwaInstallGuide')"></div>
+    <div class="sheet-header">
+        <div class="sheet-title-group">
+            <i data-lucide="smartphone" class="sheet-header-icon"></i>
+            <h3 id="sheetPwaTitle">Instalação do Aplicativo</h3>
+        </div>
+        <button class="btn-sheet-close" onclick="closeBottomSheet('sheetPwaInstallGuide')" title="Fechar">
+            <i data-lucide="x"></i>
+        </button>
+    </div>
+    <div class="sheet-body">
+        <div class="pwa-guide-container">
+            <div class="pwa-app-preview">
+                <div class="pwa-app-icon">
+                    <i data-lucide="shield-check" style="width: 32px; height: 32px; color: #0284c7;"></i>
+                </div>
+                <div class="pwa-app-meta">
+                    <strong>Alertas CCO • OP</strong>
+                    <span>Sistema Operacional de Equipes</span>
+                </div>
+            </div>
+
+            <!-- Botão de Instalação Automática (quando suportado pelo navegador, ex: Android Chrome) -->
+            <div id="pwaInstallNativeBtnWrapper" style="display: none; margin-bottom: 16px;">
+                <button class="btn-action-primary" id="btnPwaInstallNative" onclick="triggerNativePwaInstall()" style="width: 100%; padding: 14px; font-weight: 700;">
+                    <i data-lucide="download"></i>
+                    <span>Instalar Agora no Aparelho</span>
+                </button>
+            </div>
+
+            <!-- Instruções para iOS (Safari) -->
+            <div class="pwa-instruction-card">
+                <div class="pwa-step-header">
+                    <i data-lucide="smartphone"></i>
+                    <strong>Como instalar no iPhone / iPad (Safari):</strong>
+                </div>
+                <ol class="pwa-step-list">
+                    <li>No Safari, toque no botão <strong>Compartilhar</strong> <i data-lucide="share" style="width: 16px; height: 16px; display: inline-block; vertical-align: middle;"></i> na barra inferior.</li>
+                    <li>Role para cima e selecione <strong>"Adicionar à Tela de Início"</strong>.</li>
+                    <li>Toque em <strong>"Adicionar"</strong> no canto superior direito.</li>
+                    <li>O ícone do <strong>Alertas CCO</strong> aparecerá como um aplicativo nativo!</li>
+                </ol>
+            </div>
+
+            <!-- Instruções para Android (Chrome) -->
+            <div class="pwa-instruction-card" style="margin-top: 12px;">
+                <div class="pwa-step-header">
+                    <i data-lucide="globe"></i>
+                    <strong>Como instalar no Android (Chrome):</strong>
+                </div>
+                <ol class="pwa-step-list">
+                    <li>No Chrome, toque no menu de <strong>3 pontos</strong> no topo direito.</li>
+                    <li>Selecione <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.</li>
+                    <li>Confirme a instalação.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+    <div class="sheet-footer">
+        <button class="btn-sheet-primary" style="width: 100%;" onclick="closeBottomSheet('sheetPwaInstallGuide')">Entendido</button>
+    </div>
+</div>
+
 <!-- Toast Notification Container -->
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=4.4.2"></script>
+<script src="/static/js/app.js?v=5.0.3-mobile-nav-fix"></script>
 
 </body>
 </html>

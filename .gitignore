@@ -13,3 +13,4 @@ delivery_daily_cache.json
 scratch/
 temp_spotfire_*/
 *.png
+@AutomationLog*

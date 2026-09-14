@@ -49,12 +49,61 @@ _LAST_BID_SYNC_RESULT = {
 }
 
 
+_LAST_PAGE_RELOAD_TS = 0.0
+_LAST_OPERATIONAL_DATE = None
+
+
 def get_operational_date_str() -> str:
-    """Retorna a data operacional atual (YYYY-MM-DD). Vira às 05:00."""
+    """
+    Retorna a data operacional atual (YYYY-MM-DD).
+    Corte operacional pontualmente às 04:30 da manhã:
+    - Das 00:00 às 04:30: pertence ao dia operacional anterior.
+    - A partir das 04:31: pertence ao dia operacional atual.
+    """
     now = datetime.now(BR_TZ)
-    if now.hour < 5:
+    if now.hour < 4 or (now.hour == 4 and now.minute <= 30):
         return (now.date() - timedelta(days=1)).isoformat()
     return now.date().isoformat()
+
+
+def _send_cdp(ws, method: str, params: dict = None, timeout: int = 15) -> dict:
+    """Envia comando CDP via WebSocket e aguarda a resposta com o ID correspondente."""
+    import random
+    msg_id = random.randint(10000, 99999)
+    payload = {"id": msg_id, "method": method}
+    if params:
+        payload["params"] = params
+    ws.send(json.dumps(payload))
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            raw = ws.recv()
+            data = json.loads(raw)
+            if data.get("id") == msg_id:
+                return data
+        except Exception:
+            break
+    return {}
+
+
+CLEAR_SEARCH_JS = """
+(() => {
+    const searchInput = document.querySelector('input[placeholder*="Código"], input[type="text"]');
+    if (searchInput && searchInput.value) {
+        try {
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            nativeInputValueSetter.call(searchInput, '');
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+            return { cleared: true, prev: searchInput.value };
+        } catch(e) {
+            searchInput.value = '';
+            return { cleared: true, prev: '' };
+        }
+    }
+    return { cleared: false };
+})()
+"""
 
 
 def localizar_aba_bid():
@@ -254,9 +303,11 @@ CARDS_EXTRACTION_JS = """
 
 def extrair_cards_bid_visao_operacional():
     """
-    Conecta via CDP WebSocket na aba do BidTech, ajusta a data para a data operacional
-    e extrai todos os cards das 5 colunas.
+    Conecta via CDP WebSocket na aba do BidTech, verifica necessidade de F5
+    (na virada das 04:31 ou a cada 1 hora de ciclo contínuo), limpa campos de busca,
+    ajusta a data para a data operacional e extrai todos os cards das 5 colunas.
     """
+    global _LAST_PAGE_RELOAD_TS, _LAST_OPERATIONAL_DATE
     if websocket is None:
         return {"status": "error", "message": "Módulo 'websocket-client' não instalado.", "records": []}
 
@@ -274,52 +325,71 @@ def extrair_cards_bid_visao_operacional():
         return {"status": "error", "message": "webSocketDebuggerUrl ausente para a aba BidTech.", "records": []}
 
     target_date = get_operational_date_str()
+    now_ts = time.time()
+
+    # Verifica se precisa de F5 (Hard Reload da página):
+    # 1. Primeiro ciclo de execução (_LAST_PAGE_RELOAD_TS == 0.0)
+    # 2. Virada de data operacional após 04:31 (_LAST_OPERATIONAL_DATE != target_date)
+    # 3. A cada 1 hora (3600 segundos) de operação contínua
+    needs_f5 = False
+    reason_f5 = ""
+    if _LAST_PAGE_RELOAD_TS == 0.0:
+        needs_f5 = True
+        reason_f5 = "Inicialização / Primeiro Ciclo do Coletor CDP"
+    elif _LAST_OPERATIONAL_DATE is not None and target_date != _LAST_OPERATIONAL_DATE:
+        needs_f5 = True
+        reason_f5 = f"Virada de Data Operacional ({_LAST_OPERATIONAL_DATE} -> {target_date} após 04:31)"
+    elif (now_ts - _LAST_PAGE_RELOAD_TS) >= 3600:
+        elapsed_min = int((now_ts - _LAST_PAGE_RELOAD_TS) / 60)
+        needs_f5 = True
+        reason_f5 = f"Ciclo Horário de Limpeza e Atualização F5 ({elapsed_min} min decorridos)"
+
+    if needs_f5:
+        print(f"[BID CDP] Forçando recarregamento 100% da página (F5): {reason_f5}...", flush=True)
+        try:
+            ws_reload = websocket.create_connection(ws_url, timeout=15, suppress_origin=True)
+            _send_cdp(ws_reload, "Page.reload", {"ignoreCache": True})
+            ws_reload.close()
+        except Exception as rel_err:
+            print(f"[BID CDP] Aviso ao disparar Page.reload: {rel_err}", flush=True)
+        time.sleep(7.0)
+        _LAST_PAGE_RELOAD_TS = time.time()
+        _LAST_OPERATIONAL_DATE = target_date
+
+        # Re-localiza a aba caso o webSocketDebuggerUrl tenha sido alterado
+        target_refreshed = localizar_aba_bid()
+        if target_refreshed and target_refreshed.get('webSocketDebuggerUrl'):
+            ws_url = target_refreshed.get('webSocketDebuggerUrl')
+    else:
+        _LAST_OPERATIONAL_DATE = target_date
 
     ws = None
     try:
         ws = websocket.create_connection(ws_url, timeout=15, suppress_origin=True)
 
-        # Passo 1: Verifica e ajusta a data operacional no seletor
+        # Passo 1: Limpa qualquer filtro de texto no campo de busca (evita tela filtrada/vazia)
+        resp_clear = _send_cdp(ws, "Runtime.evaluate", {"expression": CLEAR_SEARCH_JS, "returnByValue": True})
+        clear_val = resp_clear.get("result", {}).get("result", {}).get("value", {})
+        if clear_val.get("cleared"):
+            print("[BID CDP] Campo de busca do dashboard continha filtro e foi limpo automaticamente.", flush=True)
+            time.sleep(1.0)
+
+        # Passo 2: Verifica e ajusta a data operacional no seletor
         date_eval_js = DATE_CHECK_JS.replace("__TARGET_DATE__", target_date)
-        ws.send(json.dumps({
-            "id": 1,
-            "method": "Runtime.evaluate",
-            "params": {
-                "expression": date_eval_js,
-                "returnByValue": True
-            }
-        }))
-        resp_date = json.loads(ws.recv())
+        resp_date = _send_cdp(ws, "Runtime.evaluate", {"expression": date_eval_js, "returnByValue": True})
         date_val = resp_date.get("result", {}).get("result", {}).get("value", {})
         if date_val.get("adjusted"):
             time.sleep(1.0)
 
-        # Passo 2: Clica no botão "Atualizar" para forçar refresh dos dados no portal antes de coletar
+        # Passo 3: Clica no botão "Atualizar" para forçar refresh dos dados no portal antes de coletar
         try:
-            ws.send(json.dumps({
-                "id": 2,
-                "method": "Runtime.evaluate",
-                "params": {
-                    "expression": CLICK_ATUALIZAR_JS,
-                    "returnByValue": True
-                }
-            }))
-            resp_click = json.loads(ws.recv())
+            resp_click = _send_cdp(ws, "Runtime.evaluate", {"expression": CLICK_ATUALIZAR_JS, "returnByValue": True})
             click_val = resp_click.get("result", {}).get("result", {}).get("value", {})
             if click_val.get("clicked"):
-                print("[BID CDP] Botão 'Atualizar' clicado com sucesso. Aguardando atualização do dashboard...", flush=True)
                 # Aguarda até o botão voltar ao estado ativo/não-desabilitado (máx 12s)
                 time.sleep(1.0)
                 for _ in range(12):
-                    ws.send(json.dumps({
-                        "id": 3,
-                        "method": "Runtime.evaluate",
-                        "params": {
-                            "expression": CHECK_RELOAD_STATUS_JS,
-                            "returnByValue": True
-                        }
-                    }))
-                    resp_chk = json.loads(ws.recv())
+                    resp_chk = _send_cdp(ws, "Runtime.evaluate", {"expression": CHECK_RELOAD_STATUS_JS, "returnByValue": True})
                     chk_val = resp_chk.get("result", {}).get("result", {}).get("value", {})
                     if not chk_val.get("btnDisabled"):
                         break
@@ -328,30 +398,15 @@ def extrair_cards_bid_visao_operacional():
         except Exception as click_err:
             print(f"[BID CDP] Aviso ao clicar em Atualizar: {click_err}", flush=True)
 
-        # Passo 3: Re-verifica se a data continua correta após o refresh
-        ws.send(json.dumps({
-            "id": 4,
-            "method": "Runtime.evaluate",
-            "params": {
-                "expression": date_eval_js,
-                "returnByValue": True
-            }
-        }))
-        resp_date2 = json.loads(ws.recv())
+        # Passo 4: Re-verifica se a data continua correta e garante busca limpa
+        _send_cdp(ws, "Runtime.evaluate", {"expression": CLEAR_SEARCH_JS, "returnByValue": True})
+        resp_date2 = _send_cdp(ws, "Runtime.evaluate", {"expression": date_eval_js, "returnByValue": True})
         date_val2 = resp_date2.get("result", {}).get("result", {}).get("value", {})
         if date_val2.get("adjusted"):
             time.sleep(1.0)
 
-        # Passo 4: Extrai todos os cards das 5 colunas
-        ws.send(json.dumps({
-            "id": 5,
-            "method": "Runtime.evaluate",
-            "params": {
-                "expression": CARDS_EXTRACTION_JS,
-                "returnByValue": True
-            }
-        }))
-        resp_cards = json.loads(ws.recv())
+        # Passo 5: Extrai todos os cards das 5 colunas
+        resp_cards = _send_cdp(ws, "Runtime.evaluate", {"expression": CARDS_EXTRACTION_JS, "returnByValue": True})
         cards_val = resp_cards.get("result", {}).get("result", {}).get("value", {})
 
         records = cards_val.get("records", [])
@@ -390,7 +445,8 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
     Executa o ciclo completo de coleta da Visão Operacional Bid:
     1. Extrai cards via CDP
     2. Persiste no Supabase
-    3. Alimenta o delivery_manager em memória
+    3. Remove registros fantasmas no Supabase (pruning)
+    4. Alimenta o delivery_manager em memória
     """
     global _LAST_BID_SYNC_RESULT
     from delivery_manager import delivery_manager
@@ -408,7 +464,16 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
         # 1. Envia ao Supabase (upsert)
         sb_res = push_bid_records_to_supabase(records, date_ref)
 
-        # 2. Atualiza o delivery_manager em memória
+        # 2. Saneamento: remove registros fantasmas que não existem na extração legítima
+        if len(records) > 0:
+            try:
+                from supabase_client import prune_stale_bid_records
+                valid_codes = [r.get("team_code") for r in records if r.get("team_code")]
+                prune_stale_bid_records(date_ref, valid_codes)
+            except Exception as prune_err:
+                print(f"[BID CDP] Aviso ao purgar registros fantasmas: {prune_err}", flush=True)
+
+        # 3. Atualiza o delivery_manager em memória
         delivery_manager.process_raw_bid_records(records, date_ref)
 
         # 3. Notifica o monitor de saúde no Supabase

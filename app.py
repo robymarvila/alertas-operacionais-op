@@ -38,13 +38,21 @@ app = Flask(
     static_url_path='/static'
 )
 app.config['JSON_SORT_KEYS'] = False
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.jinja_env.auto_reload = True
 
 @app.after_request
 def add_cors_headers(response):
-    """Permite requisições Cross-Origin (CORS) vindas do portal Enel SP."""
+    """Permite requisições Cross-Origin (CORS) e assegura que páginas HTML e SW não sofram cache stale."""
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
+
+    # Evita cacheamento agressivo de HTML e Service Worker no navegador
+    if request.path in ['/', '/hub', '/trbonet', '/sw.js', '/static/sw.js', '/manifest.webmanifest'] or (response.mimetype and 'text/html' in response.mimetype):
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
     return response
 
 @app.route('/')
@@ -68,6 +76,22 @@ def view_teams():
 def custom_static(filename):
     """Serve arquivos estáticos com suporte completo ao ambiente Vercel Serverless."""
     return send_from_directory(os.path.join(BASE_DIR, 'static'), filename)
+
+@app.route('/manifest.webmanifest')
+@app.route('/manifest.json')
+def web_manifest():
+    """Serve o Web App Manifest para instalação PWA em Smartphones e Tablets."""
+    response = make_response(send_from_directory(os.path.join(BASE_DIR, 'static'), 'manifest.webmanifest'))
+    response.headers['Content-Type'] = 'application/manifest+json; charset=utf-8'
+    return response
+
+@app.route('/sw.js')
+def service_worker():
+    """Serve o Service Worker com escopo global para cache offline e PWA."""
+    response = make_response(send_from_directory(os.path.join(BASE_DIR, 'static'), 'sw.js'))
+    response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+    response.headers['Service-Worker-Allowed'] = '/'
+    return response
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2336,9 +2360,11 @@ if __name__ == '__main__':
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
+    port = int(os.environ.get('PORT', 5050))
+    host = os.environ.get('HOST', '0.0.0.0')
     print("\n" + "="*70)
     print("[INICIANDO] ALERTAS OPERACIONAIS OP: STATUS TRBONET & EQUIPES BRASIL")
-    print("[OK] Servidor Local Ativo em: http://127.0.0.1:5000")
+    print(f"[OK] Servidor Local Ativo em: http://127.0.0.1:{port}")
     print("[ROUTINE] Rotina de Atualização Automática do TRBOnet One (2 min) ATIVA")
     print("[ROUTINE] Rotina de Atualização Automática da Enel SP CDP (2 min) ATIVA")
     print("[ROUTINE] Rotina de Atualização Automática do TIBCO Spotfire Scanner 5.0 (30 min) ATIVA")
@@ -2348,5 +2374,5 @@ if __name__ == '__main__':
     print("="*70 + "\n")
     
     start_background_jobs()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host=host, port=port, debug=False)
 

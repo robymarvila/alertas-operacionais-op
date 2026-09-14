@@ -294,16 +294,21 @@ function navigateToView(viewName) {
         window.history.replaceState(null, '', `#${viewName}`);
     }
 
-    // Atualiza classes no elemento raiz HTML para consistência absoluta de CSS
+    // Atualiza classes no elemento raiz HTML e BODY para consistência absoluta de CSS
     document.documentElement.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin');
+    document.body.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin');
     if (viewName === 'delivery') {
         document.documentElement.classList.add('route-delivery');
+        document.body.classList.add('route-delivery');
     } else if (viewName === 'module' || viewName === 'trbonet') {
         document.documentElement.classList.add('route-module');
+        document.body.classList.add('route-module');
     } else if (viewName === 'admin') {
         document.documentElement.classList.add('route-admin');
+        document.body.classList.add('route-admin');
     } else {
         document.documentElement.classList.add('route-hub');
+        document.body.classList.add('route-hub');
     }
 
     appState.currentView = viewName;
@@ -328,6 +333,14 @@ function navigateToView(viewName) {
         loadAdminEngineStatus();
     } else {
         switchMainTab(appState.currentMainTab || 'live');
+    }
+
+    if (typeof syncMobileBottomNav === 'function') {
+        syncMobileBottomNav(viewName);
+    }
+
+    if (typeof updateMobileSubnav === 'function') {
+        updateMobileSubnav(viewName);
     }
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -404,6 +417,9 @@ function switchMainTab(tabName) {
         if (paneAudit) paneAudit.style.display = 'flex';
 
         initAuditTab();
+    }
+    if (typeof updateMobileSubnav === 'function') {
+        updateMobileSubnav('module', tabName);
     }
     initIcons();
 }
@@ -3400,6 +3416,13 @@ async function switchDeliveryScreen(screenName) {
         loadTargetsComparativeAudit(target, deliveryState.activeRegion || 'Norte');
         await loadWorkforceMonthlyChart(wfMonthVal);
     }
+
+    if (typeof syncMobileBottomNav === 'function') {
+        syncMobileBottomNav(screenName);
+    }
+    if (typeof updateMobileSubnav === 'function') {
+        updateMobileSubnav('delivery', screenName);
+    }
 }
 
 // Carregamento de Dados ao Vivo (Módulo 2)
@@ -4291,6 +4314,9 @@ function renderDeliveryTable() {
                 </td>
             </tr>
         `;
+        if (typeof renderMobileDeliveryCards === 'function') {
+            renderMobileDeliveryCards([]);
+        }
         return;
     }
 
@@ -4450,6 +4476,10 @@ function renderDeliveryTable() {
             </tr>
         `;
     }).join('');
+
+    if (typeof renderMobileDeliveryCards === 'function') {
+        renderMobileDeliveryCards(list);
+    }
 }
 
 // Exportação Excel (.xlsx) Sensível aos Filtros Ativos (14 Colunas Oficiais)
@@ -6660,9 +6690,10 @@ function openDeliveryCollectModal() {
 }
 
 async function copyDaemonScriptToClipboard() {
+    const serverUrl = `${window.location.origin}/api/delivery/sync`;
     const daemonCode = `// Script autônomo Enel SP
 (function iniciarRoboAutonomoEnel() {
-    const LOCAL_SERVER_URL = 'http://127.0.0.1:5000/api/delivery/sync';
+    const LOCAL_SERVER_URL = '${serverUrl}';
     const INTERVAL_SECONDS = 120;
     // ...
 })();`;
@@ -7978,6 +8009,9 @@ function filterOnlineBidTable() {
                 </td>
             </tr>
         `;
+        if (typeof renderMobileBidCards === 'function') {
+            renderMobileBidCards([]);
+        }
         if (window.lucide) {
             lucide.createIcons();
         }
@@ -8115,6 +8149,10 @@ function filterOnlineBidTable() {
             </tr>
         `;
     }).join('');
+
+    if (typeof renderMobileBidCards === 'function') {
+        renderMobileBidCards(list);
+    }
 
     if (window.lucide) {
         lucide.createIcons();
@@ -8270,4 +8308,606 @@ window.triggerBidCollect = triggerBidCollect;
 window.exportOnlineXBidExcel = exportOnlineXBidExcel;
 window.toggleBidCardFilter = toggleBidCardFilter;
 window.onSelectBidCrossStatus = onSelectBidCrossStatus;
+
+/* ==========================================================================
+   SISTEMA ADAPTATIVO MOBILE & TABLET (M3 EXPRESSIVE + APPLE LIQUID GLASS + PWA)
+   ========================================================================== */
+
+// 1. Navegação Bottom Nav e Sincronização
+window.switchView = navigateToView;
+window.navigateToView = navigateToView;
+
+// ==========================================================================
+// SUB-NAVEGAÇÃO MÓVEL (Sub-Módulos Entrega e Alertas <= 768px)
+// ==========================================================================
+function updateMobileSubnav(viewName, subScreen) {
+    const subnavBar = document.getElementById('mobileSubnavBar');
+    const delSubnav = document.getElementById('mobileDeliverySubnav');
+    const alrSubnav = document.getElementById('mobileAlertsSubnav');
+    if (!subnavBar) return;
+
+    if (viewName === 'delivery') {
+        subnavBar.style.display = 'flex';
+        if (delSubnav) delSubnav.style.display = 'flex';
+        if (alrSubnav) alrSubnav.style.display = 'none';
+
+        const targetScreen = subScreen || deliveryState.currentScreen || 'online';
+        document.querySelectorAll('#mobileDeliverySubnav .mobile-subnav-pill').forEach(btn => btn.classList.remove('active'));
+        if (targetScreen === 'online') {
+            document.getElementById('mobSubDeliveryOnline')?.classList.add('active');
+        } else if (targetScreen === 'online_bid') {
+            document.getElementById('mobSubDeliveryBid')?.classList.add('active');
+        } else if (targetScreen === 'history') {
+            document.getElementById('mobSubDeliveryHistory')?.classList.add('active');
+        }
+    } else if (viewName === 'module' || viewName === 'trbonet' || viewName === 'alerts') {
+        subnavBar.style.display = 'flex';
+        if (delSubnav) delSubnav.style.display = 'none';
+        if (alrSubnav) alrSubnav.style.display = 'flex';
+
+        const targetTab = subScreen || appState.currentMainTab || 'live';
+        document.querySelectorAll('#mobileAlertsSubnav .mobile-subnav-pill').forEach(btn => btn.classList.remove('active'));
+        if (targetTab === 'live') {
+            document.getElementById('mobSubAlertsLive')?.classList.add('active');
+        } else if (targetTab === 'dashboard') {
+            document.getElementById('mobSubAlertsDash')?.classList.add('active');
+        } else if (targetTab === 'audit') {
+            document.getElementById('mobSubAlertsAudit')?.classList.add('active');
+        }
+    } else {
+        subnavBar.style.display = 'none';
+        if (delSubnav) delSubnav.style.display = 'none';
+        if (alrSubnav) alrSubnav.style.display = 'none';
+    }
+}
+window.updateMobileSubnav = updateMobileSubnav;
+
+function handleMobileDeliverySub(subScreen) {
+    if (appState.currentView !== 'delivery') {
+        navigateToView('delivery');
+    }
+    if (typeof switchDeliveryScreen === 'function') {
+        switchDeliveryScreen(subScreen);
+    }
+    updateMobileSubnav('delivery', subScreen);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+window.handleMobileDeliverySub = handleMobileDeliverySub;
+
+function handleMobileAlertsSub(subTab) {
+    if (appState.currentView !== 'module' && appState.currentView !== 'trbonet') {
+        navigateToView('module');
+    }
+    if (typeof switchMainTab === 'function') {
+        switchMainTab(subTab);
+    }
+    updateMobileSubnav('module', subTab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+window.handleMobileAlertsSub = handleMobileAlertsSub;
+
+function syncMobileBottomNav(activeIdentifier) {
+    const navItems = document.querySelectorAll('#mobileBottomNav .nav-item');
+    navItems.forEach(item => item.classList.remove('active'));
+
+    const titleEl = document.getElementById('mobileAppTitle');
+    const subtitleEl = document.getElementById('mobileAppSubtitle');
+
+    if (activeIdentifier === 'hub') {
+        document.getElementById('navItemHub')?.classList.add('active');
+        if (titleEl) titleEl.textContent = 'PORTAL CCO';
+        if (subtitleEl) subtitleEl.textContent = 'HUB OPERACIONAL';
+        updateMobileSubnav('hub');
+    } else if (activeIdentifier === 'module' || activeIdentifier === 'trbonet' || activeIdentifier === 'alerts') {
+        const item = document.getElementById('navItemTrbonet') || document.getElementById('navItemAlerts');
+        item?.classList.add('active');
+        if (titleEl) titleEl.textContent = 'TRBONET';
+        if (subtitleEl) subtitleEl.textContent = 'DISCORDÂNCIA REALTIME';
+        updateMobileSubnav('module');
+    } else if (activeIdentifier === 'delivery' || activeIdentifier === 'online' || activeIdentifier === 'delivery_online' || activeIdentifier === 'online_bid' || activeIdentifier === 'bid' || activeIdentifier === 'delivery_bid' || activeIdentifier === 'history' || activeIdentifier === 'delivery_history') {
+        document.getElementById('navItemDelivery')?.classList.add('active');
+        if (titleEl) titleEl.textContent = 'ENTREGA DE EQUIPES';
+        if (subtitleEl) subtitleEl.textContent = 'EQUIPES BRASIL';
+        const sub = (activeIdentifier === 'online_bid' || activeIdentifier === 'bid' || activeIdentifier === 'delivery_bid') ? 'online_bid' : ((activeIdentifier === 'history' || activeIdentifier === 'delivery_history') ? 'history' : (deliveryState.currentScreen || 'online'));
+        updateMobileSubnav('delivery', sub);
+    } else if (activeIdentifier === 'admin') {
+        document.getElementById('navItemMore')?.classList.add('active');
+        if (titleEl) titleEl.textContent = 'ADMIN & MOTORES';
+        if (subtitleEl) subtitleEl.textContent = 'TELEMETRIA MASTER';
+        updateMobileSubnav('admin');
+    }
+}
+
+function handleMobileNav(target) {
+    if (target === 'hub') {
+        navigateToView('hub');
+        syncMobileBottomNav('hub');
+    } else if (target === 'trbonet' || target === 'alerts' || target === 'module') {
+        navigateToView('module');
+        syncMobileBottomNav('trbonet');
+    } else if (target === 'delivery_online' || target === 'delivery') {
+        navigateToView('delivery');
+        if (typeof switchDeliveryScreen === 'function') switchDeliveryScreen(deliveryState.currentScreen || 'online');
+        syncMobileBottomNav('delivery');
+    } else if (target === 'delivery_bid') {
+        navigateToView('delivery');
+        if (typeof switchDeliveryScreen === 'function') switchDeliveryScreen('online_bid');
+        syncMobileBottomNav('delivery');
+    } else if (target === 'delivery_history') {
+        navigateToView('delivery');
+        if (typeof switchDeliveryScreen === 'function') switchDeliveryScreen('history');
+        syncMobileBottomNav('delivery');
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Alternador de Sub-Abas do Módulo Entrega em Celular (Equipes / Gráficos / Bases)
+function switchMobileDeliverySubTab(subtab) {
+    document.body.classList.remove('mobile-subtab-feed', 'mobile-subtab-charts', 'mobile-subtab-bases');
+    document.body.classList.add(`mobile-subtab-${subtab}`);
+
+    document.querySelectorAll('.mobile-subtab-btn').forEach(btn => {
+        if (btn.getAttribute('data-subtab') === subtab) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    if (subtab === 'charts') {
+        if (typeof renderDeliveryCharts === 'function') {
+            setTimeout(renderDeliveryCharts, 60);
+        }
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+window.switchMobileDeliverySubTab = switchMobileDeliverySubTab;
+
+// Sincroniza Bottom Nav em mudanças de URL Hash
+window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash === 'delivery') {
+        syncMobileBottomNav('delivery');
+    } else if (hash === 'module' || hash === 'trbonet' || hash === 'alerts') {
+        syncMobileBottomNav('trbonet');
+    } else if (hash === 'admin') {
+        syncMobileBottomNav('admin');
+    } else {
+        syncMobileBottomNav('hub');
+    }
+});
+
+// 2. Sistema de Bottom Sheets (Abertura / Fechamento Suave com Backdrop)
+function openBottomSheet(sheetId) {
+    closeAllBottomSheets(false);
+    const sheet = document.getElementById(sheetId);
+    const backdrop = document.getElementById('bottomSheetBackdrop');
+    if (!sheet) return;
+
+    sheet.style.display = 'flex';
+    // Força reflow antes de adicionar classe de animação
+    void sheet.offsetHeight;
+    sheet.classList.add('open');
+
+    if (backdrop) {
+        backdrop.style.display = 'block';
+        void backdrop.offsetHeight;
+        backdrop.classList.add('active');
+    }
+    document.body.style.overflow = 'hidden';
+    if (window.lucide) lucide.createIcons();
+}
+
+function closeBottomSheet(sheetId) {
+    const sheet = document.getElementById(sheetId);
+    if (sheet) {
+        sheet.classList.remove('open');
+        setTimeout(() => {
+            if (!sheet.classList.contains('open')) {
+                sheet.style.display = 'none';
+            }
+        }, 360);
+    }
+
+    const anyOpen = document.querySelectorAll('.bottom-sheet.open');
+    if (anyOpen.length <= 1) {
+        const backdrop = document.getElementById('bottomSheetBackdrop');
+        if (backdrop) {
+            backdrop.classList.remove('active');
+            setTimeout(() => {
+                if (!backdrop.classList.contains('active')) {
+                    backdrop.style.display = 'none';
+                }
+            }, 300);
+        }
+        document.body.style.overflow = '';
+    }
+}
+
+function closeAllBottomSheets(restoreOverflow = true) {
+    document.querySelectorAll('.bottom-sheet').forEach(sheet => {
+        sheet.classList.remove('open');
+        setTimeout(() => {
+            if (!sheet.classList.contains('open')) {
+                sheet.style.display = 'none';
+            }
+        }, 360);
+    });
+    const backdrop = document.getElementById('bottomSheetBackdrop');
+    if (backdrop) {
+        backdrop.classList.remove('active');
+        setTimeout(() => {
+            if (!backdrop.classList.contains('active')) {
+                backdrop.style.display = 'none';
+            }
+        }, 300);
+    }
+    if (restoreOverflow) {
+        document.body.style.overflow = '';
+    }
+}
+
+// 3. Filtros Operacionais Mobile
+const mobileFilterState = {
+    region: '',
+    status: '',
+    search: ''
+};
+
+function selectMobileRegion(region) {
+    mobileFilterState.region = region;
+    const chips = document.querySelectorAll('#mobileRegionChips .m3-chip');
+    chips.forEach(chip => {
+        if (chip.getAttribute('data-region') === region) {
+            chip.classList.add('active');
+        } else {
+            chip.classList.remove('active');
+        }
+    });
+    updateMobileFilterCountBadge();
+}
+
+function selectMobileStatus(status) {
+    mobileFilterState.status = status;
+    const chips = document.querySelectorAll('#mobileStatusChips .m3-chip');
+    chips.forEach(chip => {
+        if (chip.getAttribute('data-status') === status) {
+            chip.classList.add('active');
+        } else {
+            chip.classList.remove('active');
+        }
+    });
+    updateMobileFilterCountBadge();
+}
+
+function handleMobileSearch(val) {
+    mobileFilterState.search = (val || '').trim();
+    const clearBtn = document.getElementById('mobileSearchClear');
+    if (clearBtn) clearBtn.style.display = mobileFilterState.search ? 'flex' : 'none';
+    updateMobileFilterCountBadge();
+}
+
+function clearMobileSearch() {
+    const input = document.getElementById('mobileSearchInput');
+    if (input) input.value = '';
+    handleMobileSearch('');
+}
+
+function resetMobileFilters() {
+    mobileFilterState.region = '';
+    mobileFilterState.status = '';
+    mobileFilterState.search = '';
+    const input = document.getElementById('mobileSearchInput');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('mobileSearchClear');
+    if (clearBtn) clearBtn.style.display = 'none';
+
+    document.querySelectorAll('#mobileRegionChips .m3-chip').forEach((c, idx) => {
+        if (idx === 0) c.classList.add('active'); else c.classList.remove('active');
+    });
+    document.querySelectorAll('#mobileStatusChips .m3-chip').forEach((c, idx) => {
+        if (idx === 0) c.classList.add('active'); else c.classList.remove('active');
+    });
+
+    if (typeof clearDeliveryBaseFilters === 'function') {
+        clearDeliveryBaseFilters();
+    }
+    if (typeof clearOnlineBidFilters === 'function') {
+        clearOnlineBidFilters();
+    }
+    updateMobileFilterCountBadge();
+    showToast('Filtros limpos', 'info');
+}
+
+function updateMobileFilterCountBadge() {
+    const badge = document.getElementById('mobileFilteredCount');
+    const headerBadge = document.getElementById('mobileFilterBadge');
+    let count = 0;
+    if (deliveryState && deliveryState.filteredTeams) {
+        count = deliveryState.filteredTeams.length;
+    }
+    if (badge) badge.textContent = `${count} equipes`;
+
+    const hasActiveFilter = mobileFilterState.region || mobileFilterState.status || mobileFilterState.search;
+    if (headerBadge) {
+        headerBadge.style.display = hasActiveFilter ? 'block' : 'none';
+    }
+}
+
+function applyMobileFiltersAndClose() {
+    if (deliveryState && deliveryState.filters) {
+        if (mobileFilterState.region) {
+            deliveryState.filters.regions = new Set([mobileFilterState.region]);
+        } else {
+            deliveryState.filters.regions.clear();
+        }
+        deliveryState.filters.search = mobileFilterState.search;
+        applyDeliveryFilters();
+    }
+
+    const searchBidInput = document.getElementById('filterBidSearch');
+    if (searchBidInput) {
+        searchBidInput.value = mobileFilterState.search;
+    }
+    if (typeof filterOnlineBidTable === 'function') {
+        filterOnlineBidTable();
+    }
+
+    closeBottomSheet('sheetFilters');
+    showToast('Filtros aplicados com sucesso', 'success');
+}
+
+function handleMobileRefresh() {
+    const refreshBtn = document.getElementById('btnMobileRefresh');
+    if (refreshBtn) refreshBtn.classList.add('loading-pulse');
+
+    if (appState.currentView === 'delivery') {
+        if (deliveryState.currentScreen === 'online_bid') {
+            if (typeof loadOnlineXBidData === 'function') loadOnlineXBidData();
+        } else {
+            if (typeof loadDeliveryData === 'function') loadDeliveryData(false);
+        }
+    } else if (appState.currentView === 'admin') {
+        if (typeof loadAdminEngineStatus === 'function') loadAdminEngineStatus();
+    } else {
+        if (typeof fetchData === 'function') fetchData();
+    }
+
+    setTimeout(() => {
+        if (refreshBtn) refreshBtn.classList.remove('loading-pulse');
+        showToast('Dados sincronizados com sucesso!', 'success');
+    }, 800);
+}
+
+// 4. Renderizadores de Cards Mobile
+function renderMobileDeliveryCards(list) {
+    const feed = document.getElementById('deliveryMobileCardsFeed');
+    if (!feed) return;
+
+    if (!list || list.length === 0) {
+        feed.innerHTML = `
+            <div class="mobile-team-card" style="text-align: center; padding: 32px 16px;">
+                <i data-lucide="inbox" style="width: 36px; height: 36px; color: #64748b; margin: 0 auto 10px auto;"></i>
+                <h4 style="color: var(--text-primary); margin: 0 0 6px 0;">Nenhuma equipe encontrada</h4>
+                <p style="color: var(--text-secondary); font-size: 0.8rem; margin: 0;">Ajuste os filtros ou toque em atualizar.</p>
+            </div>
+        `;
+        if (window.lucide) lucide.createIcons();
+        return;
+    }
+
+    feed.innerHTML = list.map(t => {
+        const isAct = t.is_active;
+        const statusEB = t.status_equipes_brasil || t.status || (isAct ? 'Logada' : 'Turno Concluído');
+        
+        let borderClass = 'status-border-sem-eb';
+        let statusPillStyle = 'background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3);';
+
+        if (statusEB.toLowerCase().includes('atendimento') || statusEB.toLowerCase().includes('livre') || statusEB.toLowerCase().includes('deslocamento') || isAct) {
+            borderClass = 'status-border-operacao';
+            statusPillStyle = 'background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);';
+        } else if (statusEB.toLowerCase().includes('descanso')) {
+            borderClass = 'status-border-checklist';
+            statusPillStyle = 'background: rgba(139, 92, 246, 0.15); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.4);';
+        } else if (statusEB.toLowerCase().includes('bloqueada')) {
+            borderClass = 'status-border-bloqueada';
+            statusPillStyle = 'background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.4);';
+        }
+
+        const teamCode = t.team_code || '--';
+        const baseName = t.base_display || t.base_name || t.ut || '--';
+        const driverName = t.driver || '--';
+        const plateVal = t.plate && t.plate !== '--' ? t.plate : 'Sem placa';
+        const shiftSlot = t.shift_slot || t.turno || '--';
+        const marcacao = t.marcacao || '--:--';
+        const osNum = t.ordem_servico || '--';
+
+        return `
+            <div class="mobile-team-card ${borderClass}" onclick="openDeliveryTeamModal('${teamCode}')">
+                <div class="card-top-row">
+                    <div class="card-team-prefix">
+                        <i data-lucide="users" style="width: 18px; height: 18px;"></i>
+                        <span>${teamCode}</span>
+                    </div>
+                    <span class="card-status-pill" style="${statusPillStyle}">${statusEB}</span>
+                </div>
+                <div class="card-meta-grid">
+                    <div class="card-meta-item">
+                        <span class="card-meta-label">Base / UT</span>
+                        <span class="card-meta-val">${baseName}</span>
+                    </div>
+                    <div class="card-meta-item">
+                        <span class="card-meta-label">Turno</span>
+                        <span class="card-meta-val">${shiftSlot}</span>
+                    </div>
+                    <div class="card-meta-item">
+                        <span class="card-meta-label">Motorista</span>
+                        <span class="card-meta-val">${driverName}</span>
+                    </div>
+                    <div class="card-meta-item">
+                        <span class="card-meta-label">Placa</span>
+                        <span class="card-meta-val">${plateVal}</span>
+                    </div>
+                </div>
+                <div class="card-bottom-row">
+                    <div>
+                        <span>Login: <strong>${marcacao}</strong></span>
+                        ${osNum !== '--' ? ` • OS: <strong style="color: #38bdf8;">${osNum}</strong>` : ''}
+                    </div>
+                    <div class="card-chevron-hint">
+                        <span>Detalhes</span>
+                        <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function renderMobileBidCards(list) {
+    const feed = document.getElementById('onlineBidMobileCardsFeed');
+    if (!feed) return;
+
+    if (!list || list.length === 0) {
+        feed.innerHTML = `
+            <div class="mobile-team-card" style="text-align: center; padding: 32px 16px;">
+                <i data-lucide="git-compare" style="width: 36px; height: 36px; color: #64748b; margin: 0 auto 10px auto;"></i>
+                <h4 style="color: var(--text-primary); margin: 0 0 6px 0;">Nenhuma equipe no Cruzamento BID</h4>
+                <p style="color: var(--text-secondary); font-size: 0.8rem; margin: 0;">Nenhum registro compatível com os filtros atuais.</p>
+            </div>
+        `;
+        if (window.lucide) lucide.createIcons();
+        return;
+    }
+
+    feed.innerHTML = list.map(r => {
+        const teamCode = r.team_code || '--';
+        const crossStatus = r.cross_status || 'DESCONHECIDO';
+        const isEb = r.is_eb_active;
+        const bidStatus = r.status_bid || 'Não Encontrada';
+        const timerVal = r.bid_timer_value || '--';
+        const baseDisp = r.base_display || r.geo || '--';
+        const plateVal = r.plate || r.plate_bid || '--';
+
+        let borderClass = 'status-border-sem-eb';
+        let crossPillStyle = 'background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3);';
+
+        if (crossStatus.includes('CONFORME')) {
+            borderClass = 'status-border-operacao';
+            crossPillStyle = 'background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);';
+        } else if (crossStatus.includes('CRÍTICO') || crossStatus.includes('GRAVÍSSIMO') || crossStatus.includes('IMPEDITIVO')) {
+            borderClass = 'status-border-bloqueada';
+            crossPillStyle = 'background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.4);';
+        } else if (crossStatus.includes('GRAVE')) {
+            borderClass = 'status-border-sem-eb';
+            crossPillStyle = 'background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);';
+        }
+
+        return `
+            <div class="mobile-team-card ${borderClass}" onclick="openDeliveryTeamModal('${teamCode}')">
+                <div class="card-top-row">
+                    <div class="card-team-prefix">
+                        <i data-lucide="git-merge" style="width: 18px; height: 18px;"></i>
+                        <span>${teamCode}</span>
+                    </div>
+                    <span class="card-status-pill" style="${crossPillStyle}">${crossStatus}</span>
+                </div>
+                <div class="card-meta-grid">
+                    <div class="card-meta-item">
+                        <span class="card-meta-label">Status EB</span>
+                        <span class="card-meta-val" style="color: ${isEb ? '#10b981' : '#94a3b8'};">${isEb ? 'Logada' : 'Não Logada'}</span>
+                    </div>
+                    <div class="card-meta-item">
+                        <span class="card-meta-label">Status BID</span>
+                        <span class="card-meta-val" style="color: #38bdf8;">${bidStatus}</span>
+                    </div>
+                    <div class="card-meta-item">
+                        <span class="card-meta-label">Base</span>
+                        <span class="card-meta-val">${baseDisp}</span>
+                    </div>
+                    <div class="card-meta-item">
+                        <span class="card-meta-label">Placa</span>
+                        <span class="card-meta-val">${plateVal}</span>
+                    </div>
+                </div>
+                <div class="card-bottom-row">
+                    <div>
+                        <span>Tempo BID: <strong>${timerVal}</strong></span>
+                        ${r.turno ? ` • Turno: <strong>${r.turno}</strong>` : ''}
+                    </div>
+                    <div class="card-chevron-hint">
+                        <span>Auditar</span>
+                        <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+// 5. Integração PWA e Service Worker
+window.deferredPwaPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window.deferredPwaPrompt = e;
+    const btnWrapper = document.getElementById('pwaInstallNativeBtnWrapper');
+    if (btnWrapper) btnWrapper.style.display = 'block';
+});
+
+function triggerNativePwaInstall() {
+    if (window.deferredPwaPrompt) {
+        window.deferredPwaPrompt.prompt();
+        window.deferredPwaPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+                showToast('Aplicativo instalado com sucesso!', 'success');
+            }
+            window.deferredPwaPrompt = null;
+            const btnWrapper = document.getElementById('pwaInstallNativeBtnWrapper');
+            if (btnWrapper) btnWrapper.style.display = 'none';
+        });
+    } else {
+        openBottomSheet('sheetPwaInstallGuide');
+    }
+}
+
+// Registro do Service Worker ao Carregar a Página
+window.addEventListener('load', () => {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(reg => {
+                console.log('[PWA] Service Worker registrado com escopo:', reg.scope);
+                // Força verificação imediata de nova versão
+                reg.update();
+            })
+            .catch(err => {
+                console.warn('[PWA] Falha ao registrar Service Worker:', err);
+            });
+    }
+});
+
+// Binds Globais para o Window
+window.handleMobileNav = handleMobileNav;
+window.handleMobileDeliverySub = handleMobileDeliverySub;
+window.handleMobileAlertsSub = handleMobileAlertsSub;
+window.updateMobileSubnav = updateMobileSubnav;
+window.openBottomSheet = openBottomSheet;
+window.closeBottomSheet = closeBottomSheet;
+window.closeAllBottomSheets = closeAllBottomSheets;
+window.selectMobileRegion = selectMobileRegion;
+window.selectMobileStatus = selectMobileStatus;
+window.handleMobileSearch = handleMobileSearch;
+window.clearMobileSearch = clearMobileSearch;
+window.resetMobileFilters = resetMobileFilters;
+window.applyMobileFiltersAndClose = applyMobileFiltersAndClose;
+window.handleMobileRefresh = handleMobileRefresh;
+window.renderMobileDeliveryCards = renderMobileDeliveryCards;
+window.renderMobileBidCards = renderMobileBidCards;
+window.triggerNativePwaInstall = triggerNativePwaInstall;
+window.syncMobileBottomNav = syncMobileBottomNav;
+
 

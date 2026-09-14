@@ -1035,5 +1035,47 @@ def fetch_bid_records_by_date(date_str: str = None) -> list:
         return []
 
 
+def prune_stale_bid_records(date_ref: str, valid_team_codes: list) -> dict:
+    """
+    Remove registros da tabela 'bid_visao_operacional_records' para a data especificada
+    que não estejam na lista de equipes válidas ativas extraídas do portal (ex: cards zumbis residuais).
+    """
+    if not date_ref or not valid_team_codes:
+        return {"status": "skipped", "deleted": 0}
+    try:
+        current = fetch_bid_records_by_date(date_ref)
+        if not current:
+            return {"status": "success", "deleted": 0}
+
+        valid_set = set(str(t).strip().upper() for t in valid_team_codes if t)
+        to_delete = [r for r in current if str(r.get("team_code", "")).strip().upper() not in valid_set]
+
+        if not to_delete:
+            return {"status": "success", "deleted": 0}
+
+        print(f"[SUPABASE BID PRUNE] Identificados {len(to_delete)} registros fantasmas para date_ref={date_ref}. Removendo...", flush=True)
+        delete_headers = get_headers().copy()
+
+        del_count = 0
+        to_delete_codes = [r.get("team_code") for r in to_delete if r.get("team_code")]
+        chunk_size = 50
+        for i in range(0, len(to_delete_codes), chunk_size):
+            chunk = to_delete_codes[i:i + chunk_size]
+            codes_in = ",".join(chunk)
+            del_url = f"{BASE_REST_URL}/bid_visao_operacional_records?date_ref=eq.{date_ref}&team_code=in.({codes_in})"
+            r_del = requests.delete(del_url, headers=delete_headers, timeout=12)
+            if r_del.status_code in [200, 204]:
+                del_count += len(chunk)
+            else:
+                print(f"[WARN SUPABASE BID PRUNE BATCH] Status {r_del.status_code}: {r_del.text}")
+
+        print(f"[SUPABASE BID PRUNE] {del_count} registros fantasmas removidos com sucesso.", flush=True)
+        return {"status": "success", "deleted": del_count}
+    except Exception as e:
+        print(f"[SUPABASE BID PRUNE ERROR] {e}")
+        return {"status": "error", "message": str(e), "deleted": 0}
+
+
+
 
 

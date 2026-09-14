@@ -201,13 +201,13 @@ class DeliveryManager:
     def get_operational_date(dt=None) -> str:
         """
         Retorna a data do dia operacional da Enel/Alpitel.
-        O dia operacional vira pontualmente às 05:00 da manhã.
-        - Das 00:00 às 04:59: pertence ao dia operacional anterior.
-        - Das 05:00 às 23:59: pertence ao dia operacional atual.
+        O dia operacional vira pontualmente às 04:31 da manhã.
+        - Das 00:00 às 04:30: pertence ao dia operacional anterior.
+        - Das 04:31 às 23:59: pertence ao dia operacional atual.
         """
         if dt is None:
             dt = datetime.now(BR_TZ)
-        if dt.hour < 5:
+        if dt.hour < 4 or (dt.hour == 4 and dt.minute <= 30):
             return (dt.date() - timedelta(days=1)).isoformat()
         return dt.date().isoformat()
 
@@ -304,8 +304,8 @@ class DeliveryManager:
                             raw_shift = t.get("shift_raw") or f"{t.get('login_time', '')}-{t.get('logoff_time', '')}"
                             s_info = self.parse_shift_window(raw_shift)
                             t.update(s_info)
-                            # Se for após as 05:00 da manhã e o turno for da noite anterior (20h/22h) já inativo, descarta
-                            if now.hour >= 5 and not t.get("is_active", True) and t.get("shift_code") in ["20:00", "22:00"]:
+                            # Se for após as 04:30 da manhã e o turno for da noite anterior (20h/22h) já inativo, descarta
+                            if (now.hour > 4 or (now.hour == 4 and now.minute >= 31)) and not t.get("is_active", True) and t.get("shift_code") in ["20:00", "22:00"]:
                                 continue
                             self.daily_accumulated_teams[code] = t
 
@@ -556,7 +556,7 @@ class DeliveryManager:
         
         # Se virou o dia, reinicia o acumulado diário
         if op_date != self.current_date_str:
-            print(f"[DELIVERY] Virada de dia operacional detectada ({self.current_date_str} -> {op_date}). Reiniciando acumulador diário das 05:00...")
+            print(f"[DELIVERY] Virada de dia operacional detectada ({self.current_date_str} -> {op_date}). Reiniciando acumulador diário das 04:31...")
             self.current_date_str = op_date
             self.daily_accumulated_teams = {}
             self.daily_team_order_history = {}
@@ -817,8 +817,8 @@ class DeliveryManager:
             if code not in active_codes:
                 t["is_active"] = False
                 t["status"] = "Deslogada / Turno Concluído"
-                # Se for após as 05:00 e for turno da noite anterior (20h/22h), descarta do acumulado do dia atual
-                if now.hour >= 5 and t.get("shift_code") in ["20:00", "22:00"]:
+                # Se for após as 04:30 e for turno da noite anterior (20h/22h), descarta do acumulado do dia atual
+                if (now.hour > 4 or (now.hour == 4 and now.minute >= 31)) and t.get("shift_code") in ["20:00", "22:00"]:
                     del self.daily_accumulated_teams[code]
 
         self.active_teams = active_processed
@@ -909,12 +909,8 @@ class DeliveryManager:
         if not date_ref:
             date_ref = self.get_operational_date()
 
-        # Garante que o bid_cache mantenha apenas registros do dia operacional atual
-        new_bid_cache = {
-            k: v for k, v in self.bid_cache.items()
-            if str(v.get("date_ref") or date_ref) == date_ref
-        }
-
+        # Garante que o bid_cache mantenha estritamente os registros válidos extraídos
+        new_bid_cache = {}
         for r in raw_records:
             code = str(r.get("team_code", "")).strip().upper()
             if code:
