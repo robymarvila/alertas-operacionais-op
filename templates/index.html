@@ -31,7 +31,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.3-mobile-nav-fix">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.4-hub-refine">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -128,61 +128,53 @@
         <!-- ================================================================= -->
         <div id="portalHubView" class="portal-hub-container">
             
-            <!-- Hero Banner CCO -->
-            <div class="hub-hero-banner glass-card">
-                <div class="hub-hero-content">
-                    <div class="hub-pill-badge">
-                        <span class="pulse-dot"></span>
-                        <span>ONLINE - MONITORAMENTO</span>
-                    </div>
-                    <h2 class="hub-hero-title">Módulos de Monitoramento</h2>
-                    <p class="hub-hero-desc">
-                        Ambiente unificado para monitoramento das equipes e Ferramentas Operacionais - CCO e Operação
-                    </p>
-                </div>
-
-                <div class="hub-header-actions-group">
-                    <!-- Botão de Autenticação / Cadeado no Hub Central -->
-                    <button class="btn-auth-lock locked" id="btnAuthHub" onclick="openAuthModal()" title="Autenticação e Desbloqueio Operacional">
-                        <div class="auth-lock-icon-wrap" id="authLockIconWrapHub">
-                            <i data-lucide="lock" id="authLockIconHub"></i>
-                        </div>
-                        <span id="authLockTextHub" class="auth-lock-label">Acesso Restrito</span>
-                    </button>
-
-                    <!-- Botão para Painel de Gerenciamento (Visível quando desbloqueado) -->
-                    <button class="btn btn-warning btn-sm" id="btnHubAdminPanel" onclick="navigateToView('admin')" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);">
-                        <i data-lucide="shield-alert" style="width: 15px; height: 15px; vertical-align: middle; margin-right: 4px;"></i>
-                        <span>Gerenciamento</span>
-                    </button>
-
-                    <!-- Relógio CCO -->
-                    <div class="header-clock-pill">
-                        <i data-lucide="clock" class="mini-icon text-cyan"></i>
-                        <span id="digitalClock" class="clock-digits">--:--:--</span>
-                        <span id="digitalDate" class="date-digits">--/--/----</span>
-                    </div>
-
-                    <!-- Botão Seletor de Tema (Claro / Escuro) -->
-                    <button class="btn-theme-toggle" id="btnThemeToggle" onclick="toggleTheme()" title="Alternar entre Tema Claro e Tema Escuro">
-                        <div class="theme-icon-wrap" id="themeIconWrap">
-                            <i data-lucide="sun" id="iconThemeSun" class="theme-icon-sun"></i>
-                            <i data-lucide="moon" id="iconThemeMoon" class="theme-icon-moon"></i>
-                        </div>
-                        <span id="themeToggleText" class="theme-toggle-label">Modo Claro</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- BANNER DE BOAS-VINDAS ULTRA PREMIUM NO HUB CENTRAL -->
+            <!-- HERO BANNER MASTER: BOAS-VINDAS & CONTROLES CENTRAIS CCO -->
             <div class="hub-welcome-banner glass-card" id="hubWelcomeBanner">
                 <div class="hub-welcome-glow"></div>
+
+                <!-- Barra Utilitária Superior: Badge & Controles Globais -->
+                <div class="hub-welcome-top-bar">
+                    <div class="hub-welcome-badge">
+                        <span class="hub-welcome-badge-dot"></span>
+                        <span>PLATAFORMA OPERACIONAL INTEGRADA • CCO & OPERAÇÃO</span>
+                    </div>
+
+                    <div class="hub-header-actions-group">
+                        <!-- Botão de Autenticação / Cadeado no Hub Central -->
+                        <button class="btn-auth-lock locked" id="btnAuthHub" onclick="openAuthModal()" title="Autenticação e Desbloqueio Operacional">
+                            <div class="auth-lock-icon-wrap" id="authLockIconWrapHub">
+                                <i data-lucide="lock" id="authLockIconHub"></i>
+                            </div>
+                            <span id="authLockTextHub" class="auth-lock-label">Acesso Restrito</span>
+                        </button>
+
+                        <!-- Botão para Painel de Gerenciamento (Visível quando desbloqueado) -->
+                        <button class="btn btn-warning btn-sm" id="btnHubAdminPanel" onclick="navigateToView('admin')" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);">
+                            <i data-lucide="shield-alert" style="width: 15px; height: 15px; vertical-align: middle; margin-right: 4px;"></i>
+                            <span>Gerenciamento</span>
+                        </button>
+
+                        <!-- Relógio CCO -->
+                        <div class="header-clock-pill">
+                            <i data-lucide="clock" class="mini-icon text-cyan"></i>
+                            <span id="digitalClock" class="clock-digits">--:--:--</span>
+                            <span id="digitalDate" class="date-digits">--/--/----</span>
+                        </div>
+
+                        <!-- Botão Seletor de Tema (Claro / Escuro) -->
+                        <button class="btn-theme-toggle" id="btnThemeToggle" onclick="toggleTheme()" title="Alternar entre Tema Claro e Tema Escuro">
+                            <div class="theme-icon-wrap" id="themeIconWrap">
+                                <i data-lucide="sun" id="iconThemeSun" class="theme-icon-sun"></i>
+                                <i data-lucide="moon" id="iconThemeMoon" class="theme-icon-moon"></i>
+                            </div>
+                            <span id="themeToggleText" class="theme-toggle-label">Modo Claro</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Conteúdo Principal do Banner -->
                 <div class="hub-welcome-content">
                     <div class="hub-welcome-text-wrap">
-                        <div class="hub-welcome-badge">
-                            <span class="hub-welcome-badge-dot"></span>
-                            <span>PLATAFORMA OPERACIONAL INTEGRADA • CCO & OPERAÇÃO</span>
-                        </div>
                         <h2 class="hub-welcome-title">
                             Bem-vindo ao <span class="text-cyan-gradient">Monitoramento Online</span>
                         </h2>
@@ -195,24 +187,14 @@
                                 <span>Telemetria GPS & TRBOnet</span>
                             </div>
                             <div class="welcome-pill">
-                                <i data-lucide="users" class="pill-icon text-cyan"></i>
-                                <span>Coleta Autônoma Enel SP (2 min)</span>
+                                <i data-lucide="truck" class="pill-icon text-cyan"></i>
+                                <span>Entrega de Equipes Online</span>
                             </div>
                             <div class="welcome-pill">
-                                <i data-lucide="shield-check" class="pill-icon text-purple"></i>
-                                <span>Auditoria 100% em Nuvem Supabase</span>
+                                <i data-lucide="bell-ring" class="pill-icon text-purple"></i>
+                                <span>Alertas Operacionais</span>
                             </div>
                         </div>
-                    </div>
-                    <div class="hub-welcome-quick-actions">
-                        <button class="btn btn-primary welcome-action-btn" onclick="navigateToView('delivery')">
-                            <i data-lucide="users"></i>
-                            <span>Ver Entrega de Equipes</span>
-                        </button>
-                        <button class="btn btn-secondary welcome-action-btn" onclick="navigateToView('module')">
-                            <i data-lucide="radio"></i>
-                            <span>Ver STATUS TRBOnet</span>
-                        </button>
                     </div>
                 </div>
             </div>
@@ -3850,7 +3832,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.0.3-mobile-nav-fix"></script>
+<script src="/static/js/app.js?v=5.0.4-hub-refine"></script>
 
 </body>
 </html>

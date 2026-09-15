@@ -88,6 +88,29 @@ def to_float(val, default=0.0):
     except Exception:
         return default
 
+MUNCK_CODES = {
+    "ENL210", "ENL211", "ECL210", "ECL211", "EEL210", "EEL211",
+    "EML200", "EQL200", "EQL210", "ESL200", "EVL200", "EVL210"
+}
+
+def is_linha_viva_or_munck(team_code: str = "", vehicle_type: str = "") -> bool:
+    """
+    Identifica com precisão se a equipe pertence ao grupo Linha Viva ou Munck:
+    - Munck: presente na lista estrita MUNCK_CODES ou vehicle_type 'Munck'
+    - Linha Viva: primeiro dígito numérico após o prefixo é '2' ou vehicle_type 'Linha Viva'
+    - Cobre equipes específicas citadas (ENL211, ECL211, EEL211, e códigos 200)
+    """
+    code = str(team_code or "").strip().upper()
+    vt = str(vehicle_type or "").strip()
+    if vt in ["Linha Viva", "Munck"] or "Munk" in vt or "Linha Viva" in vt:
+        return True
+    if code in MUNCK_CODES:
+        return True
+    digits = "".join([c for c in code if c.isdigit()])
+    if digits and digits.startswith("2"):
+        return True
+    return False
+
 def classify_spotfire_shift_and_turno(sp_record: dict) -> dict:
     """
     Extrai e classifica com precisão o Turno (Manhã, Tarde, Noite) e o Agrupamento de Horário
@@ -95,13 +118,19 @@ def classify_spotfire_shift_and_turno(sp_record: dict) -> dict:
     - Coluna Período (1 - Manhã, 2 - Tarde, 3 - Noite)
     - login_desc (Início às XX Hrs)
     - inicio_calibrado
+    - Macroregra Linha Viva e Munck:
+        * Login até 17:00 -> Turno 08:00 (Manhã)
+        * Login após 17:00 -> Turno 20:00 (Noite)
     """
     raw_data = sp_record.get("raw_data") if isinstance(sp_record.get("raw_data"), dict) else {}
     raw_periodo = str(raw_data.get("periodo", "") or sp_record.get("periodo", "")).lower()
     login_desc = str(raw_data.get("login_desc", "") or sp_record.get("login_desc", ""))
     inicio_cal = str(sp_record.get("inicio_calendario") or sp_record.get("inicio_calibrado", "") or sp_record.get("login_corrigido") or sp_record.get("login") or "").strip()
 
-    # 1. Determina Turno Macrocategoria: Manhã, Tarde, Noite
+    team_code = sp_record.get("equipe_normalizada") or sp_record.get("equipe") or sp_record.get("team_code") or ""
+    veh_type = sp_record.get("veiculo") or sp_record.get("sub_tipo") or sp_record.get("tipo") or sp_record.get("vehicle_type") or ""
+
+    # 1. Determina Turno Macrocategoria preliminar: Manhã, Tarde, Noite
     turno = None
     if "1" in raw_periodo or "manh" in raw_periodo:
         turno = "Manhã"
@@ -132,60 +161,89 @@ def classify_spotfire_shift_and_turno(sp_record: dict) -> dict:
             except Exception:
                 pass
 
-    if login_time_extracted:
-        try:
-            t_parts = login_time_extracted.split(':')
-            total_min = int(t_parts[0]) * 60 + int(t_parts[1])
-            if 240 <= total_min <= 455:      # 04:00 às 07:35
-                shift_slot = "Turno 06:00"
-                shift_code = "06:00"
-                shift_pill_class = "shift-06h"
-            elif 456 <= total_min <= 660:    # 07:36 às 11:00
+    if is_linha_viva_or_munck(team_code, veh_type):
+        # Macroregra Especial Linha Viva e Munck
+        if login_time_extracted:
+            try:
+                t_parts = login_time_extracted.split(':')
+                total_min = int(t_parts[0]) * 60 + int(t_parts[1])
+                if total_min <= 1020:  # Até 17:00
+                    shift_slot = "Turno 08:00"
+                    shift_code = "08:00"
+                    shift_pill_class = "shift-08h"
+                    turno = "Manhã"
+                else:                  # Após 17:00 (noite)
+                    shift_slot = "Turno 20:00"
+                    shift_code = "20:00"
+                    shift_pill_class = "shift-20h"
+                    turno = "Noite"
+            except Exception:
                 shift_slot = "Turno 08:00"
                 shift_code = "08:00"
                 shift_pill_class = "shift-08h"
-            elif 661 <= total_min <= 815:    # 11:01 às 13:35
-                shift_slot = "Turno 12:00"
-                shift_code = "12:00"
-                shift_pill_class = "shift-12h"
-            elif 816 <= total_min <= 1050:   # 13:36 às 17:30
-                shift_slot = "Turno 14:00"
-                shift_code = "14:00"
-                shift_pill_class = "shift-14h"
-            elif 1051 <= total_min <= 1310:  # 17:36 às 21:50
-                shift_slot = "Turno 20:00"
-                shift_code = "20:00"
-                shift_pill_class = "shift-20h"
-            else:                            # 21:51 às 03:59
-                shift_slot = "Turno 22:00"
-                shift_code = "22:00"
-                shift_pill_class = "shift-22h"
-        except Exception:
-            pass
+                turno = "Manhã"
+        else:
+            # Sem login identificado: padrão diurno 08:00
+            shift_slot = "Turno 08:00"
+            shift_code = "08:00"
+            shift_pill_class = "shift-08h"
+            turno = "Manhã"
+    else:
+        # Regra Padrão Demais Veículos (Cesto, Leve, Moto)
+        if login_time_extracted:
+            try:
+                t_parts = login_time_extracted.split(':')
+                total_min = int(t_parts[0]) * 60 + int(t_parts[1])
+                if 240 <= total_min <= 455:      # 04:00 às 07:35
+                    shift_slot = "Turno 06:00"
+                    shift_code = "06:00"
+                    shift_pill_class = "shift-06h"
+                elif 456 <= total_min <= 660:    # 07:36 às 11:00
+                    shift_slot = "Turno 08:00"
+                    shift_code = "08:00"
+                    shift_pill_class = "shift-08h"
+                elif 661 <= total_min <= 815:    # 11:01 às 13:35
+                    shift_slot = "Turno 12:00"
+                    shift_code = "12:00"
+                    shift_pill_class = "shift-12h"
+                elif 816 <= total_min <= 1050:   # 13:36 às 17:30
+                    shift_slot = "Turno 14:00"
+                    shift_code = "14:00"
+                    shift_pill_class = "shift-14h"
+                elif 1051 <= total_min <= 1310:  # 17:36 às 21:50
+                    shift_slot = "Turno 20:00"
+                    shift_code = "20:00"
+                    shift_pill_class = "shift-20h"
+                else:                            # 21:51 às 03:59
+                    shift_slot = "Turno 22:00"
+                    shift_code = "22:00"
+                    shift_pill_class = "shift-22h"
+            except Exception:
+                pass
+
+            if not turno:
+                if shift_code in ["06:00", "08:00"]:
+                    turno = "Manhã"
+                elif shift_code in ["12:00", "14:00"]:
+                    turno = "Tarde"
+                elif shift_code in ["20:00", "22:00"]:
+                    turno = "Noite"
 
         if not turno:
-            if shift_code in ["06:00", "08:00"]:
-                turno = "Manhã"
-            elif shift_code in ["12:00", "14:00"]:
-                turno = "Tarde"
-            elif shift_code in ["20:00", "22:00"]:
-                turno = "Noite"
+            turno = "Manhã"
 
-    if not turno:
-        turno = "Manhã"
-
-    if turno == "Manhã" and shift_code not in ["06:00", "08:00"]:
-        shift_code = "08:00"
-        shift_slot = "Turno 08:00"
-        shift_pill_class = "shift-08h"
-    elif turno == "Tarde" and shift_code not in ["12:00", "14:00"]:
-        shift_code = "14:00"
-        shift_slot = "Turno 14:00"
-        shift_pill_class = "shift-14h"
-    elif turno == "Noite" and shift_code not in ["20:00", "22:00"]:
-        shift_code = "20:00"
-        shift_slot = "Turno 20:00"
-        shift_pill_class = "shift-20h"
+        if turno == "Manhã" and shift_code not in ["06:00", "08:00"]:
+            shift_code = "08:00"
+            shift_slot = "Turno 08:00"
+            shift_pill_class = "shift-08h"
+        elif turno == "Tarde" and shift_code not in ["12:00", "14:00"]:
+            shift_code = "14:00"
+            shift_slot = "Turno 14:00"
+            shift_pill_class = "shift-14h"
+        elif turno == "Noite" and shift_code not in ["20:00", "22:00"]:
+            shift_code = "20:00"
+            shift_slot = "Turno 20:00"
+            shift_pill_class = "shift-20h"
 
     return {
         "turno": turno,
@@ -250,10 +308,7 @@ class DeliveryManager:
         }
 
         # Lista estrita de códigos MUNCK
-        self.munck_codes = {
-            "ENL210", "ENL211", "ECL210", "ECL211", "EEL210", "EEL211",
-            "EML200", "EQL200", "EQL210", "ESL200", "EVL200", "EVL210"
-        }
+        self.munck_codes = MUNCK_CODES
 
         self.current_date_str = self.get_operational_date()
         self.active_teams = []                # Instantâneo da última coleta
@@ -302,7 +357,9 @@ class DeliveryManager:
                         now = datetime.now()
                         for code, t in raw_acc.items():
                             raw_shift = t.get("shift_raw") or f"{t.get('login_time', '')}-{t.get('logoff_time', '')}"
-                            s_info = self.parse_shift_window(raw_shift)
+                            veh_info = self.classify_vehicle(code)
+                            v_type = t.get("vehicle_type") or veh_info.get("type")
+                            s_info = self.parse_shift_window(raw_shift, team_code=code, vehicle_type=v_type)
                             t.update(s_info)
                             # Se for após as 04:30 da manhã e o turno for da noite anterior (20h/22h) já inativo, descarta
                             if (now.hour > 4 or (now.hour == 4 and now.minute >= 31)) and not t.get("is_active", True) and t.get("shift_code") in ["20:00", "22:00"]:
@@ -319,6 +376,9 @@ class DeliveryManager:
                         }
                         self.last_bid_sync = data.get("last_bid_sync", "--")
                         self.active_teams = [t for t in self.daily_accumulated_teams.values() if t.get("is_active", True)]
+
+                        # Reavalia retroativamente as regras de turnos para garantir paridade 100%
+                        self.reapply_retroactive_shift_rules()
 
                         # Hidrata o Módulo TRBOnet com as equipes ativas do cache
                         try:
@@ -419,15 +479,21 @@ class DeliveryManager:
                 "category": "Apoio"
             }
 
-    def parse_shift_window(self, shift_str: str) -> dict:
+    def parse_shift_window(self, shift_str: str, team_code: str = "", vehicle_type: str = "") -> dict:
         """
-        Interpreta a coluna TURNO (ex: '07:52–16:00') e enquadra no turno oficial:
-        - Turno 06:00: 04:00 às 07:30
-        - Turno 08:00: 07:31 às 10:30
-        - Turno 12:00: 10:31 às 13:30
-        - Turno 14:00: 13:31 às 17:00
-        - Turno 20:00: 17:01 às 21:00
-        - Turno 22:00: 21:01 às 03:59
+        Interpreta a coluna TURNO (ex: '07:00-18:00', '07:52–16:00') e enquadra no turno oficial.
+        
+        Macroregra Linha Viva e Munck (incluindo ENL211, ECL211, EEL211 e código 200):
+        - Login até 17:00: enquadrado no Turno 08:00 (Manhã)
+        - Login após 17:00: enquadrado no Turno 20:00 (Noite)
+        
+        Demais Equipes (Cesto Aéreo, Veículo Leve, Moto, etc.):
+        - Turno 06:00: 04:00 às 07:35
+        - Turno 08:00: 07:36 às 11:00
+        - Turno 12:00: 11:01 às 13:35
+        - Turno 14:00: 13:36 às 17:30
+        - Turno 20:00: 17:36 às 21:50
+        - Turno 22:00: 21:51 às 03:59
         """
         clean = str(shift_str or '').replace('–', '-').replace('—', '-').strip()
         parts = [p.strip() for p in clean.split('-') if p.strip()]
@@ -437,48 +503,100 @@ class DeliveryManager:
         shift_slot = "Turno 08:00"
         shift_code = "08:00"
         shift_pill_class = "shift-08h"
+        turno = "Manhã"
 
+        total_min = None
         try:
             t_parts = login_time.split(':')
             if len(t_parts) >= 2:
                 h = int(t_parts[0])
                 m = int(t_parts[1])
                 total_min = h * 60 + m
+        except Exception:
+            pass
 
+        if is_linha_viva_or_munck(team_code, vehicle_type):
+            if total_min is not None and total_min > 1020:  # Após 17:00 (17 * 60 = 1020)
+                shift_slot = "Turno 20:00"
+                shift_code = "20:00"
+                shift_pill_class = "shift-20h"
+                turno = "Noite"
+            else:  # Até 17:00 ou sem horário de início definido
+                shift_slot = "Turno 08:00"
+                shift_code = "08:00"
+                shift_pill_class = "shift-08h"
+                turno = "Manhã"
+        else:
+            # Regra padrão para demais veículos
+            if total_min is not None:
                 if 240 <= total_min <= 455:      # 04:00 às 07:35
                     shift_slot = "Turno 06:00"
                     shift_code = "06:00"
                     shift_pill_class = "shift-06h"
+                    turno = "Manhã"
                 elif 456 <= total_min <= 660:    # 07:36 às 11:00
                     shift_slot = "Turno 08:00"
                     shift_code = "08:00"
                     shift_pill_class = "shift-08h"
+                    turno = "Manhã"
                 elif 661 <= total_min <= 815:    # 11:01 às 13:35
                     shift_slot = "Turno 12:00"
                     shift_code = "12:00"
                     shift_pill_class = "shift-12h"
+                    turno = "Tarde"
                 elif 816 <= total_min <= 1050:   # 13:36 às 17:30
                     shift_slot = "Turno 14:00"
                     shift_code = "14:00"
                     shift_pill_class = "shift-14h"
-                elif 1051 <= total_min <= 1310:  # 19:00 às 21:50 (cobre a partir de 17:36)
+                    turno = "Tarde"
+                elif 1051 <= total_min <= 1310:  # 17:36 às 21:50
                     shift_slot = "Turno 20:00"
                     shift_code = "20:00"
                     shift_pill_class = "shift-20h"
+                    turno = "Noite"
                 else:                            # 21:51 às 03:59
                     shift_slot = "Turno 22:00"
                     shift_code = "22:00"
                     shift_pill_class = "shift-22h"
-        except Exception:
-            pass
+                    turno = "Noite"
 
         return {
             "login_time": login_time,
             "logoff_time": logoff_time,
             "shift_slot": shift_slot,
             "shift_code": shift_code,
-            "shift_pill_class": shift_pill_class
+            "shift_pill_class": shift_pill_class,
+            "turno": turno
         }
+
+    def reapply_retroactive_shift_rules(self):
+        """
+        Aplica retroativamente a macroregra de turnos a todas as equipes acumuladas e ativas:
+        - Linha Viva e Munck com login <= 17:00 enquadram em Turno 08:00 (Manhã)
+        - Linha Viva e Munck com login > 17:00 enquadram em Turno 20:00 (Noite)
+        - Atualiza a curva intraday e salva o cache
+        """
+        for code, t in self.daily_accumulated_teams.items():
+            veh_info = self.classify_vehicle(code)
+            v_type = t.get("vehicle_type") or veh_info.get("type")
+            if is_linha_viva_or_munck(code, v_type):
+                raw_shift = t.get("raw_shift") or t.get("shift_raw") or f"{t.get('login_time', '')}-{t.get('logoff_time', '')}"
+                s_info = self.parse_shift_window(raw_shift, team_code=code, vehicle_type=v_type)
+                t["shift_slot"] = s_info["shift_slot"]
+                t["shift_code"] = s_info["shift_code"]
+                t["shift_pill_class"] = s_info["shift_pill_class"]
+                t["turno"] = s_info.get("turno", "Manhã" if s_info["shift_code"] in ["06:00", "08:00"] else "Noite")
+
+        # Atualiza equipes ativas espelhando as acumuladas
+        self.active_teams = [t for t in self.daily_accumulated_teams.values() if t.get("is_active", True)]
+
+        # Recalcula a curva intraday
+        curve_calc = {"06:00": 0, "08:00": 0, "12:00": 0, "14:00": 0, "20:00": 0, "22:00": 0}
+        for t in self.daily_accumulated_teams.values():
+            sc = t.get("shift_code", "08:00")
+            if sc in curve_calc:
+                curve_calc[sc] += 1
+        self.intraday_curve = curve_calc
 
     def _build_metrics_breakdown(self, team_list: list) -> dict:
         """Gera contadores detalhados para uma lista arbitrária de equipes."""
@@ -740,7 +858,7 @@ class DeliveryManager:
                 is_official = False
 
             veh_info = self.classify_vehicle(team_code)
-            shift_info = self.parse_shift_window(shift_raw)
+            shift_info = self.parse_shift_window(shift_raw, team_code=team_code, vehicle_type=veh_info.get("type"))
 
             # Enriquecimento com dados da Visão Operacional BidTech (Checklists)
             bid_entry = self.bid_cache.get(team_code)
@@ -790,6 +908,7 @@ class DeliveryManager:
                 "shift_slot": shift_info["shift_slot"],
                 "shift_code": shift_info["shift_code"],
                 "shift_pill_class": shift_info["shift_pill_class"],
+                "turno": shift_info.get("turno", "Manhã"),
                 "raw_shift": str(shift_raw),
                 "last_seen_time": now.strftime("%H:%M:%S")
             }
@@ -836,6 +955,7 @@ class DeliveryManager:
             sc = t.get("shift_code", "08:00")
             if sc in curve_calc:
                 curve_calc[sc] += 1
+        self.intraday_curve = curve_calc
         self.save_local_cache()
         self.clear_audit_cache(self.current_date_str)
 
