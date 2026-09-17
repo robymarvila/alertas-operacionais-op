@@ -479,9 +479,15 @@ class DeliveryManager:
                 "category": "Apoio"
             }
 
-    def parse_shift_window(self, shift_str: str, team_code: str = "", vehicle_type: str = "") -> dict:
+    def parse_shift_window(self, shift_str: str, team_code: str = "", vehicle_type: str = "", marcacao_time: str = "") -> dict:
         """
-        Interpreta a coluna TURNO (ex: '07:00-18:00', '07:52–16:00') e enquadra no turno oficial.
+        Interpreta a escala da equipe e enquadra no turno oficial.
+        
+        Regra Operacional Atualizada:
+        - Horário de Turno Ativo: Considera o horário da coluna Marcação (login efetivo).
+        - Caso NÃO tenha horário de marcação no momento ('--'), considera o horário da coluna Turno Programado.
+        - Se a equipe tiver horário de marcação: status_login = 'LOGADA'
+        - Se a equipe NÃO tiver horário de marcação: status_login = 'PROGRAMADA'
         
         Macroregra Linha Viva e Munck (incluindo ENL211, ECL211, EEL211 e código 200):
         - Login até 17:00: enquadrado no Turno 08:00 (Manhã)
@@ -500,6 +506,15 @@ class DeliveryManager:
         login_time = parts[0] if len(parts) > 0 else "--:--"
         logoff_time = parts[1] if len(parts) > 1 else "--:--"
 
+        # Classificação de Status Login:
+        # Se tiver horário de marcação válido: LOGADA; se ausente ou '--': PROGRAMADA
+        marc_clean = str(marcacao_time or '').strip()
+        has_marcacao = bool(marc_clean and marc_clean not in ['--', '-', '', 'None', 'nan'])
+        status_login = "LOGADA" if has_marcacao else "PROGRAMADA"
+
+        # Horário de turno ativo: usa Marcação; se não houver, usa Turno Programado
+        active_time_str = marc_clean if has_marcacao else login_time
+
         shift_slot = "Turno 08:00"
         shift_code = "08:00"
         shift_pill_class = "shift-08h"
@@ -507,7 +522,7 @@ class DeliveryManager:
 
         total_min = None
         try:
-            t_parts = login_time.split(':')
+            t_parts = active_time_str.split(':')
             if len(t_parts) >= 2:
                 h = int(t_parts[0])
                 m = int(t_parts[1])
@@ -566,26 +581,29 @@ class DeliveryManager:
             "shift_slot": shift_slot,
             "shift_code": shift_code,
             "shift_pill_class": shift_pill_class,
-            "turno": turno
+            "turno": turno,
+            "status_login": status_login,
+            "effective_shift_time": active_time_str
         }
 
     def reapply_retroactive_shift_rules(self):
         """
-        Aplica retroativamente a macroregra de turnos a todas as equipes acumuladas e ativas:
-        - Linha Viva e Munck com login <= 17:00 enquadram em Turno 08:00 (Manhã)
-        - Linha Viva e Munck com login > 17:00 enquadram em Turno 20:00 (Noite)
+        Aplica retroativamente as regras de turnos e status de login a todas as equipes acumuladas e ativas:
+        - Horário da Marcação define o enquadramento de turno ativo (com fallback para Turno Programado se '--')
+        - Se possuir marcação: status_login = 'LOGADA'; se não possuir: status_login = 'PROGRAMADA'
         - Atualiza a curva intraday e salva o cache
         """
         for code, t in self.daily_accumulated_teams.items():
             veh_info = self.classify_vehicle(code)
             v_type = t.get("vehicle_type") or veh_info.get("type")
-            if is_linha_viva_or_munck(code, v_type):
-                raw_shift = t.get("raw_shift") or t.get("shift_raw") or f"{t.get('login_time', '')}-{t.get('logoff_time', '')}"
-                s_info = self.parse_shift_window(raw_shift, team_code=code, vehicle_type=v_type)
-                t["shift_slot"] = s_info["shift_slot"]
-                t["shift_code"] = s_info["shift_code"]
-                t["shift_pill_class"] = s_info["shift_pill_class"]
-                t["turno"] = s_info.get("turno", "Manhã" if s_info["shift_code"] in ["06:00", "08:00"] else "Noite")
+            raw_shift = t.get("raw_shift") or t.get("shift_raw") or f"{t.get('login_time', '')}-{t.get('logoff_time', '')}"
+            marcacao = t.get("marcacao") or "--"
+            s_info = self.parse_shift_window(raw_shift, team_code=code, vehicle_type=v_type, marcacao_time=marcacao)
+            t["shift_slot"] = s_info["shift_slot"]
+            t["shift_code"] = s_info["shift_code"]
+            t["shift_pill_class"] = s_info["shift_pill_class"]
+            t["turno"] = s_info.get("turno", "Manhã" if s_info["shift_code"] in ["06:00", "08:00"] else "Noite")
+            t["status_login"] = s_info.get("status_login", "PROGRAMADA")
 
         # Atualiza equipes ativas espelhando as acumuladas
         self.active_teams = [t for t in self.daily_accumulated_teams.values() if t.get("is_active", True)]
@@ -858,7 +876,7 @@ class DeliveryManager:
                 is_official = False
 
             veh_info = self.classify_vehicle(team_code)
-            shift_info = self.parse_shift_window(shift_raw, team_code=team_code, vehicle_type=veh_info.get("type"))
+            shift_info = self.parse_shift_window(shift_raw, team_code=team_code, vehicle_type=veh_info.get("type"), marcacao_time=hora_marc)
 
             # Enriquecimento com dados da Visão Operacional BidTech (Checklists)
             bid_entry = self.bid_cache.get(team_code)
@@ -886,6 +904,7 @@ class DeliveryManager:
                 "tipo_operacional": tipo_oper,
                 "status": status_oper,
                 "status_equipes_brasil": status_oper,
+                "status_login": shift_info.get("status_login", "PROGRAMADA"),
                 "status_bid": status_bid,
                 "bid_info": bid_entry,
                 "marcacao": hora_marc,
@@ -1069,9 +1088,15 @@ class DeliveryManager:
         is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
 
         # 1. Obtém universo do EquipesBrasil
+        # Regra Estrita: no painel online em tempo real de hoje, somente equipes presentes na extração corrente
+        # do EB são consideradas (seja como LOGADA ou como PROGRAMADA). Se a equipe não constar mais na extração,
+        # ela não é considerada nem ativa e nem programada.
         eb_teams = {}
-        if is_today and self.daily_accumulated_teams and not is_cloud:
-            eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values()}
+        if is_today and not is_cloud:
+            if self.active_teams:
+                eb_teams = {t["team_code"]: dict(t) for t in self.active_teams}
+            elif self.daily_accumulated_teams:
+                eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values() if t.get("is_active", True)}
         else:
             try:
                 from supabase_client import fetch_delivery_records_by_date, fetch_latest_delivery_snapshot_from_supabase
@@ -1082,17 +1107,24 @@ class DeliveryManager:
 
                 deliv_records = fetch_delivery_records_by_date(date_str)
                 if deliv_records:
-                    eb_teams = {r["team_code"]: r for r in deliv_records if r.get("team_code")}
                     if is_today:
+                        eb_teams = {r["team_code"]: r for r in deliv_records if r.get("team_code") and r.get("is_active", True) is not False}
                         for r in deliv_records:
                             t_code = r.get("team_code")
                             if t_code and t_code not in self.daily_accumulated_teams:
                                 self.daily_accumulated_teams[t_code] = r
+                    else:
+                        eb_teams = {r["team_code"]: r for r in deliv_records if r.get("team_code")}
+                elif self.active_teams:
+                    eb_teams = {t["team_code"]: dict(t) for t in self.active_teams}
                 elif self.daily_accumulated_teams:
-                    eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values()}
+                    eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values() if not is_today or t.get("is_active", True)}
             except Exception as err:
                 print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para EB {date_str}: {err}")
-                eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values()}
+                if self.active_teams:
+                    eb_teams = {t["team_code"]: dict(t) for t in self.active_teams}
+                elif self.daily_accumulated_teams:
+                    eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values() if not is_today or t.get("is_active", True)}
 
         # 2. Obtém universo da Visão Operacional BID
         bid_records_map = {}
@@ -1282,6 +1314,8 @@ class DeliveryManager:
                 "vehicle_type": vehicle_type,
                 "is_eb_active": is_eb_active,
                 "status_eb": eb_status,
+                "status_prog": eb_status,
+                "status_login": (eb.get("status_login") or ("LOGADA" if (eb.get("marcacao") and str(eb.get("marcacao")).strip() not in ["--", "-", "", "None", "nan"]) else "PROGRAMADA")) if eb else "--",
                 "status_bid": bid_status,
                 "cross_status": cross_status,
                 "cross_severity": cross_severity,
@@ -1551,26 +1585,37 @@ class DeliveryManager:
     def get_comparative_targets_audit(self, date_str: str, region: str = "Norte") -> dict:
         """
         Calcula o comparativo oficial entre Metas Planejadas (PLAN), Entregas Efetivas (REAL) e Desvios (GAP)
-        para a data e região especificadas, estruturado exatamente nas 3 visões executivas:
+        para a data (ou múltiplas datas selecionadas) e região especificadas, estruturado exatamente nas 3 visões executivas:
         1. BASES
         2. TURNO
         3. TIPO VEÍCULO
         
+        Quando múltiplas datas são selecionadas, calcula a MÉDIA DIÁRIA exata de cada categoria e o GAP resultante.
         Utiliza 100% dos registros tratados do TIBCO Spotfire como verdade oficial de fechamento.
         """
-        reg_key = "Norte" if region.lower() in ["norte", "região norte"] else "Leste"
+        reg_key = "Norte" if str(region).lower() in ["norte", "região norte"] else "Leste"
         
-        # 1. Carrega Metas de Planejamento (Supabase / JSON)
-        from supabase_client import fetch_delivery_planning_targets
-        p_targets = fetch_delivery_planning_targets(date_str[:7])
+        # 1. Trata uma ou múltiplas datas selecionadas
+        if not date_str:
+            from datetime import date
+            date_list = [date.today().isoformat()]
+        else:
+            raw_parts = [d.strip() for d in str(date_str).replace("|", ",").split(",") if d.strip()]
+            date_list = list(dict.fromkeys(raw_parts))  # Preserva a ordem sem duplicatas
+            if not date_list:
+                from datetime import date
+                date_list = [date.today().isoformat()]
+
+        num_days = len(date_list)
+        first_date = date_list[0]
+
+        # 2. Carrega Metas de Planejamento (Supabase / JSON) para o mês de referência
+        from supabase_client import fetch_delivery_planning_targets, fetch_spotfire_records_by_date
+        p_targets = fetch_delivery_planning_targets(first_date[:7])
         reg_targets = p_targets.get(reg_key, {})
         plan_bases = reg_targets.get("bases", {})
         plan_turno = reg_targets.get("turno", {})
         plan_veiculo = reg_targets.get("veiculo", {})
-
-        # 2. Carrega equipes reais tratadas diretamente do Spotfire (verdade oficial fechada)
-        from supabase_client import fetch_spotfire_records_by_date
-        sp_recs = fetch_spotfire_records_by_date(date_str)
 
         # Filtra equipes da região selecionada estritamente pelos prefixos oficiais
         if reg_key == "Norte":
@@ -1578,37 +1623,6 @@ class DeliveryManager:
         else:
             target_prefixes = {"EML", "EQL", "EVL", "ESL"}
 
-        reg_teams = []
-        for r in sp_recs:
-            code = normalize_team_code(r.get("equipe_normalizada") or r.get("equipe", ""))
-            pfx = code[:3]
-            if pfx not in target_prefixes:
-                continue
-
-            # Validação mandatória: presença de login efetivo registrado
-            login_val = r.get("login_corrigido") or r.get("login") or ""
-            if not str(login_val).strip() or str(login_val).strip().lower() in ["none", "nan", "-", "0", "0.0"]:
-                continue
-
-            v_info = self.classify_vehicle(code)
-            shift_info = classify_spotfire_shift_and_turno(r)
-            reg_teams.append({
-                "team_code": code,
-                "base_code": pfx,
-                "vehicle_type": v_info["type"],
-                "turno": shift_info["turno"],
-                "shift_slot": shift_info["shift_slot"],
-                "shift_code": shift_info["shift_code"],
-                "raw_record": r
-            })
-
-        # 3. Contabilização Real por Categoria
-        # 3.1 BASES
-        base_real_counts = {}
-        for b_name in plan_bases.keys():
-            base_real_counts[b_name] = 0
-
-        # Mapeamento oficial de prefixo para nome da base
         prefix_to_base = {
             "ENL": "Fagundes Filho",
             "ECL": "Cajati",
@@ -1619,93 +1633,166 @@ class DeliveryManager:
             "ESL": "Santo André"
         }
 
-        for t in reg_teams:
-            code = t.get("team_code", "").upper()
-            v_type = t.get("vehicle_type", "")
-            pfx = code[:3]
-            
-            # Identifica se é Linha Viva ou Munck
-            if v_type == "Munck" or code in self.munck_codes:
-                if "Munk" in base_real_counts:
-                    base_real_counts["Munk"] += 1
-                elif "Munck" in base_real_counts:
-                    base_real_counts["Munck"] += 1
-            elif v_type == "Linha Viva":
-                if "LV" in base_real_counts:
-                    base_real_counts["LV"] += 1
-            else:
-                # Pertence à base TMA
-                b_name = prefix_to_base.get(pfx)
-                if b_name and b_name in base_real_counts:
-                    base_real_counts[b_name] += 1
+        # 3. Carrega equipes reais tratadas diretamente do Spotfire para cada data selecionada
+        from concurrent.futures import ThreadPoolExecutor
 
-        # Constrói tabela 1: BASES
+        def fetch_and_classify_for_date(d_str):
+            recs = fetch_spotfire_records_by_date(d_str)
+            teams = []
+            for r in recs:
+                code = normalize_team_code(r.get("equipe_normalizada") or r.get("equipe", ""))
+                pfx = code[:3]
+                if pfx not in target_prefixes:
+                    continue
+                login_val = r.get("login_corrigido") or r.get("login") or ""
+                if not str(login_val).strip() or str(login_val).strip().lower() in ["none", "nan", "-", "0", "0.0"]:
+                    continue
+                v_info = self.classify_vehicle(code)
+                shift_info = classify_spotfire_shift_and_turno(r)
+                teams.append({
+                    "team_code": code,
+                    "base_code": pfx,
+                    "vehicle_type": v_info["type"],
+                    "turno": shift_info["turno"],
+                    "shift_slot": shift_info["shift_slot"],
+                    "shift_code": shift_info["shift_code"],
+                    "raw_record": r
+                })
+            return d_str, teams
+
+        day_teams_map = {}
+        if num_days == 1:
+            _, teams = fetch_and_classify_for_date(date_list[0])
+            day_teams_map[date_list[0]] = teams
+        else:
+            with ThreadPoolExecutor(max_workers=min(num_days, 8)) as ex:
+                results = ex.map(fetch_and_classify_for_date, date_list)
+                for d_str, teams in results:
+                    day_teams_map[d_str] = teams
+
+        # 4. Contabilização Real por Categoria acumulada ao longo dos dias selecionados
+        base_sum_counts = {b: 0 for b in plan_bases.keys()}
+        turno_sum_counts = {"Manhã": 0, "Tarde": 0, "Noite": 0}
+        veh_sum_counts = {"Cesto Aéreo": 0, "Veículo Leve": 0, "Moto": 0, "LV": 0, "Munk": 0}
+        total_teams_sum = 0
+
+        for d_str in date_list:
+            teams_of_day = day_teams_map.get(d_str, [])
+            total_teams_sum += len(teams_of_day)
+
+            for t in teams_of_day:
+                code = t.get("team_code", "").upper()
+                v_type = t.get("vehicle_type", "")
+                pfx = code[:3]
+
+                # Classificação em BASES
+                if v_type == "Munck" or code in self.munck_codes:
+                    if "Munk" in base_sum_counts:
+                        base_sum_counts["Munk"] += 1
+                    elif "Munck" in base_sum_counts:
+                        base_sum_counts["Munck"] += 1
+                elif v_type == "Linha Viva":
+                    if "LV" in base_sum_counts:
+                        base_sum_counts["LV"] += 1
+                else:
+                    b_name = prefix_to_base.get(pfx)
+                    if b_name and b_name in base_sum_counts:
+                        base_sum_counts[b_name] += 1
+
+                # Classificação em TURNO
+                t_name = t.get("turno", "Manhã")
+                if t_name in turno_sum_counts:
+                    turno_sum_counts[t_name] += 1
+                else:
+                    turno_sum_counts["Manhã"] += 1
+
+                # Classificação em TIPO VEÍCULO
+                if v_type == "Munck" or code in self.munck_codes:
+                    veh_sum_counts["Munk"] += 1
+                elif v_type == "Linha Viva":
+                    veh_sum_counts["LV"] += 1
+                elif v_type == "Cesto Aéreo":
+                    veh_sum_counts["Cesto Aéreo"] += 1
+                elif v_type == "Veículo Leve":
+                    veh_sum_counts["Veículo Leve"] += 1
+                elif v_type == "Moto":
+                    veh_sum_counts["Moto"] += 1
+
+        # Helper para cálculo de média diária e GAP
+        def calc_avg(val_sum):
+            if num_days <= 1:
+                return int(val_sum)
+            avg = val_sum / float(num_days)
+            return round(avg, 1) if (val_sum % num_days != 0) else int(val_sum // num_days)
+
+        def calc_gap(r_val, p_val):
+            diff = r_val - p_val
+            return round(diff, 1) if isinstance(diff, float) and (diff % 1 != 0) else int(diff)
+
+        # 4.1 Tabela BASES (com média diária)
         table_bases = []
         sum_plan_tma = 0
         sum_real_tma = 0
         for b_name, p_val in plan_bases.items():
-            r_val = base_real_counts.get(b_name, 0)
-            gap_val = r_val - p_val
+            r_sum = base_sum_counts.get(b_name, 0)
+            r_avg = calc_avg(r_sum)
+            gap_val = calc_gap(r_avg, p_val)
             table_bases.append({
                 "categoria": b_name,
                 "plan": p_val,
-                "real": r_val,
+                "real": r_avg,
                 "gap": gap_val,
                 "is_special": b_name in ["LV", "Munk", "Munck"]
             })
             if b_name not in ["LV", "Munk", "Munck"]:
                 sum_plan_tma += p_val
-                sum_real_tma += r_val
+                sum_real_tma += r_avg
 
         lv_plan = plan_bases.get("LV", 0)
-        lv_real = base_real_counts.get("LV", 0)
+        lv_real = calc_avg(base_sum_counts.get("LV", 0))
         munk_plan = plan_bases.get("Munk", plan_bases.get("Munck", 0))
-        munk_real = base_real_counts.get("Munk", base_real_counts.get("Munck", 0))
+        munk_real = calc_avg(base_sum_counts.get("Munk", base_sum_counts.get("Munck", 0)))
 
         if reg_key == "Norte":
+            sum_real_tma = round(sum_real_tma, 1) if isinstance(sum_real_tma, float) and (sum_real_tma % 1 != 0) else int(sum_real_tma)
             table_bases.append({
                 "categoria": "Total TMA",
                 "plan": sum_plan_tma,
                 "real": sum_real_tma,
-                "gap": sum_real_tma - sum_plan_tma,
+                "gap": calc_gap(sum_real_tma, sum_plan_tma),
                 "is_total": True
             })
             tot_lv_tma_plan = sum_plan_tma + lv_plan + munk_plan
             tot_lv_tma_real = sum_real_tma + lv_real + munk_real
+            tot_lv_tma_real = round(tot_lv_tma_real, 1) if isinstance(tot_lv_tma_real, float) and (tot_lv_tma_real % 1 != 0) else int(tot_lv_tma_real)
             table_bases.append({
                 "categoria": "Total LV + TMA",
                 "plan": tot_lv_tma_plan,
                 "real": tot_lv_tma_real,
-                "gap": tot_lv_tma_real - tot_lv_tma_plan,
+                "gap": calc_gap(tot_lv_tma_real, tot_lv_tma_plan),
                 "is_grand_total": True
             })
         else:
+            tot_p_bases = sum(plan_bases.values())
+            tot_r_bases = calc_avg(sum(base_sum_counts.values()))
             table_bases.append({
                 "categoria": "Total",
-                "plan": sum(plan_bases.values()),
-                "real": sum(base_real_counts.values()),
-                "gap": sum(base_real_counts.values()) - sum(plan_bases.values()),
+                "plan": tot_p_bases,
+                "real": tot_r_bases,
+                "gap": calc_gap(tot_r_bases, tot_p_bases),
                 "is_grand_total": True
             })
 
-        # 3.2 TURNO (Auditoria precisa por Período: Manhã, Tarde, Noite)
-        turno_real_counts = {"Manhã": 0, "Tarde": 0, "Noite": 0}
-        for t in reg_teams:
-            t_name = t.get("turno", "Manhã")
-            if t_name in turno_real_counts:
-                turno_real_counts[t_name] += 1
-            else:
-                turno_real_counts["Manhã"] += 1
-
+        # 4.2 Tabela TURNO (com média diária)
         table_turno = []
         for t_name in ["Manhã", "Tarde", "Noite"]:
             p_val = plan_turno.get(t_name, 0)
-            r_val = turno_real_counts.get(t_name, 0)
+            r_avg = calc_avg(turno_sum_counts.get(t_name, 0))
             table_turno.append({
                 "categoria": t_name,
                 "plan": p_val,
-                "real": r_val,
-                "gap": r_val - p_val
+                "real": r_avg,
+                "gap": calc_gap(r_avg, p_val)
             })
 
         if reg_key == "Norte":
@@ -1713,52 +1800,37 @@ class DeliveryManager:
                 "categoria": "Total TMA",
                 "plan": sum_plan_tma,
                 "real": sum_real_tma,
-                "gap": sum_real_tma - sum_plan_tma,
+                "gap": calc_gap(sum_real_tma, sum_plan_tma),
                 "is_total": True
             })
             table_turno.append({
                 "categoria": "Total LV + TMA",
                 "plan": tot_lv_tma_plan,
                 "real": tot_lv_tma_real,
-                "gap": tot_lv_tma_real - tot_lv_tma_plan,
+                "gap": calc_gap(tot_lv_tma_real, tot_lv_tma_plan),
                 "is_grand_total": True
             })
         else:
             tot_p_turno = sum(plan_turno.values())
-            tot_r_turno = sum(turno_real_counts.values())
+            tot_r_turno = calc_avg(sum(turno_sum_counts.values()))
             table_turno.append({
                 "categoria": "Total",
                 "plan": tot_p_turno,
                 "real": tot_r_turno,
-                "gap": tot_r_turno - tot_p_turno,
+                "gap": calc_gap(tot_r_turno, tot_p_turno),
                 "is_grand_total": True
             })
 
-        # 3.3 TIPO VEÍCULO
-        veh_real_counts = {"Cesto Aéreo": 0, "Veículo Leve": 0, "Moto": 0, "LV": 0, "Munk": 0}
-        for t in reg_teams:
-            vt = t.get("vehicle_type", "Outros")
-            code = t.get("team_code", "").upper()
-            if vt == "Munck" or code in self.munck_codes:
-                veh_real_counts["Munk"] += 1
-            elif vt == "Linha Viva":
-                veh_real_counts["LV"] += 1
-            elif vt == "Cesto Aéreo":
-                veh_real_counts["Cesto Aéreo"] += 1
-            elif vt == "Veículo Leve":
-                veh_real_counts["Veículo Leve"] += 1
-            elif vt == "Moto":
-                veh_real_counts["Moto"] += 1
-
+        # 4.3 Tabela TIPO VEÍCULO (com média diária)
         table_veiculo = []
         for v_name in ["Cesto Aéreo", "Veículo Leve", "Moto", "LV", "Munk"]:
             p_val = plan_veiculo.get(v_name, 0)
-            r_val = veh_real_counts.get(v_name, 0)
+            r_avg = calc_avg(veh_sum_counts.get(v_name, 0))
             table_veiculo.append({
                 "categoria": v_name,
                 "plan": p_val,
-                "real": r_val,
-                "gap": r_val - p_val,
+                "real": r_avg,
+                "gap": calc_gap(r_avg, p_val),
                 "is_special": v_name in ["LV", "Munk"]
             })
 
@@ -1767,35 +1839,35 @@ class DeliveryManager:
                 "categoria": "Total TMA",
                 "plan": sum_plan_tma,
                 "real": sum_real_tma,
-                "gap": sum_real_tma - sum_plan_tma,
+                "gap": calc_gap(sum_real_tma, sum_plan_tma),
                 "is_total": True
             })
             table_veiculo.append({
                 "categoria": "Total LV + TMA",
                 "plan": tot_lv_tma_plan,
                 "real": tot_lv_tma_real,
-                "gap": tot_lv_tma_real - tot_lv_tma_plan,
+                "gap": calc_gap(tot_lv_tma_real, tot_lv_tma_plan),
                 "is_grand_total": True
             })
         else:
             tot_p_veh = sum(plan_veiculo.values())
-            tot_r_veh = sum(veh_real_counts.values())
+            tot_r_veh = calc_avg(sum(veh_sum_counts.values()))
             table_veiculo.append({
                 "categoria": "Total",
                 "plan": tot_p_veh,
                 "real": tot_r_veh,
-                "gap": tot_r_veh - tot_p_veh,
+                "gap": calc_gap(tot_r_veh, tot_p_veh),
                 "is_grand_total": True
             })
 
-        # Cards rápidos de frota
+        # Cards rápidos de frota (média diária)
         fleet_cards = {
-            "cesto": veh_real_counts["Cesto Aéreo"],
-            "leve": veh_real_counts["Veículo Leve"],
-            "moto": veh_real_counts["Moto"],
-            "linhaviva": veh_real_counts["LV"],
-            "munck": veh_real_counts["Munk"],
-            "total_regiao": len(reg_teams)
+            "cesto": calc_avg(veh_sum_counts["Cesto Aéreo"]),
+            "leve": calc_avg(veh_sum_counts["Veículo Leve"]),
+            "moto": calc_avg(veh_sum_counts["Moto"]),
+            "linhaviva": calc_avg(veh_sum_counts["LV"]),
+            "munck": calc_avg(veh_sum_counts["Munk"]),
+            "total_regiao": calc_avg(total_teams_sum)
         }
 
         last_scanner_sync = None
@@ -1812,6 +1884,10 @@ class DeliveryManager:
         return {
             "status": "success",
             "date": date_str,
+            "dates": date_list,
+            "num_days": num_days,
+            "is_average": num_days > 1,
+            "period_label": f"Média de {num_days} dias selecionados" if num_days > 1 else f"Dia {date_list[0]}",
             "region": reg_key,
             "updated_at": last_scanner_sync,
             "daily_meta": p_targets.get("daily_meta", 226),
@@ -2040,19 +2116,20 @@ class DeliveryManager:
         import os, json, time, calendar
         now = time.time()
 
-        # 1. Verifica cache em memória
+        # 1. Verifica cache em memória (TTL: 300 segundos)
         if not force_refresh and hasattr(self, '_audit_dates_cache') and self._audit_dates_cache:
-            if now - getattr(self, '_audit_dates_cache_ts', 0) < 600:
+            if now - getattr(self, '_audit_dates_cache_ts', 0) < 300:
                 return self._audit_dates_cache
 
-        # 2. Verifica cache em disco (se recente ou meses históricos)
+        # 2. Verifica cache em disco (se recente <300s e não force_refresh)
         cache_file = os.path.join("data", "delivery_available_dates.json")
         disk_data = None
-        if not force_refresh and os.path.isfile(cache_file):
+        if os.path.isfile(cache_file):
             try:
+                mtime = os.path.getmtime(cache_file)
                 with open(cache_file, "r", encoding="utf-8") as fp:
                     disk_data = json.load(fp)
-                if disk_data and disk_data.get("dates"):
+                if not force_refresh and (now - mtime < 300) and disk_data and disk_data.get("dates"):
                     self._audit_dates_cache = disk_data
                     self._audit_dates_cache_ts = now
                     return disk_data
@@ -2070,7 +2147,7 @@ class DeliveryManager:
             if disk_data and disk_data.get("dates"):
                 raw_dates.update(disk_data.get("dates"))
 
-            # 1. Busca datas recentes nos cabeçalhos de sessões (limit 200)
+            # 1. Busca datas recentes nos cabeçalhos de sessões (entregas e coletas operacionais)
             try:
                 r_sess = requests.get(
                     f"{BASE_REST_URL}/team_delivery_sessions?select=date_ref&order=date_ref.desc&limit=200",
@@ -2084,6 +2161,24 @@ class DeliveryManager:
                             raw_dates.add(str(d).strip())
             except Exception:
                 pass
+
+            try:
+                r_opsess = requests.get(
+                    f"{BASE_REST_URL}/operational_sync_sessions?select=captured_date&order=captured_date.desc&limit=50",
+                    headers=headers,
+                    timeout=5
+                )
+                if r_opsess.status_code == 200:
+                    for row in (r_opsess.json() or []):
+                        d = row.get("captured_date")
+                        if d:
+                            raw_dates.add(str(d).strip())
+            except Exception:
+                pass
+
+            # Se houver equipes em memória no dia atual, adiciona a data de hoje
+            if getattr(self, 'daily_accumulated_teams', None):
+                raw_dates.add(datetime.now().strftime("%Y-%m-%d"))
 
             # 2. Busca datas em paralelo com paginação por cursor para todos os meses
             curr_year = datetime.now().year

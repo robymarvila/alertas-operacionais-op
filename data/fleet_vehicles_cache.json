@@ -1,6 +1,6 @@
 {
-  "last_sync_time": "17/09/2026 06:28:01",
-  "total": 377,
+  "last_sync_time": "17/09/2026 16:31:11",
+  "total": 378,
   "vehicles": [
     {
       "id": 1779885602217,
@@ -10,8 +10,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "VOLKS",
-      "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "situacao": "RODANDO",
+      "status": "MANUTENÇÃO",
       "fidelizacao": "SIM",
       "equipes": [
         {
@@ -99,8 +99,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "VOLKS",
-      "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "situacao": "PARADO",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -868,8 +868,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "VOLKS",
-      "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "situacao": "PARADO",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -2189,8 +2189,8 @@
       "subTipo": "Munk",
       "tipoOp": "Linha Viva",
       "marca": "VOLKS",
-      "situacao": "RODANDO",
-      "status": "MANUTENÇÃO",
+      "situacao": "PARADO",
+      "status": "ANÁLISE FROTA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -2566,8 +2566,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "Linha Viva",
       "marca": "VOLKS",
-      "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "situacao": "PARADO",
+      "status": "ANÁLISE FROTA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -2776,7 +2776,7 @@
       "tipoOp": "SOC",
       "marca": "FIAT",
       "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -3255,7 +3255,7 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "VOLKS",
-      "situacao": "PARADO",
+      "situacao": "RODANDO",
       "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
@@ -3389,7 +3389,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "MANUTENÇÃO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -3446,7 +3446,7 @@
       "tipoOp": "TMA",
       "marca": "FIAT",
       "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -3496,8 +3496,8 @@
       "subTipo": "Fiorino",
       "tipoOp": "TMA",
       "marca": "FIAT",
-      "situacao": "PARADO",
-      "status": "MANUTENÇÃO",
+      "situacao": "RODANDO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -3589,7 +3589,7 @@
       "tipoOp": "TMA",
       "marca": "FIAT",
       "situacao": "RODANDO",
-      "status": "MANUTENÇÃO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -3994,8 +3994,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "MERCEDES",
-      "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "situacao": "PARADO",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -4370,7 +4370,7 @@
       "tipoOp": "TMA",
       "marca": "MERCEDES",
       "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -4562,8 +4562,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "MERCEDES",
-      "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "situacao": "PARADO",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -5042,7 +5042,7 @@
       "subTipo": "Fiorino",
       "tipoOp": "TMA",
       "marca": "FIAT",
-      "situacao": "PARADO",
+      "situacao": "RODANDO",
       "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
@@ -5432,8 +5432,8 @@
       "subTipo": "Fiorino",
       "tipoOp": "SOC",
       "marca": "Fiat",
-      "situacao": "Ativo",
-      "status": "Disponível",
+      "situacao": "RODANDO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [],
@@ -5779,8 +5779,8 @@
       "subTipo": "Argo",
       "tipoOp": "SOC",
       "marca": "Fiat",
-      "situacao": "PARADO",
-      "status": "MANUTENÇÃO",
+      "situacao": "RODANDO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [],
@@ -6086,8 +6086,8 @@
       "subTipo": "Argo",
       "tipoOp": "SOC",
       "marca": "FIAT",
-      "situacao": "PARADO",
-      "status": "MANUTENÇÃO",
+      "situacao": "RODANDO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -6320,7 +6320,7 @@
       "tipoOp": "SOC",
       "marca": "Fiat",
       "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "status": "ANÁLISE FROTA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [],
@@ -6411,6 +6411,56 @@
       "dtInicioContrato": "2023-08-24",
       "valorContrato": "2209.49",
       "tipoContrato": "Contrato Antigo",
+      "km_atual": null
+    },
+    {
+      "id": 1789638522008,
+      "placa": "SID6I01",
+      "turno": "Manhã",
+      "tipo": "Leve",
+      "subTipo": "Argo",
+      "tipoOp": "Linha Viva",
+      "marca": "FIAT",
+      "situacao": "RODANDO",
+      "status": "MANUTENÇÃO",
+      "fidelizacao": "SIM",
+      "equipes": [
+        {
+          "id": 1789638550292,
+          "veiculo": "ARGO",
+          "segmento": "LINHA VIVA",
+          "codEquipe": "LV001N",
+          "grupoFolga": "A",
+          "tipoEquipe": "Fixa",
+          "componentes": [
+            "000823"
+          ],
+          "isUploading": false,
+          "documentoUrl": null,
+          "documentoAnexo": null
+        }
+      ],
+      "historicoModificacoes": [
+        {
+          "id": 1789638550292,
+          "usuario": "ROBERT DA SILVA MARVILA",
+          "dataHora": "2026-09-17T09:48:51.720Z",
+          "descricao": "Equipe adicionada: LV001N"
+        },
+        {
+          "id": 1789638522008,
+          "usuario": "ROBERT DA SILVA MARVILA",
+          "dataHora": "2026-09-17T09:48:31.658Z",
+          "descricao": "Veículo cadastrado."
+        }
+      ],
+      "locadora": "LOCALIZA",
+      "implemento": "-",
+      "smart": null,
+      "regional": "Norte",
+      "dtInicioContrato": "21/08/2023",
+      "valorContrato": "2.312,03",
+      "tipoContrato": "Contrato Novo",
       "km_atual": null
     },
     {
@@ -6762,7 +6812,7 @@
       "tipoOp": "Linha Morta",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -6819,8 +6869,8 @@
       "subTipo": "Munk",
       "tipoOp": "Linha Morta",
       "marca": "VOLKS",
-      "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "situacao": "RODANDO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -7097,7 +7147,7 @@
       "tipoOp": "SOC",
       "marca": "Fiat",
       "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "status": "ANÁLISE FROTA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [],
@@ -7805,7 +7855,7 @@
       "tipoOp": "TMA",
       "marca": "MERCEDES",
       "situacao": "PARADO",
-      "status": "OFICINA INTERNA",
+      "status": "ANÁLISE FROTA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -8064,7 +8114,7 @@
       "tipoOp": "SOC",
       "marca": "FIAT",
       "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "status": "ANÁLISE FROTA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [],
@@ -8242,7 +8292,7 @@
       "tipoOp": "TMA",
       "marca": "FIAT",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -8592,8 +8642,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "VOLKS",
-      "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "situacao": "PARADO",
+      "status": "ANÁLISE FROTA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -8793,7 +8843,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -9413,7 +9463,7 @@
       "tipoOp": "TMA",
       "marca": "YAMAHA",
       "situacao": "RODANDO",
-      "status": "MANUTENÇÃO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -9971,8 +10021,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "VOLKS",
-      "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "situacao": "PARADO",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -10255,8 +10305,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "VOLKS",
-      "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "situacao": "RODANDO",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -10284,8 +10334,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "VOLKS",
-      "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "situacao": "PARADO",
+      "status": "ANÁLISE FROTA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -10672,7 +10722,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "DISPONIVEL",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -11262,7 +11312,7 @@
       "tipoOp": "TMA",
       "marca": "YAMAHA",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [

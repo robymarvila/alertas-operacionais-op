@@ -173,7 +173,14 @@ def fetch_audit_logs(date_ref=None, team_code=None, base_code=None, status=None,
     try:
         params = [f"limit={limit}", "order=captured_at.desc"]
         if date_ref:
-            params.append(f"date_ref=eq.{date_ref}")
+            if isinstance(date_ref, (list, set, tuple)):
+                dates = [str(d).strip() for d in date_ref if str(d).strip()]
+            else:
+                dates = [str(d).strip() for d in str(date_ref).split(',') if str(d).strip()]
+            if len(dates) == 1:
+                params.append(f"date_ref=eq.{dates[0]}")
+            elif len(dates) > 1:
+                params.append(f"date_ref=in.({','.join(dates)})")
         if team_code:
             params.append(f"team_code=ilike.*{team_code}*")
         if base_code and base_code != "ALL":
@@ -264,7 +271,7 @@ def fetch_audit_delivery_marcacoes(date_refs):
         else:
             date_filter = f"date_ref=in.({','.join(dates)})"
             
-        endpoint = f"{BASE_REST_URL}/team_delivery_records?select=team_code,date_ref,marcacao&{date_filter}&limit=5000"
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?select=team_code,date_ref,marcacao&{date_filter}&limit=2000"
         resp = requests.get(endpoint, headers=get_headers(), timeout=10)
         marc_map = {}
         if resp.status_code == 200:
@@ -617,6 +624,8 @@ def prune_stale_delivery_snapshots(days_retention: int = 45):
         requests.delete(f"{BASE_REST_URL}/team_operational_logs?date_ref=lt.{cutoff}", headers=headers, timeout=15)
         # Remove snapshots JSON antigos
         requests.delete(f"{BASE_REST_URL}/operational_snapshots?created_at=lt.{cutoff}", headers=headers, timeout=15)
+        # Remove logs de acesso antigos de usuários
+        requests.delete(f"{BASE_REST_URL}/system_user_access_logs?date_ref=lt.{cutoff}", headers=headers, timeout=15)
     except Exception as err:
         print(f"[PRUNE WARN] Erro ao expurgar dados antigos: {err}")
 
@@ -809,9 +818,9 @@ def upsert_user_session(session_data: dict) -> dict:
 
         headers = get_headers()
         headers["Prefer"] = "resolution=merge-duplicates"
-        endpoint = f"{BASE_REST_URL}/system_user_sessions"
+        endpoint = f"{BASE_REST_URL}/system_user_sessions?on_conflict=session_id"
         resp = requests.post(endpoint, headers=headers, json=payload, timeout=6)
-        if resp.status_code in [200, 201]:
+        if resp.status_code in [200, 201, 204]:
             return {"status": "success"}
         return {"status": "error", "message": resp.text}
     except Exception as e:

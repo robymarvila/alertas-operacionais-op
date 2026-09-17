@@ -2433,10 +2433,15 @@ function getAuditBaseInfo(code) {
 /**
  * Inicializa o Flatpickr para seleção de múltiplas datas na Auditoria.
  */
-function initAuditDatePicker() {
+async function initAuditDatePicker() {
     const input = document.getElementById('auditDateInput');
     if (!input || !window.flatpickr) return;
     if (auditState.datePickerInstance) return;
+
+    // Assegura que as datas com dados gravados estejam carregadas
+    if (!deliveryState.availableAuditDates || deliveryState.availableAuditDates.length === 0) {
+        await reloadAuditAvailableDates();
+    }
 
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -2458,6 +2463,17 @@ function initAuditDatePicker() {
             months: {
                 shorthand: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"],
                 longhand: ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+            }
+        },
+        onDayCreate: function(dObj, dStr, fp, dayElem) {
+            if (!dayElem || !dayElem.dateObj) return;
+            const y = dayElem.dateObj.getFullYear();
+            const m = String(dayElem.dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dayElem.dateObj.getDate()).padStart(2, '0');
+            const ymd = `${y}-${m}-${d}`;
+            if (deliveryState.availableAuditDates && deliveryState.availableAuditDates.includes(ymd)) {
+                dayElem.classList.add('has-audit-data');
+                dayElem.setAttribute('title', 'Dados gravados no banco de auditoria');
             }
         },
         onChange: function(selectedDates, dateStr) {
@@ -3879,6 +3895,7 @@ const deliveryState = {
         bases: new Set(),
         shifts: new Set(),
         vehicles: new Set(),
+        statusLogin: 'ALL',
         search: ''
     },
     regionalViewMode: 'active', // 'active' (Equipes Ativas) | 'total' (Total do Dia)
@@ -4057,15 +4074,24 @@ function applyDeliveryFilters() {
     const q = (search || '').trim().toUpperCase();
     const isModeActive = deliveryState.regionalViewMode !== 'total';
 
-    // Se o modo for 'active', o universo base são as equipes ativas agora
-    // Se o modo for 'total', o universo base são todas as equipes acumuladas no dia
-    const sourceList = isModeActive
+    // Regra Operacional Estrita:
+    // No painel ONLINE / TEMPO REAL, caso uma equipe não apareça mais na extração do EB ela não é considerada
+    // nem ativa e nem programada. Somente equipes presentes no EB aparecem (seja Logada ou Programada).
+    const isOnlineScreen = deliveryState.currentScreen === 'online';
+    const sourceList = (isOnlineScreen && isModeActive)
         ? (deliveryState.activeTeams.length > 0 ? deliveryState.activeTeams : deliveryState.dailyTotalTeams.filter(t => t.is_active !== false))
         : (deliveryState.dailyTotalTeams.length > 0 ? deliveryState.dailyTotalTeams : deliveryState.activeTeams);
 
     // 1. Escopo de Turno, Frota e Busca (usado para alimentar os cards da Região Norte, Região Leste e Bases)
     const scopeFiltered = sourceList.filter(t => {
         if (isModeActive && t.is_active === false) return false;
+
+        // Filtro por Status Login (TODAS / LOGADA / PROGRAMADA)
+        const sLoginFilter = deliveryState.filters.statusLogin || 'ALL';
+        if (sLoginFilter !== 'ALL') {
+            const teamStatusLogin = t.status_login || (t.marcacao && t.marcacao !== '--' ? 'LOGADA' : 'PROGRAMADA');
+            if (teamStatusLogin !== sLoginFilter) return false;
+        }
 
         // Filtro por Turnos Múltiplos
         if (shifts.size > 0 && !shifts.has(t.shift_code)) return false;
@@ -4542,6 +4568,25 @@ function setDeliveryVehicleFilter(vehicle, el) {
     ensureDeliveryTableExpanded();
     applyDeliveryFilters();
 }
+
+// Filtro por Status Login (TODAS > LOGADA > PROGRAMADA)
+function setDeliveryStatusLoginFilter(status, el) {
+    const container = document.getElementById('deliveryStatusLoginPills');
+    if (container) {
+        container.querySelectorAll('.pill-chip').forEach(c => c.classList.remove('active'));
+    }
+    if (el) {
+        el.classList.add('active');
+    } else if (container) {
+        const btn = container.querySelector(`[data-status-login="${status}"]`);
+        if (btn) btn.classList.add('active');
+    }
+
+    deliveryState.filters.statusLogin = status || 'ALL';
+    ensureDeliveryTableExpanded();
+    applyDeliveryFilters();
+}
+window.setDeliveryStatusLoginFilter = setDeliveryStatusLoginFilter;
 
 // Busca rápida com debounce
 function debounceDeliverySearch() {
@@ -5037,6 +5082,7 @@ function exportDeliveryExcelFiltered() {
         "Motorista": t.driver || "",
         "Turno Programado": t.shift_slot || t.raw_shift || "",
         "Marcação": t.marcacao || "",
+        "Status Login": t.status_login || (t.marcacao && t.marcacao !== '--' ? "LOGADA" : "PROGRAMADA"),
         "Desvio": t.desvio || "",
         "GPS (min)": t.gps_update_str || "",
         "Status": t.status_equipes_brasil || t.status || (t.is_active ? "Logada" : "Turno Concluído"),
@@ -5159,6 +5205,15 @@ async function openDeliveryTeamModal(teamCode) {
             }
             desvioBadgeEl.innerHTML = `<span class="badge" style="${dClass} font-weight: 800; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px;">${desv}</span>`;
         }
+
+        const statusLoginBadgeEl = document.getElementById('delModalStatusLoginBadge');
+        if (statusLoginBadgeEl) {
+            const sLogin = localTeam.status_login || (localTeam.marcacao && localTeam.marcacao !== '--' ? 'LOGADA' : 'PROGRAMADA');
+            const isLog = sLogin === 'LOGADA';
+            statusLoginBadgeEl.innerHTML = isLog
+                ? `<span class="badge" style="background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 800; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px;"><span class="live-status-dot" style="width:5px;height:5px;background:#10b981;"></span> LOGADA</span>`
+                : `<span class="badge" style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-weight: 800; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px;">PROGRAMADA</span>`;
+        }
     }
 
     // 2. Consulta a API Unificada de Detalhes
@@ -5244,6 +5299,15 @@ async function openDeliveryTeamModal(teamCode) {
                     }
                 }
                 desvioBadgeEl.innerHTML = `<span class="badge" style="${dClass} font-weight: 800; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px;">${desv}</span>`;
+            }
+
+            const statusLoginBadgeEl = document.getElementById('delModalStatusLoginBadge');
+            if (statusLoginBadgeEl) {
+                const sLogin = d.status_login || (d.marcacao && d.marcacao !== '--' ? 'LOGADA' : 'PROGRAMADA');
+                const isLog = sLogin === 'LOGADA';
+                statusLoginBadgeEl.innerHTML = isLog
+                    ? `<span class="badge" style="background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 800; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px;"><span class="live-status-dot" style="width:5px;height:5px;background:#10b981;"></span> LOGADA</span>`
+                    : `<span class="badge" style="background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-weight: 800; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px;">PROGRAMADA</span>`;
             }
 
             // Frota e Veículo
@@ -5460,6 +5524,9 @@ async function reloadAuditAvailableDates() {
             if (deliveryState.datePickerInstance) {
                 deliveryState.datePickerInstance.redraw();
             }
+            if (typeof auditState !== 'undefined' && auditState && auditState.datePickerInstance) {
+                auditState.datePickerInstance.redraw();
+            }
         }
     } catch (e) {
         console.warn('Erro ao consultar datas com auditoria disponível:', e);
@@ -5475,7 +5542,7 @@ async function initHistoryDatePicker() {
     // Busca as datas disponíveis antes de abrir
     await reloadAuditAvailableDates();
 
-    // REGRA DE NEGÓCIO: Sempre apresentar o DIA ANTERIOR (ontem) como data principal
+    // REGRA DE NEGÓCIO: Fixa como data padrão o ÚLTIMO DIA COM DADOS gravados no banco
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
@@ -5483,12 +5550,9 @@ async function initHistoryDatePicker() {
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     let defaultDates = [];
-    if (deliveryState.availableAuditDates && deliveryState.availableAuditDates.includes(yesterdayStr)) {
-        defaultDates = [yesterdayStr];
-    } else if (deliveryState.availableAuditDates && deliveryState.availableAuditDates.length > 0) {
-        // Encontra a data mais recente anterior ou igual a ontem
-        const prevDates = deliveryState.availableAuditDates.filter(d => d <= yesterdayStr);
-        defaultDates = [prevDates.length > 0 ? prevDates[0] : deliveryState.availableAuditDates[0]];
+    if (deliveryState.availableAuditDates && deliveryState.availableAuditDates.length > 0) {
+        // Seleciona a data mais recente com dados (ex: ontem ou hoje se houver)
+        defaultDates = [deliveryState.availableAuditDates[0]];
     } else {
         defaultDates = [yesterdayStr];
     }
@@ -5554,11 +5618,14 @@ function handleAuditDatesSelected(dates) {
 
     if (viewMonth) viewMonth.style.display = 'none';
 
+    // Dispara o cálculo do comparativo de metas (calculando média diária se > 1 data)
+    const datesStr = dates.join(',');
+    loadTargetsComparativeAudit(datesStr, deliveryState.activeRegion || 'Norte');
+
     if (dates.length === 1) {
         if (viewDay) viewDay.style.display = 'block';
         if (viewComp) viewComp.style.display = 'none';
         loadDailyHistoryAudit(dates[0]);
-        loadTargetsComparativeAudit(dates[0], deliveryState.activeRegion || 'Norte');
         const m = dates[0].slice(0, 7);
         const selMonth = document.getElementById('wfFilterMonth');
         const wfMonthInput = document.getElementById('histWorkforceMonthInput');
@@ -5580,9 +5647,12 @@ function clearSelectedAuditDates() {
 }
 
 function refreshCurrentHistoryAudit() {
+    const datesToPass = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates.length > 0)
+        ? deliveryState.selectedAuditDates.join(',')
+        : deliveryState.historyDate;
     const target = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates[0]) || deliveryState.historyDate;
     loadDailyHistoryAudit(target);
-    loadTargetsComparativeAudit(target, deliveryState.activeRegion || 'Norte');
+    loadTargetsComparativeAudit(datesToPass, deliveryState.activeRegion || 'Norte');
     loadWorkforceMonthlyChart();
 }
 
@@ -6195,7 +6265,10 @@ function switchHistoryRegion(region) {
         if (btnNorte) btnNorte.classList.remove('active');
         if (btnLeste) btnLeste.classList.add('active');
     }
-    loadTargetsComparativeAudit(deliveryState.historyDate, region);
+    const datesToPass = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates.length > 0)
+        ? deliveryState.selectedAuditDates.join(',')
+        : deliveryState.historyDate;
+    loadTargetsComparativeAudit(datesToPass, region);
 }
 
 function formatDateTimeBR(val) {
@@ -6218,13 +6291,14 @@ function formatDateTimeBR(val) {
 }
 
 async function loadTargetsComparativeAudit(targetDate = null, targetRegion = null) {
-    let dateVal = targetDate || deliveryState.historyDate;
-    if (dateVal && dateVal.includes(',')) dateVal = dateVal.split(',')[0].trim();
-    if (dateVal && dateVal.includes('|')) dateVal = dateVal.split('|')[0].trim();
+    let dateVal = targetDate || (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates.length > 0 ? deliveryState.selectedAuditDates.join(',') : deliveryState.historyDate);
+    if (dateVal && dateVal.includes('|')) {
+        dateVal = dateVal.split('|').map(s => s.trim()).join(',');
+    }
     const region = targetRegion || deliveryState.activeRegion || 'Norte';
 
     try {
-        const resp = await fetch(`/api/delivery/targets-audit?date=${dateVal}&region=${region}`);
+        const resp = await fetch(`/api/delivery/targets-audit?date=${encodeURIComponent(dateVal)}&region=${encodeURIComponent(region)}`);
         if (!resp.ok) {
             console.warn(`[TARGETS AUDIT] HTTP ${resp.status} ao consultar metas.`);
             return;
@@ -6245,6 +6319,18 @@ async function loadTargetsComparativeAudit(targetDate = null, targetRegion = nul
             }
             if (vehBody && tables.veiculo) {
                 vehBody.innerHTML = tables.veiculo.map(renderTargetsRow).join('');
+            }
+
+            // Atualiza cabeçalhos indicando se é média diária de múltiplas datas
+            const isAvg = !!data.is_average;
+            const numDays = data.num_days || 1;
+            const avgBadge = isAvg ? ` <span style="font-size: 0.72rem; font-weight: 600; color: #38bdf8; text-transform: none; margin-left: 6px;">(MÉDIA ${numDays} DIAS)</span>` : '';
+            
+            const cards = document.querySelectorAll('.targets-table-card .targets-card-header');
+            if (cards && cards.length >= 3) {
+                cards[0].innerHTML = `BASES${avgBadge}`;
+                cards[1].innerHTML = `TURNO${avgBadge}`;
+                cards[2].innerHTML = `TIPO VEÍCULO${avgBadge}`;
             }
 
             const elUpd = document.getElementById('histReportLastUpdated');
@@ -8536,7 +8622,7 @@ function filterOnlineBidTable() {
     if (list.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="10" style="text-align: center; height: 420px; vertical-align: middle; padding: 40px 20px; color: var(--text-secondary);">
+                <td colspan="11" style="text-align: center; height: 420px; vertical-align: middle; padding: 40px 20px; color: var(--text-secondary);">
                     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
                         <i data-lucide="filter-x" style="width: 36px; height: 36px; color: #94a3b8; margin-bottom: 12px; opacity: 0.6;"></i>
                         <p style="font-weight: 700; font-size: 0.95rem; margin: 0 0 6px 0; color: var(--text-primary);">Nenhuma equipe encontrada para os filtros selecionados.</p>
@@ -8580,11 +8666,19 @@ function filterOnlineBidTable() {
             crossBadgeHtml = `<span class="badge" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 0.75rem;">${r.cross_status || '--'}</span>`;
         }
 
-        // Status EB (Logada vs Não Logada)
-        const isEb = r.is_eb_active;
-        const ebBadge = isEb
-            ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;"><span class="live-status-dot" style="width:5px;height:5px;background:#10b981;"></span> Logada</span>`
-            : `<span style="color: var(--text-secondary); font-size: 0.74rem;">Não Logada</span>`;
+        // Status PROG (Equipes Brasil)
+        const progStatusText = r.status_prog || r.status_eb || (r.is_eb_active ? 'Logada' : 'Não Logada');
+        const isProgActive = r.is_eb_active && progStatusText !== 'Não Logada' && progStatusText !== 'Deslogada';
+        const progBadge = isProgActive
+            ? `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;"><span class="live-status-dot" style="width:5px;height:5px;background:#10b981;"></span> ${progStatusText}</span>`
+            : `<span style="color: var(--text-secondary); font-size: 0.74rem;">${progStatusText}</span>`;
+
+        // Status LOGIN (LOGADA vs PROGRAMADA)
+        const sLogin = r.status_login || (r.marcacao_eb && r.marcacao_eb !== '--' ? 'LOGADA' : 'PROGRAMADA');
+        const isLoginLogada = sLogin === 'LOGADA';
+        const loginBadge = isLoginLogada
+            ? `<span class="badge" style="background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 800; font-size: 0.72rem; padding: 2px 8px; border-radius: 9999px; letter-spacing: 0.03em;"><span class="live-status-dot" style="width:5px;height:5px;background:#10b981;"></span> LOGADA</span>`
+            : `<span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-weight: 800; font-size: 0.72rem; padding: 2px 8px; border-radius: 9999px; letter-spacing: 0.03em;">PROGRAMADA</span>`;
 
         // Status BID
         let bBadge = '';
@@ -8669,7 +8763,8 @@ function filterOnlineBidTable() {
                         ${r.team_code}
                     </button>
                 </td>
-                <td>${ebBadge}</td>
+                <td>${progBadge}</td>
+                <td>${loginBadge}</td>
                 <td>${bBadge}</td>
                 <td>
                     <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #38bdf8; font-weight: 700;">${timerVal}</span>
@@ -9354,8 +9449,12 @@ function renderMobileBidCards(list) {
                 </div>
                 <div class="card-meta-grid">
                     <div class="card-meta-item">
-                        <span class="card-meta-label">Status EB</span>
-                        <span class="card-meta-val" style="color: ${isEb ? '#10b981' : '#94a3b8'};">${isEb ? 'Logada' : 'Não Logada'}</span>
+                        <span class="card-meta-label">Status Prog</span>
+                        <span class="card-meta-val" style="color: ${isEb ? '#10b981' : '#94a3b8'};">${r.status_prog || (isEb ? 'Logada' : 'Não Logada')}</span>
+                    </div>
+                    <div class="card-meta-item">
+                        <span class="card-meta-label">Status Login</span>
+                        <span class="card-meta-val" style="color: ${r.status_login === 'LOGADA' ? '#10b981' : '#38bdf8'}; font-weight: 800;">${r.status_login || 'PROGRAMADA'}</span>
                     </div>
                     <div class="card-meta-item">
                         <span class="card-meta-label">Status BID</span>

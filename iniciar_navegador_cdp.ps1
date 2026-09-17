@@ -74,4 +74,8 @@ Write-Host "====================================================================
 Write-Host ""
 
 Set-Location -Path $PSScriptRoot
-python run_server.py
+while ($true) {
+    python run_server.py
+    Write-Host "[INFO] Servidor local encerrado. Reiniciando em 2 segundos (Pressione Ctrl+C para interromper)..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 2
+}

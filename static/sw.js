@@ -3,14 +3,14 @@
 // PWA Caching, Shell Offline & Background Network-First Synchronization
 // ==========================================================================
 
-const CACHE_NAME = 'alertas-cco-pwa-v5.0.4-hub-refine';
+const CACHE_NAME = 'alertas-cco-pwa-v5.0.6-shift-login-filter';
 
 // Core shell assets to pre-cache on install
 const PRECACHE_ASSETS = [
     '/',
     '/#hub',
-    '/static/css/dashboard.css?v=5.0.4-hub-refine',
-    '/static/js/app.js?v=5.0.4-hub-refine',
+    '/static/css/dashboard.css?v=5.0.6-shift-login-filter',
+    '/static/js/app.js?v=5.0.6-shift-login-filter',
     '/static/manifest.webmanifest',
     '/static/icons/icon-192.png',
     '/static/icons/icon-512.png',

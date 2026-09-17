@@ -31,7 +31,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.4-hub-refine">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.6-shift-login-filter">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -1352,6 +1352,16 @@
                             </div>
                         </div>
 
+                        <!-- Filtro de Status Login (TODAS / LOGADA / PROGRAMADA) -->
+                        <div class="filter-group-pill">
+                            <span class="filter-group-label">STATUS LOGIN:</span>
+                            <div class="pill-options-wrap" id="deliveryStatusLoginPills">
+                                <button class="pill-chip active" data-status-login="ALL" onclick="setDeliveryStatusLoginFilter('ALL', this)">TODAS</button>
+                                <button class="pill-chip" data-status-login="LOGADA" onclick="setDeliveryStatusLoginFilter('LOGADA', this)">LOGADA</button>
+                                <button class="pill-chip" data-status-login="PROGRAMADA" onclick="setDeliveryStatusLoginFilter('PROGRAMADA', this)">PROGRAMADA</button>
+                            </div>
+                        </div>
+
                         <!-- Busca Rápida -->
                         <div class="delivery-search-box" style="flex: 1; min-width: 240px;">
                             <i data-lucide="search" class="delivery-search-icon"></i>
@@ -2345,9 +2355,9 @@
                             </div>
                         </div>
 
-                        <!-- FILTRO 3: STATUS EB (NOVO - MULTI-SELEÇÃO: LOGADA / NÃO LOGADA) -->
+                        <!-- FILTRO 3: STATUS PROG (MULTI-SELEÇÃO: LOGADA / NÃO LOGADA) -->
                         <div class="period-filter-group dropdown-popover-container">
-                            <span class="period-filter-label">STATUS EB</span>
+                            <span class="period-filter-label">STATUS PROG</span>
                             <button type="button" class="period-filter-pill-btn" id="bidFilterEbStatusBtn" data-target="bidFilterEbStatusMenu">
                                 <span id="bidFilterEbStatusLabel">Todos</span>
                                 <i data-lucide="chevron-right" class="pill-arrow"></i>
@@ -2457,7 +2467,8 @@
                                 <tr>
                                     <th>STATUS CRUZADO</th>
                                     <th>EQUIPE</th>
-                                    <th>STATUS EB</th>
+                                    <th>STATUS PROG</th>
+                                    <th>STATUS LOGIN</th>
                                     <th>STATUS BID</th>
                                     <th>TEMPO NO BID</th>
                                     <th>BASE</th>
@@ -2950,6 +2961,10 @@
                     <div class="info-row-item">
                         <span class="info-row-label">Status Operacional:</span>
                         <div id="delModalStatusOper">--</div>
+                    </div>
+                    <div class="info-row-item">
+                        <span class="info-row-label">Status Login:</span>
+                        <div id="delModalStatusLoginBadge">--</div>
                     </div>
                     <div class="info-row-item">
                         <span class="info-row-label">GPS EquipesBrasil:</span>
@@ -3899,7 +3914,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.0.4-hub-refine"></script>
+<script src="/static/js/app.js?v=5.0.6-shift-login-filter"></script>
 
 </body>
 </html>
