@@ -4147,6 +4147,8 @@ body.theme-light .btn-quick-region.active {
     flex-direction: column;
     gap: 18px;
     border-radius: 20px;
+    position: relative !important;
+    z-index: 100 !important;
 }
 
 .audit-filter-top {
@@ -4295,15 +4297,42 @@ body.theme-light .btn-quick-region.active {
 }
 
 .audit-actions-group {
-    display: flex;
-    gap: 10px;
-    align-items: center;
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-left: auto;
+    align-self: flex-end;
+    white-space: nowrap !important;
+    height: 38px;
+    flex-shrink: 0 !important;
+}
+
+.audit-actions-group .btn {
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+    border-radius: 12px !important;
+    font-weight: 800 !important;
+    font-size: 0.78rem !important;
+    letter-spacing: 0.04em !important;
+    padding: 0 16px !important;
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
 }
 
 .audit-kpis-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 18px;
+    position: relative !important;
+    z-index: 1 !important;
 }
 
 /* Timeline Stream */
@@ -6171,6 +6200,7 @@ body.theme-light .history-date-input {
     font-family: 'Plus Jakarta Sans', sans-serif !important;
     padding: 12px !important;
     box-sizing: border-box !important;
+    z-index: 99999 !important;
 }
 
 body.theme-light .flatpickr-calendar {
@@ -7406,6 +7436,12 @@ body:not(.theme-light) .period-filter-pill-btn.active {
     position: relative;
 }
 
+.dropdown-popover-container:has(.period-filter-popover.active),
+.dropdown-popover-container.active {
+    position: relative;
+    z-index: 150 !important;
+}
+
 .period-filter-popover {
     display: none;
     position: absolute;
@@ -7417,7 +7453,7 @@ body:not(.theme-light) .period-filter-pill-btn.active {
     border-radius: 14px;
     padding: 10px;
     box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
-    z-index: 1000;
+    z-index: 1000 !important;
     animation: popoverFadeIn 0.15s ease-out;
 }
 
@@ -8741,6 +8777,143 @@ body.theme-light .online-bid-filters-bar .period-filters-title-row {
     max-height: 600px;
     overflow-y: auto;
     position: relative;
+}
+
+/* ==========================================================================
+   STICKY HEADER & ESTILOS - CONSOLIDADO DIÁRIO DE AUDITORIA (TRBOnet)
+   ========================================================================== */
+#auditMainTable {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+}
+
+#auditMainTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    background: #0f172a;
+    border-bottom: 2px solid rgba(56, 189, 248, 0.35);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+}
+
+body.theme-light #auditMainTable thead th {
+    background: #ffffff;
+    border-bottom: 2px solid rgba(2, 132, 199, 0.35);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+}
+
+.audit-table-scroll-container {
+    min-height: 480px;
+    max-height: calc(100vh - 390px);
+    overflow-y: auto;
+    overflow-x: auto;
+    position: relative;
+    border-radius: 14px;
+}
+
+/* Pílula de Nome Completo da Base na Auditoria */
+.audit-base-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+    white-space: nowrap;
+}
+
+body.theme-light .audit-base-pill {
+    background: rgba(241, 245, 249, 0.9);
+    border-color: rgba(203, 213, 225, 0.8);
+    color: #1e293b;
+}
+
+.audit-base-pill .base-code-tag {
+    background: rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+}
+
+/* Badges de Confronto Forense: Marcação x 1º Sinal */
+.audit-confront-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 8px;
+    font-size: 0.73rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.audit-confront-badge.badge-sync-ok {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.audit-confront-badge.badge-sync-delay {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.audit-confront-badge.badge-sync-early {
+    background: rgba(14, 165, 233, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(14, 165, 233, 0.35);
+}
+
+.audit-confront-badge.badge-sync-noradio {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.audit-confront-badge.badge-sync-nologin {
+    background: rgba(148, 163, 184, 0.15);
+    color: #cbd5e1;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+body.theme-light .audit-confront-badge.badge-sync-ok {
+    background: #ecfdf5;
+    color: #059669;
+    border-color: #a7f3d0;
+}
+
+body.theme-light .audit-confront-badge.badge-sync-delay {
+    background: #fffbeb;
+    color: #d97706;
+    border-color: #fde68a;
+}
+
+body.theme-light .audit-confront-badge.badge-sync-early {
+    background: #f0f9ff;
+    color: #0284c7;
+    border-color: #bae6fd;
+}
+
+body.theme-light .audit-confront-badge.badge-sync-noradio {
+    background: #fef2f2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+body.theme-light .audit-confront-badge.badge-sync-nologin {
+    background: #f8fafc;
+    color: #64748b;
+    border-color: #e2e8f0;
 }
 
 /* ==========================================================================

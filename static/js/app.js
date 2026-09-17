@@ -458,7 +458,8 @@ async function fetchDashboardData(isManual = false) {
     const liveBadge = document.getElementById('liveStatusBadge');
 
     try {
-        const response = await fetch('/api/data');
+        const url = isManual ? `/api/data?_=${Date.now()}` : '/api/data';
+        const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         
         const result = await response.json();
@@ -786,6 +787,16 @@ function initSupabaseRealtime(retryCount = 0) {
                     fetchDashboardData(false);
                     updateHubCard();
                     showRealtimeIndicator('TRBOnet Atualizado ao Vivo');
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'operational_snapshots' },
+                (payload) => {
+                    console.log('[REALTIME WS] Novo operational_snapshot gravado no Supabase!', payload);
+                    fetchDashboardData(false);
+                    updateHubCard();
+                    showRealtimeIndicator('Snapshot Operacional Atualizado ao Vivo');
                 }
             )
             .on(
@@ -2380,18 +2391,363 @@ const auditState = {
     mode: 'daily', // 'daily' (consolidado do dia) ou 'logs' (coletas brutas)
     rawData: [],
     filteredData: [],
+    selectedDates: [],
+    datePickerInstance: null,
+    filters: {
+        regions: [],
+        bases: [],
+        statuses: [],
+        connected: [],
+        poweron: [],
+        search: ''
+    },
     searchTimer: null
 };
 
+// Dicionário oficial de nomes e regiões das bases operacionais
+const AUDIT_BASE_NAMES = {
+    'ENL': { name: 'Base Fagundes Filho', short: 'Fagundes Filho', region: 'Norte' },
+    'ECL': { name: 'Base Cajati', short: 'Cajati', region: 'Norte' },
+    'EEL': { name: 'Base Vila Medeiros', short: 'Vila Medeiros', region: 'Norte' },
+    'EML': { name: 'Base Monte Santo', short: 'Monte Santo', region: 'Leste' },
+    'EQL': { name: 'Base Aricanduva', short: 'Aricanduva', region: 'Leste' },
+    'EVL': { name: 'Base Catumbi', short: 'Catumbi', region: 'Leste' },
+    'ESL': { name: 'Base Santo André', short: 'Santo André', region: 'Leste' },
+    'ENA': { name: 'Base Fagundes Filho', short: 'Fagundes Filho', region: 'Norte' },
+    'ECA': { name: 'Base Cajati', short: 'Cajati', region: 'Norte' },
+    'EEA': { name: 'Base Vila Medeiros', short: 'Vila Medeiros', region: 'Norte' },
+    'EMA': { name: 'Base Monte Santo', short: 'Monte Santo', region: 'Leste' },
+    'EQA': { name: 'Base Aricanduva', short: 'Aricanduva', region: 'Leste' },
+    'EVA': { name: 'Base Catumbi', short: 'Catumbi', region: 'Leste' },
+    'ESA': { name: 'Base Santo André', short: 'Santo André', region: 'Leste' }
+};
+
+function getAuditBaseInfo(code) {
+    const c = (code || '').toUpperCase().trim();
+    if (AUDIT_BASE_NAMES[c]) {
+        return { code: c, ...AUDIT_BASE_NAMES[c] };
+    }
+    return { code: c || '--', name: c ? `Base ${c}` : 'Outras Bases', short: c || '--', region: 'Outras' };
+}
+
 /**
- * Inicializa a aba de Auditoria definindo a data de hoje e disparando a primeira consulta.
+ * Inicializa o Flatpickr para seleção de múltiplas datas na Auditoria.
+ */
+function initAuditDatePicker() {
+    const input = document.getElementById('auditDateInput');
+    if (!input || !window.flatpickr) return;
+    if (auditState.datePickerInstance) return;
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    auditState.selectedDates = [todayStr];
+
+    auditState.datePickerInstance = flatpickr(input, {
+        mode: "multiple",
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d/m/Y",
+        conjunction: " | ",
+        defaultDate: [todayStr],
+        locale: {
+            weekdays: {
+                shorthand: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
+                longhand: ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"]
+            },
+            months: {
+                shorthand: ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"],
+                longhand: ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+            }
+        },
+        onChange: function(selectedDates, dateStr) {
+            if (selectedDates && selectedDates.length > 0) {
+                auditState.selectedDates = selectedDates.map(d => {
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${day}`;
+                });
+            } else {
+                auditState.selectedDates = [];
+            }
+            loadAuditData();
+        }
+    });
+}
+
+function updateAuditPillLabel(filterType, totalCount, selectedCount, firstValue) {
+    const labelMap = {
+        'region': 'auditFilterRegionLabel',
+        'base': 'auditFilterBaseLabel',
+        'status': 'auditFilterStatusLabel',
+        'connected': 'auditFilterConnectedLabel',
+        'poweron': 'auditFilterPoweronLabel'
+    };
+    const el = document.getElementById(labelMap[filterType]);
+    if (!el) return;
+
+    if (selectedCount === totalCount || (selectedCount === 0 && totalCount === 0)) {
+        el.textContent = 'Todos';
+    } else if (selectedCount === 0) {
+        el.textContent = 'Nenhum';
+    } else if (selectedCount === 1) {
+        let clean = (firstValue || '').replace('Região ', '').replace('Base ', '');
+        el.textContent = clean || '1 sel.';
+    } else {
+        el.textContent = `${selectedCount} sel.`;
+    }
+}
+
+function syncAuditFiltersFromDOM() {
+    const getSelected = (filterType) => {
+        const cbs = Array.from(document.querySelectorAll(`#tabViewAudit .popover-checkbox[data-audit-filter="${filterType}"]`));
+        const checked = cbs.filter(c => c.checked).map(c => c.value);
+        updateAuditPillLabel(filterType, cbs.length, checked.length, checked[0] || '');
+        return checked;
+    };
+
+    auditState.filters.regions = getSelected('region');
+    auditState.filters.bases = getSelected('base');
+    auditState.filters.statuses = getSelected('status');
+    auditState.filters.connected = getSelected('connected');
+    auditState.filters.poweron = getSelected('poweron');
+    auditState.filters.search = (document.getElementById('auditSearchTeam')?.value || '').trim().toUpperCase();
+}
+
+function updateAuditGroupCheckboxesState() {
+    document.querySelectorAll('#tabViewAudit .popover-group-checkbox').forEach(gcb => {
+        const grp = gcb.getAttribute('data-audit-group');
+        const children = Array.from(document.querySelectorAll(`#tabViewAudit .popover-checkbox[data-audit-group="${grp}"]`));
+        if (children.length === 0) return;
+        const checkedCount = children.filter(c => c.checked).length;
+        gcb.checked = (checkedCount === children.length);
+        gcb.indeterminate = (checkedCount > 0 && checkedCount < children.length);
+    });
+}
+
+function setupAuditFilterDropdowns() {
+    // 1. Toggle de abertura/fechamento ao clicar no botão da pílula
+    document.querySelectorAll('#tabViewAudit .period-filter-pill-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const targetId = btn.getAttribute('data-target');
+            const targetMenu = document.getElementById(targetId);
+            const isAlreadyActive = targetMenu && targetMenu.classList.contains('active');
+
+            // Fecha outros popovers abertos na tela de auditoria
+            document.querySelectorAll('#tabViewAudit .period-filter-popover').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('#tabViewAudit .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+
+            if (!isAlreadyActive && targetMenu) {
+                targetMenu.classList.add('active');
+                btn.classList.add('active');
+            }
+        };
+    });
+
+    // 2. Ações de "Todos" e "Limpar" no cabeçalho do popover
+    document.querySelectorAll('#tabViewAudit .popover-action-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const action = btn.getAttribute('data-action');
+            const filterType = btn.getAttribute('data-audit-filter');
+            const cbs = document.querySelectorAll(`#tabViewAudit .popover-checkbox[data-audit-filter="${filterType}"]`);
+
+            cbs.forEach(cb => {
+                cb.checked = (action === 'select-all');
+            });
+
+            if (filterType === 'base') {
+                updateAuditGroupCheckboxesState();
+            }
+
+            syncAuditFiltersFromDOM();
+            applyAuditFilters();
+        };
+    });
+
+    // 3. Hierarquia das Bases por Grupo (Norte / Leste)
+    document.querySelectorAll('#tabViewAudit .popover-group-checkbox').forEach(gcb => {
+        gcb.onchange = (e) => {
+            const grp = gcb.getAttribute('data-audit-group');
+            const isChecked = gcb.checked;
+            document.querySelectorAll(`#tabViewAudit .popover-checkbox[data-audit-group="${grp}"]`).forEach(cb => {
+                cb.checked = isChecked;
+            });
+            syncAuditFiltersFromDOM();
+            applyAuditFilters();
+        };
+    });
+
+    // 4. Checkboxes individuais disparam re-filtro e sincronizam rótulos
+    document.querySelectorAll('#tabViewAudit .popover-checkbox').forEach(cb => {
+        cb.onchange = () => {
+            updateAuditGroupCheckboxesState();
+            syncAuditFiltersFromDOM();
+            applyAuditFilters();
+        };
+    });
+
+    // 5. Clique dentro do popover não fecha
+    document.querySelectorAll('#tabViewAudit .period-filter-popover').forEach(p => {
+        p.onclick = (e) => e.stopPropagation();
+    });
+
+    // 6. Clique fora fecha qualquer popover aberto
+    if (!window._auditClosePopoverBound) {
+        window._auditClosePopoverBound = true;
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#tabViewAudit .dropdown-popover-container')) {
+                document.querySelectorAll('#tabViewAudit .period-filter-popover').forEach(p => p.classList.remove('active'));
+                document.querySelectorAll('#tabViewAudit .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+            }
+        });
+    }
+}
+
+function initAuditMultiFilters() {
+    // 1. REGIÃO (Multi-seleção)
+    const regList = document.getElementById('auditFilterRegionList');
+    if (regList) {
+        regList.innerHTML = `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="region" value="Norte" checked>
+                <span>Região Norte</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="region" value="Leste" checked>
+                <span>Região Leste</span>
+            </label>
+        `;
+    }
+
+    // 2. BASE OPERACIONAL (Hierarquia Norte / Leste com nomes amigáveis)
+    const baseList = document.getElementById('auditFilterBaseList');
+    if (baseList) {
+        const norteBases = [
+            { code: 'ENL', name: 'Base Fagundes Filho' },
+            { code: 'ECL', name: 'Base Cajati' },
+            { code: 'EEL', name: 'Base Vila Medeiros' }
+        ];
+        const lesteBases = [
+            { code: 'EML', name: 'Base Monte Santo' },
+            { code: 'EQL', name: 'Base Aricanduva' },
+            { code: 'EVL', name: 'Base Catumbi' },
+            { code: 'ESL', name: 'Base Santo André' }
+        ];
+
+        baseList.innerHTML = `
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Selecionar/desmarcar todas as bases da Região Norte">
+                    <input type="checkbox" class="popover-group-checkbox" data-audit-group="regiao-norte" checked>
+                    <span>Região Norte</span>
+                </label>
+                <div class="popover-group-children">
+                    ${norteBases.map(b => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-audit-filter="base" data-audit-group="regiao-norte" value="${b.code}" checked>
+                            <span>${b.name} (${b.code})</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Selecionar/desmarcar todas as bases da Região Leste">
+                    <input type="checkbox" class="popover-group-checkbox" data-audit-group="regiao-leste" checked>
+                    <span>Região Leste</span>
+                </label>
+                <div class="popover-group-children">
+                    ${lesteBases.map(b => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-audit-filter="base" data-audit-group="regiao-leste" value="${b.code}" checked>
+                            <span>${b.name} (${b.code})</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // 3. STATUS DA AUDITORIA
+    const statusList = document.getElementById('auditFilterStatusList');
+    if (statusList) {
+        statusList.innerHTML = `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="status" value="CONFORME" checked>
+                <span>Conforme (Equipes Brasil + TRBOnet)</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="status" value="APENAS_POWERON" checked>
+                <span>Apenas no Equipes Brasil</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="status" value="APENAS_TRBONET" checked>
+                <span>Apenas no TRBOnet</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="status" value="OFFLINE" checked>
+                <span>Offline</span>
+            </label>
+        `;
+    }
+
+    // 4. CONECTOU HOJE?
+    const connList = document.getElementById('auditFilterConnectedList');
+    if (connList) {
+        connList.innerHTML = `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="connected" value="SIM" checked>
+                <span>Sim (Conectou Hoje)</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="connected" value="NAO" checked>
+                <span>Não (Nunca Conectou)</span>
+            </label>
+        `;
+    }
+
+    // 5. ESCALA POWERON
+    const pwList = document.getElementById('auditFilterPoweronList');
+    if (pwList) {
+        pwList.innerHTML = `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="poweron" value="SIM" checked>
+                <span>Em Escala</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="poweron" value="NAO" checked>
+                <span>Fora de Escala</span>
+            </label>
+        `;
+    }
+
+    setupAuditFilterDropdowns();
+    syncAuditFiltersFromDOM();
+}
+
+function clearAuditFilters() {
+    document.querySelectorAll('#tabViewAudit .popover-checkbox').forEach(cb => cb.checked = true);
+    document.querySelectorAll('#tabViewAudit .popover-group-checkbox').forEach(cb => {
+        cb.checked = true;
+        cb.indeterminate = false;
+    });
+    const searchInput = document.getElementById('auditSearchTeam');
+    if (searchInput) searchInput.value = '';
+
+    syncAuditFiltersFromDOM();
+    applyAuditFilters();
+    showToast('Filtros de auditoria redefinidos.', 'info');
+}
+
+/**
+ * Inicializa a aba de Auditoria configurando o datepicker, controles multi-select e disparando a consulta.
  */
 function initAuditTab() {
-    const dateInput = document.getElementById('auditFilterDate');
-    if (dateInput && !dateInput.value) {
-        const today = new Date().toISOString().split('T')[0];
-        dateInput.value = today;
-    }
+    initAuditDatePicker();
+    initAuditMultiFilters();
     loadAuditData();
 }
 
@@ -2410,7 +2766,7 @@ function setAuditViewMode(mode) {
         if (btnDaily) btnDaily.classList.add('active');
         if (btnLogs) btnLogs.classList.remove('active');
         if (titleEl) titleEl.textContent = 'Consolidado Diário de Auditoria';
-        if (subtitleEl) subtitleEl.textContent = 'Resumo de conexões e presença por equipe na data selecionada';
+        if (subtitleEl) subtitleEl.textContent = 'Resumo de conexões, horários de login vs rádio e histórico por equipe';
     } else {
         if (btnDaily) btnDaily.classList.remove('active');
         if (btnLogs) btnLogs.classList.add('active');
@@ -2422,31 +2778,37 @@ function setAuditViewMode(mode) {
 }
 
 /**
- * Consulta a API local (que consulta o Supabase / PostgreSQL) para carregar os dados de auditoria.
+ * Consulta a API local (que consulta o Supabase) para carregar os dados de auditoria com suporte a múltiplas datas.
  */
 async function loadAuditData(isSilent = false) {
     const refreshIcon = document.getElementById('btnAuditRefreshIcon');
     if (refreshIcon && !isSilent) refreshIcon.classList.add('spin-animation');
 
-    const dateVal = document.getElementById('auditFilterDate')?.value || '';
-    const baseVal = document.getElementById('auditFilterBase')?.value || 'ALL';
-    const statusVal = document.getElementById('auditFilterStatus')?.value || 'ALL';
-    const teamVal = (document.getElementById('auditSearchTeam')?.value || '').trim();
+    syncAuditFiltersFromDOM();
+
+    const datesParam = (auditState.selectedDates && auditState.selectedDates.length > 0)
+        ? auditState.selectedDates.join(',')
+        : (new Date().toISOString().split('T')[0]);
+
+    const basesParam = (auditState.filters.bases && auditState.filters.bases.length > 0 && auditState.filters.bases.length < 7)
+        ? auditState.filters.bases.join(',')
+        : 'ALL';
+
+    const teamVal = auditState.filters.search || '';
 
     try {
         let endpoint = '';
         if (auditState.mode === 'daily') {
             const params = new URLSearchParams();
-            if (dateVal) params.append('date', dateVal);
-            if (baseVal && baseVal !== 'ALL') params.append('base', baseVal);
+            if (datesParam) params.append('date', datesParam);
+            if (basesParam && basesParam !== 'ALL') params.append('base', basesParam);
             endpoint = `/api/audit/daily_summary?${params.toString()}`;
         } else {
             const params = new URLSearchParams();
-            if (dateVal) params.append('date', dateVal);
-            if (baseVal && baseVal !== 'ALL') params.append('base', baseVal);
-            if (statusVal && statusVal !== 'ALL') params.append('status', statusVal);
+            if (datesParam) params.append('date', datesParam);
+            if (basesParam && basesParam !== 'ALL') params.append('base', basesParam);
             if (teamVal) params.append('team', teamVal);
-            params.append('limit', '300');
+            params.append('limit', '400');
             endpoint = `/api/audit/logs?${params.toString()}`;
         }
 
@@ -2476,31 +2838,86 @@ async function loadAuditData(isSilent = false) {
 }
 
 /**
- * Aplica os filtros locais de status e texto sobre os dados brutos recebidos.
+ * Aplica os filtros combinados de Região, Base, Status, Conectou Hoje, Escala PowerON e Busca.
  */
 function applyAuditFilters() {
-    const statusVal = document.getElementById('auditFilterStatus')?.value || 'ALL';
-    const teamVal = (document.getElementById('auditSearchTeam')?.value || '').trim().toUpperCase();
+    const { regions, bases, statuses, connected, poweron, search } = auditState.filters;
 
     let filtered = [...auditState.rawData];
 
-    // Filtro por equipe (busca parcial)
-    if (teamVal) {
+    // 1. Filtro por Busca Textual
+    if (search) {
         filtered = filtered.filter(item => {
-            const code = (item.team_code || '').toUpperCase();
-            return code.includes(teamVal);
+            const team = (item.team_code || '').toUpperCase();
+            const bCode = (item.base_code || '').toUpperCase();
+            const baseInfo = getAuditBaseInfo(bCode);
+            return team.includes(search) || bCode.includes(search) || baseInfo.name.toUpperCase().includes(search);
         });
     }
 
-    // Filtro por status no modo diário
-    if (auditState.mode === 'daily' && statusVal !== 'ALL') {
+    // 2. Filtro por Região
+    if (regions && regions.length > 0 && regions.length < 2) {
         filtered = filtered.filter(item => {
-            if (statusVal === 'CONFORME') return item.was_in_poweron && item.was_online_trbonet;
-            if (statusVal === 'APENAS_POWERON') return item.was_in_poweron && !item.was_online_trbonet;
-            if (statusVal === 'APENAS_TRBONET') return !item.was_in_poweron && item.was_online_trbonet;
-            if (statusVal === 'OFFLINE') return !item.was_online_trbonet;
-            return true;
+            const baseInfo = getAuditBaseInfo(item.base_code);
+            const regItem = (item.region || '').toLowerCase();
+            const regBase = (baseInfo.region || '').toLowerCase();
+            return regions.some(r => {
+                const rLow = r.toLowerCase();
+                return regItem.includes(rLow) || regBase.includes(rLow);
+            });
         });
+    } else if (regions && regions.length === 0) {
+        filtered = [];
+    }
+
+    // 3. Filtro por Base Operacional
+    if (bases && bases.length >= 0) {
+        if (bases.length === 0) {
+            filtered = [];
+        } else if (bases.length < 7) {
+            const selectedSet = new Set(bases.map(b => b.toUpperCase()));
+            filtered = filtered.filter(item => {
+                const b = (item.base_code || '').toUpperCase();
+                return selectedSet.has(b);
+            });
+        }
+    }
+
+    // 4. Filtros exclusivos do modo 'daily'
+    if (auditState.mode === 'daily') {
+        // Status geral
+        if (statuses && statuses.length > 0 && statuses.length < 4) {
+            const statusSet = new Set(statuses);
+            filtered = filtered.filter(item => {
+                const wasPw = !!item.was_in_poweron;
+                const wasOn = !!item.was_online_trbonet;
+
+                let st = 'OFFLINE';
+                if (wasPw && wasOn) st = 'CONFORME';
+                else if (wasPw && !wasOn) st = 'APENAS_POWERON';
+                else if (!wasPw && wasOn) st = 'APENAS_TRBONET';
+
+                return statusSet.has(st);
+            });
+        } else if (statuses && statuses.length === 0) {
+            filtered = [];
+        }
+
+        // Conectou Hoje?
+        if (connected && connected.length === 1) {
+            const wantOnline = (connected[0] === 'SIM');
+            filtered = filtered.filter(item => wantOnline ? !!item.was_online_trbonet : !item.was_online_trbonet);
+        } else if (connected && connected.length === 0) {
+            filtered = [];
+        }
+
+        // Escala PowerON
+        if (poweron && poweron.length === 1) {
+            const wantPoweron = (poweron[0] === 'SIM');
+            filtered = filtered.filter(item => wantPoweron ? !!item.was_in_poweron : !item.was_in_poweron);
+        } else if (poweron && poweron.length === 0) {
+            filtered = [];
+        }
     }
 
     auditState.filteredData = filtered;
@@ -2554,12 +2971,90 @@ function updateAuditKPIs() {
 }
 
 /**
- * Renderiza o cabeçalho e o corpo da tabela de auditoria.
+ * Calcula o delta e diagnóstico de confronto entre a Marcação no Equipes Brasil e o 1º Sinal no TRBOnet.
+ */
+function computeAuditConfront(marcacaoStr, firstSeenStr) {
+    if (!marcacaoStr || marcacaoStr === '--') {
+        if (firstSeenStr && firstSeenStr !== '--') {
+            return {
+                badge: '<span class="audit-confront-badge badge-sync-nologin" title="Rádio transmitiu sinal, mas não há registro de login no Equipes Brasil"><i data-lucide="help-circle" style="width:12px;height:12px;"></i> Rádio s/ Login</span>',
+                deltaText: 'Rádio s/ Login'
+            };
+        }
+        return {
+            badge: '<span class="audit-confront-badge badge-sync-nologin">--</span>',
+            deltaText: '--'
+        };
+    }
+
+    if (!firstSeenStr || firstSeenStr === '--') {
+        return {
+            badge: '<span class="audit-confront-badge badge-sync-noradio" title="Equipe tem login ativo no aplicativo, porém o rádio não transmitiu sinal no dia"><i data-lucide="alert-octagon" style="width:12px;height:12px;"></i> Sem Sinal Rádio</span>',
+            deltaText: 'Sem Sinal Rádio'
+        };
+    }
+
+    // Ambos os horários existem! Calcular delta em minutos
+    try {
+        const parseMinutes = (timeStr) => {
+            const clean = timeStr.trim();
+            const parts = clean.split(':');
+            const h = parseInt(parts[0], 10) || 0;
+            const m = parseInt(parts[1], 10) || 0;
+            return h * 60 + m;
+        };
+
+        const mMin = parseMinutes(marcacaoStr);
+        const fMin = parseMinutes(firstSeenStr);
+        const diff = fMin - mMin; // Positivo: rádio após login; Negativo: rádio antes do login
+
+        if (Math.abs(diff) <= 15) {
+            const diffSignal = diff >= 0 ? `+${diff}` : `${diff}`;
+            return {
+                badge: `<span class="audit-confront-badge badge-sync-ok" title="Diferença de ${diffSignal} min entre login e rádio"><i data-lucide="check-circle-2" style="width:12px;height:12px;"></i> Sincronizado (${diffSignal}m)</span>`,
+                deltaText: `${diffSignal}m`
+            };
+        } else if (diff > 15) {
+            return {
+                badge: `<span class="audit-confront-badge badge-sync-delay" title="Rádio transmitiu ${diff} min após a marcação"><i data-lucide="clock" style="width:12px;height:12px;"></i> Atraso +${diff}m</span>`,
+                deltaText: `+${diff}m`
+            };
+        } else {
+            return {
+                badge: `<span class="audit-confront-badge badge-sync-early" title="Rádio transmitiu ${Math.abs(diff)} min antes do login no app"><i data-lucide="zap" style="width:12px;height:12px;"></i> Antecipado ${diff}m</span>`,
+                deltaText: `${diff}m`
+            };
+        }
+    } catch {
+        return {
+            badge: '<span class="audit-confront-badge badge-sync-ok">Registrado</span>',
+            deltaText: '--'
+        };
+    }
+}
+
+/**
+ * Renderiza o cabeçalho e o corpo da tabela de auditoria com sticky header e colunas enriquecidas.
  */
 function renderAuditTable() {
     const thead = document.getElementById('auditTableHeader');
     const tbody = document.getElementById('auditTableBody');
     if (!thead || !tbody) return;
+
+    const formatTime = (ts) => {
+        if (!ts) return '--';
+        try {
+            // Se já vier no formato HH:MM:SS
+            if (typeof ts === 'string' && ts.length <= 8 && ts.includes(':')) {
+                return ts;
+            }
+            const d = new Date(ts);
+            if (isNaN(d.getTime())) return ts;
+            return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        } catch {
+            return ts;
+        }
+    };
 
     if (auditState.mode === 'daily') {
         thead.innerHTML = `
@@ -2569,9 +3064,10 @@ function renderAuditTable() {
                 <th>Região</th>
                 <th>Escala PowerON</th>
                 <th>Conectou no TRBOnet Hoje?</th>
+                <th>Horário Marcação (Login)</th>
+                <th>1º Sinal Registrado</th>
                 <th>Coletas Online / Total</th>
                 <th>% Uptime no Dia</th>
-                <th>1º Sinal Registrado</th>
                 <th>Último Sinal</th>
                 <th style="text-align: center;">Auditoria Forense</th>
             </tr>
@@ -2580,7 +3076,7 @@ function renderAuditTable() {
         if (auditState.filteredData.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="10" class="empty-table-cell">
+                    <td colspan="11" class="empty-table-cell">
                         <div class="empty-state-box">
                             <i data-lucide="inbox"></i>
                             <p>Nenhum registro de auditoria encontrado para os filtros selecionados.</p>
@@ -2611,26 +3107,22 @@ function renderAuditTable() {
                 ? '<span class="text-emerald font-bold"><i data-lucide="check"></i> Em Escala</span>' 
                 : '<span class="text-secondary">--</span>';
 
-            const formatTime = (ts) => {
-                if (!ts) return '--';
-                try {
-                    const d = new Date(ts);
-                    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                } catch {
-                    return ts;
-                }
-            };
+            const baseInfo = getAuditBaseInfo(item.base_code);
+            const basePill = `<span class="audit-base-pill" title="${baseInfo.name}"><span class="base-code-tag">${item.base_code || '--'}</span> ${baseInfo.short}</span>`;
 
+            const marcacaoVal = (item.marcacao && item.marcacao !== '--') ? item.marcacao : '--';
             const firstSeen = formatTime(item.first_seen_online);
             const lastSeen = formatTime(item.last_seen_online);
 
             return `
                 <tr>
                     <td><strong class="team-code-cell">${item.team_code}</strong></td>
-                    <td><span class="base-badge">${item.base_code || '--'}</span></td>
-                    <td><span class="text-secondary">${item.region || 'Outras Bases'}</span></td>
+                    <td>${basePill}</td>
+                    <td><span class="text-secondary">${item.region || (baseInfo.region ? `Região ${baseInfo.region}` : 'Outras Bases')}</span></td>
                     <td>${pwBadge}</td>
                     <td>${statusBadge}</td>
+                    <td><span class="time-cell font-bold text-cyan" style="font-family: 'JetBrains Mono', monospace;">${marcacaoVal}</span></td>
+                    <td><span class="time-cell">${firstSeen}</span></td>
                     <td><strong>${item.times_seen_online || 0}</strong> / ${item.total_sync_checks || 0} coletas</td>
                     <td>
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -2640,7 +3132,6 @@ function renderAuditTable() {
                             <span class="font-bold">${item.uptime_percentage || 0}%</span>
                         </div>
                     </td>
-                    <td><span class="time-cell">${firstSeen}</span></td>
                     <td><span class="time-cell">${lastSeen}</span></td>
                     <td style="text-align: center;">
                         <button class="btn btn-sm btn-secondary" onclick="openTeamTimelineModal('${item.team_code}')" title="Ver linha do tempo de transmissões do dia">
@@ -2687,6 +3178,8 @@ function renderAuditTable() {
 
         tbody.innerHTML = auditState.filteredData.map(item => {
             const capturedTime = item.captured_at ? new Date(item.captured_at).toLocaleTimeString('pt-BR') : '--:--:--';
+            const baseInfo = getAuditBaseInfo(item.base_code);
+            const basePill = `<span class="audit-base-pill" title="${baseInfo.name}"><span class="base-code-tag">${item.base_code || '--'}</span> ${baseInfo.short}</span>`;
             
             let stBadge = '';
             if (item.status === 'CONFORME') {
@@ -2703,8 +3196,8 @@ function renderAuditTable() {
                 <tr>
                     <td><span class="time-cell font-bold text-cyan">${capturedTime}</span></td>
                     <td><strong class="team-code-cell">${item.team_code}</strong></td>
-                    <td><span class="base-badge">${item.base_code || '--'}</span></td>
-                    <td><span class="text-secondary">${item.region || 'Outras Bases'}</span></td>
+                    <td>${basePill}</td>
+                    <td><span class="text-secondary">${item.region || (baseInfo.region ? `Região ${baseInfo.region}` : 'Outras Bases')}</span></td>
                     <td>${stBadge}</td>
                     <td>${item.in_poweron ? '<span class="text-emerald font-bold">Sim</span>' : '<span class="text-secondary">Não</span>'}</td>
                     <td>${item.in_trbonet ? '<span class="text-emerald font-bold">Sim</span>' : '<span class="text-danger font-bold">Não</span>'}</td>
@@ -2733,7 +3226,9 @@ async function openTeamTimelineModal(teamCode) {
     const subtitle = document.getElementById('timelineModalSubtitle');
     const stream = document.getElementById('timelineEventsContainer');
 
-    const dateVal = document.getElementById('auditFilterDate')?.value || '';
+    const dateVal = (auditState.selectedDates && auditState.selectedDates.length > 0)
+        ? auditState.selectedDates[0]
+        : (new Date().toISOString().split('T')[0]);
 
     if (teamTitle) teamTitle.textContent = `LINHA DO TEMPO: EQUIPE ${teamCode}`;
     if (subtitle) subtitle.textContent = `Histórico de transmissões e coletas registradas no dia ${dateVal || 'hoje'}`;
@@ -2791,51 +3286,76 @@ async function openTeamTimelineModal(teamCode) {
 function debounceAuditSearch() {
     clearTimeout(auditState.searchTimer);
     auditState.searchTimer = setTimeout(() => {
+        syncAuditFiltersFromDOM();
         applyAuditFilters();
-    }, 250);
+    }, 200);
 }
 
 /**
- * Exporta a tabela filtrada atual para um arquivo CSV estruturado.
+ * Exporta a tabela filtrada atual para um arquivo XLSX (.xlsx) enriquecido com todas as novas colunas.
  */
 function exportAuditTableExcel() {
     const list = auditState.filteredData;
-    const dateVal = document.getElementById('auditFilterDate')?.value || 'hoje';
+    const dateVal = (auditState.selectedDates && auditState.selectedDates.length > 0)
+        ? auditState.selectedDates.join('_')
+        : 'hoje';
     const filename = `Auditoria_TRBOnet_PowerON_${dateVal}_${auditState.mode}.xlsx`;
+
+    const formatTime = (ts) => {
+        if (!ts) return '--';
+        try {
+            if (typeof ts === 'string' && ts.length <= 8 && ts.includes(':')) return ts;
+            const d = new Date(ts);
+            return isNaN(d.getTime()) ? ts : d.toLocaleTimeString('pt-BR');
+        } catch { return ts; }
+    };
 
     // 1. Tenta geração client-side instantânea via SheetJS
     if (window.XLSX && list && list.length > 0) {
         try {
             let rows = [];
             if (auditState.mode === 'daily') {
-                rows = list.map(i => ({
-                    "Data": i.date_ref || dateVal,
-                    "Equipe": i.team_code || '',
-                    "Base": i.base_code || '',
-                    "Região": i.region || '',
-                    "Escala PowerON": i.was_in_poweron ? 'SIM' : 'NÃO',
-                    "Conectou TRBOnet": i.was_online_trbonet ? 'SIM' : 'NÃO',
-                    "Coletas Online": i.times_seen_online || 0,
-                    "Total Coletas": i.total_sync_checks || 0,
-                    "Uptime (%)": `${i.uptime_percentage || 0}%`,
-                    "Primeiro Sinal": i.first_seen_online || '--',
-                    "Último Sinal": i.last_seen_online || '--'
-                }));
+                rows = list.map(i => {
+                    const baseInfo = getAuditBaseInfo(i.base_code);
+                    const marcVal = (i.marcacao && i.marcacao !== '--') ? i.marcacao : '--';
+                    const fSeen = formatTime(i.first_seen_online);
+                    const confront = computeAuditConfront(marcVal, fSeen);
+
+                    return {
+                        "Data Ref": i.date_ref || dateVal,
+                        "Equipe": i.team_code || '',
+                        "Código Base": i.base_code || '',
+                        "Base Operacional": baseInfo.name,
+                        "Região": i.region || (baseInfo.region ? `Região ${baseInfo.region}` : ''),
+                        "Escala PowerON": i.was_in_poweron ? 'SIM' : 'NÃO',
+                        "Conectou TRBOnet": i.was_online_trbonet ? 'SIM' : 'NÃO',
+                        "Horário Marcação (Login)": marcVal,
+                        "1º Sinal TRBOnet": fSeen,
+                        "Coletas Online": i.times_seen_online || 0,
+                        "Total Coletas": i.total_sync_checks || 0,
+                        "Uptime (%)": `${i.uptime_percentage || 0}%`,
+                        "Último Sinal": formatTime(i.last_seen_online)
+                    };
+                });
             } else {
-                rows = list.map(i => ({
-                    "Data e Hora Coleta": i.captured_at || '',
-                    "Data Ref": i.date_ref || '',
-                    "Equipe": i.team_code || '',
-                    "Base": i.base_code || '',
-                    "Região": i.region || '',
-                    "Status": i.status || '',
-                    "PowerON": i.in_poweron ? 'SIM' : 'NÃO',
-                    "TRBOnet": i.in_trbonet ? 'SIM' : 'NÃO',
-                    "GPS": i.has_gps ? 'SIM' : 'NÃO',
-                    "ID Rádio": i.radio_id || '',
-                    "Canal": i.channel || '',
-                    "Último Sinal": i.last_signal || ''
-                }));
+                rows = list.map(i => {
+                    const baseInfo = getAuditBaseInfo(i.base_code);
+                    return {
+                        "Data e Hora Coleta": i.captured_at || '',
+                        "Data Ref": i.date_ref || '',
+                        "Equipe": i.team_code || '',
+                        "Código Base": i.base_code || '',
+                        "Base Operacional": baseInfo.name,
+                        "Região": i.region || '',
+                        "Status": i.status || '',
+                        "PowerON": i.in_poweron ? 'SIM' : 'NÃO',
+                        "TRBOnet": i.in_trbonet ? 'SIM' : 'NÃO',
+                        "GPS": i.has_gps ? 'SIM' : 'NÃO',
+                        "ID Rádio": i.radio_id || '',
+                        "Canal": i.channel || '',
+                        "Último Sinal": i.last_signal || ''
+                    };
+                });
             }
 
             const ws = XLSX.utils.json_to_sheet(rows);
@@ -2851,7 +3371,7 @@ function exportAuditTableExcel() {
     }
 
     // 2. Fallback via backend endpoint
-    const baseVal = document.getElementById('auditFilterBase')?.value || 'ALL';
+    const baseVal = (auditState.filters.bases && auditState.filters.bases.length > 0) ? auditState.filters.bases.join(',') : 'ALL';
     window.location.href = `/api/export/audit_excel?date=${encodeURIComponent(dateVal)}&base=${encodeURIComponent(baseVal)}&mode=${auditState.mode}`;
     showToast('Download da Planilha de Auditoria (.xlsx) iniciado!', 'success');
 }
@@ -2865,18 +3385,35 @@ function exportAuditTableCSV() {
         return;
     }
 
-    const dateVal = document.getElementById('auditFilterDate')?.value || 'hoje';
-    let csvContent = '\uFEFF'; // UTF-8 BOM
+    const dateVal = (auditState.selectedDates && auditState.selectedDates.length > 0)
+        ? auditState.selectedDates.join('_')
+        : 'hoje';
+
+    let csvContent = '\uFEFF';
+
+    const formatTime = (ts) => {
+        if (!ts) return '--';
+        try {
+            if (typeof ts === 'string' && ts.length <= 8 && ts.includes(':')) return ts;
+            const d = new Date(ts);
+            return isNaN(d.getTime()) ? ts : d.toLocaleTimeString('pt-BR');
+        } catch { return ts; }
+    };
 
     if (auditState.mode === 'daily') {
-        csvContent += 'Data;Equipe;Base;Regiao;Escala_PowerON;Conectou_TRBOnet;Coletas_Online;Total_Coletas;Uptime_Percentual;Primeiro_Sinal;Ultimo_Sinal\n';
+        csvContent += 'Data;Equipe;Codigo_Base;Base_Operacional;Regiao;Escala_PowerON;Conectou_TRBOnet;Horario_Marcacao;Primeiro_Sinal;Coletas_Online;Total_Coletas;Uptime_Percentual;Ultimo_Sinal\n';
         list.forEach(i => {
-            csvContent += `"${i.date_ref || dateVal}";"${i.team_code}";"${i.base_code || ''}";"${i.region || ''}";"${i.was_in_poweron ? 'SIM' : 'NAO'}";"${i.was_online_trbonet ? 'SIM' : 'NAO'}";"${i.times_seen_online || 0}";"${i.total_sync_checks || 0}";"${i.uptime_percentage || 0}%";"${i.first_seen_online || ''}";"${i.last_seen_online || ''}"\n`;
+            const baseInfo = getAuditBaseInfo(i.base_code);
+            const marcVal = (i.marcacao && i.marcacao !== '--') ? i.marcacao : '--';
+            const fSeen = formatTime(i.first_seen_online);
+
+            csvContent += `"${i.date_ref || dateVal}";"${i.team_code}";"${i.base_code || ''}";"${baseInfo.name}";"${i.region || (baseInfo.region ? `Região ${baseInfo.region}` : '')}";"${i.was_in_poweron ? 'SIM' : 'NAO'}";"${i.was_online_trbonet ? 'SIM' : 'NAO'}";"${marcVal}";"${fSeen}";"${i.times_seen_online || 0}";"${i.total_sync_checks || 0}";"${i.uptime_percentage || 0}%";"${formatTime(i.last_seen_online)}"\n`;
         });
     } else {
-        csvContent += 'Data_Hora_Coleta;Data_Ref;Equipe;Base;Regiao;Status;PowerON;TRBOnet;GPS;Radio_ID;Canal;Ultimo_Sinal\n';
+        csvContent += 'Data_Hora_Coleta;Data_Ref;Equipe;Codigo_Base;Base_Operacional;Regiao;Status;PowerON;TRBOnet;GPS;Radio_ID;Canal;Ultimo_Sinal\n';
         list.forEach(i => {
-            csvContent += `"${i.captured_at || ''}";"${i.date_ref || ''}";"${i.team_code}";"${i.base_code || ''}";"${i.region || ''}";"${i.status || ''}";"${i.in_poweron ? 'SIM' : 'NAO'}";"${i.in_trbonet ? 'SIM' : 'NAO'}";"${i.has_gps ? 'SIM' : 'NAO'}";"${i.radio_id || ''}";"${i.channel || ''}";"${i.last_signal || ''}"\n`;
+            const baseInfo = getAuditBaseInfo(i.base_code);
+            csvContent += `"${i.captured_at || ''}";"${i.date_ref || ''}";"${i.team_code}";"${i.base_code || ''}";"${baseInfo.name}";"${i.region || ''}";"${i.status || ''}";"${i.in_poweron ? 'SIM' : 'NAO'}";"${i.in_trbonet ? 'SIM' : 'NAO'}";"${i.has_gps ? 'SIM' : 'NAO'}";"${i.radio_id || ''}";"${i.channel || ''}";"${i.last_signal || ''}"\n`;
         });
     }
 
@@ -3431,7 +3968,8 @@ async function loadDeliveryData(forceRefresh = false) {
     if (refreshBtn) refreshBtn.classList.add('loading-pulse');
 
     try {
-        const resp = await fetch('/api/delivery/data');
+        const url = forceRefresh ? `/api/delivery/data?_=${Date.now()}` : '/api/delivery/data';
+        const resp = await fetch(url);
         const result = await resp.json();
 
         if (result.status === 'success') {

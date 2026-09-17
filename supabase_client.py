@@ -209,13 +209,29 @@ def fetch_daily_audit_summary(date_ref=None, base_code=None):
     """
     Consulta a View 'vw_team_daily_audit' para obter o consolidado de auditoria por equipe no dia.
     Responde se a equipe conectou no TRBOnet em algum momento do dia, quantas vezes e uptime.
+    Suporta múltiplas datas e bases (separadas por vírgula ou lista).
     """
     try:
         params = ["order=team_code.asc"]
         if date_ref:
-            params.append(f"date_ref=eq.{date_ref}")
+            if isinstance(date_ref, (list, set, tuple)):
+                dates = [str(d).strip() for d in date_ref if str(d).strip()]
+            else:
+                dates = [str(d).strip() for d in str(date_ref).split(',') if str(d).strip()]
+            if len(dates) == 1:
+                params.append(f"date_ref=eq.{dates[0]}")
+            elif len(dates) > 1:
+                params.append(f"date_ref=in.({','.join(dates)})")
+
         if base_code and base_code != "ALL":
-            params.append(f"base_code=eq.{base_code}")
+            if isinstance(base_code, (list, set, tuple)):
+                bases = [str(b).strip().upper() for b in base_code if str(b).strip() and str(b).strip().upper() != "ALL"]
+            else:
+                bases = [str(b).strip().upper() for b in str(base_code).split(',') if str(b).strip() and str(b).strip().upper() != "ALL"]
+            if len(bases) == 1:
+                params.append(f"base_code=eq.{bases[0]}")
+            elif len(bases) > 1:
+                params.append(f"base_code=in.({','.join(bases)})")
 
         query_str = "&".join(params)
         endpoint = f"{BASE_REST_URL}/vw_team_daily_audit?select=*{'&' + query_str if query_str else ''}"
@@ -227,6 +243,43 @@ def fetch_daily_audit_summary(date_ref=None, base_code=None):
             return {"status": "error", "message": response.text, "data": []}
     except Exception as e:
         return {"status": "error", "message": str(e), "data": []}
+
+def fetch_audit_delivery_marcacoes(date_refs):
+    """
+    Busca horários de marcação da tabela team_delivery_records para enriquecer a auditoria diária.
+    Retorna dicionário {(team_code, date_ref): marcacao} e mapa de contingência {team_code: marcacao}.
+    """
+    try:
+        if not date_refs:
+            return {}
+        if isinstance(date_refs, (list, set, tuple)):
+            dates = [str(d).strip() for d in date_refs if str(d).strip()]
+        else:
+            dates = [str(d).strip() for d in str(date_refs).split(',') if str(d).strip()]
+        if not dates:
+            return {}
+        
+        if len(dates) == 1:
+            date_filter = f"date_ref=eq.{dates[0]}"
+        else:
+            date_filter = f"date_ref=in.({','.join(dates)})"
+            
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?select=team_code,date_ref,marcacao&{date_filter}&limit=5000"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=10)
+        marc_map = {}
+        if resp.status_code == 200:
+            recs = resp.json() or []
+            for r in recs:
+                tc = (r.get("team_code") or "").strip().upper()
+                dr = (r.get("date_ref") or "").strip()
+                m = (r.get("marcacao") or "").strip()
+                if tc and m and m != "--":
+                    marc_map[(tc, dr)] = m
+                    marc_map[tc] = m  # Fallback
+        return marc_map
+    except Exception as e:
+        print(f"[SUPABASE FETCH MARCACOES ERROR] {e}")
+        return {}
 
 def fetch_team_timeline(team_code, date_ref=None):
     """
@@ -337,13 +390,13 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
             "captured_at": now.isoformat(),
             "date_ref": date_today,
             "total_teams": int(summary_active.get("total", len(active_teams))),
-            "total_cesto": int(counts_v.get("Cesto Aéreo", 0)),
-            "total_veiculo_leve": int(counts_v.get("Veículo Leve", 0)),
-            "total_moto": int(counts_v.get("Moto", 0)),
-            "total_munck": int(counts_v.get("Munck", 0)),
-            "total_linha_viva": int(counts_v.get("Linha Viva", 0)),
-            "total_alpitel": int(counts_c.get("Alpitel", 0)),
-            "total_propria": int(counts_c.get("Própria", 0)),
+            "total_cesto": int(summary_active.get("cesto") or counts_v.get("Cesto Aéreo", 0)),
+            "total_veiculo_leve": int(summary_active.get("leve") or counts_v.get("Veículo Leve", 0)),
+            "total_moto": int(summary_active.get("moto") or counts_v.get("Moto", 0)),
+            "total_munck": int(summary_active.get("munck") or counts_v.get("Munck", 0)),
+            "total_linha_viva": int(summary_active.get("linhaviva") or counts_v.get("Linha Viva", 0)),
+            "total_alpitel": int(summary_active.get("alpitel") or counts_c.get("Alpitel", 0)),
+            "total_propria": int(summary_active.get("propria") or counts_c.get("Própria", 0)),
             "sync_source": sync_source
         }
 
@@ -471,39 +524,49 @@ def fetch_team_order_history(team_code: str, date_ref: str = None) -> list:
 def fetch_latest_delivery_snapshot_from_supabase() -> dict:
     """Busca estritamente os registros da última sessão de entrega ativa gravada no Supabase."""
     try:
-        # 1. Busca a sessão mais recente que contenha registros (total_teams > 0)
-        endpoint_sess = f"{BASE_REST_URL}/team_delivery_sessions?total_teams=gt.0&order=captured_at.desc&limit=1"
-        resp_sess = requests.get(endpoint_sess, headers=get_headers(), timeout=10)
+        # 1. Busca as sessões mais recentes que contenham equipes
+        endpoint_sess = f"{BASE_REST_URL}/team_delivery_sessions?total_teams=gt.0&order=captured_at.desc&limit=5"
+        resp_sess = requests.get(endpoint_sess, headers=get_headers(), timeout=8)
         
-        latest_session_id = None
-        captured_at = None
         if resp_sess.status_code == 200:
             sessions = resp_sess.json() or []
-            if sessions:
-                latest_session_id = sessions[0].get("id")
-                captured_at = sessions[0].get("captured_at")
+            for s in sessions:
+                s_id = s.get("id")
+                s_date = s.get("date_ref")
+                s_captured_at = s.get("captured_at")
+                if not s_id:
+                    continue
 
-        if latest_session_id:
-            endpoint_recs = f"{BASE_REST_URL}/team_delivery_records?session_id=eq.{latest_session_id}&order=team_code.asc&limit=1000"
-            resp_recs = requests.get(endpoint_recs, headers=get_headers(), timeout=10)
-            if resp_recs.status_code == 200:
-                records = resp_recs.json() or []
-                if records:
-                    return {"status": "success", "data": records, "session_id": latest_session_id, "captured_at": captured_at}
+                date_filter = f"date_ref=eq.{s_date}&" if s_date else ""
+                endpoint_recs = f"{BASE_REST_URL}/team_delivery_records?{date_filter}session_id=eq.{s_id}&order=team_code.asc&limit=1000"
+                resp_recs = requests.get(endpoint_recs, headers=get_headers(), timeout=8)
+                if resp_recs.status_code == 200:
+                    records = resp_recs.json() or []
+                    if records:
+                        return {
+                            "status": "success",
+                            "data": records,
+                            "session_id": s_id,
+                            "captured_at": s_captured_at,
+                            "date_ref": s_date
+                        }
 
         # Fallback: busca os últimos registros deduplicando por team_code
         endpoint = f"{BASE_REST_URL}/team_delivery_records?order=captured_at.desc&limit=300"
-        resp = requests.get(endpoint, headers=get_headers(), timeout=10)
+        resp = requests.get(endpoint, headers=get_headers(), timeout=8)
         if resp.status_code == 200:
             raw_records = resp.json() or []
             seen = set()
             dedup = []
+            latest_captured_at = None
             for r in raw_records:
+                if not latest_captured_at and r.get("captured_at"):
+                    latest_captured_at = r.get("captured_at")
                 code = r.get("team_code")
                 if code and code not in seen:
                     seen.add(code)
                     dedup.append(r)
-            return {"status": "success", "data": dedup}
+            return {"status": "success", "data": dedup, "captured_at": latest_captured_at}
         return {"status": "error", "message": resp.text, "data": []}
     except Exception as e:
         return {"status": "error", "message": str(e), "data": []}
@@ -538,6 +601,24 @@ def fetch_delivery_sessions_by_month(month_str: str) -> list:
     except Exception as e:
         print(f"[SUPABASE FETCH MONTH ERROR] {e}")
         return []
+
+def prune_stale_delivery_snapshots(days_retention: int = 45):
+    """
+    Remove registros detalhados de coletas anteriores a X dias para prevenir inchaço
+    no banco de dados e garantir respostas ultrarrápidas (< 50ms) no Supabase.
+    Preserva intactas as tabelas diárias consolidadas.
+    """
+    try:
+        cutoff = (datetime.now(BR_TZ).date() - timedelta(days=days_retention)).isoformat()
+        headers = get_headers()
+        # Remove linhas antigas de team_delivery_records
+        requests.delete(f"{BASE_REST_URL}/team_delivery_records?date_ref=lt.{cutoff}", headers=headers, timeout=15)
+        # Remove logs operacionais antigos
+        requests.delete(f"{BASE_REST_URL}/team_operational_logs?date_ref=lt.{cutoff}", headers=headers, timeout=15)
+        # Remove snapshots JSON antigos
+        requests.delete(f"{BASE_REST_URL}/operational_snapshots?created_at=lt.{cutoff}", headers=headers, timeout=15)
+    except Exception as err:
+        print(f"[PRUNE WARN] Erro ao expurgar dados antigos: {err}")
 
 # ==============================================================================
 # MÓDULO SPOTFIRE & SCANNER 5.0: PERSISTÊNCIA E CONSULTA DE EXTRAÇÕES (TIBCO)

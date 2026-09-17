@@ -19,6 +19,7 @@ from supabase_client import (
     fetch_latest_snapshot_from_supabase,
     fetch_audit_logs,
     fetch_daily_audit_summary,
+    fetch_audit_delivery_marcacoes,
     fetch_team_timeline,
     clear_all_supabase_data,
     create_sync_command,
@@ -111,27 +112,33 @@ def get_data():
         # 1. Consulta o Supabase em tempo real
         cloud_res = fetch_latest_snapshot_from_supabase()
         if cloud_res.get("status") == "success" and cloud_res.get("data"):
-            return jsonify({
+            resp = jsonify({
                 "status": "success",
                 "source": "supabase_cloud",
                 "data": cloud_res["data"]
             })
+            resp.headers["Cache-Control"] = "public, max-age=5, s-maxage=10, stale-while-revalidate=20"
+            return resp
         elif cloud_res.get("status") == "empty":
             # Se o Supabase foi limpo/apagado, zera a memória local para 0
             empty_data = data_manager.reset_to_baseline()
-            return jsonify({
+            resp = jsonify({
                 "status": "success",
                 "source": "supabase_empty",
                 "data": empty_data
             })
+            resp.headers["Cache-Control"] = "no-cache"
+            return resp
 
         # 2. Caso ocorra erro de conexão/offline, usa a memória local como contingência
         data = data_manager.consolidate_data()
-        return jsonify({
+        resp = jsonify({
             "status": "success",
             "source": "local_memory",
             "data": data
         })
+        resp.headers["Cache-Control"] = "public, max-age=5, s-maxage=10, stale-while-revalidate=20"
+        return resp
     except Exception as e:
         return jsonify({
             "status": "error",
@@ -897,6 +904,10 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
             }
 
     # Ambiente Local Windows: Executa a leitura da tela do TRBOnet One via UIAutomation
+    start_t = time.time()
+    ts_start = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    print(f"\n[{ts_start}] [TRBONET] >>> INICIANDO CICLO DE CAPTURA: TRBOnet One ({source_label})...", flush=True)
+
     try:
         # 1. Hidrata PowerON da nuvem se não estiver em memória local
         if not data_manager.poweron_teams:
@@ -906,7 +917,11 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
 
         from coletar_trbonet_completo import extrair_dados_trbonet
         radios = extrair_dados_trbonet()
+        elapsed = round(time.time() - start_t, 2)
+        ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+
         if not radios:
+            print(f"[{ts_end}] [TRBONET] <<< CICLO FINALIZADO COM AVISO ({elapsed}s): Nenhum rádio encontrado ou TRBOnet fechado.", flush=True)
             return {
                 "status": "warning",
                 "message": "Nenhum rádio encontrado ou janela do TRBOnet One fechada no Windows.",
@@ -922,7 +937,7 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
         try:
             push_snapshot_to_supabase(updated_data)
         except Exception as err:
-            print(f"[WARN] Falha ao enviar snapshot para o Supabase: {err}")
+            print(f"[WARN] Falha ao enviar snapshot para o Supabase: {err}", flush=True)
 
         try:
             from supabase_client import update_engine_health
@@ -933,15 +948,16 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
         except Exception:
             pass
 
-        timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        print(f"[{timestamp_str}] [TRBONET SYNC] {len(radios)} rádios sincronizados ({source_label}).")
+        print(f"[{ts_end}] [TRBONET] <<< CICLO FINALIZADO COM SUCESSO: {len(radios)} rádios sincronizados em {elapsed}s ({source_label}).", flush=True)
         return {
             "status": "success",
             "message": f"Capturados {len(radios)} rádios ao vivo do TRBOnet One!",
             "data": updated_data
         }
     except Exception as e:
-        print(f"[TRBONET SYNC ERROR] {e}")
+        elapsed = round(time.time() - start_t, 2)
+        ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        print(f"[{ts_end}] [TRBONET] <<< CICLO FINALIZADO COM ERRO ({elapsed}s): {e}", flush=True)
         try:
             from supabase_client import update_engine_health
             update_engine_health("trbonet_collector", "ERROR_CONNECTION", is_running=True,
@@ -1114,10 +1130,43 @@ def get_audit_logs():
 def get_daily_audit_summary():
     """
     Retorna o consolidado de auditoria diária (se a equipe conectou no dia, uptime, total coletas).
+    Enriquecido com horário de marcação (login do Equipes Brasil).
     """
     date_ref = request.args.get("date")
     base_code = request.args.get("base")
     res = fetch_daily_audit_summary(date_ref=date_ref, base_code=base_code)
+    
+    if res.get("status") == "success" and isinstance(res.get("data"), list):
+        # 1. Mapa de marcação da memória local (hoje em tempo real)
+        memory_marc_map = {}
+        try:
+            for t_code, t_data in getattr(delivery_manager, 'daily_accumulated_teams', {}).items():
+                m_val = str(t_data.get("marcacao") or t_data.get("hora_marc") or "").strip()
+                if m_val and m_val != "--":
+                    memory_marc_map[str(t_code).strip().upper()] = m_val
+        except Exception:
+            pass
+
+        # 2. Mapa de marcação histórico do Supabase (para datas passadas ou registros deduplicados)
+        db_marc_map = {}
+        try:
+            dates_in_res = set(filter(None, [r.get("date_ref") for r in res["data"]]))
+            if date_ref:
+                for d in str(date_ref).split(','):
+                    if d.strip():
+                        dates_in_res.add(d.strip())
+            if dates_in_res:
+                db_marc_map = fetch_audit_delivery_marcacoes(list(dates_in_res))
+        except Exception:
+            pass
+
+        # 3. Injeta o horário de marcação em cada linha
+        for row in res["data"]:
+            tc = str(row.get("team_code") or "").strip().upper()
+            dr = str(row.get("date_ref") or "").strip()
+            marc = db_marc_map.get((tc, dr)) or db_marc_map.get(tc) or memory_marc_map.get(tc) or "--"
+            row["marcacao"] = marc
+
     return jsonify(res)
 
 @app.route('/api/audit/team_timeline', methods=['GET'])
@@ -1748,7 +1797,9 @@ def get_teams_data():
         except Exception:
             pass
 
-    return jsonify(delivery_manager.get_consolidated_state())
+    resp = jsonify(delivery_manager.get_consolidated_state())
+    resp.headers["Cache-Control"] = "public, max-age=5, s-maxage=10, stale-while-revalidate=20"
+    return resp
 
 @app.route('/api/delivery/history', methods=['GET'])
 def get_delivery_history_by_date():

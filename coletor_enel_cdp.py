@@ -18,6 +18,7 @@ except Exception:
 
 import json
 import time
+import threading
 import urllib.request
 from datetime import datetime
 import websocket
@@ -25,6 +26,8 @@ import websocket
 CDP_HOST = "127.0.0.1"
 CDP_PORT = 9222
 ENEL_DOMAIN_KEYWORD = "equipesbrasil.enelint.global"
+
+_ENEL_LOCK = threading.Lock()
 
 def listar_alvos_cdp():
     """Consulta os alvos abertos no navegador via endpoint HTTP do CDP."""
@@ -309,17 +312,32 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
     """
     Executa a extração, consolidação no delivery_manager e push para o Supabase.
     """
+    if not _ENEL_LOCK.acquire(blocking=False):
+        ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        print(f"[{ts}] [CDP ENEL] Ciclo anterior ainda em andamento. Ignorando novo disparo ({source_label}).", flush=True)
+        return {"status": "busy", "message": "Ciclo anterior da Enel em andamento"}
+
+    start_t = time.time()
+    ts_start = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    print(f"\n[{ts_start}] [CDP ENEL] >>> INICIANDO CICLO DE COLETA: EquipesBrasil ENEL SP ({source_label})...", flush=True)
+
     try:
         from delivery_manager import delivery_manager
         from supabase_client import push_delivery_snapshot_to_supabase
 
         res = extrair_dados_enel_via_cdp()
         if res.get("status") != "success":
-            print(f"[ENEL CDP WARN] {res.get('message', 'Aba não encontrada ou CDP inativo')}", flush=True)
+            elapsed = round(time.time() - start_t, 2)
+            ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+            msg = res.get('message', 'Aba não encontrada ou CDP inativo')
+            print(f"[{ts_end}] [CDP ENEL] <<< CICLO FINALIZADO COM AVISO ({elapsed}s): {msg}", flush=True)
             return res
 
         records = res.get("records", [])
         if not records:
+            elapsed = round(time.time() - start_t, 2)
+            ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+            print(f"[{ts_end}] [CDP ENEL] <<< CICLO FINALIZADO: Nenhuma equipe retornada na tabela ({elapsed}s).", flush=True)
             return res
 
         # Consolida no delivery_manager
@@ -331,8 +349,9 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
         except Exception as err:
             print(f"[WARN] Falha ao enviar dados da Enel para o Supabase: {err}")
 
-        timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        print(f"[{timestamp_str}] [ENEL SYNC CDP] {len(records)} equipes sincronizadas ({source_label}).", flush=True)
+        elapsed = round(time.time() - start_t, 2)
+        ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        print(f"[{ts_end}] [CDP ENEL] <<< CICLO FINALIZADO COM SUCESSO: {len(records)} equipes sincronizadas no Supabase em {elapsed}s ({source_label}).", flush=True)
 
         try:
             from supabase_client import update_engine_health
@@ -346,7 +365,6 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
         # Dispara a sincronização sequencial do CDP BidTech Visão Operacional logo após Equipes Brasil
         try:
             from coletor_bid_cdp import executar_ciclo_sincronizacao_bid
-            import threading
             threading.Thread(target=executar_ciclo_sincronizacao_bid, kwargs={"source_label": "Gatilho Pós-EquipesBrasil"}, daemon=True).start()
         except Exception as b_err:
             print(f"[BID CDP AUTO TRIGGER ERROR] {b_err}", flush=True)
@@ -357,7 +375,9 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
             "data": consolidated
         }
     except Exception as e:
-        print(f"[ENEL SYNC ERROR] {e}", flush=True)
+        elapsed = round(time.time() - start_t, 2)
+        ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        print(f"[{ts_end}] [CDP ENEL] <<< CICLO FINALIZADO COM ERRO ({elapsed}s): {e}", flush=True)
         try:
             from supabase_client import update_engine_health
             update_engine_health("enel_cdp_collector", "ERROR_CONNECTION", is_running=True,
@@ -369,18 +389,20 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
             "status": "error",
             "message": str(e)
         }
+    finally:
+        _ENEL_LOCK.release()
 
 def enel_background_worker(interval_seconds=120, stop_event=None):
     """
     Worker executado em thread contínua a cada 2 minutos (120s),
     exatamente no mesmo padrão do TRBOnet.
     """
-    print(f"[BACKGROUND WORKER] Rotina de auto-captura da Enel SP iniciada (intervalo: {interval_seconds}s).", flush=True)
+    print(f"[BACKGROUND WORKER] Motor CDP Enel SP ativo (intervalo: {interval_seconds}s).", flush=True)
     if stop_event:
-        if stop_event.wait(10):
+        if stop_event.wait(5):
             return
     else:
-        time.sleep(10)
+        time.sleep(5)
 
     while True:
         if stop_event and stop_event.is_set():

@@ -25,6 +25,7 @@ import json
 import time
 import re
 import urllib.request
+import threading
 from datetime import datetime, date, timedelta
 try:
     import websocket
@@ -37,6 +38,8 @@ CDP_HOST = "127.0.0.1"
 CDP_PORT = 9222
 SPOTFIRE_URL = "http://elabziplra00.enelint.global:8090/spotfire/wp/analysis?file=/SP/COD/Scanner%205.0"
 SPOTFIRE_DOMAIN = "elabziplra00.enelint.global"
+
+_SPOTFIRE_LOCK = threading.Lock()
 
 WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS_DIR = os.path.join(WORKSPACE_DIR, "temp_spotfire_downloads")
@@ -902,17 +905,31 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
     5. Reconcilia no delivery_manager.
     6. Exclui o arquivo temporário baixado.
     """
+    if not _SPOTFIRE_LOCK.acquire(blocking=False):
+        ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        print(f"[{ts}] [CDP SPOTFIRE] Ciclo anterior ainda em andamento. Ignorando novo disparo ({source_label}).", flush=True)
+        return {"status": "busy", "message": "Ciclo anterior do Spotfire em andamento"}
+
+    start_t = time.time()
+    ts_start = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    print(f"\n[{ts_start}] [CDP SPOTFIRE] >>> INICIANDO CICLO DE COLETA: Scanner 5.0 Spotfire ({source_label})...", flush=True)
+
     try:
         from supabase_client import push_scanner_records_to_supabase
         from delivery_manager import delivery_manager
 
         tab = localizar_aba_spotfire(criar_se_nao_existir=True)
         if not tab:
-            print("[SPOTFIRE CDP WARN] Aba do Spotfire/Scanner não encontrada no navegador.", flush=True)
+            elapsed = round(time.time() - start_t, 2)
+            ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+            print(f"[{ts_end}] [CDP SPOTFIRE] <<< CICLO FINALIZADO COM AVISO ({elapsed}s): Aba do Spotfire não encontrada.", flush=True)
             return {"status": "error", "message": "Aba do Spotfire não encontrada."}
 
         ws_url = tab.get("webSocketDebuggerUrl")
         if not ws_url:
+            elapsed = round(time.time() - start_t, 2)
+            ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+            print(f"[{ts_end}] [CDP SPOTFIRE] <<< CICLO FINALIZADO COM ERRO ({elapsed}s): WebSocket CDP indisponível.", flush=True)
             return {"status": "error", "message": "WebSocket CDP indisponível."}
 
         client = SpotfireCDPClient(ws_url)
@@ -925,6 +942,9 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
             client.close()
 
         if not downloaded_file or not os.path.exists(downloaded_file):
+            elapsed = round(time.time() - start_t, 2)
+            ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+            print(f"[{ts_end}] [CDP SPOTFIRE] <<< CICLO FINALIZADO COM AVISO ({elapsed}s): Falha na geração do arquivo exportado.", flush=True)
             return {"status": "error", "message": "Falha na geração do arquivo exportado do Scanner 5.0."}
 
         today_str = date.today().isoformat()
@@ -943,7 +963,9 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
             pass
 
         if not records:
-            print(f"[SPOTFIRE CDP] Nenhum registro encontrado para processamento.", flush=True)
+            elapsed = round(time.time() - start_t, 2)
+            ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+            print(f"[{ts_end}] [CDP SPOTFIRE] <<< CICLO FINALIZADO COM AVISO ({elapsed}s): Nenhum registro retornado.", flush=True)
             return {"status": "success", "count": 0, "message": "Nenhum registro encontrado."}
 
         # Persiste no Supabase via UPSERT atômico na tabela team_scanner_records
@@ -962,9 +984,10 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
                 latest_records = [r for r in records if r.get("data_referencia") == latest_dt]
                 delivery_manager.reconcile_with_spotfire_records(latest_records, date_ref=latest_dt)
 
-        timestamp_str = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        set_last_scanner_sync_time(timestamp_str)
-        print(f"[{timestamp_str}] [SCANNER 5.0 SYNC CDP] {count_saved} equipes sincronizadas com sucesso no Supabase ({source_label}).", flush=True)
+        elapsed = round(time.time() - start_t, 2)
+        ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        set_last_scanner_sync_time(ts_end)
+        print(f"[{ts_end}] [CDP SPOTFIRE] <<< CICLO FINALIZADO COM SUCESSO: {count_saved} equipes sincronizadas no Supabase em {elapsed}s ({source_label}).", flush=True)
 
         try:
             from supabase_client import update_engine_health
@@ -978,11 +1001,13 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
         return {
             "status": "success",
             "count": count_saved,
-            "last_sync": timestamp_str,
+            "last_sync": ts_end,
             "message": f"{count_saved} registros do Scanner 5.0 sincronizados com sucesso."
         }
     except Exception as e:
-        print(f"[SCANNER SYNC ERROR] {e}", flush=True)
+        elapsed = round(time.time() - start_t, 2)
+        ts_end = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        print(f"[{ts_end}] [CDP SPOTFIRE] <<< CICLO FINALIZADO COM ERRO ({elapsed}s): {e}", flush=True)
         try:
             from supabase_client import update_engine_health
             update_engine_health("spotfire_cdp_collector", "ERROR_CONNECTION", is_running=True,
@@ -991,6 +1016,8 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
         except Exception:
             pass
         return {"status": "error", "message": str(e)}
+    finally:
+        _SPOTFIRE_LOCK.release()
 
 LAST_SYNC_FILE = os.path.join(WORKSPACE_DIR, "scanner_last_sync.json")
 
@@ -1021,7 +1048,7 @@ def spotfire_background_worker(interval_seconds=1800, stop_event=None):
     Worker contínuo executado em background thread a cada 30 minutos (1800s).
     """
     mins = int(interval_seconds // 60)
-    print(f"[BACKGROUND WORKER] Rotina de auto-captura do TIBCO Spotfire Scanner 5.0 iniciada (intervalo: {mins} min).", flush=True)
+    print(f"[BACKGROUND WORKER] Motor CDP TIBCO Spotfire ativo (intervalo: {mins} min).", flush=True)
     if stop_event:
         if stop_event.wait(15):
             return

@@ -52,7 +52,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     from app import app, start_background_jobs
-    start_background_jobs()
 
     port = find_available_port(args.port)
     host = args.host
@@ -62,13 +61,29 @@ if __name__ == '__main__':
     url_loopback = f"http://127.0.0.1:{port}"
     url_network = f"http://{lan_ip}:{port}"
 
-    print("\n" + "="*75)
-    print("[INICIADO] ALERTAS OPERACIONAIS OP (PowerON vs TRBOnet & Entrega)")
-    print(f"[OK] Acesso Local:         {url_local}  ou  {url_loopback}")
-    print(f"[OK] Acesso na Rede / PWA: {url_network}")
-    print(f"[INFO] Host Vinculado:     {host} na porta {port}")
-    print("[INFO] Auditoria e Conciliacao em Tempo Real Ativa")
-    print("="*75 + "\n", flush=True)
+    print("\n" + "="*78)
+    print("  SERVIDOR LOCAL INICIADO - ALERTAS OPERACIONAIS OP (CCO & ENTREGA)")
+    print("="*78)
+    print(f"  [OK] Painel Local:         {url_local}  ou  {url_loopback}")
+    print(f"  [OK] Acesso Rede / PWA:    {url_network}")
+    print(f"  [OK] Host Vinculado:       {host} na porta {port}")
+    print(f"  [OK] Depuracao CDP Port:   127.0.0.1:9222")
+    print("="*78)
+    print("  [INFO] Motores de Coleta Autonoma Ativos (CDP & WebSocket):")
+    print("         - Enel SP (EquipesBrasil):        a cada 2 min (120s)")
+    print("         - BidTech (Visao Operacional):     a cada 2 min (120s)")
+    print("         - TIBCO Spotfire (Scanner 5.0):   a cada 30 min (1800s)")
+    print("         - TRBOnet One (Radios & GPS):      a cada 2 min (120s)")
+    print("="*78 + "\n", flush=True)
+
+    # Garante abas dos portais abertas no Chrome/Edge CDP
+    try:
+        from cdp_browser_manager import garantir_abas_operacionais
+        garantir_abas_operacionais()
+    except Exception as e:
+        print(f"[CDP MANAGER WARN] Verificação de abas CDP: {e}", flush=True)
+
+    start_background_jobs()
 
     if not args.no_browser:
         threading.Thread(target=open_browser, args=(url_local,), daemon=True).start()

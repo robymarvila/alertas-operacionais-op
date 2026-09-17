@@ -28,6 +28,7 @@ import json
 import time
 import re
 import urllib.request
+import threading
 from datetime import datetime, timezone, timedelta
 
 try:
@@ -39,6 +40,8 @@ from cdp_browser_manager import CDP_HOST, CDP_PORT, garantir_abas_operacionais
 
 BR_TZ = timezone(timedelta(hours=-3))
 BID_URL_SUBSTRING = "suite360.bidtech.com.br"
+
+_BID_LOCK = threading.Lock()
 
 _LAST_BID_SYNC_RESULT = {
     "status": "pending",
@@ -449,94 +452,111 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
     4. Alimenta o delivery_manager em memória
     """
     global _LAST_BID_SYNC_RESULT
+    if not _BID_LOCK.acquire(blocking=False):
+        ts = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
+        print(f"[{ts}] [CDP BIDTECH] Ciclo anterior ainda em andamento. Ignorando novo disparo ({source_label}).", flush=True)
+        return {"status": "busy", "message": "Ciclo anterior do BidTech em andamento"}
+
     from delivery_manager import delivery_manager
     from supabase_client import push_bid_records_to_supabase
 
-    print(f"[BID CDP] Iniciando sincronização BID ({source_label})...", flush=True)
-
     start_t = time.time()
-    result = extrair_cards_bid_visao_operacional()
+    ts_start = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
+    print(f"\n[{ts_start}] [CDP BIDTECH] >>> INICIANDO CICLO DE COLETA: Visão Operacional ({source_label})...", flush=True)
 
-    if result.get("status") == "success":
-        records = result.get("records", [])
-        date_ref = result.get("date_ref")
+    try:
+        result = extrair_cards_bid_visao_operacional()
 
-        # 1. Envia ao Supabase (upsert)
-        sb_res = push_bid_records_to_supabase(records, date_ref)
+        if result.get("status") == "success":
+            records = result.get("records", [])
+            date_ref = result.get("date_ref")
 
-        # 2. Saneamento: remove registros fantasmas que não existem na extração legítima
-        if len(records) > 0:
+            # 1. Envia ao Supabase (upsert)
+            sb_res = push_bid_records_to_supabase(records, date_ref)
+
+            # 2. Saneamento: remove registros fantasmas que não existem na extração legítima
+            if len(records) > 0:
+                try:
+                    from supabase_client import prune_stale_bid_records
+                    valid_codes = [r.get("team_code") for r in records if r.get("team_code")]
+                    prune_stale_bid_records(date_ref, valid_codes)
+                except Exception as prune_err:
+                    print(f"[BID CDP] Aviso ao purgar registros fantasmas: {prune_err}", flush=True)
+
+            # 3. Atualiza o delivery_manager em memória
+            delivery_manager.process_raw_bid_records(records, date_ref)
+
+            # 4. Notifica o monitor de saúde no Supabase
             try:
-                from supabase_client import prune_stale_bid_records
-                valid_codes = [r.get("team_code") for r in records if r.get("team_code")]
-                prune_stale_bid_records(date_ref, valid_codes)
-            except Exception as prune_err:
-                print(f"[BID CDP] Aviso ao purgar registros fantasmas: {prune_err}", flush=True)
+                from supabase_client import update_engine_health
+                update_engine_health(
+                    "bid_cdp_collector", "OPERATIONAL", is_running=True,
+                    error_type="NONE", last_error=None,
+                    records_count=len(records),
+                    engine_label="Robô CDP BidTech (Checklist Operacional)",
+                    details_json={
+                        "date_ref": date_ref,
+                        "status_counts": result.get("status_counts", {}),
+                        "total_extracted": len(records),
+                        "sync_source": source_label
+                    }
+                )
+            except Exception:
+                pass
 
-        # 3. Atualiza o delivery_manager em memória
-        delivery_manager.process_raw_bid_records(records, date_ref)
+            elapsed = round(time.time() - start_t, 2)
+            ts_end = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
+            counts_str = ", ".join([f"{k}: {v}" for k, v in result.get("status_counts", {}).items()])
+            msg = f"{len(records)} equipes ({counts_str}) sincronizadas em {elapsed}s."
 
-        # 3. Notifica o monitor de saúde no Supabase
-        try:
-            from supabase_client import update_engine_health
-            update_engine_health(
-                "bid_cdp_collector", "OPERATIONAL", is_running=True,
-                error_type="NONE", last_error=None,
-                records_count=len(records),
-                engine_label="Robô CDP BidTech (Checklist Operacional)",
-                details_json={
-                    "date_ref": date_ref,
-                    "status_counts": result.get("status_counts", {}),
-                    "total_extracted": len(records),
-                    "sync_source": source_label
-                }
-            )
-        except Exception:
-            pass
+            _LAST_BID_SYNC_RESULT = {
+                "status": "success",
+                "timestamp": ts_end,
+                "total_extracted": len(records),
+                "status_counts": result.get("status_counts", {}),
+                "message": msg
+            }
+            print(f"[{ts_end}] [CDP BIDTECH] <<< CICLO FINALIZADO COM SUCESSO: {msg}", flush=True)
+            return _LAST_BID_SYNC_RESULT
+        else:
+            elapsed = round(time.time() - start_t, 2)
+            ts_end = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
+            err_msg = result.get("message", "Erro desconhecido")
+            try:
+                from supabase_client import update_engine_health
+                update_engine_health(
+                    "bid_cdp_collector", "ERROR_CONNECTION", is_running=True,
+                    error_type="CONNECTION_REFUSED", last_error=err_msg,
+                    records_count=0,
+                    engine_label="Robô CDP BidTech (Checklist Operacional)"
+                )
+            except Exception:
+                pass
 
+            _LAST_BID_SYNC_RESULT = {
+                "status": "error",
+                "timestamp": ts_end,
+                "total_extracted": 0,
+                "status_counts": {},
+                "message": err_msg
+            }
+            print(f"[{ts_end}] [CDP BIDTECH] <<< CICLO FINALIZADO COM AVISO/ERRO ({elapsed}s): {err_msg}", flush=True)
+            return _LAST_BID_SYNC_RESULT
+    except Exception as exc:
         elapsed = round(time.time() - start_t, 2)
-        counts_str = ", ".join([f"{k}: {v}" for k, v in result.get("status_counts", {}).items()])
-        msg = f"Sincronização BidTech concluída em {elapsed}s. {len(records)} equipes ({counts_str}). Supabase: {sb_res.get('status')}"
-
-        _LAST_BID_SYNC_RESULT = {
-            "status": "success",
-            "timestamp": datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S"),
-            "total_extracted": len(records),
-            "status_counts": result.get("status_counts", {}),
-            "message": msg
-        }
-        print(f"[BID CDP OK] {msg}", flush=True)
-        return _LAST_BID_SYNC_RESULT
-    else:
-        err_msg = result.get("message", "Erro desconhecido")
-        try:
-            from supabase_client import update_engine_health
-            update_engine_health(
-                "bid_cdp_collector", "ERROR_CONNECTION", is_running=True,
-                error_type="CONNECTION_REFUSED", last_error=err_msg,
-                records_count=0,
-                engine_label="Robô CDP BidTech (Checklist Operacional)"
-            )
-        except Exception:
-            pass
-
-        _LAST_BID_SYNC_RESULT = {
-            "status": "error",
-            "timestamp": datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S"),
-            "total_extracted": 0,
-            "status_counts": {},
-            "message": err_msg
-        }
-        print(f"[BID CDP WARN] {err_msg}", flush=True)
-        return _LAST_BID_SYNC_RESULT
+        ts_end = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
+        print(f"[{ts_end}] [CDP BIDTECH] <<< CICLO FINALIZADO COM ERRO CRITICO ({elapsed}s): {exc}", flush=True)
+        return {"status": "error", "message": str(exc)}
+    finally:
+        _BID_LOCK.release()
 
 
 def bid_background_worker(interval_seconds=120, stop_event=None):
     """
     Thread de background que executa a coleta contínua da Visão Operacional BidTech a cada 120 segundos.
     """
-    print(f"[BID BACKGROUND] Worker iniciado. Intervalo de coleta: {interval_seconds}s.", flush=True)
-    time.sleep(10)
+    print(f"[BACKGROUND WORKER] Motor CDP BidTech ativo (intervalo: {interval_seconds}s).", flush=True)
+    time.sleep(8)
 
     while True:
         if stop_event and stop_event.is_set():

@@ -924,62 +924,128 @@
                     </div>
                 </div>
 
-                <div class="audit-filters-row">
-                    <!-- 1. Seletor de Data -->
-                    <div class="audit-input-group">
-                        <label><i data-lucide="calendar" class="mini-icon"></i> Data de Referência:</label>
-                        <input type="date" id="auditFilterDate" class="audit-date-input" onchange="loadAuditData()">
-                    </div>
-
-                    <!-- 2. Filtro de Base Operacional -->
-                    <div class="audit-input-group">
-                        <label><i data-lucide="map-pin" class="mini-icon"></i> Base Operacional:</label>
-                        <select id="auditFilterBase" class="audit-select-input" onchange="loadAuditData()">
-                            <option value="ALL">Todas as 7 Bases Alpitel</option>
-                            <optgroup label="Região Norte Alpitel">
-                                <option value="ENL">ENL - Base Fagundes Filho</option>
-                                <option value="ECL">ECL - Base Cajati</option>
-                                <option value="EEL">EEL - Base Vila Medeiros</option>
-                            </optgroup>
-                            <optgroup label="Região Leste Alpitel">
-                                <option value="EML">EML - Base Monte Santo</option>
-                                <option value="EQL">EQL - Base Aricanduva</option>
-                                <option value="EVL">EVL - Base Catumbi</option>
-                                <option value="ESL">ESL - Base Santo André</option>
-                            </optgroup>
-                        </select>
-                    </div>
-
-                    <!-- 3. Filtro de Status -->
-                    <div class="audit-input-group">
-                        <label><i data-lucide="filter" class="mini-icon"></i> Status:</label>
-                        <select id="auditFilterStatus" class="audit-select-input" onchange="loadAuditData()">
-                            <option value="ALL">Todos os Status</option>
-                            <option value="CONFORME">Conforme (Equipes Brasil + TRBOnet)</option>
-                            <option value="APENAS_POWERON">Apenas no Equipes Brasil</option>
-                            <option value="APENAS_TRBONET">Apenas no TRBOnet</option>
-                            <option value="OFFLINE">Offline</option>
-                        </select>
-                    </div>
-
-                    <!-- 4. Busca por Código de Equipe -->
-                    <div class="audit-input-group audit-search-group">
-                        <label><i data-lucide="search" class="mini-icon"></i> Buscar Equipe:</label>
-                        <div class="audit-search-wrap">
-                            <input type="text" id="auditSearchTeam" placeholder="Ex: ENL100, ECL121..." class="audit-search-input" oninput="debounceAuditSearch()">
-                            <i data-lucide="search" class="audit-search-icon"></i>
+                <!-- CONTROLES MULTI-FILTRO MODERNOS (PADRÃO EXPRESSIVE & PILL POPOVER) -->
+                <div class="period-filters-controls audit-filters-controls" style="width: 100%; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px; margin-top: 14px;">
+                    <!-- 1. Seletor de Data de Auditoria (Múltiplas Datas via Flatpickr) -->
+                    <div class="period-filter-group" style="min-width: 170px;">
+                        <span class="period-filter-label"><i data-lucide="calendar" class="mini-icon"></i> DATA DE AUDITORIA</span>
+                        <div class="report-date-pill" id="auditReportDatePill" title="Clique para escolher uma ou mais datas de auditoria">
+                            <i data-lucide="calendar" style="width: 16px; height: 16px; color: #2563eb;"></i>
+                            <input type="text" id="auditDateInput" placeholder="Selecione as datas..." readonly>
                         </div>
                     </div>
 
-                    <!-- Botão de Recarregar & Exportar -->
-                    <div class="audit-actions-group">
-                        <button class="btn btn-primary btn-with-icon" onclick="loadAuditData()" title="Consultar dados no Supabase">
-                            <i data-lucide="refresh-cw" id="btnAuditRefreshIcon"></i>
-                            <span>Buscar</span>
+                    <!-- 2. Filtro de Região (Multi-Seleção Popover: Norte / Leste) -->
+                    <div class="period-filter-group dropdown-popover-container">
+                        <span class="period-filter-label"><i data-lucide="compass" class="mini-icon"></i> REGIÃO</span>
+                        <button type="button" class="period-filter-pill-btn" id="auditFilterRegionBtn" data-target="auditFilterRegionMenu">
+                            <span id="auditFilterRegionLabel">Todos</span>
+                            <i data-lucide="chevron-right" class="pill-arrow"></i>
                         </button>
-                        <button class="btn btn-secondary btn-with-icon" onclick="exportAuditTableExcel()" title="Exportar dados filtrados para Planilha Excel (.xlsx)">
+                        <div class="period-filter-popover" id="auditFilterRegionMenu">
+                            <div class="popover-actions">
+                                <button type="button" class="popover-action-btn" data-action="select-all" data-audit-filter="region">Todos</button>
+                                <button type="button" class="popover-action-btn" data-action="clear-all" data-audit-filter="region">Limpar</button>
+                            </div>
+                            <div class="popover-items-list" id="auditFilterRegionList">
+                                <!-- Checkboxes preenchidos via JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Filtro de Base Operacional (Multi-Seleção Hierárquica por Região) -->
+                    <div class="period-filter-group dropdown-popover-container">
+                        <span class="period-filter-label"><i data-lucide="map-pin" class="mini-icon"></i> BASE OPERACIONAL</span>
+                        <button type="button" class="period-filter-pill-btn" id="auditFilterBaseBtn" data-target="auditFilterBaseMenu">
+                            <span id="auditFilterBaseLabel">Todos</span>
+                            <i data-lucide="chevron-right" class="pill-arrow"></i>
+                        </button>
+                        <div class="period-filter-popover" id="auditFilterBaseMenu" style="min-width: 270px;">
+                            <div class="popover-actions">
+                                <button type="button" class="popover-action-btn" data-action="select-all" data-audit-filter="base">Todos</button>
+                                <button type="button" class="popover-action-btn" data-action="clear-all" data-audit-filter="base">Limpar</button>
+                            </div>
+                            <div class="popover-items-list" id="auditFilterBaseList">
+                                <!-- Checkboxes hierárquicos preenchidos via JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Filtro de Status TRBOnet (Multi-Seleção Popover) -->
+                    <div class="period-filter-group dropdown-popover-container">
+                        <span class="period-filter-label"><i data-lucide="filter" class="mini-icon"></i> STATUS AUDITORIA</span>
+                        <button type="button" class="period-filter-pill-btn" id="auditFilterStatusBtn" data-target="auditFilterStatusMenu">
+                            <span id="auditFilterStatusLabel">Todos</span>
+                            <i data-lucide="chevron-right" class="pill-arrow"></i>
+                        </button>
+                        <div class="period-filter-popover" id="auditFilterStatusMenu" style="min-width: 250px;">
+                            <div class="popover-actions">
+                                <button type="button" class="popover-action-btn" data-action="select-all" data-audit-filter="status">Todos</button>
+                                <button type="button" class="popover-action-btn" data-action="clear-all" data-audit-filter="status">Limpar</button>
+                            </div>
+                            <div class="popover-items-list" id="auditFilterStatusList">
+                                <!-- Checkboxes preenchidos via JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. Filtro Conectou Hoje? (Multi-Seleção Popover) -->
+                    <div class="period-filter-group dropdown-popover-container">
+                        <span class="period-filter-label"><i data-lucide="radio" class="mini-icon"></i> CONECTOU HOJE?</span>
+                        <button type="button" class="period-filter-pill-btn" id="auditFilterConnectedBtn" data-target="auditFilterConnectedMenu">
+                            <span id="auditFilterConnectedLabel">Todos</span>
+                            <i data-lucide="chevron-right" class="pill-arrow"></i>
+                        </button>
+                        <div class="period-filter-popover" id="auditFilterConnectedMenu" style="min-width: 210px;">
+                            <div class="popover-actions">
+                                <button type="button" class="popover-action-btn" data-action="select-all" data-audit-filter="connected">Todos</button>
+                                <button type="button" class="popover-action-btn" data-action="clear-all" data-audit-filter="connected">Limpar</button>
+                            </div>
+                            <div class="popover-items-list" id="auditFilterConnectedList">
+                                <!-- Checkboxes preenchidos via JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. Filtro Escala PowerON (Multi-Seleção Popover) -->
+                    <div class="period-filter-group dropdown-popover-container">
+                        <span class="period-filter-label"><i data-lucide="shield-check" class="mini-icon"></i> ESCALA POWERON</span>
+                        <button type="button" class="period-filter-pill-btn" id="auditFilterPoweronBtn" data-target="auditFilterPoweronMenu">
+                            <span id="auditFilterPoweronLabel">Todos</span>
+                            <i data-lucide="chevron-right" class="pill-arrow"></i>
+                        </button>
+                        <div class="period-filter-popover" id="auditFilterPoweronMenu" style="min-width: 210px;">
+                            <div class="popover-actions">
+                                <button type="button" class="popover-action-btn" data-action="select-all" data-audit-filter="poweron">Todos</button>
+                                <button type="button" class="popover-action-btn" data-action="clear-all" data-audit-filter="poweron">Limpar</button>
+                            </div>
+                            <div class="popover-items-list" id="auditFilterPoweronList">
+                                <!-- Checkboxes preenchidos via JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 7. Busca Textual por Código de Equipe -->
+                    <div class="period-filter-group" style="min-width: 190px;">
+                        <span class="period-filter-label"><i data-lucide="search" class="mini-icon"></i> BUSCAR EQUIPE</span>
+                        <div class="period-filter-select-wrap">
+                            <input type="text" id="auditSearchTeam" class="period-filter-select" style="padding-right: 12px;" placeholder="Ex: ENL100, ECL121..." oninput="debounceAuditSearch()" />
+                        </div>
+                    </div>
+
+                    <!-- 8. Ações Rápidas: Buscar, Exportar Excel e Limpar -->
+                    <div class="audit-actions-group">
+                        <button type="button" class="btn btn-primary" onclick="loadAuditData()" title="Consultar dados no Supabase">
+                            <i data-lucide="refresh-cw" id="btnAuditRefreshIcon"></i>
+                            <span>BUSCAR</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="exportAuditTableExcel()" title="Exportar dados filtrados para Planilha Excel (.xlsx)">
                             <i data-lucide="file-spreadsheet" class="text-emerald"></i>
-                            <span>Exportar Excel</span>
+                            <span>EXCEL</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="clearAuditFilters()" title="Limpar todos os filtros da auditoria">
+                            <i data-lucide="rotate-ccw"></i>
+                            <span>LIMPAR</span>
                         </button>
                     </div>
                 </div>
@@ -1040,17 +1106,17 @@
                 </div>
             </div>
 
-            <!-- Tabela de Auditoria Forense -->
+            <!-- Tabela de Auditoria Forense com Cabeçalho Congelado (Sticky Header) -->
             <div class="history-table-card glass-card">
                 <div class="history-table-header">
                     <div>
                         <h4 id="auditTableTitle">Consolidado Diário de Auditoria</h4>
-                        <p id="auditTableSubtitle">Resumo de conexões e histórico por equipe na data selecionada</p>
+                        <p id="auditTableSubtitle">Resumo de conexões, horários de login vs rádio e histórico por equipe</p>
                     </div>
                     <span class="history-count-badge" id="auditResultsCountBadge">0 registros</span>
                 </div>
 
-                <div class="table-responsive">
+                <div class="audit-table-scroll-container" id="auditTableContainer">
                     <table class="data-table" id="auditMainTable">
                         <thead id="auditTableHeader">
                             <!-- Inserido via JS dependendo do modo (Consolidado ou Logs) -->
@@ -1288,7 +1354,8 @@
 
                         <!-- Busca Rápida -->
                         <div class="delivery-search-box" style="flex: 1; min-width: 240px;">
-                            <input type="text" id="deliverySearchInput" placeholder="BUSCAR EQUIPE, PLACA, MOTORISTA..." oninput="debounceDeliverySearch()">
+                            <i data-lucide="search" class="delivery-search-icon"></i>
+                            <input type="search" id="deliverySearchInput" name="delivery_search_query" placeholder="BUSCAR EQUIPE, PLACA, MOTORISTA..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" role="searchbox" oninput="debounceDeliverySearch()">
                         </div>
                     </div>
                 </div>
@@ -3301,7 +3368,7 @@
 
                     <div class="form-group">
                         <label class="form-label"><i data-lucide="lock" class="mini-icon"></i> Senha de Acesso:</label>
-                        <input type="password" id="regPassword" class="form-input" placeholder="Crie uma senha de acesso..." required minlength="4">
+                        <input type="password" id="regPassword" class="form-input" placeholder="Crie uma senha de acesso..." required minlength="4" autocomplete="new-password">
                     </div>
 
                     <div class="auth-actions-bar">
@@ -3377,7 +3444,7 @@
                             A alteração do planejamento operacional requer autenticação Master. Insira a senha Master para desbloquear os campos de edição.
                         </p>
                         <div id="planningAuthInputs" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                            <input type="password" id="planningMasterPassword" class="form-input" placeholder="Digite a Senha Master..." style="width: 220px; padding: 8px 12px; font-size: 0.85rem;" onkeydown="if(event.key==='Enter') verifyAndUnlockPlanning()">
+                            <input type="password" id="planningMasterPassword" class="form-input" placeholder="Digite a Senha Master..." style="width: 220px; padding: 8px 12px; font-size: 0.85rem;" autocomplete="current-password" onkeydown="if(event.key==='Enter') verifyAndUnlockPlanning()">
                             <button class="btn-action-purple" type="button" onclick="verifyAndUnlockPlanning()" style="padding: 8px 16px;">
                                 <i data-lucide="unlock" style="width: 15px; height: 15px;"></i>
                                 <span>Desbloquear Edição</span>

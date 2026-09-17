@@ -1,37 +1,47 @@
 @echo off
-title Iniciar Navegador CDP - Enel e Spotfire
+title Alertas Operacionais OP - Servidor Local e CDP
 echo ==============================================================================
-echo  INICIANDO NAVEGADOR COM DEPURACAO CDP (PORTA 9222)
-echo  Portais: EquipesBrasil ENEL SP e TIBCO Spotfire
+echo  INICIANDO NAVEGADOR CDP (PORTA 9222) E SERVIDOR LOCAL
+echo  Portais: EquipesBrasil ENEL SP, TIBCO Spotfire e BidTech
 echo ==============================================================================
 echo.
 
 set "URL_ENEL=https://equipesbrasil.enelint.global/teams-list"
 set "URL_SPOTFIRE=http://elabziplra00.enelint.global:8090/spotfire/wp/analysis?file=/SP/COD/Scanner%%205.0"
+set "URL_BID=https://suite360.bidtech.com.br/app/checklists/visao-operacional"
 
-:: 1. Tenta Google Chrome (com perfil dedicado CDP)
+:: 1. Verifica se porta 9222 ja esta ativa
+netstat -ano | findstr "127.0.0.1:9222" | findstr "LISTENING" >nul
+if %errorlevel% equ 0 (
+    echo [OK] Navegador com depuracao remota CDP ja esta ativo na porta 9222.
+    goto INICIAR_SERVIDOR
+)
+
+:: 2. Dispara Google Chrome ou Microsoft Edge
 if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
     echo [INFO] Abrindo Google Chrome com depuracao remota na porta 9222...
-    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\.chrome_cdp" "%URL_ENEL%" "%URL_SPOTFIRE%"
-    goto SUCESSO
+    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\.chrome_cdp" "%URL_ENEL%" "%URL_SPOTFIRE%" "%URL_BID%"
+    goto AGUARDAR_CDP
 )
 
-:: 2. Alternativa: Microsoft Edge (com perfil dedicado CDP)
 if exist "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" (
     echo [INFO] Abrindo Microsoft Edge com depuracao remota na porta 9222...
-    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\.edge_cdp" "%URL_ENEL%" "%URL_SPOTFIRE%"
-    goto SUCESSO
+    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\.edge_cdp" "%URL_ENEL%" "%URL_SPOTFIRE%" "%URL_BID%"
+    goto AGUARDAR_CDP
 )
 
-echo [ERRO] Nem o Chrome nem o Edge foram encontrados nos caminhos padrao.
-pause
-exit /b 1
+echo [AVISO] Chrome ou Edge nao encontrados nos caminhos padrao.
 
-:SUCESSO
+:AGUARDAR_CDP
+timeout /t 3 /nobreak >nul
+
+:INICIAR_SERVIDOR
 echo.
 echo ==============================================================================
-echo  [OK] Navegador iniciado na porta 9222!
-echo  [INFO] Mantenha as abas do EquipesBrasil e do Spotfire abertas.
-echo  [INFO] Os agentes autonomos de coleta (CDP) agora conseguem se conectar.
+echo  INICIANDO SERVIDOR LOCAL (Python run_server.py)...
+echo  Mantenha esta janela aberta para acompanhar os ciclos CDP em tempo real.
 echo ==============================================================================
-ping 127.0.0.1 -n 3 >nul
+echo.
+cd /d "%~dp0"
+python run_server.py
+pause
