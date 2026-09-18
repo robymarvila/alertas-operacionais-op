@@ -480,8 +480,9 @@ body {
     display: none;
 }
 
-.dropdown-menu.show {
-    display: flex;
+.dropdown-menu.show,
+.dropdown-menu.active {
+    display: flex !important;
     flex-direction: column;
     animation: fadeIn 0.15s ease-out;
 }

@@ -31,7 +31,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.6-shift-login-filter">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.8-export-fix">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -451,10 +451,13 @@
                         </button>
 
                         <!-- 5. Exportar -->
-                        <div class="dropdown">
-                            <button class="btn btn-secondary btn-with-icon" id="btnExport" onclick="toggleExportMenu()">
+                        <div class="dropdown" style="display: inline-flex; align-items: stretch;">
+                            <button class="btn btn-secondary btn-with-icon" id="btnExport" onclick="exportLiveTeamsExcel()" title="Exportar dados filtrados diretamente para Planilha Excel (.xlsx)" style="border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 12px;">
                                 <i data-lucide="download"></i>
                                 <span>Exportar</span>
+                                <span style="font-size: 0.68rem; background: rgba(16, 185, 129, 0.2); color: #34d399; padding: 1px 5px; border-radius: 4px; font-weight: 800; border: 1px solid rgba(16, 185, 129, 0.4); margin-left: 2px;">XLSX</span>
+                            </button>
+                            <button class="btn btn-secondary" id="btnExportMenuToggle" onclick="toggleExportMenu(event)" title="Mais formatos de exportação (CSV, PDF, Resumo)" style="border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid rgba(255, 255, 255, 0.1); padding: 0 8px;">
                                 <i data-lucide="chevron-down" style="width: 14px;"></i>
                             </button>
                             <div class="dropdown-menu" id="exportMenu">
@@ -711,6 +714,35 @@
                             <button class="chip-filter" data-base="EQL" onclick="toggleBaseFilter('EQL', this)">Aricanduva (EQL)</button>
                             <button class="chip-filter" data-base="EVL" onclick="toggleBaseFilter('EVL', this)">Catumbi (EVL)</button>
                             <button class="chip-filter" data-base="ESL" onclick="toggleBaseFilter('ESL', this)">S. André (ESL)</button>
+                        </div>
+                    </div>
+
+                    <!-- Filtro por Turno (Multi-select) -->
+                    <div class="filter-cluster">
+                        <span class="filter-cluster-label"><i data-lucide="clock" style="width: 13px;"></i> Turno:</span>
+                        <div class="filter-chips" id="shiftFiltersContainer">
+                            <button class="chip-filter active" data-shift="ALL" onclick="toggleTurnoFilter('ALL', this)">Todos</button>
+                            <button class="chip-filter" data-shift="06:00" onclick="toggleTurnoFilter('06:00', this)">06:00</button>
+                            <button class="chip-filter" data-shift="08:00" onclick="toggleTurnoFilter('08:00', this)">08:00</button>
+                            <button class="chip-filter" data-shift="12:00" onclick="toggleTurnoFilter('12:00', this)">12:00</button>
+                            <button class="chip-filter" data-shift="14:00" onclick="toggleTurnoFilter('14:00', this)">14:00</button>
+                            <button class="chip-filter" data-shift="20:00" onclick="toggleTurnoFilter('20:00', this)">20:00</button>
+                            <button class="chip-filter" data-shift="22:00" onclick="toggleTurnoFilter('22:00', this)">22:00</button>
+                            <button class="chip-filter" data-shift="OUTROS" onclick="toggleTurnoFilter('OUTROS', this)">Outros</button>
+                        </div>
+                    </div>
+
+                    <!-- Filtro por Frota (Multi-select) -->
+                    <div class="filter-cluster">
+                        <span class="filter-cluster-label"><i data-lucide="truck" style="width: 13px;"></i> Frota:</span>
+                        <div class="filter-chips" id="frotaFiltersContainer">
+                            <button class="chip-filter active" data-frota="ALL" onclick="toggleFrotaFilter('ALL', this)">Todas</button>
+                            <button class="chip-filter" data-frota="CESTO" onclick="toggleFrotaFilter('CESTO', this)">Cesto Aéreo</button>
+                            <button class="chip-filter" data-frota="LEVE" onclick="toggleFrotaFilter('LEVE', this)">Veículo Leve</button>
+                            <button class="chip-filter" data-frota="MOTO" onclick="toggleFrotaFilter('MOTO', this)">Moto</button>
+                            <button class="chip-filter" data-frota="LINHA_VIVA" onclick="toggleFrotaFilter('LINHA_VIVA', this)">Linha Viva</button>
+                            <button class="chip-filter" data-frota="MUNCK" onclick="toggleFrotaFilter('MUNCK', this)">Munck</button>
+                            <button class="chip-filter" data-frota="OUTROS" onclick="toggleFrotaFilter('OUTROS', this)">Outros</button>
                         </div>
                     </div>
 
@@ -3914,7 +3946,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.0.6-shift-login-filter"></script>
+<script src="/static/js/app.js?v=5.0.8-export-fix"></script>
 
 </body>
 </html>

@@ -1633,6 +1633,11 @@ def export_excel():
     teams = data.get("teams", [])
     summary = data.get("summary", {})
 
+    codes_param = request.args.get("teams")
+    if codes_param:
+        allowed = set(c.strip().upper() for c in codes_param.split(",") if c.strip())
+        teams = [t for t in teams if t.get("code", "").strip().upper() in allowed]
+
     rows = []
     for t in teams:
         rows.append({
@@ -1640,14 +1645,18 @@ def export_excel():
             "Base Operacional": t.get("base", ""),
             "Sigla Base": t.get("prefix", ""),
             "Região / Empresa": t.get("region", ""),
+            "Turno": t.get("shift_slot") or t.get("shift_code") or "--",
+            "Frota": t.get("vehicle_type") or "--",
             "Status de Conformidade": t.get("status_label") or t.get("status_code", ""),
-            "Escala PowerON": "SIM (ESCALADA)" if t.get("poweron") else "NÃO (FORA DA ESCALA)",
+            "Escala Equipes Brasil": "SIM (ESCALADA)" if t.get("poweron") else "NÃO (FORA DA ESCALA)",
             "Conexão TRBOnet": "ONLINE (CONECTADO)" if t.get("trbonet") else "DESCONECTADO",
             "Sinal GPS": "COM SINAL GPS" if t.get("gps") else "SEM SINAL GPS",
             "ID do Rádio": t.get("radio_id") or "--",
             "Canal TRBOnet": t.get("channel") or "--",
             "Último Sinal Registrado": t.get("last_signal") or "--",
-            "Horário Login PowerON": t.get("login_time") or summary.get("last_poweron_login") or "--",
+            "Horário Login": t.get("login_time") or summary.get("last_poweron_login") or "--",
+            "Motorista": t.get("driver") or "--",
+            "Placa": t.get("plate") or "--",
             "Diagnóstico CCO": t.get("details_text", "")
         })
 
@@ -1655,7 +1664,7 @@ def export_excel():
     df = pd.DataFrame(rows)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Painel_Operacional_CCO')
+        df.to_excel(writer, index=False, sheet_name='Equipes_Filtradas')
 
     output.seek(0)
     filename = f"Alertas_Operacionais_PowerON_vs_TRBOnet_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"

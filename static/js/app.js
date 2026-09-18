@@ -34,6 +34,9 @@ const appState = {
     // Filtros Multi-seleção e Visualização
     selectedBases: new Set(['ALL']), // Set contendo 'ALL' ou códigos de bases selecionadas
     selectedStatuses: new Set(['ALL']), // Set contendo 'ALL' ou status selecionados
+    selectedShifts: new Set(['ALL']), // Set contendo 'ALL' ou turnos selecionados
+    selectedFrotas: new Set(['ALL']), // Set contendo 'ALL' ou tipos de frota selecionados
+    filteredTeams: [],
     currentStatusFilter: 'ALL',
     searchQuery: '',
     historySearchQuery: '',
@@ -476,6 +479,8 @@ async function fetchDashboardData(isManual = false) {
             updateFilterBadges();
             syncBaseUI();
             syncStatusUI();
+            syncTurnoUI();
+            syncFrotaUI();
             updateHubCard();
 
             if (appState.currentMainTab === 'dashboard') {
@@ -926,6 +931,16 @@ function updateKPIs() {
         targetTeams = targetTeams.filter(t => appState.selectedBases.has(t.prefix));
     }
 
+    // Filtrar também por Turno se selecionado
+    if (appState.selectedShifts && !appState.selectedShifts.has('ALL') && appState.selectedShifts.size > 0) {
+        targetTeams = targetTeams.filter(t => matchTurno(t, appState.selectedShifts));
+    }
+
+    // Filtrar também por Frota se selecionada
+    if (appState.selectedFrotas && !appState.selectedFrotas.has('ALL') && appState.selectedFrotas.size > 0) {
+        targetTeams = targetTeams.filter(t => matchFrota(t, appState.selectedFrotas));
+    }
+
     // Cálculo dinâmico dos 5 indicadores
     const totalPowerOn = targetTeams.filter(t => t.poweron).length;
     const totalTrbo = targetTeams.filter(t => t.trbonet).length;
@@ -1363,6 +1378,120 @@ function syncStatusUI() {
     if (kpiTrboOnly) kpiTrboOnly.classList.toggle('kpi-selected-filter', !isAll && appState.selectedStatuses && appState.selectedStatuses.has('TRBO_ONLY'));
 }
 
+// ==========================================================================
+// FILTROS MULTI-SELECT DE TURNO E FROTA
+// ==========================================================================
+function matchTurno(team, selectedShifts) {
+    if (!selectedShifts || selectedShifts.has('ALL') || selectedShifts.size === 0) return true;
+    const sRaw = `${team.shift_slot || ''} ${team.shift_code || ''} ${team.turno || ''}`.toUpperCase();
+
+    for (const s of selectedShifts) {
+        if (s === 'OUTROS') {
+            const isKnown = ['06:00', '08:00', '12:00', '14:00', '20:00', '22:00'].some(k => sRaw.includes(k));
+            if (!isKnown) return true;
+        } else if (sRaw.includes(s)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function matchFrota(team, selectedFrotas) {
+    if (!selectedFrotas || selectedFrotas.has('ALL') || selectedFrotas.size === 0) return true;
+    const vRaw = `${team.vehicle_type || ''} ${team.unified_group || ''} ${team.tipo || ''}`.toLowerCase();
+
+    for (const f of selectedFrotas) {
+        if (f === 'CESTO' && vRaw.includes('cesto')) return true;
+        if (f === 'LEVE' && (vRaw.includes('leve') || vRaw.includes('veículo leve') || vRaw.includes('veiculo leve'))) return true;
+        if (f === 'MOTO' && vRaw.includes('moto')) return true;
+        if (f === 'LINHA_VIVA' && vRaw.includes('linha viva')) return true;
+        if (f === 'MUNCK' && (vRaw.includes('munck') || vRaw.includes('munk'))) return true;
+        if (f === 'OUTROS') {
+            const isKnown = vRaw.includes('cesto') || vRaw.includes('leve') || vRaw.includes('moto') || vRaw.includes('linha viva') || vRaw.includes('munck') || vRaw.includes('munk');
+            if (!isKnown) return true;
+        }
+    }
+    return false;
+}
+
+function toggleTurnoFilter(shiftCode, element) {
+    if (!appState.selectedShifts) {
+        appState.selectedShifts = new Set(['ALL']);
+    }
+
+    if (shiftCode === 'ALL') {
+        appState.selectedShifts.clear();
+        appState.selectedShifts.add('ALL');
+    } else {
+        appState.selectedShifts.delete('ALL');
+        if (appState.selectedShifts.has(shiftCode)) {
+            appState.selectedShifts.delete(shiftCode);
+            if (appState.selectedShifts.size === 0) {
+                appState.selectedShifts.add('ALL');
+            }
+        } else {
+            appState.selectedShifts.add(shiftCode);
+        }
+    }
+
+    syncTurnoUI();
+    updateKPIs();
+    updateFilterBadges();
+    renderResults();
+}
+
+function toggleFrotaFilter(frotaCode, element) {
+    if (!appState.selectedFrotas) {
+        appState.selectedFrotas = new Set(['ALL']);
+    }
+
+    if (frotaCode === 'ALL') {
+        appState.selectedFrotas.clear();
+        appState.selectedFrotas.add('ALL');
+    } else {
+        appState.selectedFrotas.delete('ALL');
+        if (appState.selectedFrotas.has(frotaCode)) {
+            appState.selectedFrotas.delete(frotaCode);
+            if (appState.selectedFrotas.size === 0) {
+                appState.selectedFrotas.add('ALL');
+            }
+        } else {
+            appState.selectedFrotas.add(frotaCode);
+        }
+    }
+
+    syncFrotaUI();
+    updateKPIs();
+    updateFilterBadges();
+    renderResults();
+}
+
+function syncTurnoUI() {
+    const isAll = !appState.selectedShifts || appState.selectedShifts.has('ALL') || appState.selectedShifts.size === 0;
+    const chips = document.querySelectorAll('#shiftFiltersContainer .chip-filter');
+    chips.forEach(chip => {
+        const s = chip.getAttribute('data-shift');
+        if (s === 'ALL') {
+            chip.classList.toggle('active', isAll);
+        } else {
+            chip.classList.toggle('active', !isAll && appState.selectedShifts.has(s));
+        }
+    });
+}
+
+function syncFrotaUI() {
+    const isAll = !appState.selectedFrotas || appState.selectedFrotas.has('ALL') || appState.selectedFrotas.size === 0;
+    const chips = document.querySelectorAll('#frotaFiltersContainer .chip-filter');
+    chips.forEach(chip => {
+        const f = chip.getAttribute('data-frota');
+        if (f === 'ALL') {
+            chip.classList.toggle('active', isAll);
+        } else {
+            chip.classList.toggle('active', !isAll && appState.selectedFrotas.has(f));
+        }
+    });
+}
+
 function handleSearchChange() {
     const input = document.getElementById('searchInput');
     const btnClear = document.getElementById('btnClearSearch');
@@ -1412,6 +1541,21 @@ function clearAllFilters() {
         appState.selectedStatuses.clear();
         appState.selectedStatuses.add('ALL');
     }
+
+    if (!appState.selectedShifts) {
+        appState.selectedShifts = new Set(['ALL']);
+    } else {
+        appState.selectedShifts.clear();
+        appState.selectedShifts.add('ALL');
+    }
+
+    if (!appState.selectedFrotas) {
+        appState.selectedFrotas = new Set(['ALL']);
+    } else {
+        appState.selectedFrotas.clear();
+        appState.selectedFrotas.add('ALL');
+    }
+
     appState.currentStatusFilter = 'ALL';
     appState.searchQuery = '';
     
@@ -1423,6 +1567,8 @@ function clearAllFilters() {
 
     syncBaseUI();
     syncStatusUI();
+    syncTurnoUI();
+    syncFrotaUI();
     updateKPIs();
     updateFilterBadges();
     renderResults();
@@ -1445,6 +1591,16 @@ function getFilteredTeams() {
         });
     }
 
+    // Filtro por Multi-seleção de Turno
+    if (appState.selectedShifts && !appState.selectedShifts.has('ALL') && appState.selectedShifts.size > 0) {
+        filtered = filtered.filter(t => matchTurno(t, appState.selectedShifts));
+    }
+
+    // Filtro por Multi-seleção de Frota
+    if (appState.selectedFrotas && !appState.selectedFrotas.has('ALL') && appState.selectedFrotas.size > 0) {
+        filtered = filtered.filter(t => matchFrota(t, appState.selectedFrotas));
+    }
+
     // Filtro por Multi-seleção de Status
     const isAllStatus = !appState.selectedStatuses || appState.selectedStatuses.has('ALL') || appState.selectedStatuses.size === 0;
     if (!isAllStatus) {
@@ -1463,6 +1619,9 @@ function getFilteredTeams() {
         filtered = filtered.filter(t => 
             t.code.toUpperCase().includes(q) ||
             t.base.toUpperCase().includes(q) ||
+            (t.vehicle_type && t.vehicle_type.toUpperCase().includes(q)) ||
+            (t.shift_slot && t.shift_slot.toUpperCase().includes(q)) ||
+            (t.driver && t.driver.toUpperCase().includes(q)) ||
             (t.radio_id && t.radio_id.toUpperCase().includes(q)) ||
             (t.channel && t.channel.toUpperCase().includes(q))
         );
@@ -1486,6 +1645,7 @@ function getFilteredTeams() {
 
 function renderResults() {
     const filteredTeams = getFilteredTeams();
+    appState.filteredTeams = filteredTeams;
 
     const counter = document.getElementById('resultsCounter');
     if (counter) {
@@ -1530,11 +1690,19 @@ function renderTableView(teams) {
             ? '<span class="badge-status badge-success"><i data-lucide="radio"></i> Conectado</span>'
             : '<span class="badge-status badge-danger"><i data-lucide="x"></i> Desconectado</span>';
 
+        const shiftDisplay = t.shift_slot || t.shift_code || '--';
+        const frotaDisplay = t.vehicle_type || '--';
+
         return `
             <tr>
                 <td>
                     <div class="team-code-cell">
                         <strong class="team-code-text">${t.code}</strong>
+                        <div style="display: flex; gap: 4px; font-size: 0.72rem; color: var(--text-muted); align-items: center; margin-top: 3px; flex-wrap: wrap;">
+                            <span style="background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-weight: 600; color: #e2e8f0;">${frotaDisplay}</span>
+                            <span>•</span>
+                            <span style="background: rgba(56, 189, 248, 0.12); color: #38bdf8; padding: 1px 6px; border-radius: 4px; font-weight: 600;">${shiftDisplay}</span>
+                        </div>
                     </div>
                 </td>
                 <td>
@@ -1591,6 +1759,14 @@ function renderCardsView(teams) {
 
                 <div class="team-card-body">
                     <div class="team-card-row">
+                        <span class="card-row-label"><i data-lucide="truck" class="mini-icon"></i> Frota</span>
+                        <span class="card-row-val">${t.vehicle_type || '--'}</span>
+                    </div>
+                    <div class="team-card-row">
+                        <span class="card-row-label"><i data-lucide="clock" class="mini-icon"></i> Turno</span>
+                        <span class="card-row-val text-sky">${t.shift_slot || t.shift_code || '--'}</span>
+                    </div>
+                    <div class="team-card-row">
                         <span class="card-row-label"><i data-lucide="clipboard-check" class="mini-icon"></i> Equipes Brasil</span>
                         <span class="card-row-val ${t.poweron ? 'text-emerald' : 'text-muted'}">${t.poweron ? 'Em Turno' : 'Fora de Escala'}</span>
                     </div>
@@ -1618,6 +1794,12 @@ function updateFilterBadges() {
     const isAll = appState.selectedBases.has('ALL') || appState.selectedBases.size === 0;
     if (!isAll) {
         target = target.filter(t => appState.selectedBases.has(t.prefix));
+    }
+    if (appState.selectedShifts && !appState.selectedShifts.has('ALL') && appState.selectedShifts.size > 0) {
+        target = target.filter(t => matchTurno(t, appState.selectedShifts));
+    }
+    if (appState.selectedFrotas && !appState.selectedFrotas.has('ALL') && appState.selectedFrotas.size > 0) {
+        target = target.filter(t => matchFrota(t, appState.selectedFrotas));
     }
     const allEl = document.getElementById('count-all');
     const onlineEl = document.getElementById('count-online');
@@ -1863,7 +2045,7 @@ function openTeamModal(code) {
     const rec = document.getElementById('modalRecommendation');
 
     if (codeEl) codeEl.textContent = `EQUIPE ${team.code}`;
-    if (baseEl) baseEl.textContent = `${team.base} • ${team.region}`;
+    if (baseEl) baseEl.textContent = `${team.base} • ${team.region} • ${team.vehicle_type || 'Frota --'} • ${team.shift_slot || 'Turno --'}`;
 
     if (banner) banner.className = `team-diagnostic-banner banner-${team.severity}`;
     if (title) title.textContent = team.status_label;
@@ -2021,18 +2203,46 @@ async function handleFileUpload(e) {
 // ==========================================================================
 // EXPORTAÇÃO & TOASTS
 // ==========================================================================
-function toggleExportMenu() {
+function toggleExportMenu(e) {
+    if (e) {
+        if (e.stopPropagation) e.stopPropagation();
+        if (e.preventDefault) e.preventDefault();
+    }
     const menu = document.getElementById('exportMenu');
-    if (menu) menu.classList.toggle('active');
+    if (menu) {
+        menu.classList.toggle('active');
+        menu.classList.toggle('show');
+    }
 }
 
-function exportLiveTeamsExcel() {
-    const teams = appState.teams || [];
-    const timestamp = new Date().toISOString().replace(/[-:T]/g, '_').slice(0, 15);
-    const filename = `Alertas_Operacionais_PowerON_vs_TRBOnet_${timestamp}.xlsx`;
+window.toggleExportMenu = toggleExportMenu;
 
-    // 1. Tenta geração client-side instantânea via SheetJS
-    if (window.XLSX && teams.length > 0) {
+function exportLiveTeamsExcel() {
+    // 1. Obtém estritamente as equipes filtradas no momento
+    let teams = [];
+    if (typeof getFilteredTeams === 'function') {
+        teams = getFilteredTeams();
+    } else if (appState && appState.filteredTeams && appState.filteredTeams.length > 0) {
+        teams = appState.filteredTeams;
+    } else if (appState && appState.teams) {
+        teams = appState.teams;
+    }
+    
+    if (!teams || teams.length === 0) {
+        showToast('Nenhuma equipe encontrada com os filtros selecionados para exportar.', 'warning');
+        const exportMenu = document.getElementById('exportMenu');
+        if (exportMenu) {
+            exportMenu.classList.remove('active');
+            exportMenu.classList.remove('show');
+        }
+        return;
+    }
+
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '_').slice(0, 15);
+    const filename = `Alertas_Operacionais_TRBOnet_Filtrado_${timestamp}.xlsx`;
+
+    // 2. Geração client-side direta via SheetJS (.xlsx)
+    if (window.XLSX) {
         try {
             const summary = appState.summary || {};
             const lastPwLogin = summary.last_poweron_login || '--';
@@ -2042,46 +2252,60 @@ function exportLiveTeamsExcel() {
                 "Código Equipe": t.code || '',
                 "Base Operacional": t.base || '',
                 "Sigla Base": t.prefix || '',
-                "Região / Empresa": t.region || '',
+                "Região": t.region || '',
+                "Turno": t.shift_slot || t.shift_code || '--',
+                "Frota": t.vehicle_type || '--',
                 "Status de Conformidade": t.status_label || t.status_code || '',
-                "Escala PowerON": t.poweron ? 'SIM (ESCALADA)' : 'NÃO (FORA DA ESCALA)',
+                "Escala Equipes Brasil": t.poweron ? 'SIM (ESCALADA)' : 'NÃO (FORA DA ESCALA)',
                 "Conexão TRBOnet": t.trbonet ? 'ONLINE (CONECTADO)' : 'DESCONECTADO',
                 "Sinal GPS": t.gps ? 'COM SINAL GPS' : 'SEM SINAL GPS',
                 "ID do Rádio": t.radio_id || '--',
                 "Canal TRBOnet": t.channel || '--',
                 "Último Sinal Registrado": t.last_signal || lastTrboSync || '--',
-                "Horário Login PowerON": t.login_time || lastPwLogin || '--',
+                "Horário Login": t.login_time || lastPwLogin || '--',
+                "Motorista": t.driver || '--',
+                "Placa": t.plate || '--',
                 "Diagnóstico CCO": t.details_text || ''
             }));
 
             const ws = XLSX.utils.json_to_sheet(rows);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Painel_Operacional_CCO");
+            XLSX.utils.book_append_sheet(wb, ws, "Equipes_Filtradas");
             XLSX.writeFile(wb, filename);
 
             const exportMenu = document.getElementById('exportMenu');
-            if (exportMenu) exportMenu.classList.remove('active');
+            if (exportMenu) {
+                exportMenu.classList.remove('active');
+                exportMenu.classList.remove('show');
+            }
 
-            showToast(`Planilha Excel (.xlsx) exportada com sucesso (${teams.length} equipes)!`, 'success');
+            showToast(`Planilha Excel (.xlsx) exportada com sucesso (${teams.length} equipes filtradas)!`, 'success');
             return;
         } catch (err) {
-            console.warn('Falha na exportação client-side via SheetJS, redirecionando para backend:', err);
+            console.warn('Falha na exportação client-side via SheetJS, tentando fallback backend:', err);
         }
     }
 
-    // 2. Fallback via rota backend
+    // 3. Fallback via rota backend
     const exportMenu = document.getElementById('exportMenu');
-    if (exportMenu) exportMenu.classList.remove('active');
-    window.location.href = '/api/export/excel';
-    showToast('Download da Planilha Excel (.xlsx) iniciado!', 'success');
+    if (exportMenu) {
+        exportMenu.classList.remove('active');
+        exportMenu.classList.remove('show');
+    }
+    const isAll = appState.teams && teams.length === appState.teams.length;
+    const url = isAll ? '/api/export/excel' : `/api/export/excel?teams=${encodeURIComponent(teams.map(t => t.code).join(','))}`;
+    window.location.href = url;
+    showToast(`Download da Planilha Excel (.xlsx) iniciado (${teams.length} equipes filtradas)!`, 'success');
 }
 
 window.exportLiveTeamsExcel = exportLiveTeamsExcel;
 
 function exportLiveTeamsCSV() {
-    const teams = appState.teams || [];
+    const teams = (typeof getFilteredTeams === 'function') ? getFilteredTeams() : (appState.filteredTeams || appState.teams || []);
     if (!teams || teams.length === 0) {
         showToast('Nenhum dado operacional disponível para exportação no momento.', 'warning');
+        const exportMenu = document.getElementById('exportMenu');
+        if (exportMenu) exportMenu.classList.remove('active');
         return;
     }
 
@@ -2090,13 +2314,15 @@ function exportLiveTeamsCSV() {
     const lastTrboSync = summary.last_trbonet_sync || '--';
 
     let csv = '\uFEFF'; // UTF-8 BOM para o Microsoft Excel abrir com acentuação perfeita
-    csv += 'Equipe;Base;Prefixo;Regiao;Status_Operacional;Categoria;Escala_PowerON;Conexao_TRBOnet;Sinal_GPS;Radio_ID;Canal;Ultimo_Sinal_TRBOnet;Ultimo_Login_PowerON;Diagnostico_CCO\n';
+    csv += 'Equipe;Base;Prefixo;Regiao;Turno;Frota;Status_Operacional;Categoria;Escala_PowerON;Conexao_TRBOnet;Sinal_GPS;Radio_ID;Canal;Ultimo_Sinal_TRBOnet;Ultimo_Login_PowerON;Motorista;Placa;Diagnostico_CCO\n';
 
     teams.forEach(t => {
         const code = (t.code || '').replace(/"/g, '""');
         const base = (t.base || '').replace(/"/g, '""');
         const prefix = (t.prefix || '').replace(/"/g, '""');
         const region = (t.region || '').replace(/"/g, '""');
+        const turno = (t.shift_slot || t.shift_code || '--').replace(/"/g, '""');
+        const frota = (t.vehicle_type || '--').replace(/"/g, '""');
         const statusLabel = (t.status_label || t.status_code || '').replace(/"/g, '""');
         const category = (t.status_category || '').replace(/"/g, '""');
         const poweron = t.poweron ? 'SIM (ESCALADA)' : 'NAO (FORA DA ESCALA)';
@@ -2106,9 +2332,11 @@ function exportLiveTeamsCSV() {
         const channel = (t.channel || '--').replace(/"/g, '""');
         const lastSignal = (t.last_signal || lastTrboSync || '--').replace(/"/g, '""');
         const lastLogin = (t.login_time || lastPwLogin || '--').replace(/"/g, '""');
+        const driver = (t.driver || '--').replace(/"/g, '""');
+        const plate = (t.plate || '--').replace(/"/g, '""');
         const details = (t.details_text || '').replace(/"/g, '""');
 
-        csv += `"${code}";"${base}";"${prefix}";"${region}";"${statusLabel}";"${category}";"${poweron}";"${trbonet}";"${gps}";"${radioId}";"${channel}";"${lastSignal}";"${lastLogin}";"${details}"\n`;
+        csv += `"${code}";"${base}";"${prefix}";"${region}";"${turno}";"${frota}";"${statusLabel}";"${category}";"${poweron}";"${trbonet}";"${gps}";"${radioId}";"${channel}";"${lastSignal}";"${lastLogin}";"${driver}";"${plate}";"${details}"\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -2116,7 +2344,7 @@ function exportLiveTeamsCSV() {
     const link = document.createElement('a');
     const timestamp = new Date().toISOString().replace(/[-:T]/g, '_').slice(0, 15);
     link.setAttribute('href', url);
-    link.setAttribute('download', `Alertas_Operacionais_PowerON_vs_TRBOnet_${timestamp}.csv`);
+    link.setAttribute('download', `Alertas_Operacionais_TRBOnet_Filtrado_${timestamp}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -2125,16 +2353,18 @@ function exportLiveTeamsCSV() {
     const exportMenu = document.getElementById('exportMenu');
     if (exportMenu) exportMenu.classList.remove('active');
 
-    showToast(`Arquivo CSV exportado com sucesso (${teams.length} equipes)!`, 'success');
+    showToast(`Arquivo CSV exportado com sucesso (${teams.length} equipes filtradas)!`, 'success');
 }
 
 window.exportLiveTeamsCSV = exportLiveTeamsCSV;
 
 document.addEventListener('click', (e) => {
     const exportBtn = document.getElementById('btnExport');
+    const exportToggle = document.getElementById('btnExportMenuToggle');
     const exportMenu = document.getElementById('exportMenu');
-    if (exportBtn && exportMenu && !exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+    if (exportMenu && (!exportBtn || !exportBtn.contains(e.target)) && (!exportToggle || !exportToggle.contains(e.target)) && !exportMenu.contains(e.target)) {
         exportMenu.classList.remove('active');
+        exportMenu.classList.remove('show');
     }
 });
 
@@ -8877,12 +9107,20 @@ window.navigateToView = navigateToView;
 window.toggleRegionFilter = toggleRegionFilter;
 window.toggleBaseFilter = toggleBaseFilter;
 window.setBaseFilter = setBaseFilter;
+window.toggleTurnoFilter = toggleTurnoFilter;
+window.toggleFrotaFilter = toggleFrotaFilter;
+window.syncTurnoUI = syncTurnoUI;
+window.syncFrotaUI = syncFrotaUI;
 window.toggleStatusFilter = toggleStatusFilter;
 window.setStatusFilter = setStatusFilter;
 window.clearAllFilters = clearAllFilters;
 window.handleSearchChange = handleSearchChange;
 window.clearSearch = clearSearch;
 window.setViewMode = setViewMode;
+window.toggleExportMenu = toggleExportMenu;
+window.exportLiveTeamsExcel = exportLiveTeamsExcel;
+window.exportLiveTeamsCSV = exportLiveTeamsCSV;
+window.copySummaryToClipboard = copySummaryToClipboard;
 
 // Binds Globais - Módulo Entrega de Equipes
 window.switchDeliveryScreen = switchDeliveryScreen;
