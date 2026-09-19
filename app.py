@@ -637,6 +637,30 @@ def download_cluster_update():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/admin/cluster/commands', methods=['GET'])
+def get_cluster_commands_history():
+    """Retorna o histórico de comandos e transições de liderança do cluster."""
+    try:
+        from supabase_client import BASE_REST_URL, get_headers, format_datetime_br
+        endpoint = f"{BASE_REST_URL}/system_commands?command=like.CLUSTER_*&order=created_at.desc&limit=15"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=5)
+        commands = []
+        if resp.status_code == 200:
+            for c in resp.json() or []:
+                commands.append({
+                    "id": c.get("id"),
+                    "command": c.get("command"),
+                    "status": c.get("status"),
+                    "payload": c.get("payload") or {},
+                    "result": c.get("result") or {},
+                    "created_at": c.get("created_at"),
+                    "created_at_br": format_datetime_br(c.get("created_at")),
+                    "updated_at_br": format_datetime_br(c.get("updated_at"))
+                })
+        return jsonify({"status": "success", "commands": commands})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/admin/engine_details/<engine_key>', methods=['GET'])
 def get_engine_details(engine_key):
     """
@@ -973,6 +997,11 @@ def execute_trbonet_sync(source_label="Captura ao Vivo (TRBOnet One)"):
             }
 
     # Ambiente Local Windows: Executa a leitura da tela do TRBOnet One via UIAutomation
+    from cluster_manager import cluster_manager
+    if not cluster_manager.is_feeding_database():
+        print(f"[TRBONET] [STANDBY REPOUSO] Sincronizacao TRBOnet suspensa: Maquina local ({cluster_manager.node_id}) esta em STANDBY.", flush=True)
+        return {"status": "standby", "message": "Maquina em Standby"}
+
     start_t = time.time()
     ts_start = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     print(f"\n[{ts_start}] [TRBONET] >>> INICIANDO CICLO DE CAPTURA: TRBOnet One ({source_label})...", flush=True)
@@ -1861,7 +1890,8 @@ def get_teams_data():
     if is_cloud or (not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams):
         cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
         if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
-            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase", captured_at=cloud_snap.get("captured_at"))
+            src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase"
+            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label=src_lbl, captured_at=cloud_snap.get("captured_at"))
 
         try:
             from supabase_client import fetch_delivery_records_by_date
@@ -2342,6 +2372,34 @@ def remote_command_listener_worker(poll_interval=2.5):
                 cmd_name = cmd.get("command")
                 print(f"[REMOTE COMMAND RECEIVED] Executando comando {cmd_name} ({cmd_id})...")
                 update_command_status(cmd_id, "PROCESSING")
+
+                if cmd_name in ["CLUSTER_SET_ROLE", "CLUSTER_PROMOTE", "CLUSTER_STANDBY"]:
+                    from cluster_manager import cluster_manager
+                    payload = cmd.get("payload") or {}
+                    target_active = payload.get("active_node_id") or "MAQUINA_1_PRINCIPAL"
+                    is_this_node = (target_active == cluster_manager.node_id)
+
+                    cluster_manager.set_feeding_status(is_this_node)
+                    cluster_manager.active_node_id = target_active
+                    cluster_manager.publish_local_heartbeat()
+
+                    role_desc = "LÍDER ATIVO (Alimentando Banco)" if is_this_node else "STANDBY REPOUSO (Sem gravação)"
+                    res_payload = {
+                        "node_id": cluster_manager.node_id,
+                        "hostname": socket.gethostname(),
+                        "is_feeding_db": is_this_node,
+                        "role_desc": role_desc,
+                        "timestamp": datetime.now(BR_TZ).isoformat()
+                    }
+                    print(f"[REMOTE COMMAND] CLUSTER_SET_ROLE processado em {cluster_manager.node_id}: {role_desc}", flush=True)
+                    update_command_status(cmd_id, "COMPLETED", res_payload)
+                    continue
+
+                # Se a máquina estiver em STANDBY, ignora comandos de coleta para evitar concorrência/duplicidade
+                from cluster_manager import cluster_manager
+                if not cluster_manager.is_feeding_database():
+                    print(f"[REMOTE COMMAND SKIPPED] Comando {cmd_name} ({cmd_id}) ignorado nesta máquina ({cluster_manager.node_id}) por estar em STANDBY.", flush=True)
+                    continue
 
                 if cmd_name == "CAPTURE_TRBONET":
                     res = execute_trbonet_sync(source_label="Disparo Remoto Solicitado na Nuvem")

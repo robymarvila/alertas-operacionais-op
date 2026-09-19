@@ -8018,6 +8018,40 @@ async function openClusterNodeDetailsModal(nodeId) {
                     </button>
                 `;
             }
+        // 7. Renderiza Histórico de Comandos de Transição do Cluster
+        const cmdListEl = document.getElementById('clusterNodeModalCommandsList');
+        if (cmdListEl) {
+            try {
+                const cmdResp = await fetch('/api/admin/cluster/commands');
+                const cmdData = await cmdResp.json();
+                const cmds = cmdData.commands || [];
+                if (cmds.length === 0) {
+                    cmdListEl.innerHTML = '<div style="font-size: 0.75rem; color: var(--text-secondary); text-align: center; padding: 10px;">Nenhum comando de transição registrado recentemente.</div>';
+                } else {
+                    cmdListEl.innerHTML = cmds.map(c => {
+                        const isDone = c.status === 'COMPLETED';
+                        const statusColor = isDone ? '#10b981' : (c.status === 'PROCESSING' ? '#00f2fe' : '#f59e0b');
+                        const p = c.payload || {};
+                        const r = c.result || {};
+                        const actNode = p.active_node_id || '--';
+                        const byNode = p.promoted_by || 'Admin';
+                        return `
+                            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem;">
+                                <div>
+                                    <strong style="color: #fff; display: block; font-size: 0.8rem;">${c.command} ➔ Definir Líder: <span style="color: #00f2fe;">${actNode}</span></strong>
+                                    <span style="color: var(--text-secondary); font-size: 0.7rem;">Solicitado por ${byNode} • ${c.created_at_br || '--'}</span>
+                                    ${r.message ? `<div style="color: #a7f3d0; font-size: 0.68rem; margin-top: 2px;">Resultado: ${r.message}</div>` : ''}
+                                </div>
+                                <span style="font-size: 0.68rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; background: rgba(255,255,255,0.05); color: ${statusColor}; font-family: 'JetBrains Mono', monospace;">
+                                    ${c.status}
+                                </span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (cmdErr) {
+                console.warn('Erro ao carregar comandos de cluster:', cmdErr);
+            }
         }
 
         initIcons();

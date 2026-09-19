@@ -312,6 +312,12 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
     """
     Executa a extração, consolidação no delivery_manager e push para o Supabase.
     """
+    from cluster_manager import cluster_manager
+    if not cluster_manager.is_feeding_database():
+        ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        print(f"[{ts}] [CDP ENEL] [STANDBY REPOUSO] Esta maquina ({cluster_manager.node_id}) esta em STANDBY. Nenhuma acao disparada no navegador ({source_label}).", flush=True)
+        return {"status": "standby", "message": "Maquina em Standby - Coleta CDP suspensa"}
+
     if not _ENEL_LOCK.acquire(blocking=False):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         print(f"[{ts}] [CDP ENEL] Ciclo anterior ainda em andamento. Ignorando novo disparo ({source_label}).", flush=True)

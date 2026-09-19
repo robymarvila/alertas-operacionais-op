@@ -451,7 +451,12 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
     3. Remove registros fantasmas no Supabase (pruning)
     4. Alimenta o delivery_manager em memória
     """
-    global _LAST_BID_SYNC_RESULT
+    from cluster_manager import cluster_manager
+    if not cluster_manager.is_feeding_database():
+        ts = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
+        print(f"[{ts}] [CDP BIDTECH] [STANDBY REPOUSO] Esta maquina ({cluster_manager.node_id}) esta em STANDBY. Nenhuma acao disparada no BidTech ({source_label}).", flush=True)
+        return {"status": "standby", "message": "Maquina em Standby - Coleta BidTech suspensa"}
+
     if not _BID_LOCK.acquire(blocking=False):
         ts = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
         print(f"[{ts}] [CDP BIDTECH] Ciclo anterior ainda em andamento. Ignorando novo disparo ({source_label}).", flush=True)

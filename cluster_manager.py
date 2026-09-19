@@ -345,6 +345,17 @@ class ClusterManager:
         is_this_node = (target_node_id == self.node_id)
         self.set_feeding_status(is_this_node)
 
+        # Despacha comando explícito no Supabase para alertar todos os nós do cluster
+        try:
+            from supabase_client import create_sync_command
+            create_sync_command("CLUSTER_SET_ROLE", {
+                "active_node_id": target_node_id,
+                "promoted_by": self.node_id,
+                "timestamp": now_iso
+            })
+        except Exception as e:
+            print(f"[CLUSTER WARN] Falha ao despachar comando CLUSTER_SET_ROLE: {e}", flush=True)
+
         # Atualiza heartbeat imediatamente
         self.publish_local_heartbeat()
 

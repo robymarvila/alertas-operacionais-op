@@ -905,6 +905,12 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
     5. Reconcilia no delivery_manager.
     6. Exclui o arquivo temporário baixado.
     """
+    from cluster_manager import cluster_manager
+    if not cluster_manager.is_feeding_database():
+        ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        print(f"[{ts}] [CDP SPOTFIRE] [STANDBY REPOUSO] Esta maquina ({cluster_manager.node_id}) esta em STANDBY. Nenhuma acao disparada no Spotfire ({source_label}).", flush=True)
+        return {"status": "standby", "message": "Maquina em Standby - Extracao Spotfire suspensa"}
+
     if not _SPOTFIRE_LOCK.acquire(blocking=False):
         ts = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         print(f"[{ts}] [CDP SPOTFIRE] Ciclo anterior ainda em andamento. Ignorando novo disparo ({source_label}).", flush=True)

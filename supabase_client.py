@@ -55,6 +55,13 @@ def push_snapshot_to_supabase(consolidated_data, sync_source="Sincronização Au
     nas tabelas 'operational_sync_sessions' e 'team_operational_logs'.
     """
     try:
+        from cluster_manager import cluster_manager
+        if not cluster_manager.is_feeding_database():
+            print(f"[CLUSTER GUARD - BLOQUEADO] Push TRBOnet IGNORADO: Esta maquina ({cluster_manager.node_id}) esta em STANDBY.", flush=True)
+            return {"status": "standby_blocked", "message": f"Maquina {cluster_manager.node_id} em Standby"}
+
+        node_host = cluster_manager.config.get("hostname") or "Host"
+        sync_source = f"{sync_source} [{cluster_manager.node_id} | {node_host}]"
         summary = consolidated_data.get("summary", {})
         teams = consolidated_data.get("teams", [])
         now = datetime.now(BR_TZ)
@@ -384,6 +391,14 @@ def wait_for_command_completion(command_id: str, timeout_seconds: int = 10) -> d
 def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal Enel SP") -> dict:
     """Grava o cabeçalho da sessão de entrega e as linhas individuais no Supabase (ativas + acumuladas do dia)."""
     try:
+        from cluster_manager import cluster_manager
+        if not cluster_manager.is_feeding_database():
+            print(f"[CLUSTER GUARD - BLOQUEADO] Push Entrega Enel IGNORADO: Esta maquina ({cluster_manager.node_id}) esta em STANDBY.", flush=True)
+            return {"status": "standby_blocked", "message": f"Maquina {cluster_manager.node_id} em Standby"}
+
+        node_host = cluster_manager.config.get("hostname") or "Host"
+        sync_source = f"{sync_source} [{cluster_manager.node_id} | {node_host}]"
+
         active_teams = delivery_data.get("active_teams") or delivery_data.get("teams") or []
         daily_total = delivery_data.get("daily_total_teams") or []
         summary_active = delivery_data.get("summary_active") or delivery_data.get("summary") or {}
@@ -540,7 +555,7 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
             for s in sessions:
                 s_id = s.get("id")
                 s_date = s.get("date_ref")
-                s_captured_at = s.get("captured_at")
+                s_sync_source = s.get("sync_source")
                 if not s_id:
                     continue
 
@@ -555,7 +570,8 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
                             "data": records,
                             "session_id": s_id,
                             "captured_at": s_captured_at,
-                            "date_ref": s_date
+                            "date_ref": s_date,
+                            "sync_source": s_sync_source
                         }
 
         # Fallback: busca os últimos registros deduplicando por team_code
