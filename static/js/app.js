@@ -8018,6 +8018,8 @@ async function openClusterNodeDetailsModal(nodeId) {
                     </button>
                 `;
             }
+        }
+
         // 7. Renderiza Histórico de Comandos de Transição do Cluster
         const cmdListEl = document.getElementById('clusterNodeModalCommandsList');
         if (cmdListEl) {

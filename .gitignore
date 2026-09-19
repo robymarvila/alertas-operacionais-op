@@ -13,6 +13,7 @@ delivery_daily_cache.json
 scratch/
 temp_spotfire_*/
 *.png
+!static/icons/*.png
 @AutomationLog*
 *.zip
 node_config.json
