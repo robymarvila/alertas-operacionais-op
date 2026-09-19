@@ -54,6 +54,34 @@
     <div class="ambient-glow glow-bottom-center"></div>
 
     <!-- ================================================================= -->
+    <!-- BANNER DE ALERTA GLOBAL DE FALHA DE MOTORES/SERVIDORES (AUTHENTICATED) -->
+    <!-- ================================================================= -->
+    <div id="globalClusterAlertBanner" class="global-cluster-alert" style="display: none;">
+        <div class="global-cluster-alert-container glass-card">
+            <div class="global-cluster-alert-left">
+                <div class="alert-icon-pulsing">
+                    <i data-lucide="alert-triangle"></i>
+                </div>
+                <div>
+                    <div class="alert-headline">
+                        <strong id="globalClusterAlertTitle">⚠️ ALERTA OPERACIONAL: FALHA DE TELEMETRIA</strong>
+                        <span class="badge badge-danger" id="globalClusterAlertBadge" style="font-size: 0.68rem; margin-left: 6px;">FALHA CRÍTICA</span>
+                    </div>
+                    <p id="globalClusterAlertMsg" class="alert-submsg">Um motor de coleta ou servidor do cluster parou de responder.</p>
+                </div>
+            </div>
+            <div class="global-cluster-alert-right">
+                <button class="btn btn-warning btn-sm" onclick="navigateToView('admin-engines')" style="font-weight: 800; font-size: 0.78rem;">
+                    <i data-lucide="cpu" style="width: 14px; height: 14px; margin-right: 4px;"></i> VER PAINEL DE MOTORES
+                </button>
+                <button class="btn-dismiss-alert" onclick="dismissClusterAlert()" title="Ocultar temporariamente">
+                    <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
     <!-- MOBILE TOP APP BAR (Compacto, Glassmorphism, Telas <= 768px)      -->
     <!-- ================================================================= -->
     <header class="mobile-top-appbar glass-card" id="mobileTopAppBar">
@@ -2590,6 +2618,125 @@
                     </div>
                 </div>
 
+                <!-- ================================================================= -->
+                <!-- SEÇÃO 0: CLUSTER DE SERVIDORES LOCAIS & REDUNDÂNCIA (CDP)         -->
+                <!-- ================================================================= -->
+                <div class="cluster-redundancy-section glass-card" style="margin-bottom: 24px; padding: 20px 24px; border: 1px solid rgba(0, 242, 254, 0.25); background: linear-gradient(135deg, rgba(11, 15, 25, 0.75) 0%, rgba(13, 27, 42, 0.6) 100%);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--border-glass); padding-bottom: 14px;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <i data-lucide="server" style="color: #00f2fe; width: 20px; height: 20px;"></i>
+                                <h3 style="font-size: 1.15rem; font-weight: 800; margin: 0; color: #fff;">CLUSTER DE REDUNDÂNCIA & SERVIDORES LOCAIS</h3>
+                                <span class="badge" style="font-size: 0.7rem; font-weight: 800; letter-spacing: 0.5px; background: rgba(0, 242, 254, 0.15); color: #00f2fe; border: 1px solid rgba(0, 242, 254, 0.35);">ALTA DISPONIBILIDADE</span>
+                            </div>
+                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 4px 0 0 0;">
+                                Estrutura redundante com failover automático e controle em tempo real de qual computador alimenta o banco de dados.
+                            </p>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <!-- Botão Baixar Atualização para Máquina 2 -->
+                            <a href="/api/admin/cluster/download_update" class="btn btn-secondary btn-sm" style="font-size: 0.75rem; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; padding: 7px 12px; border-radius: 10px; border: 1px solid rgba(0, 242, 254, 0.35); color: #00f2fe; background: rgba(0, 242, 254, 0.08);" title="Baixar pacote ZIP contendo os codigos atualizados para sincronizar a Maquina 2 sem GitHub">
+                                <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                                <span>SINCRONIZAR MÁQUINA 2 (.ZIP)</span>
+                            </a>
+
+                            <!-- Active Feeder Banner -->
+                            <div id="clusterActiveFeederBanner" class="active-feeder-banner" style="display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);">
+                                <div class="feeder-pulse-dot" style="width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981;"></div>
+                                <span style="font-size: 0.8rem; color: #a7f3d0; font-weight: 700;">ALIMENTANDO O BANCO:</span>
+                                <strong id="clusterActiveFeederName" style="font-size: 0.9rem; color: #fff; font-family: 'JetBrains Mono', monospace;">Carregando nós...</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Grid dos 2 Servidores (Máquina 1 e Máquina 2) -->
+                    <div class="cluster-nodes-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px;">
+                        
+                        <!-- Card Servidor 1 (Primário) -->
+                        <div class="cluster-node-card glass-card clickable-engine-card" id="clusterCardNode1" onclick="openClusterNodeDetailsModal('MAQUINA_1_PRINCIPAL')" style="padding: 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); transition: all 0.2s ease; cursor: pointer;" title="Clique para ver dados da máquina, sessão e telemetria">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div class="node-icon-box" id="nodeIconBox1" style="width: 40px; height: 40px; border-radius: 10px; background: rgba(0, 242, 254, 0.12); border: 1px solid rgba(0, 242, 254, 0.3); display: flex; align-items: center; justify-content: center; color: #00f2fe;">
+                                        <i data-lucide="monitor"></i>
+                                    </div>
+                                    <div>
+                                        <h4 id="nodeTitle1" style="font-size: 0.95rem; font-weight: 800; margin: 0; color: #fff;">Máquina 1 (Principal)</h4>
+                                        <span id="nodeSub1" style="font-size: 0.72rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">SRV-CCO-01</span>
+                                    </div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                                    <span class="engine-status-badge badge-operational" id="nodeBadgeRole1">MÁQUINA PRINCIPAL</span>
+                                    <span class="badge" id="nodeBadgeFeeding1" style="font-size: 0.68rem; padding: 2px 8px; border-radius: 6px; background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35); font-weight: 800;">⚡ ALIMENTANDO BANCO</span>
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px; background: rgba(0,0,0,0.25); border-radius: 8px; font-size: 0.76rem; margin-bottom: 12px;">
+                                <div>
+                                    <span style="color: var(--text-secondary); display: block; font-size: 0.68rem;">COMUNICAÇÃO (HEARTBEAT)</span>
+                                    <strong id="nodeHb1" style="color: #fff; font-family: 'JetBrains Mono', monospace;">--:--:--</strong>
+                                </div>
+                                <div>
+                                    <span style="color: var(--text-secondary); display: block; font-size: 0.68rem;">PORTA CDP 9222</span>
+                                    <strong id="nodeCdp1" style="color: #10b981; font-family: 'JetBrains Mono', monospace;">🟢 ABERTA (PRONTA)</strong>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span id="nodeDiagMsg1" style="font-size: 0.75rem; color: var(--text-secondary);">Robôs CDP ativos</span>
+                                <button class="btn btn-secondary btn-sm" id="btnPromoteNode1" onclick="event.stopPropagation(); promoteNodeAction('MAQUINA_1_PRINCIPAL')" style="font-weight: 800; font-size: 0.72rem; padding: 6px 12px;">
+                                    <i data-lucide="check-circle-2" style="width: 12px; height: 12px; margin-right: 4px;"></i> ATIVA
+                                </button>
+                            </div>
+                            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-top: 10px; font-size: 0.7rem; color: var(--text-secondary); opacity: 0.85;">
+                                <i data-lucide="info" style="width: 12px; height: 12px;"></i>
+                                <span>Clique para detalhes da máquina e sessão</span>
+                            </div>
+                        </div>
+
+                        <!-- Card Servidor 2 (Redundante / Backup) -->
+                        <div class="cluster-node-card glass-card clickable-engine-card" id="clusterCardNode2" onclick="openClusterNodeDetailsModal('MAQUINA_2_BACKUP')" style="padding: 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); transition: all 0.2s ease; cursor: pointer;" title="Clique para ver dados da máquina, sessão e telemetria">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div class="node-icon-box" id="nodeIconBox2" style="width: 40px; height: 40px; border-radius: 10px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; color: #f59e0b;">
+                                        <i data-lucide="shield-check"></i>
+                                    </div>
+                                    <div>
+                                        <h4 id="nodeTitle2" style="font-size: 0.95rem; font-weight: 800; margin: 0; color: #fff;">Máquina 2 (Redundante)</h4>
+                                        <span id="nodeSub2" style="font-size: 0.72rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">SRV-CCO-02</span>
+                                    </div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                                    <span class="engine-status-badge badge-warning" id="nodeBadgeRole2" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35);">STANDBY PRONTO</span>
+                                    <span class="badge" id="nodeBadgeFeeding2" style="font-size: 0.68rem; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); color: var(--text-secondary); border: 1px solid var(--border-glass); font-weight: 800;">🛡️ STANDBY</span>
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px; background: rgba(0,0,0,0.25); border-radius: 8px; font-size: 0.76rem; margin-bottom: 12px;">
+                                <div>
+                                    <span style="color: var(--text-secondary); display: block; font-size: 0.68rem;">COMUNICAÇÃO (HEARTBEAT)</span>
+                                    <strong id="nodeHb2" style="color: #fff; font-family: 'JetBrains Mono', monospace;">--:--:--</strong>
+                                </div>
+                                <div>
+                                    <span style="color: var(--text-secondary); display: block; font-size: 0.68rem;">PORTA CDP 9222</span>
+                                    <strong id="nodeCdp2" style="color: #00f2fe; font-family: 'JetBrains Mono', monospace;">🟡 STANDBY PRONTA</strong>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span id="nodeDiagMsg2" style="font-size: 0.75rem; color: var(--text-secondary);">Pronta para assumir em caso de falha</span>
+                                <button class="btn btn-warning btn-sm" id="btnPromoteNode2" onclick="event.stopPropagation(); promoteNodeAction('MAQUINA_2_BACKUP')" style="font-weight: 800; font-size: 0.72rem; padding: 6px 12px;">
+                                    <i data-lucide="arrow-right-left" style="width: 12px; height: 12px; margin-right: 4px;"></i> ASSUMIR COLETA
+                                </button>
+                            </div>
+                            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-top: 10px; font-size: 0.7rem; color: var(--text-secondary); opacity: 0.85;">
+                                <i data-lucide="info" style="width: 12px; height: 12px;"></i>
+                                <span>Clique para detalhes da máquina e sessão</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
                 <!-- Grid de Cards de Motores -->
                 <div class="engine-cards-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-bottom: 24px;">
                     
@@ -3297,6 +3444,89 @@
                 <span id="btnEngineDetailActionText">Forçar Coleta Imediata</span>
             </button>
             <button class="btn btn-secondary" onclick="closeModal('modalEngineDetails')">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================================= -->
+<!-- Modal: Detalhes, Sessão e Telemetria da Máquina (Cluster)         -->
+<!-- ================================================================= -->
+<div class="modal-backdrop" id="modalClusterNodeDetails">
+    <div class="modal-card glass-card" style="max-width: 780px; width: 92%; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; border-radius: 20px;">
+        <div class="modal-header" style="padding: 20px 24px; border-bottom: 1px solid var(--border-glass); background: rgba(255,255,255,0.02);">
+            <div class="modal-title-wrap" style="display: flex; align-items: center; gap: 14px;">
+                <div class="auth-modal-icon-badge" id="clusterNodeModalIconBadge" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: rgba(0, 242, 254, 0.15); border: 1.5px solid rgba(0, 242, 254, 0.35);">
+                    <i data-lucide="monitor" id="clusterNodeModalIcon" style="color: #00f2fe; width: 24px; height: 24px;"></i>
+                </div>
+                <div>
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <h3 id="clusterNodeModalTitle" style="margin: 0; font-size: 1.25rem; font-weight: 800;">Servidor CCO</h3>
+                        <span class="engine-status-badge badge-operational" id="clusterNodeModalStatusBadge">ONLINE</span>
+                        <span class="badge" id="clusterNodeModalFeedingBadge" style="font-size: 0.72rem; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);">⚡ ALIMENTANDO BANCO</span>
+                    </div>
+                    <p class="modal-subtitle" id="clusterNodeModalSubtitle" style="margin: 4px 0 0 0; font-size: 0.84rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">Hostname • IP</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeModal('modalClusterNodeDetails')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body" style="padding: 22px 24px; overflow-y: auto; flex: 1;">
+            <!-- Banner Explicativo de Papel no Banco -->
+            <div id="clusterNodeModalRoleBanner" style="border-radius: 14px; padding: 14px 18px; margin-bottom: 18px; display: flex; align-items: center; gap: 12px;">
+                <i data-lucide="info" id="clusterNodeModalBannerIcon" style="width: 24px; height: 24px; flex-shrink: 0;"></i>
+                <span id="clusterNodeModalBannerText" style="font-size: 0.85rem; line-height: 1.45;">Carregando estado de sincronização da máquina...</span>
+            </div>
+
+            <!-- Grade de Telemetria Técnica / Hardware / Rede -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                <div class="glass-card" style="padding: 12px 14px; background: rgba(255,255,255,0.02);">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); display: block;">ENDEREÇO IP LOCAL (LAN)</span>
+                    <strong id="clusterNodeModalIp" style="font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; color: #00f2fe;">127.0.0.1</strong>
+                </div>
+                <div class="glass-card" style="padding: 12px 14px; background: rgba(255,255,255,0.02);">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); display: block;">SISTEMA OPERACIONAL</span>
+                    <strong id="clusterNodeModalOs" style="font-size: 0.95rem; color: #fff;">Windows</strong>
+                </div>
+                <div class="glass-card" style="padding: 12px 14px; background: rgba(255,255,255,0.02);">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); display: block;">GEOLOCALIZAÇÃO / REDE</span>
+                    <strong id="clusterNodeModalGeo" style="font-size: 0.95rem; color: #10b981;">São Paulo, SP (Brasil)</strong>
+                </div>
+                <div class="glass-card" style="padding: 12px 14px; background: rgba(255,255,255,0.02);">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); display: block;">PORTA CDP 9222</span>
+                    <strong id="clusterNodeModalCdp" style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: #10b981;">🟢 Aberta & Pronta</strong>
+                </div>
+                <div class="glass-card" style="padding: 12px 14px; background: rgba(255,255,255,0.02);">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); display: block;">ÚLTIMA COMUNICAÇÃO (HEARTBEAT)</span>
+                    <strong id="clusterNodeModalLastHb" style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: #f59e0b;">--:--:--</strong>
+                </div>
+                <div class="glass-card" style="padding: 12px 14px; background: rgba(255,255,255,0.02);">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: var(--text-secondary); display: block;">PAPEL NO CLUSTER</span>
+                    <strong id="clusterNodeModalRole" style="font-size: 0.95rem; color: #c084fc;">Nó Principal</strong>
+                </div>
+            </div>
+
+            <!-- Diagnóstico dos Motores na Máquina -->
+            <h4 style="font-size: 0.88rem; font-weight: 800; text-transform: uppercase; color: var(--text-secondary); margin: 0 0 10px 0; letter-spacing: 0.5px;">
+                Status dos Motores Locais Nesta Máquina
+            </h4>
+            <div id="clusterNodeModalEnginesGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-bottom: 18px;">
+                <!-- Dinâmico via JS -->
+            </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); gap: 10px; flex-wrap: wrap;">
+            <div id="clusterNodeModalActionWrapper">
+                <!-- Botão dinâmico via JS -->
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <a href="/api/admin/cluster/download_update" class="btn btn-secondary btn-sm" style="font-size: 0.76rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(0, 242, 254, 0.3); color: #00f2fe;" title="Baixar pacote ZIP de sincronização">
+                    <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                    <span>Baixar Pacote .ZIP</span>
+                </a>
+                <button class="btn btn-secondary" onclick="closeModal('modalClusterNodeDetails')">Fechar</button>
+            </div>
         </div>
     </div>
 </div>

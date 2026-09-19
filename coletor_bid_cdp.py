@@ -564,7 +564,9 @@ def bid_background_worker(interval_seconds=120, stop_event=None):
             break
 
         try:
-            executar_ciclo_sincronizacao_bid()
+            from cluster_manager import cluster_manager
+            if cluster_manager.is_feeding_database():
+                executar_ciclo_sincronizacao_bid()
         except Exception as e:
             print(f"[BID BACKGROUND ERROR] Exceção no ciclo: {e}", flush=True)
 

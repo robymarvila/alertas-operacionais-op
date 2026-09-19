@@ -1060,7 +1060,9 @@ def spotfire_background_worker(interval_seconds=1800, stop_event=None):
             print("[BACKGROUND WORKER] Rotina do Spotfire finalizada.", flush=True)
             break
         try:
-            executar_ciclo_sincronizacao_spotfire(source_label=f"Rotina Automática ({mins} min)")
+            from cluster_manager import cluster_manager
+            if cluster_manager.is_feeding_database():
+                executar_ciclo_sincronizacao_spotfire(source_label=f"Rotina Automática ({mins} min)")
         except Exception as err:
             print(f"[SPOTFIRE WORKER EXCEPTION] {err}", flush=True)
         if stop_event:

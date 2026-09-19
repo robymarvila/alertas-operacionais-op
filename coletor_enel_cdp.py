@@ -409,7 +409,9 @@ def enel_background_worker(interval_seconds=120, stop_event=None):
             print("[BACKGROUND WORKER] Rotina da Enel SP finalizada.", flush=True)
             break
         try:
-            executar_ciclo_sincronizacao_enel(source_label="Rotina Automática (2 min)")
+            from cluster_manager import cluster_manager
+            if cluster_manager.is_feeding_database():
+                executar_ciclo_sincronizacao_enel(source_label="Rotina Automática (2 min)")
         except Exception as err:
             print(f"[ENEL WORKER EXCEPTION] {err}", flush=True)
         if stop_event:

@@ -312,6 +312,31 @@ def check_port_listening(host="127.0.0.1", port=9222, timeout=1.0) -> bool:
     except Exception:
         return False
 
+def _get_cluster_info():
+    """Retorna dados de telemetria de todas as máquinas do cluster e qual está alimentando o banco."""
+    try:
+        from cluster_manager import cluster_manager
+        nodes = cluster_manager.fetch_all_cluster_nodes()
+        active_node = next((n for n in nodes if n.get("is_feeding_db")), None)
+        active_node_id = active_node.get("node_id") if active_node else cluster_manager.node_id
+        return {
+            "local_node_id": cluster_manager.node_id,
+            "local_node_label": cluster_manager.node_label,
+            "local_role": cluster_manager.role,
+            "local_is_feeding": cluster_manager.is_feeding_database(),
+            "active_node_id": active_node_id,
+            "nodes": nodes
+        }
+    except Exception as e:
+        return {
+            "local_node_id": "MAQUINA_1_PRINCIPAL",
+            "local_node_label": "Servidor CCO Principal (Máquina 1)",
+            "local_role": "PRIMARY",
+            "local_is_feeding": True,
+            "active_node_id": "MAQUINA_1_PRINCIPAL",
+            "nodes": []
+        }
+
 @app.route('/api/admin/engine_status', methods=['GET'])
 def get_engine_status():
     """
@@ -390,8 +415,11 @@ def get_engine_status():
         cloud_status = "OPERATIONAL" if cloud_ok else "ERROR_CONNECTION"
         cloud_msg = "Operacional: Conexão REST com banco Supabase ativa." if cloud_ok else "Falha de Conexão: Supabase inacessível."
 
+        cluster_info = _get_cluster_info()
+
         return jsonify({
             "status": "success",
+            "cluster": cluster_info,
             "engines": {
                 "trbonet": parse_engine_cloud("trbonet_collector", "Motor TRBOnet One (Rádios & GPS)", "Operacional: Rádios e telemetria GPS sendo conciliados a cada 2 min."),
                 "enel_cdp": parse_engine_cloud("enel_cdp_collector", "Robô CDP Enel SP (Equipes & Turnos)", "Operacional: Conexão CDP ativa lendo 500 linhas a cada 2 min."),
@@ -512,8 +540,11 @@ def get_engine_status():
                          last_error=cloud_msg, records_count=0,
                          engine_label="Banco em Nuvem Supabase")
 
+    cluster_info = _get_cluster_info()
+
     return jsonify({
         "status": "success",
+        "cluster": cluster_info,
         "engines": {
             "trbonet": {
                 "name": "trbonet_collector",
@@ -567,6 +598,44 @@ def get_engine_status():
             }
         }
     })
+
+# ROTAS DE GESTÃO DO CLUSTER DE REDUNDÂNCIA (ALTA DISPONIBILIDADE)
+@app.route('/api/admin/cluster/nodes', methods=['GET'])
+def get_cluster_nodes():
+    """Retorna os nós cadastrados no cluster e qual está alimentando o banco."""
+    return jsonify({
+        "status": "success",
+        "cluster": _get_cluster_info()
+    })
+
+@app.route('/api/admin/cluster/promote', methods=['POST'])
+def promote_cluster_node():
+    """Alterna a máquina que alimenta ativamente o banco de dados Supabase."""
+    user = get_current_user()
+    if not user:
+        return jsonify({"status": "unauthorized", "message": "Acesso Restrito: Faça login para alternar máquinas do cluster."}), 401
+    from cluster_manager import cluster_manager
+    data = request.get_json(silent=True) or {}
+    target_node = data.get("node_id") or cluster_manager.node_id
+    res = cluster_manager.promote_node(target_node)
+    return jsonify(res)
+
+@app.route('/api/admin/cluster/download_update', methods=['GET'])
+def download_cluster_update():
+    """Gera e fornece para download direto o pacote ZIP com as atualizações do cluster sem necessidade do GitHub."""
+    try:
+        from export_update import create_update_package
+        zip_path = create_update_package()
+        if os.path.exists(zip_path):
+            return send_file(
+                zip_path,
+                mimetype='application/zip',
+                as_attachment=True,
+                download_name='atualizacao_cluster.zip'
+            )
+        return jsonify({"status": "error", "message": "Arquivo de atualização não encontrado"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/admin/engine_details/<engine_key>', methods=['GET'])
 def get_engine_details(engine_key):
@@ -2246,7 +2315,9 @@ def trbonet_background_worker(interval_seconds=120):
     time.sleep(6)
     while True:
         try:
-            execute_trbonet_sync(source_label="Rotina Automática (2 min)")
+            from cluster_manager import cluster_manager
+            if cluster_manager.is_feeding_database():
+                execute_trbonet_sync(source_label="Rotina Automática (2 min)")
         except Exception as err:
             print(f"[BACKGROUND WORKER EXCEPTION] {err}")
         time.sleep(interval_seconds)
@@ -2416,6 +2487,20 @@ def start_background_jobs(force_restart=False):
             bg_fleet.start()
         except Exception as err:
             print(f"[WARN] Falha ao disparar sincronização inicial de frotas: {err}", flush=True)
+
+        # 8. Monitor de Redundância e Heartbeat do Cluster (Alta Disponibilidade Ativo-Standby)
+        try:
+            from cluster_manager import cluster_manager
+            def _get_engines_summary():
+                return {
+                    "trbonet": ENGINE_THREADS.get("trbonet") is not None and ENGINE_THREADS["trbonet"].is_alive(),
+                    "enel_cdp": ENGINE_THREADS.get("enel_cdp") is not None and ENGINE_THREADS["enel_cdp"].is_alive(),
+                    "spotfire_cdp": ENGINE_THREADS.get("spotfire_cdp") is not None and ENGINE_THREADS["spotfire_cdp"].is_alive(),
+                    "bid_cdp": ENGINE_THREADS.get("bid_cdp") is not None and ENGINE_THREADS["bid_cdp"].is_alive()
+                }
+            cluster_manager.start_background_heartbeat(_get_engines_summary)
+        except Exception as err:
+            print(f"[WARN] Falha ao iniciar monitor de redundância do cluster: {err}", flush=True)
 
 if __name__ == '__main__':
     import sys

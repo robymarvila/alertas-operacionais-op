@@ -7659,8 +7659,443 @@ async function loadAdminEngineStatus() {
         }
         if (mCloud) mCloud.textContent = cloud.message || '--';
 
+        // 6. Cluster de Redundância (Máquina 1 vs Máquina 2)
+        if (data.cluster) {
+            renderClusterOverview(data.cluster);
+        }
+
     } catch (err) {
         console.error('Erro ao consultar status dos motores:', err);
+    }
+}
+
+// ==========================================================================
+// GESTÃO DO CLUSTER DE REDUNDÂNCIA (MÁQUINA 1 & MÁQUINA 2)
+// ==========================================================================
+
+function renderClusterOverview(cluster) {
+    if (!cluster) return;
+    const nodes = cluster.nodes || [];
+    const activeNodeId = cluster.active_node_id || 'MAQUINA_1_PRINCIPAL';
+
+    // Banner no topo indicando qual máquina está alimentando o banco
+    const activeBannerName = document.getElementById('clusterActiveFeederName');
+    const activeNodeObj = nodes.find(n => n.node_id === activeNodeId) || nodes.find(n => n.is_feeding_db);
+    if (activeBannerName) {
+        if (activeNodeObj) {
+            activeBannerName.textContent = `${activeNodeObj.node_label || activeNodeObj.node_id} (⚡ ATIVO)`;
+        } else {
+            activeBannerName.textContent = `${activeNodeId} (⚡ ATIVO)`;
+        }
+    }
+
+    // Identifica Nó 1 e Nó 2
+    const node1 = nodes.find(n => n.node_id === 'MAQUINA_1_PRINCIPAL' || n.role === 'PRIMARY') || nodes[0] || {};
+    const node2 = nodes.find(n => n.node_id === 'MAQUINA_2_BACKUP' || n.role === 'STANDBY') || nodes[1] || {};
+
+    updateNodeCardUI(1, node1, activeNodeId);
+    updateNodeCardUI(2, node2, activeNodeId);
+
+    initIcons();
+}
+
+function updateNodeCardUI(cardIdx, node, activeNodeId) {
+    const isFeeding = Boolean(node.is_feeding_db || (node.node_id === activeNodeId));
+    const isCommunicating = node.is_communicating !== false;
+
+    const titleEl = document.getElementById(`nodeTitle${cardIdx}`);
+    const subEl = document.getElementById(`nodeSub${cardIdx}`);
+    const badgeRoleEl = document.getElementById(`nodeBadgeRole${cardIdx}`);
+    const badgeFeedingEl = document.getElementById(`nodeBadgeFeeding${cardIdx}`);
+    const hbEl = document.getElementById(`nodeHb${cardIdx}`);
+    const cdpEl = document.getElementById(`nodeCdp${cardIdx}`);
+    const diagEl = document.getElementById(`nodeDiagMsg${cardIdx}`);
+    const btnPromote = document.getElementById(`btnPromoteNode${cardIdx}`);
+    const cardEl = document.getElementById(`clusterCardNode${cardIdx}`);
+
+    if (titleEl) titleEl.textContent = node.node_label || `Máquina ${cardIdx}`;
+    if (subEl) subEl.textContent = `${node.hostname || 'Windows'} | IP: ${node.ip_address || '127.0.0.1'}`;
+
+    if (badgeRoleEl) {
+        badgeRoleEl.className = `engine-status-badge ${isCommunicating ? (isFeeding ? 'badge-operational' : 'badge-warning') : 'badge-stopped'}`;
+        badgeRoleEl.textContent = isCommunicating ? (node.role === 'PRIMARY' ? 'MÁQUINA PRINCIPAL' : 'MÁQUINA REDUNDANTE') : 'DESCONECTADO';
+    }
+
+    if (badgeFeedingEl) {
+        if (isFeeding) {
+            badgeFeedingEl.style.background = 'rgba(16, 185, 129, 0.25)';
+            badgeFeedingEl.style.color = '#10b981';
+            badgeFeedingEl.style.borderColor = 'rgba(16, 185, 129, 0.5)';
+            badgeFeedingEl.textContent = '⚡ ALIMENTANDO BANCO';
+        } else {
+            badgeFeedingEl.style.background = 'rgba(255, 255, 255, 0.06)';
+            badgeFeedingEl.style.color = 'var(--text-secondary)';
+            badgeFeedingEl.style.borderColor = 'var(--border-glass)';
+            badgeFeedingEl.textContent = '🛡️ STANDBY PRONTO';
+        }
+    }
+
+    if (hbEl) {
+        if (!node.last_heartbeat) {
+            hbEl.textContent = 'Aguardando inicialização';
+            hbEl.style.color = 'var(--text-secondary)';
+        } else {
+            const sec = node.seconds_since_heartbeat || 0;
+            if (sec < 60) {
+                hbEl.textContent = `Há ${sec}s atrás (${node.last_heartbeat_formatted || ''})`;
+                hbEl.style.color = '#10b981';
+            } else {
+                const min = Math.floor(sec / 60);
+                hbEl.textContent = `Há ${min} min atrás`;
+                hbEl.style.color = min > 4 ? '#ef4444' : '#f59e0b';
+            }
+        }
+    }
+
+    if (cdpEl) {
+        const cdpStatus = node.cdp_port_status || 'UNKNOWN';
+        if (cdpStatus === 'OPEN') {
+            cdpEl.textContent = '🟢 ABERTA (PORTA 9222 PRONTA)';
+            cdpEl.style.color = '#10b981';
+        } else if (cdpStatus === 'CLOSED') {
+            cdpEl.textContent = '🔴 FECHADA (PORTA 9222 INATIVA)';
+            cdpEl.style.color = '#ef4444';
+        } else {
+            cdpEl.textContent = '🟡 AGUARDANDO NÓ';
+            cdpEl.style.color = '#f59e0b';
+        }
+    }
+
+    if (diagEl) {
+        if (isFeeding) {
+            diagEl.textContent = 'Coletas ativas gravando no banco Supabase';
+            diagEl.style.color = '#a7f3d0';
+        } else {
+            diagEl.textContent = 'Standby atento: monitorando saúde do servidor líder';
+            diagEl.style.color = 'var(--text-secondary)';
+        }
+    }
+
+    if (btnPromote) {
+        if (isFeeding) {
+            btnPromote.className = 'btn btn-secondary btn-sm';
+            btnPromote.innerHTML = '<i data-lucide="check-circle-2" style="width: 12px; height: 12px; margin-right: 4px;"></i> ATIVA';
+            btnPromote.disabled = true;
+            btnPromote.style.opacity = '0.7';
+        } else {
+            btnPromote.className = 'btn btn-warning btn-sm';
+            btnPromote.innerHTML = '<i data-lucide="arrow-right-left" style="width: 12px; height: 12px; margin-right: 4px;"></i> ASSUMIR COLETA';
+            btnPromote.disabled = false;
+            btnPromote.style.opacity = '1';
+            const targetId = node.node_id || (cardIdx === 1 ? 'MAQUINA_1_PRINCIPAL' : 'MAQUINA_2_BACKUP');
+            btnPromote.onclick = () => promoteNodeAction(targetId);
+        }
+    }
+
+    if (cardEl) {
+        if (isFeeding) {
+            cardEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+            cardEl.style.boxShadow = '0 0 20px rgba(16, 185, 129, 0.15)';
+        } else {
+            cardEl.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+            cardEl.style.boxShadow = 'none';
+        }
+    }
+}
+
+async function promoteNodeAction(targetNodeId) {
+    if (!confirm(`Deseja definir a máquina [${targetNodeId}] como a ALIMENTADORA do banco de dados?\n\nOs robôs CDP desta máquina passarão a gravar no Supabase imediatamente, e a outra máquina entrará em Standby para evitar duplicidade de coletas.`)) {
+        return;
+    }
+    try {
+        const resp = await fetch('/api/admin/cluster/promote', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            },
+            body: JSON.stringify({ node_id: targetNodeId })
+        });
+
+        const text = await resp.text();
+        let res = {};
+        try {
+            res = JSON.parse(text);
+        } catch {
+            if (resp.status === 401) {
+                showToast('Acesso Restrito: Faça login com matrícula e senha para alternar servidores.', 'danger');
+                return;
+            } else if (resp.status === 404) {
+                showToast('O servidor local precisa ser reiniciado para carregar as novas rotas de cluster.', 'warning');
+                return;
+            } else {
+                showToast(`Erro ${resp.status} na resposta do servidor.`, 'danger');
+                return;
+            }
+        }
+
+        if (resp.ok && res.status === 'success') {
+            showToast(res.message || 'Servidor promovido com sucesso!', 'success');
+            await loadAdminEngineStatus();
+        } else {
+            showToast(res.message || 'Falha ao alternar servidor.', 'danger');
+        }
+    } catch (err) {
+        showToast('Erro de comunicação com o servidor: ' + (err.message || err), 'danger');
+    }
+}
+
+// ==========================================================================
+// MODAL DE DETALHES, SESSÃO E TELEMETRIA DA MÁQUINA (CLUSTER)
+// ==========================================================================
+
+async function openClusterNodeDetailsModal(nodeId) {
+    const modal = document.getElementById('modalClusterNodeDetails');
+    if (!modal) return;
+
+    modal.classList.add('active');
+
+    const titleEl = document.getElementById('clusterNodeModalTitle');
+    const subEl = document.getElementById('clusterNodeModalSubtitle');
+    const statusBadge = document.getElementById('clusterNodeModalStatusBadge');
+    const feedingBadge = document.getElementById('clusterNodeModalFeedingBadge');
+    const bannerBox = document.getElementById('clusterNodeModalRoleBanner');
+    const bannerText = document.getElementById('clusterNodeModalBannerText');
+    const bannerIcon = document.getElementById('clusterNodeModalBannerIcon');
+    const ipEl = document.getElementById('clusterNodeModalIp');
+    const osEl = document.getElementById('clusterNodeModalOs');
+    const geoEl = document.getElementById('clusterNodeModalGeo');
+    const cdpEl = document.getElementById('clusterNodeModalCdp');
+    const hbEl = document.getElementById('clusterNodeModalLastHb');
+    const roleEl = document.getElementById('clusterNodeModalRole');
+    const enginesGrid = document.getElementById('clusterNodeModalEnginesGrid');
+    const actionWrapper = document.getElementById('clusterNodeModalActionWrapper');
+
+    if (titleEl) titleEl.textContent = 'Carregando telemetria...';
+    if (enginesGrid) {
+        enginesGrid.innerHTML = `
+            <div style="grid-column: 1 / -1; text-align: center; padding: 24px; color: var(--text-secondary);">
+                <i data-lucide="loader" class="spin-animation" style="width: 24px; height: 24px; margin-bottom: 8px; color: #00f2fe;"></i>
+                <p style="margin: 0; font-size: 0.85rem;">Consultando dados da máquina no Supabase...</p>
+            </div>
+        `;
+        initIcons();
+    }
+
+    try {
+        const resp = await fetch('/api/admin/engine_status');
+        const data = await resp.json();
+        const cluster = data.cluster || {};
+        const nodes = cluster.nodes || [];
+        const activeNodeId = cluster.active_node_id || 'MAQUINA_1_PRINCIPAL';
+
+        const node = nodes.find(n => n.node_id === nodeId) || {
+            node_id: nodeId,
+            node_label: nodeId === 'MAQUINA_1_PRINCIPAL' ? 'Servidor CCO Principal (Máquina 1)' : 'Servidor CCO Redundante (Máquina 2)',
+            role: nodeId === 'MAQUINA_1_PRINCIPAL' ? 'PRIMARY' : 'STANDBY',
+            is_feeding_db: nodeId === activeNodeId,
+            status: 'OFFLINE'
+        };
+
+        const isFeeding = Boolean(node.is_feeding_db || (node.node_id === activeNodeId));
+        const isCommunicating = node.is_communicating !== false && node.status !== 'OFFLINE';
+
+        if (titleEl) titleEl.textContent = node.node_label || nodeId;
+        if (subEl) subEl.textContent = `Hostname: ${node.hostname || 'Windows'} • IP: ${node.ip_address || '127.0.0.1'} • Python ${node.python_version || '3.13'}`;
+
+        if (statusBadge) {
+            statusBadge.className = `engine-status-badge ${isCommunicating ? 'badge-operational' : 'badge-stopped'}`;
+            statusBadge.textContent = isCommunicating ? 'ONLINE & CONECTADO' : 'DESCONECTADO / OFFLINE';
+        }
+
+        if (feedingBadge) {
+            if (isFeeding) {
+                feedingBadge.style.background = 'rgba(16, 185, 129, 0.25)';
+                feedingBadge.style.color = '#10b981';
+                feedingBadge.style.borderColor = 'rgba(16, 185, 129, 0.5)';
+                feedingBadge.textContent = '⚡ ALIMENTANDO O BANCO';
+            } else {
+                feedingBadge.style.background = 'rgba(245, 158, 11, 0.2)';
+                feedingBadge.style.color = '#f59e0b';
+                feedingBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+                feedingBadge.textContent = '🛡️ STANDBY ATENTO';
+            }
+        }
+
+        if (bannerBox && bannerText) {
+            if (isFeeding) {
+                bannerBox.style.background = 'rgba(16, 185, 129, 0.12)';
+                bannerBox.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+                bannerBox.style.color = '#a7f3d0';
+                if (bannerIcon) bannerIcon.style.color = '#10b981';
+                bannerText.innerHTML = `<strong>⚡ SERVIDOR ATIVO PRINCIPAL:</strong> Esta máquina é a responsável oficial pela coleta e envio dos dados para o Supabase. As rotinas do Enel SP, Spotfire, BidTech e TRBOnet executam e gravam no banco a partir deste computador.`;
+            } else {
+                bannerBox.style.background = 'rgba(245, 158, 11, 0.12)';
+                bannerBox.style.border = '1px solid rgba(245, 158, 11, 0.35)';
+                bannerBox.style.color = '#fde68a';
+                if (bannerIcon) bannerIcon.style.color = '#f59e0b';
+                bannerText.innerHTML = `<strong>🛡️ MODO STANDBY DE VIGILÂNCIA:</strong> Esta máquina está em prontidão operacional. Ela mantém a porta CDP 9222 aberta e monitora a saúde do servidor líder a cada 20 segundos, porém <u>NÃO grava no banco</u> para evitar duplicidade de sessões e conflitos de login corporativo com o servidor líder. Se o servidor principal falhar por mais de 5 minutos, ela assumirá a coleta automaticamente.`;
+            }
+        }
+
+        if (ipEl) ipEl.textContent = node.ip_address || '127.0.0.1';
+        if (osEl) osEl.textContent = node.os_name || 'Windows 11 (64-bit)';
+        if (geoEl) {
+            const geo = node.geo_location || {};
+            geoEl.textContent = `${geo.city || 'São Paulo'}, ${geo.region || 'SP'} (${geo.country || 'Brasil'}) • ${geo.network || 'Rede CCO'}`;
+        }
+        if (cdpEl) {
+            const cdpStatus = node.cdp_port_status || 'UNKNOWN';
+            if (cdpStatus === 'OPEN') {
+                cdpEl.textContent = '🟢 Aberta & Escutando (Porta 9222)';
+                cdpEl.style.color = '#10b981';
+            } else {
+                cdpEl.textContent = '🔴 Fechada ou Inacessível';
+                cdpEl.style.color = '#ef4444';
+            }
+        }
+        if (hbEl) {
+            if (!node.last_heartbeat) {
+                hbEl.textContent = 'Sem sinal recente';
+                hbEl.style.color = 'var(--text-secondary)';
+            } else {
+                hbEl.textContent = `${node.last_heartbeat_formatted || node.last_heartbeat} (há ${node.seconds_since_heartbeat || 0}s)`;
+                hbEl.style.color = (node.seconds_since_heartbeat || 0) < 60 ? '#10b981' : '#f59e0b';
+            }
+        }
+        if (roleEl) {
+            roleEl.textContent = node.role === 'PRIMARY' ? 'Nó Primário (Master)' : 'Nó Secundário (Redundante)';
+        }
+
+        // Renderiza grid de motores desta máquina
+        if (enginesGrid) {
+            const engMap = node.engines_status || {};
+            const engNames = [
+                { id: 'enel_cdp', label: 'Robô CDP Enel SP', icon: 'users', desc: 'Coleta EquipesBrasil a cada 2 min' },
+                { id: 'spotfire_cdp', label: 'Robô CDP Spotfire', icon: 'bar-chart-2', desc: 'Extração Scanner 5.0 a cada 30 min' },
+                { id: 'bid_cdp', label: 'Robô CDP BidTech', icon: 'check-square', desc: 'Checklists Visão Operacional 2 min' },
+                { id: 'trbonet', label: 'Motor TRBOnet One', icon: 'radio', desc: 'Conciliação de rádios e GPS 2 min' }
+            ];
+
+            enginesGrid.innerHTML = engNames.map(e => {
+                const isOp = isFeeding ? (engMap[e.id] !== false) : true;
+                const statusStr = isFeeding ? (isOp ? 'OPERACIONAL' : 'ALERTA') : 'EM PRONTIDÃO (STANDBY)';
+                const statusColor = isFeeding ? (isOp ? '#10b981' : '#ef4444') : '#f59e0b';
+                const statusBg = isFeeding ? (isOp ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)') : 'rgba(245,158,11,0.15)';
+
+                return `
+                    <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(0,242,254,0.1); border: 1px solid rgba(0,242,254,0.25); display: flex; align-items: center; justify-content: center; color: #00f2fe;">
+                                <i data-lucide="${e.icon}" style="width: 16px; height: 16px;"></i>
+                            </div>
+                            <div>
+                                <strong style="font-size: 0.82rem; color: #fff; display: block;">${e.label}</strong>
+                                <span style="font-size: 0.7rem; color: var(--text-secondary);">${e.desc}</span>
+                            </div>
+                        </div>
+                        <span style="font-size: 0.68rem; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: ${statusBg}; color: ${statusColor}; font-family: 'JetBrains Mono', monospace;">
+                            ${statusStr}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        if (actionWrapper) {
+            if (isFeeding) {
+                actionWrapper.innerHTML = `
+                    <span class="badge" style="padding: 10px 18px; font-size: 0.85rem; font-weight: 800; background: rgba(16,185,129,0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 10px;">
+                        <i data-lucide="check-circle-2" style="width: 16px; height: 16px; margin-right: 6px; vertical-align: text-bottom;"></i>
+                        ESTA MÁQUINA JÁ ESTÁ ALIMENTANDO O BANCO
+                    </span>
+                `;
+            } else {
+                actionWrapper.innerHTML = `
+                    <button class="btn btn-warning" onclick="promoteNodeAction('${node.node_id}'); closeModal('modalClusterNodeDetails');" style="font-weight: 800; padding: 10px 20px; box-shadow: 0 0 15px rgba(245,158,11,0.3);">
+                        <i data-lucide="arrow-right-left" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+                        PROMOVER: TORNAR ESTA MÁQUINA A ALIMENTADORA DO BANCO
+                    </button>
+                `;
+            }
+        }
+
+        initIcons();
+    } catch (err) {
+        console.error('Erro ao abrir detalhes da máquina do cluster:', err);
+    }
+}
+
+// ==========================================================================
+// MONITOR DE ALERTAS EM TELA PARA USUÁRIOS AUTENTICADOS (LOGIN E SENHA)
+// ==========================================================================
+let _clusterAlertDismissed = false;
+
+function dismissClusterAlert() {
+    _clusterAlertDismissed = true;
+    const b = document.getElementById('globalClusterAlertBanner');
+    if (b) b.style.display = 'none';
+}
+
+async function checkClusterHealthAlerts() {
+    // Só exibe alerta para usuários logados com login e senha
+    if (!authState || !authState.isAuthenticated) {
+        const b = document.getElementById('globalClusterAlertBanner');
+        if (b) b.style.display = 'none';
+        return;
+    }
+
+    try {
+        const resp = await fetch('/api/admin/engine_status');
+        const data = await resp.json();
+        if (data.status !== 'success') return;
+
+        const engines = data.engines || {};
+        const cluster = data.cluster || {};
+        const nodes = cluster.nodes || [];
+
+        // Verifica falhas nos motores
+        const failedEngines = [];
+        for (const [k, eng] of Object.entries(engines)) {
+            if (k === 'cloud_sync') continue;
+            if (eng.status && eng.status !== 'OPERATIONAL') {
+                failedEngines.push(eng.label || k);
+            }
+        }
+
+        // Verifica se a máquina ativa está sem comunicação há mais de 4 minutos
+        let activeNodeOffline = false;
+        const activeNodeObj = nodes.find(n => n.node_id === cluster.active_node_id || n.is_feeding_db);
+        if (activeNodeObj && activeNodeObj.seconds_since_heartbeat > 240) {
+            activeNodeOffline = true;
+        }
+
+        const banner = document.getElementById('globalClusterAlertBanner');
+        const titleEl = document.getElementById('globalClusterAlertTitle');
+        const msgEl = document.getElementById('globalClusterAlertMsg');
+        const badgeEl = document.getElementById('globalClusterAlertBadge');
+
+        if (failedEngines.length > 0 || activeNodeOffline) {
+            if (!_clusterAlertDismissed && banner) {
+                banner.style.display = 'block';
+                if (activeNodeOffline) {
+                    if (titleEl) titleEl.textContent = '⚠️ ALERTA CRÍTICO: SERVIDOR ATIVO OFFLINE';
+                    if (msgEl) msgEl.textContent = `A máquina [${activeNodeObj.node_label || cluster.active_node_id}] está sem comunicação há mais de 4 minutos. Considere promover o servidor secundário.`;
+                    if (badgeEl) badgeEl.textContent = 'MÁQUINA OFFLINE';
+                } else {
+                    if (titleEl) titleEl.textContent = '⚠️ ALERTA OPERACIONAL: FALHA EM MOTORES CDP';
+                    if (msgEl) msgEl.textContent = `Falha de conexão ou motor parado detectado em: ${failedEngines.join(', ')}. Acesse o Painel de Motores para detalhes.`;
+                    if (badgeEl) badgeEl.textContent = `${failedEngines.length} MOTOR(ES) COM FALHA`;
+                }
+                initIcons();
+            }
+        } else {
+            // Tudo restaurado: reseta estado do alerta
+            _clusterAlertDismissed = false;
+            if (banner) banner.style.display = 'none';
+        }
+    } catch (e) {
+        console.warn('[CLUSTER ALERT MONITOR] Erro na verificação:', e);
     }
 }
 
@@ -9763,6 +10198,10 @@ window.addEventListener('load', () => {
                 console.warn('[PWA] Falha ao registrar Service Worker:', err);
             });
     }
+
+    // Monitor em tempo real de falha de cluster e motores para usuários autenticados
+    setInterval(checkClusterHealthAlerts, 25000);
+    setTimeout(checkClusterHealthAlerts, 2500);
 });
 
 // Binds Globais para o Window
@@ -9784,5 +10223,6 @@ window.renderMobileDeliveryCards = renderMobileDeliveryCards;
 window.renderMobileBidCards = renderMobileBidCards;
 window.triggerNativePwaInstall = triggerNativePwaInstall;
 window.syncMobileBottomNav = syncMobileBottomNav;
-
-
+window.promoteNodeAction = promoteNodeAction;
+window.dismissClusterAlert = dismissClusterAlert;
+window.openClusterNodeDetailsModal = openClusterNodeDetailsModal;
