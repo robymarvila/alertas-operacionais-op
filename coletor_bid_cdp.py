@@ -169,24 +169,27 @@ CHECK_RELOAD_STATUS_JS = """
 
 CARDS_EXTRACTION_JS = """
 (() => {
-    const STATUS_MAP = {
-        "Planejadas": "Planejada",
-        "Em checklist": "Em Checklist",
-        "Em operação": "Em Operação",
-        "Retornadas": "Retornada",
-        "Bloqueadas": "Bloqueada"
-    };
+    function resolveStatusBid(title) {
+        const up = String(title || '').toUpperCase();
+        if (up.includes('OPERA')) return 'Em Operação';
+        if (up.includes('CHECKLIST')) return 'Em Checklist';
+        if (up.includes('PLANEJAD')) return 'Planejada';
+        if (up.includes('RETORNAD')) return 'Retornada';
+        if (up.includes('BLOQUEAD')) return 'Bloqueada';
+        return title;
+    }
 
-    const colHeaders = Array.from(document.querySelectorAll("h3")).filter(h => 
-        Object.keys(STATUS_MAP).includes(h.innerText.trim())
-    );
+    const colHeaders = Array.from(document.querySelectorAll("h3")).filter(h => {
+        const t = h.innerText.trim().toUpperCase();
+        return t.includes("PLANEJAD") || t.includes("CHECKLIST") || t.includes("OPERA") || t.includes("RETORNAD") || t.includes("BLOQUEAD");
+    });
 
     const extracted = [];
     const seenTeams = new Set();
 
     colHeaders.forEach(h => {
         const colTitle = h.innerText.trim();
-        const statusBid = STATUS_MAP[colTitle] || colTitle;
+        const statusBid = resolveStatusBid(colTitle);
         const colContainer = h.closest(".rounded-2xl") || h.parentElement.parentElement;
         const scrollArea = colContainer ? colContainer.querySelector(".overflow-auto, [class*='overflow']") : null;
         if (!scrollArea) return;

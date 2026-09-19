@@ -17,6 +17,56 @@ const REGION_CONFIG = {
     }
 };
 
+// Funções Utilitárias Globais de Normalização e Sanitização
+function cleanNodeLabel(lbl, fallback = '') {
+    if (!lbl) return fallback;
+    let s = String(lbl)
+        .replace(/MÃ¡quina/g, 'Máquina')
+        .replace(/M\uFFFDquina/g, 'Máquina')
+        .replace(/Mquina/g, 'Máquina')
+        .replace(/SÃ£o Paulo/g, 'São Paulo')
+        .replace(/S\uFFFD\s*Paulo/g, 'São Paulo');
+    if (s.includes('MAQUINA_1') || (s.includes('Principal') && !s.includes('Máquina'))) {
+        return 'Servidor CCO Principal (Máquina 1)';
+    }
+    if (s.includes('MAQUINA_2') || (s.includes('Redundante') && !s.includes('Máquina'))) {
+        return 'Servidor CCO Redundante (Máquina 2)';
+    }
+    return s;
+}
+
+function normalizeBidStatus(rawSt) {
+    if (!rawSt || rawSt === '--' || rawSt === 'None' || rawSt === 'null') {
+        return 'Não Encontrada';
+    }
+    const up = String(rawSt).toUpperCase();
+    if (up.includes('OPERA')) return 'Em Operação';
+    if (up.includes('CHECKLIST')) return 'Em Checklist';
+    if (up.includes('PLANEJAD')) return 'Planejada';
+    if (up.includes('RETORNAD')) return 'Retornada';
+    if (up.includes('BLOQUEAD')) return 'Bloqueada';
+    if (up.includes('NÃO') || up.includes('NAO') || up.includes('ENCONTRADA')) return 'Não Encontrada';
+    return String(rawSt).trim();
+}
+
+function getOperationalDate() {
+    // Horário oficial Enel/CCO (Brasília UTC-3)
+    // O dia operacional vira pontualmente às 04:31 da manhã.
+    // Das 00:00 às 04:30 pertence ao dia operacional anterior.
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const br = new Date(utc - (3 * 3600000));
+    const h = br.getHours();
+    const m = br.getMinutes();
+    if (h < 4 || (h === 4 && m <= 30)) {
+        br.setDate(br.getDate() - 1);
+    }
+    const y = br.getFullYear();
+    const mm = String(br.getMonth() + 1).padStart(2, '0');
+    const dd = String(br.getDate()).padStart(2, '0');
+    return `${y}-${mm}-${dd}`;
+}
+
 // Estado Global da Aplicação
 const appState = {
     teams: [],
@@ -4135,13 +4185,13 @@ const deliveryState = {
     fleetPieChart: null,
     searchTimer: null,
     historyMode: 'day',
-    historyDate: new Date().toISOString().split('T')[0],
-    historyMonth: new Date().toISOString().slice(0, 7),
+    historyDate: getOperationalDate(),
+    historyMonth: getOperationalDate().slice(0, 7),
     historyDayData: null,
     historyMonthData: null,
     historyMonthlyChart: null,
     datePickerInstance: null,
-    selectedAuditDates: [new Date().toISOString().split('T')[0]],
+    selectedAuditDates: [getOperationalDate()],
     availableAuditDates: [],
     availableAuditMonths: [],
     comparisonData: [],
@@ -4225,8 +4275,16 @@ async function loadDeliveryData(forceRefresh = false) {
             deliveryState.summaryActive = result.summary_active || {};
             deliveryState.summaryTotal = result.summary_total || {};
             deliveryState.intradayCurve = result.intraday_curve || {};
-            deliveryState.geoGroups = result.geo_groups || {};
-            deliveryState.lastSync = result.timestamp || '--:--:--';
+            const rawSync = (result.timestamp && result.timestamp !== '--') ? result.timestamp : (result.last_sync && result.last_sync !== '--' ? result.last_sync : '');
+            if (rawSync) {
+                deliveryState.lastSync = rawSync;
+            } else if (!deliveryState.lastSync || deliveryState.lastSync === '--' || deliveryState.lastSync === '--:--:--') {
+                const teams = (result.active_teams && result.active_teams.length > 0) ? result.active_teams : (result.daily_total_teams || []);
+                const sample = teams.find(t => t.marcacao || t.captured_at || t.last_seen_time);
+                if (sample) {
+                    deliveryState.lastSync = sample.marcacao || sample.last_seen_time || '--';
+                }
+            }
 
             // Ponto 3: Atualiza a telemetria CCO no cabeçalho (Última Coleta CDP)
             const elCdpTime = document.getElementById('cdpLastSyncTime');
@@ -4234,8 +4292,9 @@ async function loadDeliveryData(forceRefresh = false) {
                 elCdpTime.textContent = deliveryState.lastSync;
             }
             const elCdpBadge = document.getElementById('cdpLastSyncBadge');
-            if (elCdpBadge && result.sync_source) {
-                elCdpBadge.title = `Última coleta CDP: ${deliveryState.lastSync} (${result.sync_source}). Clique para forçar conferência.`;
+            if (elCdpBadge) {
+                const src = result.sync_source || 'Robô CDP Operacional';
+                elCdpBadge.title = `Última coleta CDP: ${deliveryState.lastSync} (${src}). Clique para forçar conferência.`;
             }
 
             applyDeliveryFilters();
@@ -4271,7 +4330,12 @@ function updateDeliveryHubCard() {
     if (elCesto) elCesto.textContent = sumActive.cesto || 0;
     if (elLeve) elLeve.textContent = sumActive.leve || 0;
     if (elPesado) elPesado.textContent = sumActive.linhaviva_munck || 0;
-    if (elLastSync) elLastSync.textContent = deliveryState.lastSync || '--:--:--';
+    if (elLastSync) {
+        const syncVal = (deliveryState.lastSync && deliveryState.lastSync !== '--' && deliveryState.lastSync !== '--:--:--')
+            ? deliveryState.lastSync
+            : (document.getElementById('cdpLastSyncTime')?.textContent || '--');
+        elLastSync.textContent = (syncVal && syncVal !== '--') ? syncVal : '--:--:--';
+    }
 }
 
 // Alternador do Modo de Visualização dos Cards Regionais (Ativas vs Total do Dia)
@@ -5198,7 +5262,8 @@ function renderDeliveryTable() {
         const gpsColor = gpsMin !== null && gpsMin !== undefined && gpsMin > 60 ? '#f59e0b' : '#10b981';
 
         // 11.2 Badge de Status BID (Visão Operacional)
-        const stBid = t.status_bid || (t.bid_info && t.bid_info.status_bid) || '--';
+        const rawStBid = t.status_bid || (t.bid_info && t.bid_info.status_bid) || '--';
+        const stBid = normalizeBidStatus(rawStBid);
         let bidBadge = '';
         if (stBid === 'Em Operação') {
             bidBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;"><span class="live-status-dot" style="width:6px;height:6px;background:#10b981;"></span> Em Operação</span>`;
@@ -5605,7 +5670,8 @@ async function openDeliveryTeamModal(teamCode) {
             // BID Visão Operacional (Checklist)
             const bid = result.bid_info || (localTeam && localTeam.bid_info) || {};
             if (bid && Object.keys(bid).length > 0 && (bid.status_bid || bid.tipo_operacional || bid.plate)) {
-                const st = bid.status_bid || 'Não Encontrada';
+                const rawSt = bid.status_bid || 'Não Encontrada';
+                const st = normalizeBidStatus(rawSt);
                 let bBadge = '';
                 if (st === 'Em Operação') {
                     bBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 8px; border-radius: 9999px; font-weight: 800;"><span class="live-status-dot" style="width:6px;height:6px;background:#10b981;"></span> Em Operação</span>`;
@@ -5871,7 +5937,7 @@ function handleAuditDatesSelected(dates) {
 
 function clearSelectedAuditDates() {
     if (deliveryState.datePickerInstance) {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getOperationalDate();
         deliveryState.datePickerInstance.setDate([todayStr], true);
     }
 }
@@ -7683,9 +7749,9 @@ function renderClusterOverview(cluster) {
     const activeNodeObj = nodes.find(n => n.node_id === activeNodeId) || nodes.find(n => n.is_feeding_db);
     if (activeBannerName) {
         if (activeNodeObj) {
-            activeBannerName.textContent = `${activeNodeObj.node_label || activeNodeObj.node_id} (⚡ ATIVO)`;
+            activeBannerName.textContent = `${cleanNodeLabel(activeNodeObj.node_label || activeNodeObj.node_id)} (⚡ ATIVO)`;
         } else {
-            activeBannerName.textContent = `${activeNodeId} (⚡ ATIVO)`;
+            activeBannerName.textContent = `${cleanNodeLabel(activeNodeId)} (⚡ ATIVO)`;
         }
     }
 
@@ -7713,7 +7779,7 @@ function updateNodeCardUI(cardIdx, node, activeNodeId) {
     const btnPromote = document.getElementById(`btnPromoteNode${cardIdx}`);
     const cardEl = document.getElementById(`clusterCardNode${cardIdx}`);
 
-    if (titleEl) titleEl.textContent = node.node_label || `Máquina ${cardIdx}`;
+    if (titleEl) titleEl.textContent = cleanNodeLabel(node.node_label) || `Máquina ${cardIdx}`;
     if (subEl) subEl.textContent = `${node.hostname || 'Windows'} | IP: ${node.ip_address || '127.0.0.1'}`;
 
     if (badgeRoleEl) {
@@ -7900,7 +7966,7 @@ async function openClusterNodeDetailsModal(nodeId) {
         const isFeeding = Boolean(node.is_feeding_db || (node.node_id === activeNodeId));
         const isCommunicating = node.is_communicating !== false && node.status !== 'OFFLINE';
 
-        if (titleEl) titleEl.textContent = node.node_label || nodeId;
+        if (titleEl) titleEl.textContent = cleanNodeLabel(node.node_label) || nodeId;
         if (subEl) subEl.textContent = `Hostname: ${node.hostname || 'Windows'} • IP: ${node.ip_address || '127.0.0.1'} • Python ${node.python_version || '3.13'}`;
 
         if (statusBadge) {
@@ -9181,11 +9247,11 @@ function renderOnlineBidKpis(k) {
 
 async function loadOnlineXBidData() {
     const dateInput = document.getElementById('onlineBidDateInput');
-    const todayStr = new Date().toISOString().split('T')[0];
+    const opDate = getOperationalDate();
     if (dateInput && !dateInput.value) {
-        dateInput.value = todayStr;
+        dateInput.value = opDate;
     }
-    const targetDate = (dateInput && dateInput.value) ? dateInput.value : todayStr;
+    const targetDate = (dateInput && dateInput.value) ? dateInput.value : opDate;
 
     try {
         const resp = await fetch(`/api/bid/data?date=${encodeURIComponent(targetDate)}`);
@@ -9197,6 +9263,11 @@ async function loadOnlineXBidData() {
             onlineBidState.kpis = result.kpis || {};
             onlineBidState.date = result.date || targetDate;
             onlineBidState.lastBidSync = result.last_bid_sync || '--:--:--';
+
+            // Alinha o input de data com a data operacional retornada pelo backend
+            if (dateInput && result.date) {
+                dateInput.value = result.date;
+            }
 
             renderOnlineBidKpis(onlineBidState.kpis);
             initOnlineBidMultiFilters(onlineBidState.allRows);
@@ -9568,7 +9639,7 @@ async function triggerBidCollect() {
 
 function exportOnlineXBidExcel() {
     const dateInput = document.getElementById('onlineBidDateInput');
-    const targetDate = (dateInput && dateInput.value) ? dateInput.value : (onlineBidState.date || new Date().toISOString().split('T')[0]);
+    const targetDate = (dateInput && dateInput.value) ? dateInput.value : (onlineBidState.date || getOperationalDate());
     window.location.href = `/api/bid/export_excel?date=${encodeURIComponent(targetDate)}`;
     showToast('Download da planilha de reconciliação ONLINE x BID iniciado!', 'success');
 }

@@ -46,7 +46,15 @@ class ClusterManager:
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
-                    return json.load(f)
+                    cfg = json.load(f)
+                    lbl = cfg.get("node_label", "")
+                    lbl = str(lbl).replace("MÃ¡quina", "Máquina").replace("M\ufffdquina", "Máquina")
+                    if "MAQUINA_1" in cfg.get("node_id", "") and "Máquina" not in lbl:
+                        lbl = "Servidor CCO Principal (Máquina 1)"
+                    elif "MAQUINA_2" in cfg.get("node_id", "") and "Máquina" not in lbl:
+                        lbl = "Servidor CCO Redundante (Máquina 2)"
+                    cfg["node_label"] = lbl
+                    return cfg
             except Exception as e:
                 print(f"[CLUSTER WARN] Erro ao ler {CONFIG_FILE}: {e}", flush=True)
 
@@ -230,9 +238,16 @@ class ClusterManager:
                     nid = det.get("node_id") or eng.get("engine_name", "").replace("node:", "")
                     is_feeder = (nid == active_leader)
 
+                    raw_lbl = det.get("node_label") or eng.get("engine_label", nid)
+                    clean_lbl = str(raw_lbl).replace("MÃ¡quina", "Máquina").replace("M\ufffdquina", "Máquina")
+                    if "MAQUINA_1" in nid:
+                        clean_lbl = "Servidor CCO Principal (Máquina 1)"
+                    elif "MAQUINA_2" in nid:
+                        clean_lbl = "Servidor CCO Redundante (Máquina 2)"
+
                     node_obj = {
                         "node_id": nid,
-                        "node_label": det.get("node_label") or eng.get("engine_label", nid),
+                        "node_label": clean_lbl,
                         "role": det.get("role", "PRIMARY" if "1" in nid or "PRINCIPAL" in nid else "STANDBY"),
                         "is_feeding_db": is_feeder,
                         "status": "ONLINE" if is_online else "OFFLINE",

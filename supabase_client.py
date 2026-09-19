@@ -556,6 +556,7 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
                 s_id = s.get("id")
                 s_date = s.get("date_ref")
                 s_sync_source = s.get("sync_source")
+                s_captured_at = s.get("captured_at")
                 if not s_id:
                     continue
 
@@ -565,11 +566,12 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
                 if resp_recs.status_code == 200:
                     records = resp_recs.json() or []
                     if records:
+                        rec_captured = s_captured_at or records[0].get("captured_at")
                         return {
                             "status": "success",
                             "data": records,
                             "session_id": s_id,
-                            "captured_at": s_captured_at,
+                            "captured_at": rec_captured,
                             "date_ref": s_date,
                             "sync_source": s_sync_source
                         }
@@ -1072,7 +1074,8 @@ def push_bid_records_to_supabase(records_list: list, date_ref: str = None) -> di
     try:
         now_iso = datetime.now(BR_TZ).isoformat()
         if not date_ref:
-            date_ref = datetime.now(BR_TZ).strftime("%Y-%m-%d")
+            from delivery_manager import delivery_manager
+            date_ref = delivery_manager.get_operational_date()
 
         endpoint = f"{BASE_REST_URL}/bid_visao_operacional_records?on_conflict=date_ref,team_code"
         headers = get_headers().copy()
@@ -1085,11 +1088,26 @@ def push_bid_records_to_supabase(records_list: list, date_ref: str = None) -> di
             if not t_code:
                 continue
             d_ref = str(r.get("date_ref") or date_ref)
+            raw_st = str(r.get("status_bid") or "Planejada").strip()
+            up_st = raw_st.upper()
+            if "OPERA" in up_st:
+                norm_st = "Em Operação"
+            elif "CHECKLIST" in up_st:
+                norm_st = "Em Checklist"
+            elif "PLANEJAD" in up_st:
+                norm_st = "Planejada"
+            elif "RETORNAD" in up_st:
+                norm_st = "Retornada"
+            elif "BLOQUEAD" in up_st:
+                norm_st = "Bloqueada"
+            else:
+                norm_st = raw_st or "Planejada"
+
             payload_item = {
                 "date_ref": d_ref,
                 "captured_at": r.get("captured_at") or now_iso,
                 "team_code": t_code,
-                "status_bid": str(r.get("status_bid") or "Planejada"),
+                "status_bid": norm_st,
                 "col_title": str(r.get("col_title") or ""),
                 "base": str(r.get("base") or "--"),
                 "tipo_operacional": str(r.get("tipo_operacional") or "--"),
@@ -1129,7 +1147,8 @@ def fetch_bid_records_by_date(date_str: str = None) -> list:
     """
     try:
         if not date_str:
-            date_str = datetime.now(BR_TZ).strftime("%Y-%m-%d")
+            from delivery_manager import delivery_manager
+            date_str = delivery_manager.get_operational_date()
 
         endpoint = f"{BASE_REST_URL}/bid_visao_operacional_records?date_ref=eq.{date_str}&order=team_code.asc&limit=2000"
         resp = requests.get(endpoint, headers=get_headers(), timeout=12)

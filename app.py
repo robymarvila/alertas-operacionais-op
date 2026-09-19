@@ -312,16 +312,27 @@ def check_port_listening(host="127.0.0.1", port=9222, timeout=1.0) -> bool:
     except Exception:
         return False
 
+def _clean_node_label(lbl, nid=""):
+    s = str(lbl or nid or "")
+    s = s.replace("MÃ¡quina", "Máquina").replace("M\ufffdquina", "Máquina")
+    if "MAQUINA_1" in nid:
+        return "Servidor CCO Principal (Máquina 1)"
+    if "MAQUINA_2" in nid:
+        return "Servidor CCO Redundante (Máquina 2)"
+    return s
+
 def _get_cluster_info():
     """Retorna dados de telemetria de todas as máquinas do cluster e qual está alimentando o banco."""
     try:
         from cluster_manager import cluster_manager
         nodes = cluster_manager.fetch_all_cluster_nodes()
+        for n in nodes:
+            n["node_label"] = _clean_node_label(n.get("node_label"), n.get("node_id", ""))
         active_node = next((n for n in nodes if n.get("is_feeding_db")), None)
         active_node_id = active_node.get("node_id") if active_node else cluster_manager.node_id
         return {
             "local_node_id": cluster_manager.node_id,
-            "local_node_label": cluster_manager.node_label,
+            "local_node_label": _clean_node_label(cluster_manager.node_label, cluster_manager.node_id),
             "local_role": cluster_manager.role,
             "local_is_feeding": cluster_manager.is_feeding_database(),
             "active_node_id": active_node_id,
@@ -1886,7 +1897,19 @@ def get_teams_data():
     """Retorna o estado consolidado das equipes entregues hoje (Ativas vs Total Acumulado)."""
     is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
 
-    # Em ambiente de nuvem (Vercel) ou se a memória local estiver vazia, hidrata sempre do Supabase
+    op_date = delivery_manager.get_operational_date()
+
+    # 1. Hidrata o cache do BID para enriquecimento instantâneo
+    if is_cloud or not getattr(delivery_manager, 'bid_cache', None):
+        try:
+            from supabase_client import fetch_bid_records_by_date
+            bid_recs = fetch_bid_records_by_date(op_date)
+            if bid_recs:
+                delivery_manager.process_raw_bid_records(bid_recs, op_date)
+        except Exception as e:
+            print(f"[WARN BID HYDRATE] {e}", flush=True)
+
+    # 2. Em ambiente de nuvem (Vercel) ou se a memória local estiver vazia, hidrata do Supabase
     if is_cloud or (not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams):
         cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
         if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
@@ -1895,7 +1918,6 @@ def get_teams_data():
 
         try:
             from supabase_client import fetch_delivery_records_by_date
-            op_date = delivery_manager.get_operational_date()
             today_recs = fetch_delivery_records_by_date(op_date)
             if today_recs:
                 for r in today_recs:
@@ -1904,6 +1926,25 @@ def get_teams_data():
                         delivery_manager.daily_accumulated_teams[t_code] = r
         except Exception:
             pass
+
+    # 3. Garante que TODAS as equipes acumuladas e ativas possuam status_bid e bid_info sincronizados
+    if hasattr(delivery_manager, 'bid_cache') and delivery_manager.bid_cache:
+        for c, team_dict in delivery_manager.daily_accumulated_teams.items():
+            b_info = delivery_manager.bid_cache.get(c)
+            if b_info:
+                team_dict["status_bid"] = b_info.get("status_bid") or "Em Operação"
+                team_dict["bid_info"] = b_info
+            elif not team_dict.get("status_bid") or team_dict.get("status_bid") == "--":
+                team_dict["status_bid"] = "Não Encontrada"
+
+        for team_dict in delivery_manager.active_teams:
+            c = team_dict.get("team_code")
+            b_info = delivery_manager.bid_cache.get(c)
+            if b_info:
+                team_dict["status_bid"] = b_info.get("status_bid") or "Em Operação"
+                team_dict["bid_info"] = b_info
+            elif not team_dict.get("status_bid") or team_dict.get("status_bid") == "--":
+                team_dict["status_bid"] = "Não Encontrada"
 
     resp = jsonify(delivery_manager.get_consolidated_state())
     resp.headers["Cache-Control"] = "public, max-age=5, s-maxage=10, stale-while-revalidate=20"
@@ -2145,7 +2186,7 @@ def export_teams_excel():
 @app.route('/api/bid/data', methods=['GET'])
 def get_bid_reconciliation_data():
     """Retorna o estado da reconciliação forense ONLINE x BID (Equipes Brasil vs BidTech)."""
-    date_str = request.args.get('date') or delivery_manager.current_date_str
+    date_str = request.args.get('date') or delivery_manager.get_operational_date()
     return jsonify(delivery_manager.get_online_x_bid_state(date_str))
 
 @app.route('/api/capture/bid/direct', methods=['POST', 'GET'])
@@ -2174,7 +2215,7 @@ def trigger_bid_capture_direct():
 @app.route('/api/bid/export_excel', methods=['GET'])
 def export_bid_reconciliation_excel():
     """Gera e faz download de planilha Excel (.xlsx) da reconciliação forense ONLINE x BID."""
-    date_str = request.args.get('date') or delivery_manager.current_date_str
+    date_str = request.args.get('date') or delivery_manager.get_operational_date()
     state = delivery_manager.get_online_x_bid_state(date_str)
     rows = state.get("rows", [])
 

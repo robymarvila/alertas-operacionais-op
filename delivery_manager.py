@@ -65,7 +65,25 @@ def format_datetime_br(val) -> str:
             return dt.strftime("%d/%m/%Y %H:%M")
     except Exception:
         pass
-    return val_str
+def normalize_bid_status(raw_status) -> str:
+    """Padroniza e blinda o status da Visão Operacional BidTech contra mojibake ou variações."""
+    if not raw_status or str(raw_status).strip() in ["--", "NONE", "NULL", "", "None"]:
+        return "Não Encontrada"
+    st = str(raw_status).strip()
+    s_up = st.upper()
+    if "OPERA" in s_up:
+        return "Em Operação"
+    elif "CHECKLIST" in s_up:
+        return "Em Checklist"
+    elif "PLANEJAD" in s_up:
+        return "Planejada"
+    elif "RETORNAD" in s_up:
+        return "Retornada"
+    elif "BLOQUEAD" in s_up:
+        return "Bloqueada"
+    elif "NÃO" in s_up or "NAO" in s_up or "ENCONTRADA" in s_up:
+        return "Não Encontrada"
+    return st
 
 def to_int(val, default=0):
     """Converte valores inteiros com segurança."""
@@ -375,6 +393,10 @@ class DeliveryManager:
                             if str(v.get("date_ref") or current_op_date) == current_op_date
                         }
                         self.last_bid_sync = data.get("last_bid_sync", "--")
+                        if data.get("last_sync_time") and data.get("last_sync_time") != "--":
+                            self.last_sync_time = data.get("last_sync_time")
+                        if data.get("sync_source"):
+                            self.sync_source = data.get("sync_source")
                         self.active_teams = [t for t in self.daily_accumulated_teams.values() if t.get("is_active", True)]
 
                         # Reavalia retroativamente as regras de turnos para garantir paridade 100%
@@ -396,6 +418,7 @@ class DeliveryManager:
                         self.intraday_curve = {}
                         self.bid_cache = {}
                         self.last_bid_sync = "--"
+                        self.last_sync_time = "--"
         except Exception as e:
             print(f"[WARN] Não foi possível ler cache diário de entrega: {e}")
 
@@ -405,6 +428,7 @@ class DeliveryManager:
             payload = {
                 "date": self.current_date_str,
                 "last_sync_time": self.last_sync_time,
+                "sync_source": self.sync_source,
                 "accumulated_teams": self.daily_accumulated_teams,
                 "team_order_history": self.daily_team_order_history,
                 "intraday_curve": self.intraday_curve,
@@ -880,7 +904,7 @@ class DeliveryManager:
 
             # Enriquecimento com dados da Visão Operacional BidTech (Checklists)
             bid_entry = self.bid_cache.get(team_code)
-            status_bid = bid_entry.get("status_bid") if bid_entry else ("Não Encontrada" if self.last_bid_sync != "--" else "--")
+            status_bid = normalize_bid_status(bid_entry.get("status_bid")) if bid_entry else ("Não Encontrada" if self.last_bid_sync != "--" else "--")
 
             team_obj = {
                 "team_code": team_code,
@@ -998,10 +1022,20 @@ class DeliveryManager:
         metrics_active = self._build_metrics_breakdown(active_list)
         metrics_total = self._build_metrics_breakdown(total_list)
 
+        ts = self.last_sync_time
+        if not ts or ts == "--":
+            for t in (active_list or total_list):
+                cand = t.get("captured_at") or t.get("last_seen_time") or t.get("marcacao")
+                if cand and cand != "--":
+                    ts = format_datetime_br(cand)
+                    self.last_sync_time = ts
+                    break
+
         return {
             "status": "success",
             "date": self.current_date_str,
-            "timestamp": self.last_sync_time,
+            "timestamp": ts or "--",
+            "last_sync": ts or "--",
             "sync_source": self.sync_source,
             # Equipes ATIVAS (momento presente)
             "active_teams": active_list,
@@ -1031,8 +1065,10 @@ class DeliveryManager:
                     break
 
         history = self.daily_team_order_history.get(code, [])
-        bid_info = self.bid_cache.get(code)
+        bid_info = self.bid_cache.get(code, {})
+
         return {
+            "status": "success",
             "team_code": code,
             "found": bool(team_data or bid_info),
             "team_data": team_data or {},
@@ -1055,6 +1091,7 @@ class DeliveryManager:
             if code:
                 r_copy = dict(r)
                 r_copy["date_ref"] = date_ref
+                r_copy["status_bid"] = normalize_bid_status(r.get("status_bid"))
                 new_bid_cache[code] = r_copy
 
         self.bid_cache = new_bid_cache
@@ -1065,7 +1102,7 @@ class DeliveryManager:
         # Atualiza o status_bid nas equipes acumuladas e ativas
         for code, t in self.daily_accumulated_teams.items():
             b_info = self.bid_cache.get(code)
-            t["status_bid"] = b_info.get("status_bid") if b_info else "Não Encontrada"
+            t["status_bid"] = normalize_bid_status(b_info.get("status_bid")) if b_info else "Não Encontrada"
             t["bid_info"] = b_info
 
         for t in self.active_teams:
@@ -1081,10 +1118,24 @@ class DeliveryManager:
         Retorna a reconciliação forense completa entre Equipes Brasil (Logadas/Ativas)
         e a Visão Operacional BidTech (Checklists & Em Operação).
         """
-        if not date_str:
-            date_str = self.current_date_str
+        current_op = self.get_operational_date()
+        if current_op != self.current_date_str:
+            self.current_date_str = current_op
 
-        is_today = (date_str == self.current_date_str)
+        if not date_str:
+            date_str = current_op
+        else:
+            # Blindagem contra divergência de calendário civil vs operacional:
+            # Durante a madrugada (00:00 às 04:30), o dia civil já avançou (ex: 2026-09-19),
+            # mas o dia operacional Enel/CCO ainda é ontem (2026-09-18).
+            # Se o front-end ou cliente enviar a data civil atual ou uma data futura,
+            # normaliza para a data operacional vigente.
+            now_br = datetime.now(BR_TZ)
+            civil_today = now_br.date().isoformat()
+            if date_str > current_op or (date_str == civil_today and current_op != civil_today):
+                date_str = current_op
+
+        is_today = (date_str == current_op)
         is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
 
         # 1. Obtém universo do EquipesBrasil
