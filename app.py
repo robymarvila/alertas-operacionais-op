@@ -325,7 +325,8 @@ def _get_cluster_info():
     """Retorna dados de telemetria de todas as máquinas do cluster e qual está alimentando o banco."""
     try:
         from cluster_manager import cluster_manager
-        nodes = cluster_manager.fetch_all_cluster_nodes()
+        nodes_res = cluster_manager.fetch_all_cluster_nodes(return_tuple=False)
+        nodes = nodes_res[0] if isinstance(nodes_res, tuple) else (nodes_res or [])
         for n in nodes:
             n["node_label"] = _clean_node_label(n.get("node_label"), n.get("node_id", ""))
         active_node = next((n for n in nodes if n.get("is_feeding_db")), None)
@@ -339,6 +340,7 @@ def _get_cluster_info():
             "nodes": nodes
         }
     except Exception as e:
+        print(f"[CLUSTER INFO ERROR] {e}", flush=True)
         return {
             "local_node_id": "MAQUINA_1_PRINCIPAL",
             "local_node_label": "Servidor CCO Principal (Máquina 1)",

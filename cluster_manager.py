@@ -199,10 +199,10 @@ class ClusterManager:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def fetch_all_cluster_nodes(self):
+    def fetch_all_cluster_nodes(self, return_tuple: bool = True):
         """
         Busca o status de todas as máquinas conectadas no cluster através do Supabase.
-        Retorna tupla (nodes_list, fetch_error: bool) com dados completos de cada computador.
+        Retorna tupla (nodes_list, fetch_error: bool) se return_tuple=True, ou apenas nodes_list se return_tuple=False.
         """
         import requests
         from supabase_client import BASE_REST_URL, get_headers, BR_TZ, format_datetime_br
@@ -242,13 +242,17 @@ class ClusterManager:
                     elif "MAQUINA_2" in nid:
                         clean_lbl = "Servidor CCO Redundante (Máquina 2)"
 
+                    cdp_status = det.get("cdp_port_status")
+                    if not cdp_status:
+                        cdp_status = "OPEN" if is_online else "UNKNOWN"
+
                     node_obj = {
                         "node_id": nid,
                         "node_label": clean_lbl,
                         "role": det.get("role", "PRIMARY" if "1" in nid or "PRINCIPAL" in nid else "STANDBY"),
                         "is_feeding_db": is_feeder,
                         "status": "ONLINE" if is_online else "OFFLINE",
-                        "cdp_port_status": det.get("cdp_port_status", "OPEN" if is_online else "UNKNOWN"),
+                        "cdp_port_status": cdp_status,
                         "ip_address": det.get("ip_address", "127.0.0.1"),
                         "hostname": det.get("hostname", "Windows"),
                         "os_name": det.get("os_name", "Windows"),
@@ -271,27 +275,30 @@ class ClusterManager:
             fetch_error = True
 
         # Se esta máquina local não veio no retorno remoto, adiciona seus dados locais
-        ids = [n["node_id"] for n in nodes_list]
-        if self.node_id not in ids:
-            nodes_list.append({
-                "node_id": self.node_id,
-                "node_label": self.node_label,
-                "role": self.role,
-                "is_feeding_db": (self.node_id == active_leader),
-                "status": "ONLINE" if self.is_cdp_port_open() else "DEGRADED",
-                "cdp_port_status": "OPEN" if self.is_cdp_port_open() else "CLOSED",
-                "ip_address": self.get_local_ip(),
-                "hostname": socket.gethostname(),
-                "os_name": f"{platform.system()} {platform.release()}",
-                "python_version": platform.python_version(),
-                "geo_location": {"city": "São Paulo", "region": "SP", "country": "Brasil", "network": "Alpitel / Enel CCO"},
-                "started_at": self.start_time,
-                "last_heartbeat": datetime.now(BR_TZ).isoformat(),
-                "last_heartbeat_formatted": datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S"),
-                "is_communicating": True,
-                "seconds_since_heartbeat": 0,
-                "engines_status": {}
-            })
+        # (Apenas se não estiver em ambiente de nuvem/Vercel)
+        is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+        if not is_cloud:
+            ids = [n["node_id"] for n in nodes_list]
+            if self.node_id not in ids:
+                nodes_list.append({
+                    "node_id": self.node_id,
+                    "node_label": self.node_label,
+                    "role": self.role,
+                    "is_feeding_db": (self.node_id == active_leader),
+                    "status": "ONLINE" if self.is_cdp_port_open() else "DEGRADED",
+                    "cdp_port_status": "OPEN" if self.is_cdp_port_open() else "CLOSED",
+                    "ip_address": self.get_local_ip(),
+                    "hostname": socket.gethostname(),
+                    "os_name": f"{platform.system()} {platform.release()}",
+                    "python_version": platform.python_version(),
+                    "geo_location": {"city": "São Paulo", "region": "SP", "country": "Brasil", "network": "Alpitel / Enel CCO"},
+                    "started_at": self.start_time,
+                    "last_heartbeat": datetime.now(BR_TZ).isoformat(),
+                    "last_heartbeat_formatted": datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S"),
+                    "is_communicating": True,
+                    "seconds_since_heartbeat": 0,
+                    "engines_status": {}
+                })
 
         # Garante a presença dos 2 nós padrão
         ids = [n["node_id"] for n in nodes_list]
@@ -332,7 +339,9 @@ class ClusterManager:
                 "engines_status": {}
             })
 
-        return nodes_list, fetch_error
+        if return_tuple:
+            return nodes_list, fetch_error
+        return nodes_list
 
     def promote_node(self, target_node_id: str, is_manual: bool = True) -> dict:
         """
