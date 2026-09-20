@@ -422,6 +422,28 @@ class DeliveryManager:
         except Exception as e:
             print(f"[WARN] Não foi possível ler cache diário de entrega: {e}")
 
+        # Sincronização Inteligente no Boot com a Nuvem Supabase
+        try:
+            from supabase_client import fetch_latest_delivery_snapshot_from_supabase, fetch_bid_records_by_date
+            cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+            if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
+                c_date = cloud_snap.get("date_ref")
+                current_op_date = self.get_operational_date()
+                if not c_date or c_date == current_op_date:
+                    src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase (Boot)"
+                    cap_at = cloud_snap.get("captured_at")
+                    print(f"[DELIVERY] Boot sync: Hidratando {len(cloud_snap['data'])} equipes do Supabase ({cap_at})...", flush=True)
+                    self.process_raw_enel_records(cloud_snap["data"], source_label=src_lbl, captured_at=cap_at)
+                    self.save_local_cache()
+
+            # Hidrata também o BID para o dia corrente
+            current_op = self.get_operational_date()
+            bid_recs = fetch_bid_records_by_date(current_op)
+            if bid_recs:
+                self.process_raw_bid_records(bid_recs, current_op)
+        except Exception as err_boot_sync:
+            print(f"[DELIVERY] Boot sync Supabase falhou (usando contingência local): {err_boot_sync}", flush=True)
+
     def save_local_cache(self):
         """Grava em disco o acumulado do dia para resiliência a reinicializações."""
         try:
@@ -1143,76 +1165,62 @@ class DeliveryManager:
         # do EB são consideradas (seja como LOGADA ou como PROGRAMADA). Se a equipe não constar mais na extração,
         # ela não é considerada nem ativa e nem programada.
         eb_teams = {}
-        if is_today and not is_cloud:
-            if self.active_teams:
-                eb_teams = {t["team_code"]: dict(t) for t in self.active_teams}
-            elif self.daily_accumulated_teams:
-                eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values() if t.get("is_active", True)}
-        else:
-            try:
-                from supabase_client import fetch_delivery_records_by_date, fetch_latest_delivery_snapshot_from_supabase
-                if is_today and not self.daily_accumulated_teams:
+        try:
+            from supabase_client import fetch_delivery_records_by_date, fetch_latest_delivery_snapshot_from_supabase
+            if is_today:
+                if not self.active_teams and not self.daily_accumulated_teams:
                     cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
                     if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
                         self.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase", captured_at=cloud_snap.get("captured_at"))
 
+                if self.active_teams:
+                    eb_teams = {t["team_code"]: dict(t) for t in self.active_teams}
+                elif self.daily_accumulated_teams:
+                    eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values() if t.get("is_active", True)}
+            else:
                 deliv_records = fetch_delivery_records_by_date(date_str)
                 if deliv_records:
-                    if is_today:
-                        eb_teams = {r["team_code"]: r for r in deliv_records if r.get("team_code") and r.get("is_active", True) is not False}
-                        for r in deliv_records:
-                            t_code = r.get("team_code")
-                            if t_code and t_code not in self.daily_accumulated_teams:
-                                self.daily_accumulated_teams[t_code] = r
-                    else:
-                        eb_teams = {r["team_code"]: r for r in deliv_records if r.get("team_code")}
+                    eb_teams = {r["team_code"]: r for r in deliv_records if r.get("team_code")}
                 elif self.active_teams:
                     eb_teams = {t["team_code"]: dict(t) for t in self.active_teams}
                 elif self.daily_accumulated_teams:
                     eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values() if not is_today or t.get("is_active", True)}
-            except Exception as err:
-                print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para EB {date_str}: {err}")
-                if self.active_teams:
-                    eb_teams = {t["team_code"]: dict(t) for t in self.active_teams}
-                elif self.daily_accumulated_teams:
-                    eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values() if not is_today or t.get("is_active", True)}
+        except Exception as err:
+            print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para EB {date_str}: {err}")
+            if self.active_teams:
+                eb_teams = {t["team_code"]: dict(t) for t in self.active_teams}
+            elif self.daily_accumulated_teams:
+                eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values() if not is_today or t.get("is_active", True)}
 
         # 2. Obtém universo da Visão Operacional BID
         bid_records_map = {}
         bid_last_sync_time = self.last_bid_sync
-        if is_today and self.bid_cache and not is_cloud:
-            # Filtra estritamente registros pertencentes à data operacional solicitada
-            bid_records_map = {
-                k: dict(v) for k, v in self.bid_cache.items()
-                if str(v.get("date_ref") or date_str) == date_str
-            }
-        else:
-            try:
-                from supabase_client import fetch_bid_records_by_date, format_datetime_br
-                bid_list = fetch_bid_records_by_date(date_str)
-                if bid_list:
-                    bid_records_map = {r["team_code"]: r for r in bid_list if r.get("team_code")}
-                    if not bid_last_sync_time:
-                        cap = bid_list[0].get("captured_at") or bid_list[0].get("updated_at")
-                        if cap:
-                            bid_last_sync_time = format_datetime_br(cap)
-                    if is_today:
-                        for r in bid_list:
-                            code = str(r.get("team_code", "")).strip().upper()
-                            if code:
-                                self.bid_cache[code] = dict(r)
-                elif self.bid_cache:
-                    bid_records_map = {
-                        k: dict(v) for k, v in self.bid_cache.items()
-                        if str(v.get("date_ref") or date_str) == date_str
-                    }
-            except Exception as err:
-                print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para BID {date_str}: {err}")
-                if self.bid_cache:
-                    bid_records_map = {
-                        k: dict(v) for k, v in self.bid_cache.items()
-                        if str(v.get("date_ref") or date_str) == date_str
-                    }
+        try:
+            from supabase_client import fetch_bid_records_by_date, format_datetime_br
+            bid_list = fetch_bid_records_by_date(date_str)
+            if bid_list:
+                bid_records_map = {r["team_code"]: r for r in bid_list if r.get("team_code")}
+                if not bid_last_sync_time:
+                    cap = bid_list[0].get("captured_at") or bid_list[0].get("updated_at")
+                    if cap:
+                        bid_last_sync_time = format_datetime_br(cap)
+                if is_today:
+                    for r in bid_list:
+                        code = str(r.get("team_code", "")).strip().upper()
+                        if code:
+                            self.bid_cache[code] = dict(r)
+            elif self.bid_cache:
+                bid_records_map = {
+                    k: dict(v) for k, v in self.bid_cache.items()
+                    if str(v.get("date_ref") or date_str) == date_str
+                }
+        except Exception as err:
+            print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para BID {date_str}: {err}")
+            if self.bid_cache:
+                bid_records_map = {
+                    k: dict(v) for k, v in self.bid_cache.items()
+                    if str(v.get("date_ref") or date_str) == date_str
+                }
 
         def normalize_bid_status(raw_status):
             if not raw_status or str(raw_status).strip() in ["--", "NONE", "NULL", ""]:

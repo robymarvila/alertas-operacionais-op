@@ -12,8 +12,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Alertas CCO">
+    <meta name="application-name" content="Alertas CCO">
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 
     <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
@@ -31,7 +33,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.8-export-fix">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.9-mobile-ultra">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -1367,19 +1369,19 @@
                     </div>
                 </div>
 
-                <!-- ALTERNADOR MOBILE DE SEÇÕES (Apenas Telas <= 768px: Equipes / Gráficos / Bases) -->
+                <!-- ALTERNADOR MOBILE DE SEÇÕES (Apenas Telas <= 768px: Bases / Gráficos / Equipes) -->
                 <div class="mobile-section-switcher" id="mobileDeliverySectionSwitcher">
-                    <button class="mobile-subtab-btn active" id="subtabBtnFeed" data-subtab="feed" onclick="switchMobileDeliverySubTab('feed')">
-                        <i data-lucide="users"></i>
-                        <span>Equipes</span>
+                    <button class="mobile-subtab-btn active" id="subtabBtnBases" data-subtab="bases" onclick="switchMobileDeliverySubTab('bases')">
+                        <i data-lucide="map-pin"></i>
+                        <span>Bases (14)</span>
                     </button>
                     <button class="mobile-subtab-btn" id="subtabBtnCharts" data-subtab="charts" onclick="switchMobileDeliverySubTab('charts')">
                         <i data-lucide="bar-chart-3"></i>
                         <span>Gráficos</span>
                     </button>
-                    <button class="mobile-subtab-btn" id="subtabBtnBases" data-subtab="bases" onclick="switchMobileDeliverySubTab('bases')">
-                        <i data-lucide="map-pin"></i>
-                        <span>Bases (14)</span>
+                    <button class="mobile-subtab-btn" id="subtabBtnFeed" data-subtab="feed" onclick="switchMobileDeliverySubTab('feed')">
+                        <i data-lucide="users"></i>
+                        <span>Equipes</span>
                     </button>
                 </div>
 
@@ -1422,10 +1424,10 @@
                             </div>
                         </div>
 
-                        <!-- Busca Rápida -->
+                        <!-- Busca Rápida Blindada contra Autofill -->
                         <div class="delivery-search-box" style="flex: 1; min-width: 240px;">
                             <i data-lucide="search" class="delivery-search-icon"></i>
-                            <input type="search" id="deliverySearchInput" name="delivery_search_query" placeholder="BUSCAR EQUIPE, PLACA, MOTORISTA..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" role="searchbox" oninput="debounceDeliverySearch()">
+                            <input type="search" id="deliverySearchInput" name="delivery_search_filter_query" placeholder="BUSCAR EQUIPE, PLACA, MOTORISTA..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" role="searchbox" readonly onfocus="this.removeAttribute('readonly');" data-lpignore="true" data-1p-ignore="true" data-form-type="other" oninput="debounceDeliverySearch()">
                         </div>
                     </div>
                 </div>
@@ -2491,7 +2493,7 @@
                         <div class="period-filter-group" style="min-width: 240px;">
                             <span class="period-filter-label">BUSCAR EQUIPE / PLACA / COMPONENTE</span>
                             <div class="period-filter-select-wrap">
-                                <input type="text" id="filterBidSearch" class="period-filter-select" style="padding-right: 12px;" placeholder="Ex: EML117, TXE5G81, CESAR..." oninput="filterOnlineBidTable()" />
+                                <input type="search" id="filterBidSearch" name="search_filter_bid_query_noop" class="period-filter-select" style="padding-right: 12px;" placeholder="Ex: EML117, TXE5G81, CESAR..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" role="searchbox" aria-autocomplete="none" readonly onfocus="this.removeAttribute('readonly');" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" oninput="filterOnlineBidTable()" />
                             </div>
                         </div>
 
@@ -2525,17 +2527,18 @@
                         <table class="data-table" id="onlineBidTable">
                             <thead>
                                 <tr>
-                                    <th>STATUS CRUZADO</th>
                                     <th>EQUIPE</th>
-                                    <th>STATUS PROG</th>
+                                    <th>STATUS CRUZADO</th>
                                     <th>STATUS LOGIN</th>
                                     <th>STATUS BID</th>
-                                    <th>TEMPO NO BID</th>
-                                    <th>BASE</th>
-                                    <th>TURNO</th>
-                                    <th>PLACA</th>
-                                    <th>COMPONENTES (BID)</th>
-                                    <th>ORDEM SERVIÇO</th>
+                                    <th>MARCAÇÃO</th>
+                                    <th class="col-desktop-only">STATUS PROG</th>
+                                    <th class="col-desktop-only">TEMPO NO BID</th>
+                                    <th class="col-desktop-only">BASE</th>
+                                    <th class="col-desktop-only">TURNO</th>
+                                    <th class="col-desktop-only">PLACA</th>
+                                    <th class="col-desktop-only">COMPONENTES (BID)</th>
+                                    <th class="col-desktop-only">ORDEM SERVIÇO</th>
                                 </tr>
                             </thead>
                             <tbody id="onlineBidTableBody">
@@ -3047,7 +3050,7 @@
 
 <!-- Modal Ultra-Premium: Detalhes da Equipe Entregue (Enel × TRBOnet × Ordens) -->
 <div class="modal-backdrop" id="deliveryTeamDetailModal" onclick="if (event.target === this) closeModal('deliveryTeamDetailModal')">
-    <div class="modal-card glass-card ultra-premium-modal" style="max-width: 860px; width: 95%;">
+    <div class="modal-card glass-card ultra-premium-modal" id="delTeamModalCard" style="max-width: 860px; width: 95%;">
         <div class="modal-header del-modal-header">
             <div class="modal-title-wrap" style="display: flex; align-items: center; gap: 14px;">
                 <div class="modal-icon-badge-glow">
@@ -3055,27 +3058,21 @@
                 </div>
                 <div>
                     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                        <h3 id="delModalTeamCode" class="del-modal-team-title">
-                            EQUIPE ---
-                        </h3>
-                        <span id="delModalBaseBadge" class="badge" style="background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 0.75rem; font-weight: 800; padding: 3px 10px; border-radius: 9999px;">
-                            Base ---
-                        </span>
-                        <span id="delModalRegionBadge" class="badge" style="background: rgba(139, 92, 246, 0.18); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.4); font-size: 0.75rem; font-weight: 800; padding: 3px 10px; border-radius: 9999px;">
-                            Região ---
-                        </span>
+                        <h3 id="delModalTeamCode" class="del-modal-team-title">EQUIPE ---</h3>
+                        <span id="delModalBaseBadge" class="badge" style="background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 0.75rem; font-weight: 800; padding: 3px 10px; border-radius: 9999px;">Base ---</span>
+                        <span id="delModalRegionBadge" class="badge" style="background: rgba(139, 92, 246, 0.18); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.4); font-size: 0.75rem; font-weight: 800; padding: 3px 10px; border-radius: 9999px;">Região ---</span>
                     </div>
                     <p id="delModalSubtitle" class="modal-subtitle" style="margin-top: 4px; font-size: 0.8rem; color: var(--text-secondary);">
                         Monitoramento Unificado: EquipesBrasil • Telemetria TRBOnet • Histórico de Ordens
                     </p>
                 </div>
             </div>
-            <button class="btn-close-modal" onclick="closeModal('deliveryTeamDetailModal')">
+            <button class="btn-close-modal" onclick="closeModal('deliveryTeamDetailModal')" title="Fechar">
                 <i data-lucide="x"></i>
             </button>
         </div>
 
-        <div class="modal-body" style="max-height: 75vh; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px;">
+        <div class="modal-body" id="delModalScrollBody" style="max-height: 72vh; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px;">
             
             <!-- Banner de Alertas Críticos Operacionais (se houver) -->
             <div id="delModalAlertsContainer" style="display: none;"></div>
@@ -3089,9 +3086,7 @@
                             STATUS NO TRBONET ONE (RÁDIO & GPS)
                         </h4>
                     </div>
-                    <div id="delModalTrboConnectionBadge">
-                        <!-- Inserido dinamicamente: Conectado / Desconectado -->
-                    </div>
+                    <div id="delModalTrboConnectionBadge"></div>
                 </div>
                 <div class="telemetry-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;">
                     <div class="telemetry-item">
@@ -3111,13 +3106,11 @@
                         <div class="telemetry-value" id="delModalRadioLastSignal" style="font-family: 'JetBrains Mono', monospace;">--</div>
                     </div>
                 </div>
-                <p id="delModalTrboNote" style="font-size: 0.76rem; color: var(--text-secondary); margin: 10px 0 0 0; line-height: 1.4;">
-                    <!-- Nota explicativa sobre a telemetria -->
-                </p>
+                <p id="delModalTrboNote" style="font-size: 0.76rem; color: var(--text-secondary); margin: 10px 0 0 0; line-height: 1.4;"></p>
             </div>
 
             <!-- Grade de Dados Operacionais da Equipe (Escala, Marcação, Desvio, Frota) -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+            <div class="del-modal-telemetry-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
                 
                 <!-- Bloco 1: Escala & Apontamento de Ponto -->
                 <div class="telemetry-subcard">
@@ -3217,7 +3210,7 @@
 
             </div>
 
-            <!-- Bloco 3: HISTÓRICO DE ORDENS DE SERVIÇO (OS) ATENDIDAS NO DIA -->
+            <!-- Bloco 4: HISTÓRICO DE ORDENS DE SERVIÇO (OS) ATENDIDAS NO DIA -->
             <div class="ultra-card-orders">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -3226,9 +3219,7 @@
                             HISTÓRICO DE ORDENS DE SERVIÇO
                         </h4>
                     </div>
-                    <span id="delModalOrderCountBadge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 9999px;">
-                        0 Ordens
-                    </span>
+                    <span id="delModalOrderCountBadge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 9999px;">0 Ordens</span>
                 </div>
                 <p style="font-size: 0.76rem; color: var(--text-secondary); margin: 0 0 10px 0;">
                     Ordens registradas pelo CDP
@@ -3255,7 +3246,7 @@
 
         <div class="modal-footer del-modal-footer">
             <div style="font-size: 0.74rem; color: var(--text-secondary);">
-                Auditoria em tempo real: <span class="text-cyan">EquipesBrasil • TRBOnet One</span>
+                Auditoria em tempo real: <span class="text-cyan">EquipesBrasil • TRBOnet One • BID</span>
             </div>
             <button class="btn btn-secondary" onclick="closeModal('deliveryTeamDetailModal')">
                 Fechar Detalhes

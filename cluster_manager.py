@@ -36,6 +36,8 @@ class ClusterManager:
         self.role = self.config.get("role", DEFAULT_ROLE)
         self.is_feeding_db = bool(self.config.get("is_feeding_db", self.role == "PRIMARY"))
         self.auto_failover_enabled = self.config.get("auto_failover_enabled", True)
+        self.manual_override_until = self.config.get("manual_override_until", None)
+        self.failover_suspect_count = 0
         self.last_heartbeat = None
         self.active_node_id = "MAQUINA_1_PRINCIPAL"
         self._worker_started = False
@@ -66,6 +68,7 @@ class ClusterManager:
             "role": "STANDBY" if is_backup else "PRIMARY",
             "is_feeding_db": False if is_backup else True,
             "auto_failover_enabled": True,
+            "manual_override_until": None,
             "hostname": hostname
         }
         try:
@@ -85,6 +88,8 @@ class ClusterManager:
             self.role = self.config.get("role", self.role)
             self.is_feeding_db = bool(self.config.get("is_feeding_db", self.is_feeding_db))
             self.auto_failover_enabled = self.config.get("auto_failover_enabled", self.auto_failover_enabled)
+            if "manual_override_until" in new_cfg:
+                self.manual_override_until = new_cfg["manual_override_until"]
 
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -119,7 +124,7 @@ class ClusterManager:
         self.save_config({"is_feeding_db": is_feeding})
 
     def get_cluster_leader_from_db(self) -> str:
-        """Consulta no Supabase qual é a máquina definida como líder autoritativo."""
+        """Consulta no Supabase qual é a máquina definida como líder autoritativo e atualiza locks."""
         import requests
         from supabase_client import BASE_REST_URL, get_headers
         try:
@@ -130,7 +135,11 @@ class ClusterManager:
                 if data:
                     det = data[0].get("details_json") or {}
                     active_id = det.get("active_node_id")
+                    manual_until = det.get("manual_override_until")
+                    if manual_until:
+                        self.manual_override_until = manual_until
                     if active_id:
+                        self.active_node_id = active_id
                         return active_id
         except Exception:
             pass
@@ -143,41 +152,29 @@ class ClusterManager:
         from supabase_client import BASE_REST_URL, get_headers, BR_TZ, format_datetime_br, update_engine_health
 
         now_dt = datetime.now(BR_TZ)
-        now_iso = now_dt.isoformat()
-        self.last_heartbeat = now_iso
+        is_cdp_alive = self.is_cdp_port_open()
 
-        # 1. Sincroniza liderança com o Supabase
-        db_leader = self.get_cluster_leader_from_db()
-        self.active_node_id = db_leader
-        should_feed = (db_leader == self.node_id)
-        if self.is_feeding_db != should_feed:
-            print(f"[CLUSTER SYNC] Alimentação ajustada: {self.node_id} is_feeding_db={should_feed} (Líder: {db_leader})", flush=True)
-            self.set_feeding_status(should_feed)
+        # 1. Monta o payload deste nó
+        active_leader = self.get_cluster_leader_from_db()
+        is_leader = (self.node_id == active_leader)
 
-        cdp_open = self.is_cdp_port_open()
-        cdp_status = "OPEN" if cdp_open else "CLOSED"
-        ip_addr = self.get_local_ip()
-        hostname = socket.gethostname()
+        if is_leader != self.is_feeding_db:
+            print(f"[CLUSTER SYNC] Alimentação ajustada: {self.node_id} is_feeding_db={is_leader} (Líder: {active_leader})", flush=True)
+            self.set_feeding_status(is_leader)
 
-        # Determina status operacional
-        if not cdp_open:
-            node_status = "DEGRADED"  # Porta 9222 fechada
-        elif not self.is_feeding_db:
-            node_status = "STANDBY"   # Pronto em espera
-        else:
-            node_status = "ONLINE"    # Coletando ativamente
+        node_status = "ONLINE" if is_cdp_alive else "WARNING"
+        if not is_leader:
+            node_status = "STANDBY"
 
-        # Telemetria rica da máquina
         details = {
             "node_id": self.node_id,
             "node_label": self.node_label,
             "role": self.role,
             "is_feeding_db": self.is_feeding_db,
-            "status": node_status,
-            "cdp_port_status": cdp_status,
-            "ip_address": ip_addr,
-            "hostname": hostname,
-            "os_name": f"{platform.system()} {platform.release()} ({platform.machine()})",
+            "cdp_port_status": "OPEN" if is_cdp_alive else "CLOSED",
+            "ip_address": self.get_local_ip(),
+            "hostname": socket.gethostname(),
+            "os_name": f"{platform.system()} {platform.release()}",
             "python_version": platform.python_version(),
             "geo_location": {
                 "city": "São Paulo",
@@ -186,7 +183,6 @@ class ClusterManager:
                 "network": "Alpitel / Enel CCO"
             },
             "started_at": self.start_time,
-            "last_heartbeat_br": now_dt.strftime("%d/%m/%Y %H:%M:%S"),
             "engines": engines_summary or {}
         }
 
@@ -203,10 +199,10 @@ class ClusterManager:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def fetch_all_cluster_nodes(self) -> list:
+    def fetch_all_cluster_nodes(self):
         """
         Busca o status de todas as máquinas conectadas no cluster através do Supabase.
-        Retorna lista padronizada com dados completos de cada computador.
+        Retorna tupla (nodes_list, fetch_error: bool) com dados completos de cada computador.
         """
         import requests
         from supabase_client import BASE_REST_URL, get_headers, BR_TZ, format_datetime_br
@@ -214,6 +210,7 @@ class ClusterManager:
         nodes_list = []
         now_dt = datetime.now(timezone.utc)
         active_leader = self.get_cluster_leader_from_db()
+        fetch_error = False
 
         try:
             endpoint = f"{BASE_REST_URL}/system_engine_health?engine_name=like.node:*&order=engine_name.asc"
@@ -267,8 +264,11 @@ class ClusterManager:
                         "engines_status": det.get("engines", {})
                     }
                     nodes_list.append(node_obj)
+            else:
+                fetch_error = True
         except Exception as e:
             print(f"[CLUSTER FETCH ERROR] {e}", flush=True)
+            fetch_error = True
 
         # Se esta máquina local não veio no retorno remoto, adiciona seus dados locais
         ids = [n["node_id"] for n in nodes_list]
@@ -332,28 +332,43 @@ class ClusterManager:
                 "engines_status": {}
             })
 
-        return nodes_list
+        return nodes_list, fetch_error
 
-    def promote_node(self, target_node_id: str) -> dict:
+    def promote_node(self, target_node_id: str, is_manual: bool = True) -> dict:
         """
         Promove o nó especificado a líder do cluster no Supabase.
         Garante que apenas UMA máquina fique alimentando o banco.
+        Aplica trava de 20 minutos se a promoção for por solicitação manual.
         """
         from supabase_client import update_engine_health, BR_TZ
 
         now_iso = datetime.now(BR_TZ).isoformat()
+        override_until_iso = None
+
+        if is_manual:
+            lock_dt = datetime.now(timezone.utc) + timedelta(minutes=20)
+            override_until_iso = lock_dt.isoformat()
+            self.manual_override_until = override_until_iso
+            self.save_config({"manual_override_until": override_until_iso})
+            print(f"[CLUSTER MANUAL LOCK] Trava manual ativada até {override_until_iso} (20 min) para {target_node_id}.", flush=True)
+
+        self.failover_suspect_count = 0
 
         # Atualiza a liderança oficial no Supabase
+        details_payload = {
+            "active_node_id": target_node_id,
+            "promoted_at": now_iso,
+            "promoted_by_node": self.node_id,
+            "manual_override_until": override_until_iso,
+            "is_manual": is_manual
+        }
+
         update_engine_health(
             engine_name="cluster_leader",
             status="OPERATIONAL",
             is_running=True,
             engine_label="Líder do Cluster de Coleta",
-            details_json={
-                "active_node_id": target_node_id,
-                "promoted_at": now_iso,
-                "promoted_by_node": self.node_id
-            }
+            details_json=details_payload
         )
 
         self.active_node_id = target_node_id
@@ -366,6 +381,7 @@ class ClusterManager:
             create_sync_command("CLUSTER_SET_ROLE", {
                 "active_node_id": target_node_id,
                 "promoted_by": self.node_id,
+                "manual_override_until": override_until_iso,
                 "timestamp": now_iso
             })
         except Exception as e:
@@ -380,26 +396,63 @@ class ClusterManager:
             "status": "success",
             "message": msg,
             "active_node_id": target_node_id,
-            "is_this_node_feeding": is_this_node
+            "is_this_node_feeding": is_this_node,
+            "manual_override_until": override_until_iso
         }
 
-    def check_failover_condition(self, all_nodes: list):
+    def check_failover_condition(self, all_nodes: list, fetch_error: bool = False):
         """
-        Se este nó for STANDBY e o líder estiver sem heartbeat há mais de 5 minutos,
-        dispara a auto-promoção.
+        Failover Seguro de Alta Confiabilidade:
+        1. Se auto_failover_enabled estiver desligado ou nó já for líder, zera suspeita e sai.
+        2. Se houver erro de rede no fetch, ignora para evitar promoção indevida por falha local.
+        3. Se houver trava de liderança manual (manual_override_until) vigente (< 20 min), NUNCA dispara failover.
+        4. Exige 5 checagens consecutivas (> 100s) com inatividade comprovada > 600s (10 min) para agir.
         """
         if not self.auto_failover_enabled or self.is_feeding_db:
+            self.failover_suspect_count = 0
             return
 
+        if fetch_error:
+            # Não toma decisões drásticas de failover durante instabilidade local de rede
+            return
+
+        # Valida trava manual
+        if self.manual_override_until:
+            try:
+                lock_dt = datetime.fromisoformat(self.manual_override_until.replace("Z", "+00:00"))
+                now_utc = datetime.now(timezone.utc)
+                if now_utc < lock_dt:
+                    rem_sec = int((lock_dt - now_utc).total_seconds())
+                    self.failover_suspect_count = 0
+                    return
+            except Exception:
+                pass
+
         active_leader = self.get_cluster_leader_from_db()
+        if active_leader == self.node_id:
+            self.failover_suspect_count = 0
+            return
+
         leader_node = next((n for n in all_nodes if n.get("node_id") == active_leader), None)
         if not leader_node:
             return
 
         sec_since = leader_node.get("seconds_since_heartbeat", 0)
-        if sec_since > 300:  # 5 minutos sem sinal
-            print(f"[CLUSTER FAILOVER CRÍTICO] Nó líder '{active_leader}' sem sinal há {sec_since}s (>5 min)! Auto-promovendo este nó ({self.node_id})...", flush=True)
-            self.promote_node(self.node_id)
+
+        # Se o dado de heartbeat for fallback não-comprovado (9999), não age
+        if sec_since >= 9999:
+            return
+
+        if sec_since > 600:  # Mais de 10 minutos sem sinal comprovado
+            self.failover_suspect_count += 1
+            print(f"[CLUSTER FAILOVER VIGILÂNCIA {self.failover_suspect_count}/5] Líder '{active_leader}' sem sinal há {sec_since}s (>600s)...", flush=True)
+            if self.failover_suspect_count >= 5:
+                print(f"[CLUSTER FAILOVER CONFIRMADO] 5 checagens consecutivas confirmam inatividade do líder '{active_leader}' ({sec_since}s). Auto-promovendo este nó ({self.node_id})...", flush=True)
+                self.failover_suspect_count = 0
+                self.promote_node(self.node_id, is_manual=False)
+        else:
+            # Líder respondeu ou tempo < 600s: zera contador imediatamente
+            self.failover_suspect_count = 0
 
     def start_background_heartbeat(self, get_engines_status_func=None):
         """Inicia a thread de batimento cardíaco periódico e vigilância de failover."""
@@ -422,8 +475,8 @@ class ClusterManager:
                     self.publish_local_heartbeat(engines_summary)
 
                     if not self.is_feeding_db:
-                        all_nodes = self.fetch_all_cluster_nodes()
-                        self.check_failover_condition(all_nodes)
+                        all_nodes, fetch_error = self.fetch_all_cluster_nodes()
+                        self.check_failover_condition(all_nodes, fetch_error=fetch_error)
 
                 except Exception as err:
                     print(f"[CLUSTER LOOP WARN] {err}", flush=True)

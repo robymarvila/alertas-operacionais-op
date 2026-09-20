@@ -5562,6 +5562,11 @@ html.route-hub #portalHubView { display: flex !important; }
 /* Alternador de Telas (Segmented Switch M3 Expressive) */
 .delivery-screen-switcher {
     display: inline-flex;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
     background: rgba(15, 23, 42, 0.75);
     backdrop-filter: blur(20px) saturate(190%);
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -5569,6 +5574,10 @@ html.route-hub #portalHubView { display: flex !important; }
     padding: 4px;
     gap: 4px;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+.delivery-screen-switcher::-webkit-scrollbar {
+    display: none;
 }
 
 .screen-switch-btn {
@@ -5586,6 +5595,8 @@ html.route-hub #portalHubView { display: flex !important; }
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .screen-switch-btn:hover {
@@ -5598,6 +5609,64 @@ html.route-hub #portalHubView { display: flex !important; }
     color: #ffffff;
     border: 1px solid rgba(0, 242, 254, 0.5);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 4px 16px rgba(0, 242, 254, 0.3);
+}
+
+/* Barra de Controle Regional e Seletor de Visualização (Ativas vs Total) */
+.regional-control-bar {
+    padding: 14px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    border-radius: 16px;
+}
+
+.region-view-mode-toggle {
+    display: inline-flex;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 3px;
+    gap: 4px;
+}
+
+.region-mode-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.region-mode-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.region-mode-btn.active {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+}
+
+.region-mode-btn[data-mode="total"].active {
+    background: rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    box-shadow: 0 2px 8px rgba(56, 189, 248, 0.15);
 }
 
 /* Indicador de Status ao Vivo */
@@ -8127,39 +8196,113 @@ body.theme-light .btn-mini-refresh:hover {
     box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
 }
 
+/* ==========================================================================
+   MODAL ULTRA-PREMIUM: DETALHES DA EQUIPE ENTREGUE
+   Design Desktop Original: Amplo, Fluido e Confinado à Viewport (Sem Cortar Rodapé)
+   ========================================================================== */
+
 .ultra-premium-modal {
-    background: rgba(11, 19, 38, 0.94) !important;
-    backdrop-filter: blur(20px) saturate(180%) !important;
-    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    background: rgba(11, 19, 38, 0.95) !important;
+    backdrop-filter: blur(24px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
     border: 1px solid rgba(56, 189, 248, 0.3) !important;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), 0 0 32px rgba(56, 189, 248, 0.15) !important;
-    border-radius: 16px !important;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75), 0 0 32px rgba(56, 189, 248, 0.18) !important;
+    border-radius: 18px !important;
+    max-height: calc(100vh - 40px) !important;
+    max-height: calc(100dvh - 40px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding: 24px !important;
+    box-sizing: border-box !important;
 }
 
 .del-modal-header {
-    border-bottom: 1px solid rgba(56, 189, 248, 0.2);
-    padding-bottom: 16px;
+    flex: 0 0 auto !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding-bottom: 16px !important;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.2) !important;
 }
 
 .del-modal-team-title {
-    font-size: 1.4rem;
+    font-size: 1.35rem;
     font-weight: 900;
     letter-spacing: 0.05em;
     color: #ffffff;
     margin: 0;
     font-family: 'JetBrains Mono', monospace;
+    text-shadow: 0 0 14px rgba(56, 189, 248, 0.35);
 }
 
 .modal-icon-badge-glow {
     width: 44px;
     height: 44px;
     border-radius: 12px;
-    background: rgba(14, 165, 233, 0.15);
-    border: 1px solid rgba(56, 189, 248, 0.35);
+    background: rgba(14, 165, 233, 0.16);
+    border: 1px solid rgba(56, 189, 248, 0.4);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.25);
+    flex-shrink: 0;
+}
+
+/* Corpo com Rolagem Fluida Independente (Garante que o Footer nunca corte) */
+.modal-card.ultra-premium-modal > .modal-body,
+#delModalScrollBody {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    padding: 20px 4px 20px 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 18px !important;
+}
+
+#delModalScrollBody::-webkit-scrollbar {
+    width: 6px;
+}
+
+#delModalScrollBody::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.4);
+    border-radius: 4px;
+}
+
+#delModalScrollBody::-webkit-scrollbar-thumb {
+    background: rgba(56, 189, 248, 0.35);
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+#delModalScrollBody::-webkit-scrollbar-thumb:hover {
+    background: rgba(56, 189, 248, 0.65);
+}
+
+/* Grade de Telemetria Responsiva do Modal */
+.del-modal-telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 960px) {
+    .del-modal-telemetry-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 680px) {
+    .del-modal-telemetry-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .ultra-card-trbonet {
@@ -8230,12 +8373,16 @@ body.theme-light .btn-mini-refresh:hover {
     font-size: 0.7rem;
 }
 
+/* Footer Clássico Desktop: Fixo na Base, Alinhado e Sempre Visível */
 .del-modal-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 14px 24px;
+    flex: 0 0 auto !important;
+    margin-top: auto !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding-top: 16px !important;
+    border-top: 1px solid rgba(56, 189, 248, 0.2) !important;
+    background: transparent !important;
 }
 
 .badge-desvio {
@@ -8295,6 +8442,31 @@ body.theme-light .btn-mini-refresh:hover {
     color: #fde68a;
 }
 
+/* Responsividade Mobile Suave (Mantém integridade em telas <= 768px sem distorcer o desktop) */
+@media (max-width: 768px) {
+    .modal-card.ultra-premium-modal {
+        max-height: calc(100dvh - 16px) !important;
+        padding: 16px !important;
+        width: 96% !important;
+        border-radius: 16px !important;
+    }
+
+    .del-modal-team-title {
+        font-size: 1.15rem !important;
+    }
+
+    .del-modal-footer {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+    }
+
+    .del-modal-footer .btn {
+        width: 100% !important;
+        justify-content: center;
+    }
+}
+
 /* ==========================================================================
    MODAL ULTRA-PREMIUM (TEMA CLARO / LIGHT THEME)
    ========================================================================== */
@@ -8306,11 +8478,26 @@ body.theme-light .ultra-premium-modal {
 }
 
 body.theme-light .del-modal-header {
+    background: transparent !important;
     border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
+    box-shadow: none !important;
 }
 
 body.theme-light .del-modal-team-title {
     color: #0f172a !important;
+    text-shadow: none !important;
+}
+
+body.theme-light #delModalScrollBody::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+body.theme-light #delModalScrollBody::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+}
+
+body.theme-light #delModalScrollBody::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 
 body.theme-light .ultra-premium-modal .modal-subtitle {
@@ -8432,10 +8619,11 @@ body.theme-light .del-modal-cycle-badge {
 
 body.theme-light .del-modal-footer {
     border-top: 1px solid rgba(226, 232, 240, 0.95) !important;
-    background: #f8fafc !important;
+    background: transparent !important;
+    box-shadow: none !important;
 }
 
-body.theme-light .del-modal-footer div {
+body.theme-light .del-modal-footer-info {
     color: #64748b !important;
 }
 
@@ -10703,14 +10891,14 @@ body.theme-light .mobile-subtab-btn.active {
         margin-left: 4px !important;
     }
 
-    /* CONTROLE DE SUB-ABAS MOBILE (FEED / CHARTS / BASES) */
-    /* Modo Feed (Padrão) */
-    body.mobile-subtab-feed #deliveryFilterBar { display: block !important; }
-    body.mobile-subtab-feed #deliveryMobileCardsFeed { display: flex !important; }
-    body.mobile-subtab-feed .delivery-analytics-grid { display: none !important; }
-    body.mobile-subtab-feed .regional-control-bar { display: none !important; }
-    body.mobile-subtab-feed .delivery-regions-container { display: none !important; }
-    body.mobile-subtab-feed .delivery-results-header { display: none !important; }
+    /* CONTROLE DE SUB-ABAS MOBILE (1º BASES / 2º GRÁFICOS / 3º EQUIPES) */
+    /* Modo Bases (Novo Padrão Mobile) */
+    body.mobile-subtab-bases #deliveryFilterBar { display: none !important; }
+    body.mobile-subtab-bases #deliveryMobileCardsFeed { display: none !important; }
+    body.mobile-subtab-bases .delivery-analytics-grid { display: none !important; }
+    body.mobile-subtab-bases .regional-control-bar { display: flex !important; }
+    body.mobile-subtab-bases .delivery-regions-container { display: block !important; }
+    body.mobile-subtab-bases .delivery-results-header { display: none !important; }
 
     /* Modo Gráficos */
     body.mobile-subtab-charts #deliveryFilterBar { display: none !important; }
@@ -10720,28 +10908,104 @@ body.theme-light .mobile-subtab-btn.active {
     body.mobile-subtab-charts .delivery-regions-container { display: none !important; }
     body.mobile-subtab-charts .delivery-results-header { display: none !important; }
 
-    /* Modo Bases */
-    body.mobile-subtab-bases #deliveryFilterBar { display: none !important; }
-    body.mobile-subtab-bases #deliveryMobileCardsFeed { display: none !important; }
-    body.mobile-subtab-bases .delivery-analytics-grid { display: none !important; }
-    body.mobile-subtab-bases .regional-control-bar { display: block !important; }
-    body.mobile-subtab-bases .delivery-regions-container { display: block !important; }
-    body.mobile-subtab-bases .delivery-results-header { display: none !important; }
+    /* Modo Feed (Equipes) */
+    body.mobile-subtab-feed #deliveryFilterBar { display: block !important; }
+    body.mobile-subtab-feed #deliveryMobileCardsFeed { display: flex !important; }
+    body.mobile-subtab-feed .delivery-analytics-grid { display: none !important; }
+    body.mobile-subtab-feed .regional-control-bar { display: none !important; }
+    body.mobile-subtab-feed .delivery-regions-container { display: none !important; }
+    body.mobile-subtab-feed .delivery-results-header { display: none !important; }
 
-    /* Se nenhuma classe de sub-aba estiver ativa ainda, exibe feed por padrão */
-    body:not(.mobile-subtab-charts):not(.mobile-subtab-bases) #deliveryMobileCardsFeed {
+    /* Se nenhuma classe de sub-aba estiver ativa ainda, exibe BASES por padrão (Sequência 1º Bases > 2º Gráficos > 3º Equipes) */
+    body:not(.mobile-subtab-charts):not(.mobile-subtab-feed) .regional-control-bar {
         display: flex !important;
     }
-    body:not(.mobile-subtab-charts):not(.mobile-subtab-bases) .delivery-analytics-grid {
+    body:not(.mobile-subtab-charts):not(.mobile-subtab-feed) .delivery-regions-container {
+        display: block !important;
+    }
+    body:not(.mobile-subtab-charts):not(.mobile-subtab-feed) #deliveryFilterBar {
         display: none !important;
     }
-    body:not(.mobile-subtab-charts):not(.mobile-subtab-bases) .regional-control-bar {
+    body:not(.mobile-subtab-charts):not(.mobile-subtab-feed) #deliveryMobileCardsFeed {
         display: none !important;
     }
-    body:not(.mobile-subtab-charts):not(.mobile-subtab-bases) .delivery-regions-container {
+    body:not(.mobile-subtab-charts):not(.mobile-subtab-feed) .delivery-analytics-grid {
         display: none !important;
     }
-    body:not(.mobile-subtab-charts):not(.mobile-subtab-bases) .delivery-results-header {
+    body:not(.mobile-subtab-charts):not(.mobile-subtab-feed) .delivery-results-header {
+        display: none !important;
+    }
+
+    /* Adaptação de Overflow dos Cards Regionais e Toggle Mobile */
+    .regional-control-bar {
+        padding: 12px !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .regional-control-bar > div {
+        width: 100% !important;
+        justify-content: space-between !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    .region-view-mode-toggle {
+        width: 100% !important;
+        display: flex !important;
+        box-sizing: border-box !important;
+        padding: 3px !important;
+        gap: 4px !important;
+        margin-top: 4px !important;
+    }
+
+    .region-mode-btn {
+        flex: 1 1 50% !important;
+        min-width: 0 !important;
+        padding: 7px 4px !important;
+        font-size: 0.69rem !important;
+        line-height: 1.15 !important;
+        text-align: center !important;
+        justify-content: center !important;
+        white-space: normal !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Correção do Switcher de Confronto (Scroll horizontal suave sem quebrar a tela) */
+    .delivery-screen-switcher {
+        display: flex !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        scrollbar-width: none !important;
+        -webkit-overflow-scrolling: touch !important;
+        white-space: nowrap !important;
+        flex-wrap: nowrap !important;
+        padding: 3px !important;
+        gap: 4px !important;
+        box-sizing: border-box !important;
+    }
+    .delivery-screen-switcher::-webkit-scrollbar {
+        display: none !important;
+    }
+    .screen-switch-btn {
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+        padding: 6px 12px !important;
+        font-size: 0.72rem !important;
+    }
+
+    /* Ocultação de colunas secundárias na Tabela de Reconciliação Online BID */
+    .col-desktop-only {
+        display: none !important;
+    }
+
+    /* Barra de Subnav Mobile nunca deve aparecer no Hub */
+    body.route-hub #mobileSubnavBar,
+    html.route-hub #mobileSubnavBar,
+    .route-hub #mobileSubnavBar {
         display: none !important;
     }
 

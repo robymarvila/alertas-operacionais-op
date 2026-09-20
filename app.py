@@ -1894,13 +1894,43 @@ def export_csv():
 @app.route('/api/teams/data', methods=['GET'])
 @app.route('/api/delivery/data', methods=['GET'])
 def get_teams_data():
-    """Retorna o estado consolidado das equipes entregues hoje (Ativas vs Total Acumulado)."""
-    is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
-
+    """
+    Retorna o estado consolidado das equipes entregues hoje (Ativas vs Total Acumulado).
+    Sincroniza automaticamente com o Supabase quando houver novidade na nuvem
+    ou quando o usuário solicitar atualização direta.
+    """
     op_date = delivery_manager.get_operational_date()
+    force_refresh = (
+        request.args.get('force') in ['true', '1'] or
+        request.args.get('refresh') in ['true', '1'] or
+        request.args.get('_') is not None
+    )
 
-    # 1. Hidrata o cache do BID para enriquecimento instantâneo
-    if is_cloud or not getattr(delivery_manager, 'bid_cache', None):
+    # Verifica se deve consultar o Supabase (force_refresh, memória vazia ou a cada 6s)
+    now_ts = time.time()
+    last_check_ts = getattr(get_teams_data, "_last_check_ts", 0)
+    should_check_supabase = force_refresh or (now_ts - last_check_ts > 6) or (not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams)
+
+    if should_check_supabase:
+        get_teams_data._last_check_ts = now_ts
+        try:
+            cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+            if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
+                c_cap = str(cloud_snap.get("captured_at") or "")
+                l_sync = str(getattr(delivery_manager, "last_sync_time", "") or "")
+                # Se o Supabase tiver snapshot mais recente ou memória vazia ou refresh manual
+                if force_refresh or not delivery_manager.active_teams or c_cap != l_sync:
+                    src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase"
+                    delivery_manager.process_raw_enel_records(
+                        cloud_snap["data"],
+                        source_label=src_lbl,
+                        captured_at=c_cap
+                    )
+                    delivery_manager.save_local_cache()
+        except Exception as err_cloud:
+            print(f"[WARN DELIVERY CLOUD SYNC] {err_cloud}", flush=True)
+
+        # Hidrata também o cache do BID para o dia operacional
         try:
             from supabase_client import fetch_bid_records_by_date
             bid_recs = fetch_bid_records_by_date(op_date)
@@ -1909,25 +1939,7 @@ def get_teams_data():
         except Exception as e:
             print(f"[WARN BID HYDRATE] {e}", flush=True)
 
-    # 2. Em ambiente de nuvem (Vercel) ou se a memória local estiver vazia, hidrata do Supabase
-    if is_cloud or (not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams):
-        cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
-        if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
-            src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase"
-            delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label=src_lbl, captured_at=cloud_snap.get("captured_at"))
-
-        try:
-            from supabase_client import fetch_delivery_records_by_date
-            today_recs = fetch_delivery_records_by_date(op_date)
-            if today_recs:
-                for r in today_recs:
-                    t_code = r.get("team_code")
-                    if t_code and t_code not in delivery_manager.daily_accumulated_teams:
-                        delivery_manager.daily_accumulated_teams[t_code] = r
-        except Exception:
-            pass
-
-    # 3. Garante que TODAS as equipes acumuladas e ativas possuam status_bid e bid_info sincronizados
+    # Garante que TODAS as equipes acumuladas e ativas possuam status_bid e bid_info sincronizados
     if hasattr(delivery_manager, 'bid_cache') and delivery_manager.bid_cache:
         for c, team_dict in delivery_manager.daily_accumulated_teams.items():
             b_info = delivery_manager.bid_cache.get(c)
@@ -1947,7 +1959,7 @@ def get_teams_data():
                 team_dict["status_bid"] = "Não Encontrada"
 
     resp = jsonify(delivery_manager.get_consolidated_state())
-    resp.headers["Cache-Control"] = "public, max-age=5, s-maxage=10, stale-while-revalidate=20"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 
 @app.route('/api/delivery/history', methods=['GET'])
@@ -2368,7 +2380,8 @@ ENGINE_THREADS = {
     "spotfire_cdp": None,
     "bid_cdp": None,
     "daily_10am_audit": None,
-    "cloud_listener": None
+    "cloud_listener": None,
+    "cloud_pull_sync": None
 }
 
 ENGINE_STOP_EVENTS = {
@@ -2376,6 +2389,57 @@ ENGINE_STOP_EVENTS = {
     "spotfire_cdp": None,
     "bid_cdp": None
 }
+
+def cloud_pull_sync_worker(interval_seconds=25):
+    """
+    Worker em segundo plano que executa o PULL contínuo do Supabase.
+    Garante que qualquer alteração gravada pela Máquina 2, robôs CDP ou nuvem Vercel
+    seja refletida instantaneamente na memória do servidor local e gravada em disco.
+    """
+    print(f"[CLOUD PULL SYNC] Worker de sincronização contínua com Supabase ativo ({interval_seconds}s).", flush=True)
+    time.sleep(4)
+    while True:
+        try:
+            op_date = delivery_manager.get_operational_date()
+
+            # 1. Sincroniza Entrega de Equipes (Enel SP)
+            try:
+                cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+                if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
+                    c_cap = str(cloud_snap.get("captured_at") or "")
+                    l_sync = str(getattr(delivery_manager, "last_sync_time", "") or "")
+                    if not delivery_manager.active_teams or c_cap != l_sync:
+                        src_lbl = cloud_snap.get("sync_source") or "Sincronização Nuvem (Pull)"
+                        delivery_manager.process_raw_enel_records(
+                            cloud_snap["data"],
+                            source_label=src_lbl,
+                            captured_at=c_cap
+                        )
+                        delivery_manager.save_local_cache()
+            except Exception:
+                pass
+
+            # 2. Sincroniza Módulo 1 (TRBOnet & PowerON)
+            try:
+                op_snap = fetch_latest_snapshot_from_supabase()
+                if op_snap.get("status") == "success" and op_snap.get("data"):
+                    data_manager.load_from_snapshot(op_snap["data"])
+            except Exception:
+                pass
+
+            # 3. Sincroniza registros do BID para o dia operacional
+            try:
+                from supabase_client import fetch_bid_records_by_date
+                bid_recs = fetch_bid_records_by_date(op_date)
+                if bid_recs:
+                    delivery_manager.process_raw_bid_records(bid_recs, op_date)
+            except Exception:
+                pass
+
+        except Exception as err:
+            print(f"[CLOUD PULL SYNC EXCEPTION] {err}", flush=True)
+
+        time.sleep(interval_seconds)
 
 def trbonet_background_worker(interval_seconds=120):
     """
@@ -2418,7 +2482,13 @@ def remote_command_listener_worker(poll_interval=2.5):
                     from cluster_manager import cluster_manager
                     payload = cmd.get("payload") or {}
                     target_active = payload.get("active_node_id") or "MAQUINA_1_PRINCIPAL"
+                    manual_until = payload.get("manual_override_until")
                     is_this_node = (target_active == cluster_manager.node_id)
+
+                    if manual_until:
+                        cluster_manager.manual_override_until = manual_until
+                        cluster_manager.save_config({"manual_override_until": manual_until})
+                    cluster_manager.failover_suspect_count = 0
 
                     cluster_manager.set_feeding_status(is_this_node)
                     cluster_manager.active_node_id = target_active
@@ -2430,9 +2500,10 @@ def remote_command_listener_worker(poll_interval=2.5):
                         "hostname": socket.gethostname(),
                         "is_feeding_db": is_this_node,
                         "role_desc": role_desc,
+                        "manual_override_until": cluster_manager.manual_override_until,
                         "timestamp": datetime.now(BR_TZ).isoformat()
                     }
-                    print(f"[REMOTE COMMAND] CLUSTER_SET_ROLE processado em {cluster_manager.node_id}: {role_desc}", flush=True)
+                    print(f"[REMOTE COMMAND] CLUSTER_SET_ROLE processado em {cluster_manager.node_id}: {role_desc} (Trava: {cluster_manager.manual_override_until})", flush=True)
                     update_command_status(cmd_id, "COMPLETED", res_payload)
                     continue
 
@@ -2600,6 +2671,12 @@ def start_background_jobs(force_restart=False):
             cluster_manager.start_background_heartbeat(_get_engines_summary)
         except Exception as err:
             print(f"[WARN] Falha ao iniciar monitor de redundância do cluster: {err}", flush=True)
+
+        # 9. Worker de Sincronização Contínua com Supabase (Pull Worker - 25s)
+        if force_restart or ENGINE_THREADS.get("cloud_pull_sync") is None or not ENGINE_THREADS["cloud_pull_sync"].is_alive():
+            bg_pull = threading.Thread(target=cloud_pull_sync_worker, args=(25,), daemon=True)
+            bg_pull.start()
+            ENGINE_THREADS["cloud_pull_sync"] = bg_pull
 
 if __name__ == '__main__':
     import sys

@@ -379,6 +379,9 @@ function navigateToView(viewName) {
         updateHubCard();
         updateDeliveryHubCard();
     } else if (viewName === 'delivery') {
+        if (window.innerWidth <= 768 && typeof switchMobileDeliverySubTab === 'function') {
+            switchMobileDeliverySubTab('bases');
+        }
         applyDeliveryFilters();
         loadDeliveryData(false);
     } else if (viewName === 'admin') {
@@ -5409,8 +5412,13 @@ async function openDeliveryTeamModal(teamCode) {
         modal.style.display = 'flex';
         void modal.offsetWidth;
         modal.classList.add('active');
+        const scrollBody = document.getElementById('delModalScrollBody');
+        if (scrollBody) scrollBody.scrollTop = 0;
     } else {
         openModal('deliveryTeamDetailModal');
+    }
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
     }
 
     // Elementos do Modal
@@ -9394,7 +9402,7 @@ function filterOnlineBidTable() {
     if (list.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="11" style="text-align: center; height: 420px; vertical-align: middle; padding: 40px 20px; color: var(--text-secondary);">
+                <td colspan="12" style="text-align: center; height: 420px; vertical-align: middle; padding: 40px 20px; color: var(--text-secondary);">
                     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
                         <i data-lucide="filter-x" style="width: 36px; height: 36px; color: #94a3b8; margin-bottom: 12px; opacity: 0.6;"></i>
                         <p style="font-weight: 700; font-size: 0.95rem; margin: 0 0 6px 0; color: var(--text-primary);">Nenhuma equipe encontrada para os filtros selecionados.</p>
@@ -9524,31 +9532,36 @@ function filterOnlineBidTable() {
             placaHtml = `<span style="color: var(--text-secondary); font-size: 0.74rem;">--</span>`;
         }
 
+        const marcacaoVal = r.marcacao_eb && r.marcacao_eb !== '--' ? r.marcacao_eb : (r.login_time || '--');
+
         return `
-            <tr>
-                <td>
-                    ${crossBadgeHtml}
-                    <div style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 3px;">${r.cross_desc || ''}</div>
-                </td>
+            <tr onclick="openDeliveryTeamModal('${r.team_code}')" style="cursor: pointer;">
                 <td>
                     <button type="button" class="team-badge clickable-team-badge" onclick="event.stopPropagation(); openDeliveryTeamModal('${r.team_code}')" title="Clique para abrir Diagnóstico Forense Completo" style="cursor: pointer;">
                         ${r.team_code}
                     </button>
                 </td>
-                <td>${progBadge}</td>
+                <td>
+                    ${crossBadgeHtml}
+                    <div style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 3px;">${r.cross_desc || ''}</div>
+                </td>
                 <td>${loginBadge}</td>
                 <td>${bBadge}</td>
                 <td>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 700; color: #38bdf8;">${marcacaoVal}</span>
+                </td>
+                <td class="col-desktop-only">${progBadge}</td>
+                <td class="col-desktop-only">
                     <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #38bdf8; font-weight: 700;">${timerVal}</span>
                 </td>
-                <td>
+                <td class="col-desktop-only">
                     <strong style="color: var(--text-primary); font-size: 0.78rem;">${r.base_display || '--'}</strong>
                     <div style="font-size: 0.68rem; color: #0ea5e9;">${r.geo || ''}</div>
                 </td>
-                <td>${turnoHtml}</td>
-                <td>${placaHtml}</td>
-                <td>${componentesHtml}</td>
-                <td>
+                <td class="col-desktop-only">${turnoHtml}</td>
+                <td class="col-desktop-only">${placaHtml}</td>
+                <td class="col-desktop-only">${componentesHtml}</td>
+                <td class="col-desktop-only">
                     <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #0284c7; font-weight: 700;">${r.ordem_servico || '--'}</span>
                 </td>
             </tr>
@@ -10309,6 +10322,25 @@ window.addEventListener('load', () => {
     // Monitor em tempo real de falha de cluster e motores para usuários autenticados
     setInterval(checkClusterHealthAlerts, 25000);
     setTimeout(checkClusterHealthAlerts, 2500);
+
+    // Blindagem ativa contra autofill de gerenciadores de senhas no campo de pesquisa
+    const deliverySearch = document.getElementById('deliverySearchInput');
+    if (deliverySearch) {
+        deliverySearch.addEventListener('focus', () => {
+            deliverySearch.removeAttribute('readonly');
+        });
+        deliverySearch.addEventListener('input', () => {
+            deliverySearch.setAttribute('data-user-typed', 'true');
+        });
+        setTimeout(() => {
+            if (deliverySearch.value && !deliverySearch.hasAttribute('data-user-typed')) {
+                deliverySearch.value = '';
+                if (typeof debounceDeliverySearch === 'function') {
+                    debounceDeliverySearch();
+                }
+            }
+        }, 350);
+    }
 });
 
 // Binds Globais para o Window

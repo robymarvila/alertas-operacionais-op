@@ -422,12 +422,15 @@ def tentar_autenticacao_spotfire_cdp(client) -> bool:
 
 def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
     """
-    Executa a sequência autônoma de navegação, reset de filtros, seleção da 'Tab Completa',
-    aplicação dos filtros de Ano (atual) e Mês (atual ou (All) se all_months=True), clique com botão direito
-    na 'Tabela Completa todas Colunas' e acionamento do 'Export table' nativo com download silencioso via CDP.
-    Retorna o caminho absoluto do arquivo baixado.
+    Executa a sequência autônoma estrita do Scanner 5.0 Spotfire em 6 etapas:
+    1. Atualiza a página com F5 (Page.reload) e confirma carregamento completo.
+    2. Clica em 'Reset Visible Filters' no canto direito do painel Filters e confirma a atualização.
+    3. Filtra o Ano atual (2025/2026) no painel esquerdo.
+    4. Filtra o Mês atual dinamicamente no painel esquerdo (ex: 'set') sem GUIDs estáticos.
+    5. Valida a 'Tabela Completa todas Colunas' e a presença do cabeçalho 'Data Referência'.
+    6. Aciona botão direito -> Export -> Export table e monitora download inteligente (.crdownload e estabilização de tamanho) até 300s.
     """
-    # 1. Configura diretório de download silencioso
+    # Configura diretório de download silencioso
     client.call("Page.setDownloadBehavior", {
         "behavior": "allow",
         "downloadPath": DOWNLOADS_DIR
@@ -440,37 +443,58 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
         except Exception:
             pass
 
-    # 2. Valida URL da aba; se não for Scanner 5.0, navega para o link oficial
+    # =========================================================================
+    # ETAPA 1: F5 (Page.reload) e Confirmação de Carregamento Completo
+    # =========================================================================
     current_url = client.evaluate("window.location.href") or ""
     if "Scanner%205.0" not in current_url and "Scanner 5.0" not in current_url:
         print(f"[SPOTFIRE CDP] Navegando aba para o Scanner 5.0: {SPOTFIRE_URL[:80]}...", flush=True)
         client.call("Page.navigate", {"url": SPOTFIRE_URL})
-        time.sleep(12.0)
     else:
-        print(f"[SPOTFIRE CDP] Scanner 5.0 já ativo na aba ({current_url[:60]}...).", flush=True)
+        print("[SPOTFIRE CDP] Executando F5 (Page.reload com cache ignorado) para atualizar a página...", flush=True)
+        client.call("Page.reload", {"ignoreCache": True})
 
-    # 3. Executa validação de login e seleciona aba 'Tab Completa'
-    now = datetime.now()
-    target_year = str(now.year)
-    target_month_idx = now.month
-    en_month, pt_month = MONTH_ABBR_MAP.get(target_month_idx, ('Sep', 'Set'))
-    target_month_names = [en_month.lower(), pt_month.lower()]
+    # Aguarda o Spotfire carregar 100%
+    print("[SPOTFIRE CDP] Aguardando página do Spotfire carregar completamente após F5...", flush=True)
+    start_load = time.time()
+    page_ready = False
+    while time.time() - start_load < 60:
+        time.sleep(2.0)
+        status = client.evaluate('''(() => {
+            if (document.readyState !== 'complete') return { ready: false, reason: "readyState != complete" };
+            // Verifica se há overlays de carregamento ativos
+            const busy = document.querySelector('.sf-element-busy, .sfc-busy-indicator, .sfc-loading-spinner, .spotfire-busy, .sf-busy, .ProgressOverlay');
+            if (busy && (busy.offsetWidth > 0 || busy.offsetHeight > 0)) {
+                return { ready: false, reason: "busy overlay active" };
+            }
+            // Verifica presença de abas ou visuais
+            const tabs = document.querySelectorAll('.sf-element-page-tab, .sfx_page-tab, .sfc-navigation-tab').length;
+            const visuals = document.querySelectorAll('.sf-element-visual').length;
+            const isLogin = !!document.querySelector('input[name="username"]');
+            if (isLogin) return { ready: true, isLogin: true };
+            if (tabs > 0 || visuals > 0) return { ready: true, tabs, visuals };
+            return { ready: false, reason: "waiting elements" };
+        })()''')
 
-    if all_months:
-        print(f"[SPOTFIRE CDP] Configurando filtros: Ano={target_year} | Mês=(All / Todos os Meses do Ano) na Tab Completa...", flush=True)
-    else:
-        print(f"[SPOTFIRE CDP] Configurando filtros: Ano={target_year} | Mês={en_month}/{pt_month} na Tab Completa...", flush=True)
+        if status and status.get("ready"):
+            if status.get("isLogin"):
+                print("[SPOTFIRE CDP] Tela de login corporativo detectada após reload. Autenticando...", flush=True)
+                tentar_autenticacao_spotfire_cdp(client)
+            else:
+                elapsed_load = round(time.time() - start_load, 1)
+                print(f"[SPOTFIRE CDP OK] Página carregada completamente em {elapsed_load}s!", flush=True)
+                page_ready = True
+                break
 
-    # A) Verifica tela de login e tenta autenticação automática
-    if not tentar_autenticacao_spotfire_cdp(client):
-        is_login = client.evaluate("window.location.href.includes('/login.html') || !!document.querySelector('input[name=\"username\"]')")
-        if is_login:
-            print("[SPOTFIRE CDP WARN] Spotfire na tela de login corporativo.", flush=True)
-            return ""
+    if not page_ready:
+        print("[SPOTFIRE CDP WARN] Timeout aguardando carregamento total, prosseguindo com verificação...", flush=True)
 
-    # B) Garante aba 'Tab Completa' ativa
+    time.sleep(2.0)
+
+    # Garante que a aba 'Tab Completa' esteja selecionada
     active_tab = client.evaluate('document.querySelector(".sf-element-active-page-tab")?.innerText?.trim()')
     if active_tab != "Tab Completa":
+        print("[SPOTFIRE CDP] Selecionando aba 'Tab Completa'...", flush=True)
         client.evaluate('''
         (() => {
             const tabs = Array.from(document.querySelectorAll(".sf-element-page-tab, .sfx_page-tab, .sfc-navigation-tab"));
@@ -478,9 +502,62 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
             if (tab) tab.click();
         })()
         ''')
-        time.sleep(2.5)
+        time.sleep(3.0)
 
-    # C) Ajusta Ano: Garante apenas target_year marcado via cliques nativos CDP
+    # =========================================================================
+    # ETAPA 2: Clicar em 'Reset Visible Filters' no Canto Direito (Filters)
+    # =========================================================================
+    print("[SPOTFIRE CDP] Localizando e acionando 'Reset Visible Filters' no canto direito...", flush=True)
+    reset_info = client.evaluate('''(() => {
+        const selectors = [
+            'div.ResetButton[title="Reset Visible Filters"]',
+            'div.ResetFilters',
+            '[title*="Reset Visible Filters"]',
+            '[title*="Reset visible filters"]',
+            '[title*="Reset filters"]',
+            '.ResetButton'
+        ];
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (el) {
+                const r = el.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) {
+                    return { found: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), title: el.getAttribute('title') || 'ResetButton' };
+                }
+            }
+        }
+        const allEls = Array.from(document.querySelectorAll('*'));
+        const match = allEls.find(el => {
+            const t = (el.getAttribute('title') || el.innerText || '').toLowerCase();
+            return t.includes('reset visible filters') || t.includes('reset filters');
+        });
+        if (match) {
+            const r = match.getBoundingClientRect();
+            return { found: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), title: 'ResetMatch' };
+        }
+        return { found: false };
+    })()''')
+
+    if reset_info and reset_info.get("found"):
+        print(f"[SPOTFIRE CDP] Clicando em '{reset_info.get('title')}' em ({reset_info['x']}, {reset_info['y']})...", flush=True)
+        client.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": reset_info["x"], "y": reset_info["y"], "button": "left", "clickCount": 1})
+        client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": reset_info["x"], "y": reset_info["y"], "button": "left", "clickCount": 1})
+        time.sleep(4.0)
+        print("[SPOTFIRE CDP OK] 'Reset Visible Filters' acionado com sucesso!", flush=True)
+    else:
+        print("[SPOTFIRE CDP WARN] Botão 'Reset Visible Filters' não encontrado diretamente, continuando fluxo...", flush=True)
+
+    # =========================================================================
+    # ETAPA 3: Filtrar o Ano Atual (Painel Esquerdo)
+    # =========================================================================
+    now = datetime.now()
+    target_year = str(now.year)
+    target_month_idx = now.month
+    en_month, pt_month = MONTH_ABBR_MAP.get(target_month_idx, ('Sep', 'Set'))
+    target_month_names = [pt_month.lower(), en_month.lower(), 'set', 'sep']
+
+    print(f"[SPOTFIRE CDP] Configurando filtro de Ano={target_year} no painel esquerdo...", flush=True)
+
     def get_year_filters():
         return client.evaluate('''
         Array.from(document.querySelectorAll(".sf-element-filter-item")).map(el => {
@@ -489,12 +566,19 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
                 text: el.innerText.trim(),
                 checked: !!el.querySelector(".sfpc-checked"),
                 x: Math.round(r.left + 15),
-                y: Math.round(r.top + r.height / 2)
+                y: Math.round(r.top + r.height / 2),
+                visible: r.width > 0 && r.height > 0 && r.x < 350
             };
-        }).filter(i => ["2023", "2024", "2025", "2026"].includes(i.text))
+        }).filter(i => ["2023", "2024", "2025", "2026"].includes(i.text) && i.visible)
         ''') or []
 
-    for y in get_year_filters():
+    years = get_year_filters()
+    # Se o ano atual não existir nos filtros, tenta ano vigente ou 2025
+    available_years = [y["text"] for y in years]
+    if target_year not in available_years and "2025" in available_years:
+        target_year = "2025"
+
+    for y in years:
         if y["text"] != target_year and y["checked"]:
             print(f"[SPOTFIRE CDP] Desmarcando Ano {y['text']}...", flush=True)
             client.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": y["x"], "y": y["y"], "button": "left", "clickCount": 1})
@@ -506,9 +590,13 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
             client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": y["x"], "y": y["y"], "button": "left", "clickCount": 1})
             time.sleep(0.8)
 
-    # D) Ajusta Mês: Se all_months, seleciona (All); senão garante Sep / Set do mês atual
+    time.sleep(1.5)
+
+    # =========================================================================
+    # ETAPA 4: Filtrar o Mês Atual Dinamicamente no Painel Esquerdo
+    # =========================================================================
     if all_months:
-        print("[SPOTFIRE CDP] Modo Carga Anual: Removendo filtro de Mês via FilterRowDelete para carregar todo o ano de 2026...", flush=True)
+        print("[SPOTFIRE CDP] Modo Carga Anual: Removendo filtro de Mês para carregar todos os meses do ano...", flush=True)
         del_btn_res = client.evaluate('''(() => {
             const btn = document.querySelector('.FilterRowDelete');
             if (btn) {
@@ -521,40 +609,43 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
             client.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": del_btn_res["x"], "y": del_btn_res["y"], "button": "left", "clickCount": 1})
             client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": del_btn_res["x"], "y": del_btn_res["y"], "button": "left", "clickCount": 1})
             time.sleep(3.0)
-        else:
-            print("[SPOTFIRE CDP] FilterRowDelete não encontrado, filtro de mês já está inativo.", flush=True)
     else:
-        # 1. Verifica se o mês atual já está filtrado
-        month_summary = client.evaluate('''(() => {
-            const textEls = Array.from(document.querySelectorAll('*')).filter(el => 
-                el.children.length === 0 && (el.innerText || '').includes('Mês: (1 of 9 values filtered:')
-            );
-            return textEls.length > 0 ? textEls[0].innerText : null;
-        })()''')
+        print(f"[SPOTFIRE CDP] Aplicando filtro do Mês Atual ({pt_month} / {en_month}) no painel esquerdo...", flush=True)
 
-        already_filtered = False
-        if month_summary:
-            for m in target_month_names:
-                if m in month_summary.lower():
-                    already_filtered = True
-                    break
+        # 1. Procura item de mês na lista sem depender de GUID estático
+        m_item = client.evaluate(f'''(() => {{
+            const targetNames = {json.dumps(target_month_names)};
+            const allItems = Array.from(document.querySelectorAll('.sf-element-list-box-item, .sf-element-filter-item')).map(i => {{
+                const r = i.getBoundingClientRect();
+                return {{
+                    text: i.innerText.trim(),
+                    selected: i.classList.contains("sfpc-selected") || !!i.querySelector(".sfpc-checked"),
+                    x: Math.round(r.left + r.width/2),
+                    y: Math.round(r.top + r.height/2),
+                    visible: r.width > 0 && r.height > 0 && r.left < 350
+                }};
+            }}).filter(i => i.visible);
 
-        if already_filtered:
-            print(f"[SPOTFIRE CDP] Mês atual ({en_month}/{pt_month}) já está selecionado no filtro.", flush=True)
+            return allItems.find(i => targetNames.some(m => i.text.toLowerCase() === m || i.text.toLowerCase().startsWith(m)));
+        }})()''')
+
+        if m_item and not m_item.get("selected"):
+            print(f"[SPOTFIRE CDP] Clicando no item do mês '{m_item['text']}' em ({m_item['x']}, {m_item['y']})...", flush=True)
+            client.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": m_item["x"], "y": m_item["y"], "button": "left", "clickCount": 1})
+            client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": m_item["x"], "y": m_item["y"], "button": "left", "clickCount": 1})
+            time.sleep(2.0)
+        elif m_item and m_item.get("selected"):
+            print(f"[SPOTFIRE CDP OK] Mês '{m_item['text']}' já está selecionado!", flush=True)
         else:
-            print(f"[SPOTFIRE CDP] Aplicando filtro do Mês Atual ({en_month}/{pt_month}) via busca instantânea...", flush=True)
+            # Fallback: Focar no campo de busca de filtro e pesquisar o mês
+            print(f"[SPOTFIRE CDP] Pesquisando mês '{pt_month.lower()}' no campo de busca do filtro...", flush=True)
             focused = client.evaluate('''(() => {
                 const searchInps = Array.from(document.querySelectorAll('.SearchInput')).filter(i => {
                     const r = i.getBoundingClientRect();
-                    return r.x < 150 && r.y > 100 && r.y < 250;
+                    return r.left < 300 && r.width > 0 && r.height > 0;
                 });
                 if (searchInps.length > 0) {
                     searchInps[0].focus();
-                    return true;
-                }
-                const first = document.querySelector('.SearchInput');
-                if (first) {
-                    first.focus();
                     return true;
                 }
                 return false;
@@ -565,55 +656,73 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
                 time.sleep(0.3)
                 client.call("Input.dispatchKeyEvent", {"type": "rawKeyDown", "windowsVirtualKeyCode": 13, "key": "Enter", "code": "Enter"})
                 client.call("Input.dispatchKeyEvent", {"type": "keyUp", "windowsVirtualKeyCode": 13, "key": "Enter", "code": "Enter"})
-                time.sleep(1.2)
+                time.sleep(1.5)
 
-                m_item = client.evaluate(f'''(() => {{
-                    const span = document.getElementById("e394afd9651149fba1c1157e980886ef") || document.querySelector('.sf-element-filter-content');
-                    if (!span) return null;
-                    const items = Array.from(span.querySelectorAll('.sf-element-list-box-item')).map(i => {{
+                found_after_search = client.evaluate(f'''(() => {{
+                    const targetNames = {json.dumps(target_month_names)};
+                    const items = Array.from(document.querySelectorAll('.sf-element-list-box-item, .sf-element-filter-item')).map(i => {{
                         const r = i.getBoundingClientRect();
                         return {{
                             text: i.innerText.trim(),
                             selected: i.classList.contains("sfpc-selected"),
                             x: Math.round(r.left + r.width/2),
-                            y: Math.round(r.top + r.height/2)
+                            y: Math.round(r.top + r.height/2),
+                            visible: r.width > 0 && r.height > 0 && r.left < 350
                         }};
-                    }});
-                    return items.find(i => {json.dumps(target_month_names)}.includes(i.text.toLowerCase()));
+                    }}).filter(i => i.visible);
+                    return items.find(i => targetNames.some(m => i.text.toLowerCase() === m || i.text.toLowerCase().startsWith(m)));
                 }})()''')
 
-                if m_item:
-                    print(f"[SPOTFIRE CDP] Selecionando mês {m_item['text']} em ({m_item['x']}, {m_item['y']})...", flush=True)
-                    client.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": m_item["x"], "y": m_item["y"], "button": "left", "clickCount": 1})
-                    client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": m_item["x"], "y": m_item["y"], "button": "left", "clickCount": 1})
+                if found_after_search:
+                    print(f"[SPOTFIRE CDP] Selecionando mês após busca: {found_after_search['text']}...", flush=True)
+                    client.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": found_after_search["x"], "y": found_after_search["y"], "button": "left", "clickCount": 1})
+                    client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": found_after_search["x"], "y": found_after_search["y"], "button": "left", "clickCount": 1})
                     time.sleep(2.0)
-                else:
-                    print(f"[SPOTFIRE CDP WARN] Item do mês {pt_month} não encontrado após busca.", flush=True)
 
-    # E) Aguarda liquidação total dos filtros pelo servidor Spotfire
-    wait_settle = 8.0 if all_months else 4.0
+    # Aguarda liquidação dos filtros no servidor Spotfire
+    wait_settle = 8.0 if all_months else 5.0
     print(f"[SPOTFIRE CDP] Aguardando liquidação dos filtros pelo servidor ({wait_settle}s)...", flush=True)
     time.sleep(wait_settle)
 
-    # 5. Aciona botão direito nativo na Tabela Completa todas Colunas (id64)
-    tbl_info = client.evaluate('''
-    (() => {
-        const tableVisual = document.getElementById("id64") || Array.from(document.querySelectorAll(".sf-element-visual")).find(v => {
-            const title = (v.querySelector(".sfc-visual-header, .sf-element-visual-title, .title") || {}).innerText || "";
-            return title.toLowerCase().includes("tabela completa") || title.toLowerCase().includes("todas colunas");
+    # =========================================================================
+    # ETAPA 5: Validação Forense da 'Tabela Completa todas Colunas' (Data Referência)
+    # =========================================================================
+    print("[SPOTFIRE CDP] Validando visualização 'Tabela Completa todas Colunas' e primeira coluna 'Data Referência'...", flush=True)
+    table_valid = client.evaluate('''(() => {
+        const table = document.getElementById("id64") || Array.from(document.querySelectorAll('.sf-element-visual')).find(v => {
+            const title = (v.querySelector('.sfc-visual-header, .sf-element-visual-title, .title') || {}).innerText || '';
+            return title.toLowerCase().includes('tabela completa') || title.toLowerCase().includes('todas colunas');
         });
-        if (!tableVisual) return null;
-        const targetEl = tableVisual.querySelector(".valueCellsContainer, .contentContainer, .table-viewport") || tableVisual;
-        const r = targetEl.getBoundingClientRect();
-        return {
-            clickX: Math.round(r.left + 150),
-            clickY: Math.round(r.top + 25)
-        };
-    })()
-    ''')
+        if (!table) return { ok: false, reason: "Visual id64 não localizado" };
 
-    # 5. Aciona o menu de contexto na Tabela Completa todas Colunas
-    print("[SPOTFIRE CDP] Acionando menu de contexto na Tabela Completa...", flush=True)
+        const headers = Array.from(table.querySelectorAll('.sf-element-table-column-header, .HeaderCell, th, [role=columnheader]')).map(h => (h.innerText || '').trim());
+        const hasDateRef = headers.some(h => {
+            const low = h.toLowerCase();
+            return low.includes('data') && (low.includes('ref') || low.includes('referência') || low.includes('referencia'));
+        });
+
+        const cells = Array.from(table.querySelectorAll('.sf-element-table-cell, .TableCell, td, [role=gridcell]')).map(c => (c.innerText || '').trim()).filter(Boolean);
+
+        return {
+            ok: true,
+            hasDateRefHeader: hasDateRef,
+            firstHeaders: headers.slice(0, 4),
+            rowCount: cells.length,
+            sampleCells: cells.slice(0, 4)
+        };
+    })()''')
+
+    if table_valid and table_valid.get("ok"):
+        print(f"[SPOTFIRE CDP TABLE VALIDATED] Headers: {table_valid.get('firstHeaders')} | Cells: {table_valid.get('rowCount')} | Tem 'Data Referência': {table_valid.get('hasDateRefHeader')}", flush=True)
+    else:
+        print(f"[SPOTFIRE CDP WARN] Validação da tabela retornou: {table_valid}", flush=True)
+
+    time.sleep(1.0)
+
+    # =========================================================================
+    # ETAPA 6: Botão Direito -> Export -> Export Table e Download Inteligente
+    # =========================================================================
+    print("[SPOTFIRE CDP] Acionando menu de contexto (botão direito) na Tabela Completa...", flush=True)
     menu_opened = client.evaluate('''(() => {
         const table = document.getElementById("id64") || Array.from(document.querySelectorAll('.sf-element-visual')).find(v => {
             const title = (v.querySelector('.sfc-visual-header, .sf-element-visual-title, .title') || {}).innerText || '';
@@ -637,12 +746,11 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
     })()''')
 
     if not menu_opened:
-        print("[SPOTFIRE CDP ERROR] Falha ao localizar célula da Tabela Completa.", flush=True)
+        print("[SPOTFIRE CDP ERROR] Falha ao acionar contextmenu na tabela.", flush=True)
         return ""
 
-    time.sleep(1.0)
+    time.sleep(1.2)
 
-    # 6. Aciona Export -> Export table via menu de contexto
     print("[SPOTFIRE CDP] Acionando Export -> Export table...", flush=True)
     click_res = client.evaluate('''
     (async () => {
@@ -683,27 +791,44 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
         client.call('Input.dispatchKeyEvent', {'type': 'keyUp', 'windowsVirtualKeyCode': 27})
         return ""
 
-    # 7. Monitora o diretório temp_spotfire_downloads aguardando conclusão do download
-    print("[SPOTFIRE CDP] Aguardando download completo do arquivo...", flush=True)
+    # Monitoramento inteligente do download: timeout de até 300s, monitorando sumiço do .crdownload e estabilização de bytes
+    print("[SPOTFIRE CDP] Monitorando conclusão inteligente do download (sumiço de .crdownload e estabilidade de bytes)...", flush=True)
     start_wait = time.time()
-    wait_limit = 180 if all_months else 60
+    wait_limit = 300 if all_months else 180
     downloaded_file = ""
+    last_size = -1
+    stable_cycles = 0
+
     while time.time() - start_wait < wait_limit:
         files = os.listdir(DOWNLOADS_DIR)
+        cr_downloads = [f for f in files if f.endswith('.crdownload')]
         completed_files = [
             f for f in files
-            if (f.endswith('.csv') or f.endswith('.tsv') or f.endswith('.txt')) and not f.endswith('.crdownload')
+            if (f.endswith('.tsv') or f.endswith('.txt') or f.endswith('.csv')) and not f.endswith('.crdownload')
         ]
-        if completed_files:
-            fpath = os.path.join(DOWNLOADS_DIR, completed_files[0])
-            if os.path.getsize(fpath) > 1000:
-                downloaded_file = fpath
-                break
+
+        # Se houver candidato completo e nenhum download ativo (.crdownload)
+        if completed_files and not cr_downloads:
+            candidate = os.path.join(DOWNLOADS_DIR, completed_files[0])
+            try:
+                curr_size = os.path.getsize(candidate)
+                if curr_size > 1000:
+                    if curr_size == last_size:
+                        stable_cycles += 1
+                        if stable_cycles >= 3:  # 3 ciclos consecutivos com tamanho estável (3s sem alteração)
+                            downloaded_file = candidate
+                            break
+                    else:
+                        stable_cycles = 0
+                        last_size = curr_size
+            except Exception:
+                pass
+
         time.sleep(1.0)
 
     if downloaded_file:
         sz_mb = round(os.path.getsize(downloaded_file) / (1024 * 1024), 2)
-        print(f"[SPOTFIRE CDP OK] Arquivo exportado com sucesso: {os.path.basename(downloaded_file)} ({sz_mb} MB).", flush=True)
+        print(f"[SPOTFIRE CDP OK] Download concluído com sucesso: {os.path.basename(downloaded_file)} ({sz_mb} MB) em {round(time.time() - start_wait, 1)}s!", flush=True)
     else:
         print("[SPOTFIRE CDP TIMEOUT] Tempo limite excedido aguardando arquivo do Spotfire.", flush=True)
 
