@@ -299,6 +299,7 @@ def fetch_team_timeline(team_code, date_ref=None):
     """
     Retorna a linha do tempo completa de coletas de uma equipe específica em um determinado dia.
     Permite verificar exatamente em quais horários o rádio/GPS transmitiu sinal.
+    Suporta paginação via cabeçalho Range para evitar truncamento do PostgREST.
     """
     try:
         params = [f"team_code=eq.{team_code.upper()}", "order=captured_at.asc"]
@@ -307,12 +308,27 @@ def fetch_team_timeline(team_code, date_ref=None):
 
         query_str = "&".join(params)
         endpoint = f"{BASE_REST_URL}/team_operational_logs?select=*{'&' + query_str if query_str else ''}"
-        response = requests.get(endpoint, headers=get_headers(), timeout=10)
         
-        if response.status_code == 200:
-            return {"status": "success", "data": response.json()}
-        else:
-            return {"status": "error", "message": response.text, "data": []}
+        all_rows = []
+        page_size = 1000
+        for page in range(4): # Até 4000 registros no dia
+            start_offset = page * page_size
+            end_offset = start_offset + page_size - 1
+            headers = get_headers()
+            headers["Range"] = f"{start_offset}-{end_offset}"
+            response = requests.get(endpoint, headers=headers, timeout=12)
+            
+            if response.status_code in [200, 206]:
+                chunk = response.json() or []
+                all_rows.extend(chunk)
+                if len(chunk) < page_size:
+                    break
+            else:
+                if page == 0:
+                    return {"status": "error", "message": response.text, "data": []}
+                break
+
+        return {"status": "success", "data": all_rows}
     except Exception as e:
         return {"status": "error", "message": str(e), "data": []}
 
@@ -1199,6 +1215,357 @@ def prune_stale_bid_records(date_ref: str, valid_team_codes: list) -> dict:
     except Exception as e:
         print(f"[SUPABASE BID PRUNE ERROR] {e}")
         return {"status": "error", "message": str(e), "deleted": 0}
+
+
+# ==============================================================================
+# AUDITORIA FORENSE MENSAL POR EQUIPE (CALENDÁRIO TRBONET x LOGIN)
+# ==============================================================================
+
+MONTHLY_CALENDAR_CACHE = {}
+
+def fetch_team_monthly_calendar_audit(team_code: str, year_month: str = None) -> dict:
+    """
+    Busca o consolidado mensal de conexões no rádio (com e sem GPS) e logins no sistema
+    para uma equipe específica no formato adequado para o calendário interativo.
+    Utiliza RPC server-side no Supabase (alta performance) com fallback automático
+    robusto e resolução precisa de horários de login e veículos para cada dia do mês.
+    """
+    if not team_code:
+        return {"status": "error", "message": "Código da equipe é obrigatório", "data": None}
+
+    clean_team = str(team_code).strip().upper()
+    now_br = datetime.now(BR_TZ)
+    if not year_month:
+        year_month = now_br.strftime("%Y-%m")
+    
+    # 1. Verifica cache em memória (TTL: 60s para mês corrente, 1h para meses passados)
+    cache_key = f"{clean_team}:{year_month}"
+    current_ym = now_br.strftime("%Y-%m")
+    ttl_seconds = 60 if year_month == current_ym else 3600
+    
+    cached_entry = MONTHLY_CALENDAR_CACHE.get(cache_key)
+    if cached_entry:
+        entry_time, entry_data = cached_entry
+        if (now_br.timestamp() - entry_time) < ttl_seconds:
+            return {"status": "success", "data": entry_data, "source": "memory_cache"}
+
+    try:
+        # Extrai ano e mês para calcular datas limites
+        year_int, month_int = map(int, year_month.split("-"))
+        if month_int == 12:
+            next_ym = f"{year_int + 1}-01-01"
+        else:
+            next_ym = f"{year_int}-{month_int + 1:02d}-01"
+        
+        start_date = f"{year_month}-01"
+        from calendar import monthrange
+        _, last_day = monthrange(year_int, month_int)
+        end_date = f"{year_month}-{last_day:02d}"
+
+        records = []
+        used_rpc = False
+
+        # 2. Tenta invocar a função RPC do Supabase (get_team_monthly_audit)
+        try:
+            rpc_url = f"{BASE_REST_URL}/rpc/get_team_monthly_audit"
+            payload = {"p_team_code": clean_team, "p_month": year_month}
+            resp_rpc = requests.post(rpc_url, headers=get_headers(), json=payload, timeout=8)
+            if resp_rpc.status_code == 200:
+                rpc_data = resp_rpc.json()
+                if isinstance(rpc_data, list) and len(rpc_data) > 0:
+                    records = rpc_data
+                    used_rpc = True
+        except Exception as rpc_err:
+            print(f"[WARN RPC MONTHLY AUDIT] Falha ao chamar RPC: {rpc_err}")
+
+        # 3. Fallback inteligente: se o RPC não existir ou retornar erro, consulta views/tabelas agregadas
+        if not used_rpc:
+            # 3.1 Consulta a view diária consolidada (1 linha por dia ativo)
+            ep_daily = (
+                f"{BASE_REST_URL}/vw_team_daily_audit"
+                f"?team_code=eq.{clean_team}&date_ref=gte.{start_date}&date_ref=lte.{end_date}&order=date_ref.asc"
+            )
+            resp_daily = requests.get(ep_daily, headers=get_headers(), timeout=10)
+            daily_rows = resp_daily.json() if resp_daily.status_code == 200 and isinstance(resp_daily.json(), list) else []
+
+            # 3.2 Consulta registros de entrega filtrando logins válidos (mais recentes primeiro)
+            ep_deliv = (
+                f"{BASE_REST_URL}/team_delivery_records"
+                f"?team_code=eq.{clean_team}&date_ref=gte.{start_date}&date_ref=lte.{end_date}&login_time=neq.--&login_time=neq.--:--&select=date_ref,login_time,vehicle_type,driver,status&order=captured_at.desc&limit=1000"
+            )
+            resp_deliv = requests.get(ep_deliv, headers=get_headers(), timeout=8)
+            deliv_rows = resp_deliv.json() if resp_deliv.status_code == 200 and isinstance(resp_deliv.json(), list) else []
+            deliv_map = {}
+            for d in deliv_rows:
+                dr = d.get("date_ref")
+                lt = d.get("login_time")
+                if dr and lt and lt not in ("--", "--:--") and dr not in deliv_map:
+                    deliv_map[dr] = d
+
+            # 3.3 Consulta login e veículo diretamente em team_operational_logs (fonte de alta granularidade)
+            ep_logs_login = (
+                f"{BASE_REST_URL}/team_operational_logs"
+                f"?team_code=eq.{clean_team}&date_ref=gte.{start_date}&date_ref=lte.{end_date}&poweron_login_time=neq.--&poweron_login_time=neq.--:--&select=date_ref,poweron_login_time,poweron_vehicle&order=captured_at.desc&limit=1000"
+            )
+            resp_logs_login = requests.get(ep_logs_login, headers=get_headers(), timeout=8)
+            logs_login_rows = resp_logs_login.json() if resp_logs_login.status_code == 200 and isinstance(resp_logs_login.json(), list) else []
+            logs_login_map = {}
+            for l in logs_login_rows:
+                dr = l.get("date_ref")
+                plt = l.get("poweron_login_time")
+                if dr and plt and plt not in ("--", "--:--") and dr not in logs_login_map:
+                    logs_login_map[dr] = l
+
+            # 3.4 Para datas marcadas como escaladas/login que não foram capturadas nas 1000 linhas mais recentes, busca granular rápida
+            from concurrent.futures import ThreadPoolExecutor
+            missing_poweron_dates = [
+                r.get("date_ref") for r in daily_rows 
+                if r.get("was_in_poweron") and r.get("date_ref") not in deliv_map and r.get("date_ref") not in logs_login_map
+            ]
+            if missing_poweron_dates:
+                def fetch_missing_date_login(target_date):
+                    try:
+                        ep = f"{BASE_REST_URL}/team_delivery_records?team_code=eq.{clean_team}&date_ref=eq.{target_date}&login_time=neq.--&login_time=neq.--:--&select=login_time,vehicle_type&order=captured_at.desc&limit=1"
+                        r = requests.get(ep, headers=get_headers(), timeout=5).json()
+                        if r and len(r) > 0 and r[0].get("login_time") not in ("--", "--:--", None):
+                            return target_date, r[0].get("login_time"), r[0].get("vehicle_type", "--")
+                    except Exception:
+                        pass
+                    return target_date, None, None
+
+                with ThreadPoolExecutor(max_workers=min(6, len(missing_poweron_dates))) as ex:
+                    for res_date, res_login, res_veh in ex.map(fetch_missing_date_login, missing_poweron_dates):
+                        if res_login:
+                            deliv_map[res_date] = {"login_time": res_login, "vehicle_type": res_veh or "--"}
+
+            # 3.5 Consulta seletiva de GPS nos logs com paginação automática (até 4.000 linhas)
+            ep_gps = (
+                f"{BASE_REST_URL}/team_operational_logs"
+                f"?team_code=eq.{clean_team}&date_ref=gte.{start_date}&date_ref=lte.{end_date}&in_trbonet=eq.true&select=date_ref,has_gps"
+            )
+            gps_rows = []
+            offset = 0
+            chunk_size = 1000
+            for _ in range(4):
+                h = get_headers()
+                h['Range'] = f"{offset}-{offset + chunk_size - 1}"
+                resp_gps = requests.get(ep_gps, headers=h, timeout=8)
+                page_rows = resp_gps.json() if resp_gps.status_code in [200, 206] and isinstance(resp_gps.json(), list) else []
+                if not page_rows:
+                    break
+                gps_rows.extend(page_rows)
+                if len(page_rows) < chunk_size:
+                    break
+                offset += chunk_size
+
+            gps_counts = {}
+            for g in gps_rows:
+                dr = g.get("date_ref")
+                if dr not in gps_counts:
+                    gps_counts[dr] = {"with_gps": 0, "without_gps": 0}
+                if g.get("has_gps"):
+                    gps_counts[dr]["with_gps"] += 1
+                else:
+                    gps_counts[dr]["without_gps"] += 1
+
+            # 3.6 Unifica os dados no padrão
+            all_dates = set([r.get("date_ref") for r in daily_rows] + list(deliv_map.keys()) + list(logs_login_map.keys()))
+            for dr in sorted(all_dates):
+                daily = next((r for r in daily_rows if r.get("date_ref") == dr), None)
+                deliv = deliv_map.get(dr, {})
+                log_l = logs_login_map.get(dr, {})
+                gps_info = gps_counts.get(dr, {"with_gps": 0, "without_gps": 0})
+
+                was_trbo = bool(daily.get("was_online_trbonet")) if daily else False
+                
+                # Resolução inteligente de login_time e veículo
+                resolved_login = deliv.get("login_time") or log_l.get("poweron_login_time") or "--"
+                if resolved_login in ("--:--", None):
+                    resolved_login = "--"
+
+                resolved_vehicle = deliv.get("vehicle_type") or log_l.get("poweron_vehicle") or "--"
+                if resolved_vehicle in (None, ""):
+                    resolved_vehicle = "--"
+
+                was_power = bool(daily.get("was_in_poweron")) if daily else (resolved_login != "--")
+                if resolved_login != "--":
+                    was_power = True
+
+                times_online = int(daily.get("times_seen_online", 0)) if daily else 0
+                w_gps = gps_info["with_gps"]
+                wo_gps = gps_info["without_gps"]
+                if times_online > 0 and (w_gps + wo_gps) == 0:
+                    wo_gps = times_online
+                    w_gps = 0
+
+                records.append({
+                    "date_ref": dr,
+                    "was_in_poweron": was_power,
+                    "was_online_trbonet": was_trbo,
+                    "times_seen_online": times_online,
+                    "times_with_gps": w_gps,
+                    "times_without_gps": wo_gps,
+                    "total_sync_checks": int(daily.get("total_sync_checks", 0)) if daily else 0,
+                    "uptime_percentage": float(daily.get("uptime_percentage", 0.0)) if daily else 0.0,
+                    "first_seen_online": daily.get("first_seen_online") if daily else None,
+                    "last_seen_online": daily.get("last_seen_online") if daily else None,
+                    "poweron_login_time": resolved_login,
+                    "poweron_vehicle": resolved_vehicle,
+                    "base_code": daily.get("base_code", "--") if daily else "--",
+                    "region": daily.get("region", "--") if daily else "--"
+                })
+
+        # 4. Mapeamento indexado por dia do mês (1 a last_day) para preenchimento garantido do calendário
+        days_map = {r.get("date_ref"): r for r in records if r.get("date_ref")}
+        calendar_days = []
+        base_code_detected = clean_team[:3]
+        region_detected = "--"
+
+        total_days_connected = 0
+        total_days_logged = 0
+        total_days_both = 0
+        total_checks_online = 0
+        total_checks_with_gps = 0
+        total_checks_without_gps = 0
+
+        for d in range(1, last_day + 1):
+            d_str = f"{year_month}-{d:02d}"
+            rec = days_map.get(d_str)
+
+            if rec:
+                was_conn = bool(rec.get("was_online_trbonet"))
+                was_log = bool(rec.get("was_in_poweron")) or (rec.get("poweron_login_time") and rec.get("poweron_login_time") not in ("--", "--:--"))
+                checks_on = int(rec.get("times_seen_online") or 0)
+                checks_gps = int(rec.get("times_with_gps") or 0)
+                checks_nogps = int(rec.get("times_without_gps") or 0)
+
+                # Valida integridade: checks_gps + checks_nogps deve bater com checks_on
+                if checks_on > 0 and (checks_gps + checks_nogps) == 0:
+                    checks_nogps = checks_on
+
+                if was_conn:
+                    total_days_connected += 1
+                if was_log:
+                    total_days_logged += 1
+                if was_conn and was_log:
+                    total_days_both += 1
+
+                total_checks_online += checks_on
+                total_checks_with_gps += checks_gps
+                total_checks_without_gps += checks_nogps
+
+                if rec.get("base_code") and rec.get("base_code") != "--":
+                    base_code_detected = rec.get("base_code")
+                if rec.get("region") and rec.get("region") != "--":
+                    region_detected = rec.get("region")
+
+                first_sig = format_datetime_br(rec.get("first_seen_online"))
+                last_sig = format_datetime_br(rec.get("last_seen_online"))
+                if first_sig != '--' and ' ' in first_sig:
+                    first_sig = first_sig.split(' ')[1]
+                if last_sig != '--' and ' ' in last_sig:
+                    last_sig = last_sig.split(' ')[1]
+
+                calendar_days.append({
+                    "day": d,
+                    "date": d_str,
+                    "has_data": True,
+                    "connected": was_conn,
+                    "logged": was_log,
+                    "checks_online": checks_on,
+                    "checks_gps": checks_gps,
+                    "checks_without_gps": checks_nogps,
+                    "total_sync_checks": int(rec.get("total_sync_checks") or 0),
+                    "uptime_pct": float(rec.get("uptime_percentage") or 0.0),
+                    "first_signal": first_sig,
+                    "last_signal": last_sig,
+                    "login_time": rec.get("poweron_login_time") or "--",
+                    "vehicle": rec.get("poweron_vehicle") or "--",
+                    "status_label": "CONFORME" if (was_conn and was_log and checks_gps > 0) else ("SEM GPS" if (was_conn and checks_nogps > 0 and checks_gps == 0) else ("SEM RÁDIO" if was_log else ("SEM LOGIN" if was_conn else "SEM REGISTRO")))
+                })
+            else:
+                calendar_days.append({
+                    "day": d,
+                    "date": d_str,
+                    "has_data": False,
+                    "connected": False,
+                    "logged": False,
+                    "checks_online": 0,
+                    "checks_gps": 0,
+                    "checks_without_gps": 0,
+                    "total_sync_checks": 0,
+                    "uptime_pct": 0.0,
+                    "first_signal": "--",
+                    "last_signal": "--",
+                    "login_time": "--",
+                    "vehicle": "--",
+                    "status_label": "FOLGA / SEM DADOS"
+                })
+
+        # 5. Cálculo consolidado de KPIs executivos do mês
+        gps_ratio = round((total_checks_with_gps / total_checks_online * 100), 1) if total_checks_online > 0 else 0.0
+        adherence_pct = round((total_days_both / total_days_logged * 100), 1) if total_days_logged > 0 else (100.0 if total_days_connected > 0 else 0.0)
+        avg_daily_checks = round(total_checks_online / total_days_connected, 1) if total_days_connected > 0 else 0.0
+
+        result_payload = {
+            "team_code": clean_team,
+            "base_code": base_code_detected,
+            "region": region_detected,
+            "month": year_month,
+            "days_in_month": last_day,
+            "kpis": {
+                "days_connected": total_days_connected,
+                "days_logged": total_days_logged,
+                "days_both": total_days_both,
+                "total_checks_online": total_checks_online,
+                "total_checks_with_gps": total_checks_with_gps,
+                "total_checks_without_gps": total_checks_without_gps,
+                "gps_ratio_pct": gps_ratio,
+                "adherence_pct": adherence_pct,
+                "avg_daily_checks": avg_daily_checks
+            },
+            "days": calendar_days,
+            "server_timestamp": now_br.isoformat()
+        }
+
+        # Armazena em cache
+        MONTHLY_CALENDAR_CACHE[cache_key] = (now_br.timestamp(), result_payload)
+
+        return {
+            "status": "success",
+            "data": result_payload,
+            "source": "supabase_rpc" if used_rpc else "supabase_direct_aggregate"
+        }
+
+    except Exception as e:
+        print(f"[FETCH TEAM MONTHLY CALENDAR ERROR] {e}")
+        return {"status": "error", "message": f"Erro ao processar auditoria mensal: {str(e)}", "data": None}
+
+
+def fetch_active_teams_list() -> list:
+    """
+    Retorna lista única e ordenada de equipes conhecidas no sistema para autocomplete.
+    Busca em memória (delivery_manager) ou via Supabase.
+    """
+    try:
+        from delivery_manager import delivery_manager
+        current_teams = list(delivery_manager.current_delivery.keys())
+        if current_teams:
+            return sorted(list(set(current_teams)))
+    except Exception:
+        pass
+    
+    try:
+        ep = f"{BASE_REST_URL}/vw_team_daily_audit?select=team_code&limit=500"
+        resp = requests.get(ep, headers=get_headers(), timeout=5)
+        if resp.status_code == 200:
+            codes = [r.get("team_code") for r in resp.json() if r.get("team_code")]
+            return sorted(list(set(codes)))
+    except Exception:
+        pass
+    return []
+
+
 
 
 

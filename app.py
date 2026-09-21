@@ -21,6 +21,8 @@ from supabase_client import (
     fetch_daily_audit_summary,
     fetch_audit_delivery_marcacoes,
     fetch_team_timeline,
+    fetch_team_monthly_calendar_audit,
+    fetch_active_teams_list,
     clear_all_supabase_data,
     create_sync_command,
     get_pending_commands,
@@ -1291,6 +1293,28 @@ def get_team_timeline():
         return jsonify({"status": "error", "message": "Parâmetro 'team' é obrigatório"}), 400
     res = fetch_team_timeline(team_code=team_code, date_ref=date_ref)
     return jsonify(res)
+
+@app.route('/api/audit/team_monthly_calendar', methods=['GET'])
+def get_team_monthly_calendar():
+    """
+    Retorna o consolidado mensal em formato de calendário da equipe:
+    - Cards de resumo executivo (dias conectado, dias logado, checks c/s GPS, aderência)
+    - Matriz de todos os dias do mês com status de rádio e login
+    """
+    team = request.args.get("team", "").strip().upper()
+    month = request.args.get("month", "").strip()
+    if not team:
+        return jsonify({"status": "error", "message": "Parâmetro 'team' é obrigatório"}), 400
+    res = fetch_team_monthly_calendar_audit(team_code=team, year_month=month)
+    return jsonify(res)
+
+@app.route('/api/audit/teams_autocomplete', methods=['GET'])
+def get_teams_autocomplete():
+    """
+    Retorna a lista de equipes ativas/conhecidas para habilitar autocomplete rápido.
+    """
+    teams = fetch_active_teams_list()
+    return jsonify({"status": "success", "data": teams})
 
 @app.route('/api/delivery/team_details/<team_code>', methods=['GET'])
 @app.route('/api/delivery/team-details/<team_code>', methods=['GET'])

@@ -983,11 +983,15 @@
                             <i data-lucide="list"></i>
                             <span>Logs por Coleta</span>
                         </button>
+                        <button class="btn-audit-mode" id="btnAuditModeCalendar" onclick="setAuditViewMode('calendar')">
+                            <i data-lucide="calendar-range"></i>
+                            <span>Panorama Mensal da Equipe</span>
+                        </button>
                     </div>
                 </div>
 
                 <!-- CONTROLES MULTI-FILTRO MODERNOS (PADRÃO EXPRESSIVE & PILL POPOVER) -->
-                <div class="period-filters-controls audit-filters-controls" style="width: 100%; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px; margin-top: 14px;">
+                <div class="period-filters-controls audit-filters-controls" id="auditDailyControlsBar" style="width: 100%; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px; margin-top: 14px;">
                     <!-- 1. Seletor de Data de Auditoria (Múltiplas Datas via Flatpickr) -->
                     <div class="period-filter-group" style="min-width: 170px;">
                         <span class="period-filter-label"><i data-lucide="calendar" class="mini-icon"></i> DATA DE AUDITORIA</span>
@@ -1114,7 +1118,7 @@
             </div>
 
             <!-- Cards de KPIs de Auditoria do Período -->
-            <div class="audit-kpis-grid">
+            <div class="audit-kpis-grid" id="auditDailyKpisGrid">
                 <div class="kpi-card glass-card">
                     <div class="kpi-icon-wrap kpi-blue">
                         <i data-lucide="users"></i>
@@ -1169,7 +1173,7 @@
             </div>
 
             <!-- Tabela de Auditoria Forense com Cabeçalho Congelado (Sticky Header) -->
-            <div class="history-table-card glass-card">
+            <div class="history-table-card glass-card" id="auditDailyTableCard">
                 <div class="history-table-header">
                     <div>
                         <h4 id="auditTableTitle">Consolidado Diário de Auditoria</h4>
@@ -1189,6 +1193,226 @@
                     </table>
                 </div>
             </div>
+
+            <!-- ============================================================= -->
+            <!-- MODO 3: CALENDÁRIO MENSAL POR EQUIPE (TRBONET x LOGIN FORENSE) -->
+            <!-- ============================================================= -->
+            <div id="auditCalendarViewWrapper" style="display: none; flex-direction: column; gap: 22px;">
+                
+                <!-- 1. Barra de Controles e Filtro do Calendário Mensal -->
+                <div class="calendar-controls-card glass-card">
+                    <div class="calendar-controls-grid">
+                        
+                        <!-- Input com Autocomplete de Equipe -->
+                        <div class="cal-control-group team-search-group">
+                            <label class="cal-control-label">
+                                <i data-lucide="shield" class="mini-icon text-cyan"></i>
+                                CÓDIGO DA EQUIPE
+                            </label>
+                            <div class="cal-input-wrap">
+                                <i data-lucide="search" class="cal-input-icon"></i>
+                                <input type="text" id="calTeamInput" class="cal-text-input" placeholder="Digite o código (ex: ESL121, ECL121)..." list="calTeamsDatalist" autocomplete="off" onkeydown="if(event.key==='Enter') loadTeamCalendarData();" />
+                                <datalist id="calTeamsDatalist"></datalist>
+                                <button type="button" class="cal-clear-btn" id="calClearTeamBtn" onclick="clearCalendarTeam()" title="Limpar código">
+                                    <i data-lucide="x"></i>
+                                </button>
+                            </div>
+                            <!-- Chips de Equipes Rápidas -->
+                            <div class="cal-quick-chips" id="calQuickChips">
+                                <span class="cal-chip-label">Frequentes:</span>
+                                <!-- Chips inseridos dinamicamente via JS -->
+                            </div>
+                        </div>
+
+                        <!-- Navegador de Mês / Ano -->
+                        <div class="cal-control-group month-nav-group">
+                            <label class="cal-control-label">
+                                <i data-lucide="calendar" class="mini-icon text-emerald"></i>
+                                MÊS DE REFERÊNCIA
+                            </label>
+                            <div class="cal-month-stepper">
+                                <button type="button" class="btn-cal-step" onclick="changeCalendarMonth(-1)" title="Mês Anterior">
+                                    <i data-lucide="chevron-left"></i>
+                                </button>
+                                <div class="cal-current-month" id="calMonthDisplayWrapper" onclick="openMonthSelectPicker()" title="Clique para escolher mês e ano">
+                                    <i data-lucide="calendar-days" class="text-emerald"></i>
+                                    <span id="calMonthDisplayLabel">Setembro / 2026</span>
+                                    <input type="month" id="calNativeMonthPicker" class="cal-hidden-month-input" onchange="onNativeMonthChange(this.value)" />
+                                </div>
+                                <button type="button" class="btn-cal-step" onclick="changeCalendarMonth(1)" title="Próximo Mês">
+                                    <i data-lucide="chevron-right"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Botões de Ação Buscar e Exportar -->
+                        <div class="cal-control-group actions-group">
+                            <button type="button" class="btn-cal-search" id="btnCalSearch" onclick="loadTeamCalendarData()">
+                                <i data-lucide="refresh-cw" id="calSearchIcon"></i>
+                                <span>CONSULTAR MÊS</span>
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- 2. Cards de Resumo Executivo (KPIs do Mês) -->
+                <div class="cal-kpis-grid" id="calKpisGrid" style="display: none;">
+                    
+                    <!-- Card 1: Dias Conectado -->
+                    <div class="cal-kpi-card glass-card kpi-glow-cyan">
+                        <div class="cal-kpi-header">
+                            <span class="cal-kpi-title">DIAS CONECTADA NO MÊS</span>
+                            <div class="cal-kpi-icon icon-cyan">
+                                <i data-lucide="radio"></i>
+                            </div>
+                        </div>
+                        <div class="cal-kpi-body">
+                            <div class="cal-kpi-main-val">
+                                <span class="cal-kpi-num text-cyan" id="calKpiDaysConnected">0</span>
+                                <span class="cal-kpi-unit">dias</span>
+                            </div>
+                            <div class="cal-kpi-subtext" id="calKpiDaysConnectedSub">0% do mês com rádio ativo</div>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Dias Logada -->
+                    <div class="cal-kpi-card glass-card kpi-glow-emerald">
+                        <div class="cal-kpi-header">
+                            <span class="cal-kpi-title">DIAS COM LOGIN NO MÊS</span>
+                            <div class="cal-kpi-icon icon-emerald">
+                                <i data-lucide="user-check"></i>
+                            </div>
+                        </div>
+                        <div class="cal-kpi-body">
+                            <div class="cal-kpi-main-val">
+                                <span class="cal-kpi-num text-emerald" id="calKpiDaysLogged">0</span>
+                                <span class="cal-kpi-unit">dias</span>
+                            </div>
+                            <div class="cal-kpi-subtext" id="calKpiDaysLoggedSub">0% no Equipes Brasil</div>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Total Checagens CDP -->
+                    <div class="cal-kpi-card glass-card kpi-glow-amber">
+                        <div class="cal-kpi-header">
+                            <span class="cal-kpi-title">TOTAL CHECAGENS CDP</span>
+                            <div class="cal-kpi-icon icon-amber">
+                                <i data-lucide="database"></i>
+                            </div>
+                        </div>
+                        <div class="cal-kpi-body">
+                            <div class="cal-kpi-main-val">
+                                <span class="cal-kpi-num text-amber" id="calKpiTotalChecks">0</span>
+                                <span class="cal-kpi-unit">capturas</span>
+                            </div>
+                            <div class="cal-kpi-subtext" id="calKpiAvgChecksSub">Média: 0 / dia ativo</div>
+                        </div>
+                    </div>
+
+                    <!-- Card 4: GPS vs Sem GPS -->
+                    <div class="cal-kpi-card glass-card kpi-glow-purple">
+                        <div class="cal-kpi-header">
+                            <span class="cal-kpi-title">CONEXÕES C/ GPS vs S/ GPS</span>
+                            <div class="cal-kpi-icon icon-purple">
+                                <i data-lucide="navigation"></i>
+                            </div>
+                        </div>
+                        <div class="cal-kpi-body">
+                            <div class="cal-kpi-main-val">
+                                <span class="cal-kpi-num text-purple" id="calKpiGpsPct">0%</span>
+                                <span class="cal-kpi-unit">c/ GPS</span>
+                            </div>
+                            <div class="cal-gps-breakdown-row">
+                                <span class="gps-dot-item text-emerald"><i class="dot-em"></i> <strong id="calKpiChecksGps">0</strong> com GPS</span>
+                                <span class="gps-dot-item text-rose"><i class="dot-rs"></i> <strong id="calKpiChecksNoGps">0</strong> sem GPS</span>
+                            </div>
+                            <div class="cal-gps-bar-track">
+                                <div class="cal-gps-bar-fill" id="calGpsProgressBar" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 5: Aderência Operacional -->
+                    <div class="cal-kpi-card glass-card kpi-glow-sky">
+                        <div class="cal-kpi-header">
+                            <span class="cal-kpi-title">ADERÊNCIA LOGIN × RÁDIO</span>
+                            <div class="cal-kpi-icon icon-sky">
+                                <i data-lucide="shield-check"></i>
+                            </div>
+                        </div>
+                        <div class="cal-kpi-body">
+                            <div class="cal-kpi-main-val">
+                                <span class="cal-kpi-num text-sky" id="calKpiAdherence">0%</span>
+                            </div>
+                            <div class="cal-kpi-subtext" id="calKpiBothDaysSub">Conexão simultânea na escala</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- 3. Calendário Mensal Interativo (Grade Ultra Premium) -->
+                <div class="calendar-main-card glass-card" id="calMainCard" style="display: none;">
+                    <div class="calendar-card-top">
+                        <div class="calendar-team-badge-row">
+                            <div class="cal-team-pill">
+                                <span class="cal-team-dot"></span>
+                                <span>EQUIPE: <strong id="calBadgeTeamCode">---</strong></span>
+                            </div>
+                            <div class="cal-team-subinfo">
+                                <span id="calBadgeBase">Base: ---</span>
+                                <span class="dot-sep">•</span>
+                                <span id="calBadgeRegion">Região: ---</span>
+                            </div>
+                        </div>
+                        <div class="cal-legend-row">
+                            <span class="cal-legend-item"><span class="legend-dot dot-conforme"></span> Conectada & Logada</span>
+                            <span class="cal-legend-item"><span class="legend-dot dot-warning"></span> Conectada sem GPS</span>
+                            <span class="cal-legend-item"><span class="legend-dot dot-danger"></span> Sem Rádio / Sem Sinal</span>
+                            <span class="cal-legend-item"><span class="legend-dot dot-off"></span> Folga / Sem Registro</span>
+                        </div>
+                    </div>
+
+                    <!-- Cabeçalho dos Dias da Semana -->
+                    <div class="calendar-weekdays-grid">
+                        <div class="cal-weekday col-sun">DOMINGO</div>
+                        <div class="cal-weekday">SEGUNDA</div>
+                        <div class="cal-weekday">TERÇA</div>
+                        <div class="cal-weekday">QUARTA</div>
+                        <div class="cal-weekday">QUINTA</div>
+                        <div class="cal-weekday">SEXTA</div>
+                        <div class="cal-weekday col-sat">SÁBADO</div>
+                    </div>
+
+                    <!-- Grade dos Dias do Mês -->
+                    <div class="calendar-days-grid" id="calDaysGrid">
+                        <!-- Inserido dinamicamente via JS -->
+                    </div>
+                </div>
+
+                <!-- Estado Inicial / Vazio (Antes de Buscar) -->
+                <div class="cal-empty-state-card glass-card" id="calEmptyStateCard">
+                    <div class="empty-icon-wrap">
+                        <i data-lucide="calendar-search" class="text-cyan"></i>
+                    </div>
+                    <h4>Panorama Mensal da Equipe (TRBOnet & Login)</h4>
+                    <p>Digite ou selecione o código da equipe acima e escolha o mês desejado para verificar em formato de calendário quantas vezes o código conectou no rádio (com e sem GPS) e se ficou logado no dia.</p>
+                    <div class="empty-suggest-buttons" id="emptySuggestButtons">
+                        <!-- Botões de acesso rápido gerados via JS -->
+                    </div>
+                </div>
+
+                <!-- Estado de Carregamento (Skeleton) -->
+                <div class="cal-loading-card glass-card" id="calLoadingCard" style="display: none;">
+                    <div class="cal-spinner-wrap">
+                        <div class="cal-pulsing-circle"></div>
+                        <i data-lucide="radio" class="cal-loading-radio"></i>
+                    </div>
+                    <span class="cal-loading-text">Auditando conexões no rádio e logins no Supabase...</span>
+                </div>
+
+            </div>
+            <!-- FIM DE auditCalendarViewWrapper -->
 
         </div>
         <!-- FIM DE tabViewAudit -->
@@ -3251,6 +3475,80 @@
             <button class="btn btn-secondary" onclick="closeModal('deliveryTeamDetailModal')">
                 Fechar Detalhes
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Detalhamento Forense do Dia no Calendário Mensal -->
+<div class="modal-backdrop" id="calendarDayDetailModal" onclick="if (event.target === this) closeModal('calendarDayDetailModal')">
+    <div class="modal-card glass-card" style="max-width: 960px; width: 95%;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="report-icon-badge" style="width: 44px; height: 44px;">
+                    <i data-lucide="history"></i>
+                </div>
+                <div>
+                    <h3 id="calModalDayTitle" style="font-size: 1.25rem;">EQUIPE --- | DATA --/--/----</h3>
+                    <p class="modal-subtitle" id="calModalDaySubtitle">Auditoria Forense de Conexões TRBOnet e Escala PowerON</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeModal('calendarDayDetailModal')" title="Fechar">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="max-height: 72vh; overflow-y: auto; padding: 22px;">
+            <!-- Resumo e Métricas do Dia -->
+            <div class="cal-modal-kpi-summary" id="calModalKpiSummary">
+                <!-- Preenchido via JS -->
+            </div>
+
+            <!-- Tabela Timeline Minuto a Minuto -->
+            <div class="cal-modal-timeline-wrap" style="margin-top: 18px;">
+                <div class="cal-modal-timeline-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                    <h5 style="margin: 0; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="list-tree" class="mini-icon text-cyan"></i>
+                        <span>LINHA DO TEMPO DE CAPTURAS DO CDP NO DIA</span>
+                        <span id="calModalTimelineFilterBadge" class="filter-indicator-pill" style="display: none;"></span>
+                    </h5>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button class="btn btn-sm btn-export-xlsx" id="btnExportDayTimelineTop" onclick="exportCalendarDayTimelineXlsx()" title="Baixar registros da equipe no dia em formato Excel (.xlsx)">
+                            <i data-lucide="file-spreadsheet" style="width: 15px; height: 15px;"></i>
+                            <span>Exportar XLSX</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="table-scroll-container" style="max-height: 380px; overflow-y: auto;">
+                    <table class="data-table" id="calModalTimelineTable">
+                        <thead>
+                            <tr>
+                                <th style="text-align: center;">HORÁRIO</th>
+                                <th style="text-align: center;">TRBONET</th>
+                                <th style="text-align: center;">GPS</th>
+                                <th style="text-align: center;">CANAL / REPETIDORA</th>
+                                <th style="text-align: center;">RÁDIO ID</th>
+                                <th style="text-align: center;">STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="calModalTimelineTableBody">
+                            <!-- Preenchido via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="font-size: 0.74rem; color: var(--text-secondary);">
+                Fonte de dados: <span class="text-cyan">Supabase Postgres • team_operational_logs</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn btn-sm btn-export-xlsx" onclick="exportCalendarDayTimelineXlsx()" title="Baixar relatório deste dia em formato Excel (.xlsx)">
+                    <i data-lucide="download" style="width: 15px; height: 15px;"></i>
+                    <span>Baixar Planilha (.xlsx)</span>
+                </button>
+                <button class="btn btn-secondary" onclick="closeModal('calendarDayDetailModal')">
+                    Fechar
+                </button>
+            </div>
         </div>
     </div>
 </div>

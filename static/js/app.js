@@ -2671,7 +2671,7 @@ document.addEventListener('fullscreenchange', () => {
 // ==========================================================================
 
 const auditState = {
-    mode: 'daily', // 'daily' (consolidado do dia) ou 'logs' (coletas brutas)
+    mode: 'daily', // 'daily' (consolidado do dia), 'logs' (coletas brutas) ou 'calendar' (mensal)
     rawData: [],
     filteredData: [],
     selectedDates: [],
@@ -2684,7 +2684,15 @@ const auditState = {
         poweron: [],
         search: ''
     },
-    searchTimer: null
+    searchTimer: null,
+    calendar: {
+        teamCode: '',
+        year: new Date().getFullYear(),
+        month: new Date().getMonth() + 1,
+        activeTeams: [],
+        data: null,
+        initialized: false
+    }
 };
 
 // Dicionário oficial de nomes e regiões das bases operacionais
@@ -3051,30 +3059,890 @@ function initAuditTab() {
 }
 
 /**
- * Alterna entre modo 'daily' (Consolidado do Dia) e 'logs' (Logs por Coleta).
+ * Alterna entre modo 'daily' (Consolidado do Dia), 'logs' (Logs por Coleta) e 'calendar' (Panorama Mensal).
  */
 function setAuditViewMode(mode) {
     auditState.mode = mode;
 
     const btnDaily = document.getElementById('btnAuditModeDaily');
     const btnLogs = document.getElementById('btnAuditModeLogs');
+    const btnCalendar = document.getElementById('btnAuditModeCalendar');
     const titleEl = document.getElementById('auditTableTitle');
     const subtitleEl = document.getElementById('auditTableSubtitle');
+
+    const dailyControls = document.getElementById('auditDailyControlsBar');
+    const dailyKpis = document.getElementById('auditDailyKpisGrid');
+    const dailyTable = document.getElementById('auditDailyTableCard');
+    const calWrapper = document.getElementById('auditCalendarViewWrapper');
 
     if (mode === 'daily') {
         if (btnDaily) btnDaily.classList.add('active');
         if (btnLogs) btnLogs.classList.remove('active');
+        if (btnCalendar) btnCalendar.classList.remove('active');
+        if (dailyControls) dailyControls.style.display = 'flex';
+        if (dailyKpis) dailyKpis.style.display = 'grid';
+        if (dailyTable) dailyTable.style.display = 'block';
+        if (calWrapper) calWrapper.style.display = 'none';
         if (titleEl) titleEl.textContent = 'Consolidado Diário de Auditoria';
         if (subtitleEl) subtitleEl.textContent = 'Resumo de conexões, horários de login vs rádio e histórico por equipe';
-    } else {
+        loadAuditData();
+    } else if (mode === 'logs') {
         if (btnDaily) btnDaily.classList.remove('active');
         if (btnLogs) btnLogs.classList.add('active');
+        if (btnCalendar) btnCalendar.classList.remove('active');
+        if (dailyControls) dailyControls.style.display = 'flex';
+        if (dailyKpis) dailyKpis.style.display = 'grid';
+        if (dailyTable) dailyTable.style.display = 'block';
+        if (calWrapper) calWrapper.style.display = 'none';
         if (titleEl) titleEl.textContent = 'Logs Detalhados por Coleta';
         if (subtitleEl) subtitleEl.textContent = 'Histórico individual de cada transmissão de rádio/GPS registrada pelo sistema';
+        loadAuditData();
+    } else if (mode === 'calendar') {
+        if (btnDaily) btnDaily.classList.remove('active');
+        if (btnLogs) btnLogs.classList.remove('active');
+        if (btnCalendar) btnCalendar.classList.add('active');
+        if (dailyControls) dailyControls.style.display = 'none';
+        if (dailyKpis) dailyKpis.style.display = 'none';
+        if (dailyTable) dailyTable.style.display = 'none';
+        if (calWrapper) calWrapper.style.display = 'flex';
+        initTeamCalendar();
     }
 
-    loadAuditData();
+    if (typeof initIcons === 'function') initIcons();
 }
+
+// ==============================================================================
+// LÓGICA DO CALENDÁRIO MENSAL POR EQUIPE (PANORAMA FORENSE M3 EXPRESSIVE)
+// ==============================================================================
+
+const CALENDAR_MONTH_NAMES = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
+
+/**
+ * Inicializa os controles do Calendário Mensal e carrega lista de equipes para autocomplete.
+ */
+async function initTeamCalendar() {
+    const cal = auditState.calendar;
+    if (!cal.initialized) {
+        cal.year = new Date().getFullYear();
+        cal.month = new Date().getMonth() + 1;
+        cal.initialized = true;
+    }
+
+    updateCalendarMonthLabel();
+
+    // Carrega sugestões de equipes se ainda não carregadas
+    if (!cal.activeTeams || cal.activeTeams.length === 0) {
+        try {
+            const resp = await fetch('/api/audit/teams_autocomplete');
+            const data = await resp.json();
+            if (data.status === 'success' && Array.isArray(data.data)) {
+                cal.activeTeams = data.data;
+                populateCalendarTeamsDatalist(data.data);
+                renderQuickChips(data.data.slice(0, 6));
+            }
+        } catch (err) {
+            console.warn('[CALENDAR AUTOCOMPLETE] Erro ao carregar equipes:', err);
+        }
+    }
+
+    // Se já tiver código no input e ainda não buscou, busca automaticamente
+    const input = document.getElementById('calTeamInput');
+    if (input && input.value.trim() && !cal.data) {
+        loadTeamCalendarData();
+    }
+}
+
+/**
+ * Atualiza o label do mês e o valor do seletor nativo.
+ */
+function updateCalendarMonthLabel() {
+    const cal = auditState.calendar;
+    const monthName = CALENDAR_MONTH_NAMES[cal.month - 1];
+    const labelEl = document.getElementById('calMonthDisplayLabel');
+    if (labelEl) {
+        labelEl.textContent = `${monthName} / ${cal.year}`;
+    }
+
+    const nativePicker = document.getElementById('calNativeMonthPicker');
+    if (nativePicker) {
+        nativePicker.value = `${cal.year}-${String(cal.month).padStart(2, '0')}`;
+    }
+}
+
+/**
+ * Avança ou retrocede meses.
+ */
+function changeCalendarMonth(delta) {
+    const cal = auditState.calendar;
+    cal.month += delta;
+    if (cal.month > 12) {
+        cal.month = 1;
+        cal.year += 1;
+    } else if (cal.month < 1) {
+        cal.month = 12;
+        cal.year -= 1;
+    }
+    updateCalendarMonthLabel();
+
+    const input = document.getElementById('calTeamInput');
+    if (input && input.value.trim()) {
+        loadTeamCalendarData();
+    }
+}
+
+/**
+ * Abre o seletor nativo de mês.
+ */
+function openMonthSelectPicker() {
+    const nativePicker = document.getElementById('calNativeMonthPicker');
+    if (nativePicker) {
+        if (typeof nativePicker.showPicker === 'function') {
+            nativePicker.showPicker();
+        } else {
+            nativePicker.click();
+        }
+    }
+}
+
+/**
+ * Disparado quando o usuário escolhe um mês no seletor nativo.
+ */
+function onNativeMonthChange(val) {
+    if (!val) return;
+    const parts = val.split('-');
+    if (parts.length === 2) {
+        auditState.calendar.year = parseInt(parts[0], 10);
+        auditState.calendar.month = parseInt(parts[1], 10);
+        updateCalendarMonthLabel();
+
+        const input = document.getElementById('calTeamInput');
+        if (input && input.value.trim()) {
+            loadTeamCalendarData();
+        }
+    }
+}
+
+/**
+ * Preenche o datalist de equipes para autocomplete.
+ */
+function populateCalendarTeamsDatalist(teams) {
+    const dl = document.getElementById('calTeamsDatalist');
+    if (!dl) return;
+    dl.innerHTML = teams.map(t => `<option value="${t}">${t}</option>`).join('');
+}
+
+/**
+ * Renderiza chips com sugestões de equipes rápidas.
+ */
+function renderQuickChips(teams) {
+    const container = document.getElementById('calQuickChips');
+    const emptySuggest = document.getElementById('emptySuggestButtons');
+    if (!teams || teams.length === 0) return;
+
+    const chipsHtml = teams.map(t => (
+        `<button type="button" class="cal-quick-chip" onclick="selectQuickTeam('${t}')">${t}</button>`
+    )).join('');
+
+    if (container) {
+        container.innerHTML = `<span class="cal-chip-label">Frequentes:</span> ${chipsHtml}`;
+    }
+    if (emptySuggest) {
+        emptySuggest.innerHTML = teams.map(t => (
+            `<button type="button" class="btn-empty-quick-pick" onclick="selectQuickTeam('${t}')">
+                <i data-lucide="radio" style="width: 13px; height: 13px; margin-right: 4px;"></i>${t}
+            </button>`
+        )).join('');
+        if (typeof initIcons === 'function') initIcons();
+    }
+}
+
+/**
+ * Seleciona equipe a partir de um chip rápido e dispara busca.
+ */
+function selectQuickTeam(code) {
+    const input = document.getElementById('calTeamInput');
+    if (input) {
+        input.value = code;
+    }
+    loadTeamCalendarData();
+}
+
+/**
+ * Limpa a busca e volta para o estado vazio.
+ */
+function clearCalendarTeam() {
+    const input = document.getElementById('calTeamInput');
+    if (input) input.value = '';
+    auditState.calendar.data = null;
+
+    const kpisGrid = document.getElementById('calKpisGrid');
+    const mainCard = document.getElementById('calMainCard');
+    const emptyCard = document.getElementById('calEmptyStateCard');
+    const loadingCard = document.getElementById('calLoadingCard');
+
+    if (kpisGrid) kpisGrid.style.display = 'none';
+    if (mainCard) mainCard.style.display = 'none';
+    if (loadingCard) loadingCard.style.display = 'none';
+    if (emptyCard) emptyCard.style.display = 'flex';
+}
+
+/**
+ * Consulta a API para carregar o panorama mensal da equipe selecionada.
+ */
+async function loadTeamCalendarData() {
+    const input = document.getElementById('calTeamInput');
+    const teamCode = (input ? input.value : '').trim().toUpperCase();
+
+    if (!teamCode) {
+        showToast('Informe o código da equipe para consultar o calendário.', 'warning');
+        if (input) input.focus();
+        return;
+    }
+
+    const cal = auditState.calendar;
+    cal.teamCode = teamCode;
+    const yearMonth = `${cal.year}-${String(cal.month).padStart(2, '0')}`;
+
+    const kpisGrid = document.getElementById('calKpisGrid');
+    const mainCard = document.getElementById('calMainCard');
+    const emptyCard = document.getElementById('calEmptyStateCard');
+    const loadingCard = document.getElementById('calLoadingCard');
+    const searchIcon = document.getElementById('calSearchIcon');
+
+    if (emptyCard) emptyCard.style.display = 'none';
+    if (kpisGrid) kpisGrid.style.display = 'none';
+    if (mainCard) mainCard.style.display = 'none';
+    if (loadingCard) loadingCard.style.display = 'flex';
+    if (searchIcon) searchIcon.classList.add('spin-animation');
+
+    try {
+        const resp = await fetch(`/api/audit/team_monthly_calendar?team=${encodeURIComponent(teamCode)}&month=${yearMonth}`);
+        const result = await resp.json();
+
+        if (result.status === 'success' && result.data) {
+            cal.data = result.data;
+
+            // 1. Renderiza KPIs
+            renderCalendarKPIs(result.data.kpis);
+            if (kpisGrid) kpisGrid.style.display = 'grid';
+
+            // 2. Renderiza Grade do Calendário
+            renderCalendarGrid(result.data);
+            if (mainCard) mainCard.style.display = 'block';
+
+            if (emptyCard) emptyCard.style.display = 'none';
+        } else {
+            showToast(result.message || 'Nenhum dado encontrado para a equipe no período.', 'warning');
+            if (emptyCard) emptyCard.style.display = 'flex';
+        }
+    } catch (err) {
+        console.error('[LOAD TEAM CALENDAR ERROR]', err);
+        showToast('Erro ao carregar dados do calendário mensal.', 'error');
+        if (emptyCard) emptyCard.style.display = 'flex';
+    } finally {
+        if (loadingCard) loadingCard.style.display = 'none';
+        if (searchIcon) searchIcon.classList.remove('spin-animation');
+        if (typeof initIcons === 'function') initIcons();
+    }
+}
+
+/**
+ * Preenche os cards de indicadores executivos no topo do calendário.
+ */
+function renderCalendarKPIs(kpis) {
+    if (!kpis) return;
+
+    // Card 1: Dias Conectada
+    const elDaysConn = document.getElementById('calKpiDaysConnected');
+    const elDaysConnSub = document.getElementById('calKpiDaysConnectedSub');
+    if (elDaysConn) elDaysConn.textContent = kpis.days_connected || 0;
+    if (elDaysConnSub) elDaysConnSub.textContent = `${kpis.days_connected_pct || 0}% do mês com rádio ativo`;
+
+    // Card 2: Dias Logada
+    const elDaysLog = document.getElementById('calKpiDaysLogged');
+    const elDaysLogSub = document.getElementById('calKpiDaysLoggedSub');
+    if (elDaysLog) elDaysLog.textContent = kpis.days_logged || 0;
+    if (elDaysLogSub) elDaysLogSub.textContent = `${kpis.days_logged_pct || 0}% no Equipes Brasil`;
+
+    // Card 3: Total Checagens CDP
+    const elChecks = document.getElementById('calKpiTotalChecks');
+    const elChecksSub = document.getElementById('calKpiAvgChecksSub');
+    if (elChecks) elChecks.textContent = (kpis.total_checks_online || 0).toLocaleString('pt-BR');
+    if (elChecksSub) elChecksSub.textContent = `Média: ${kpis.avg_daily_checks || 0} / dia ativo`;
+
+    // Card 4: GPS vs Sem GPS
+    const elGpsPct = document.getElementById('calKpiGpsPct');
+    const elGpsChecks = document.getElementById('calKpiChecksGps');
+    const elNoGpsChecks = document.getElementById('calKpiChecksNoGps');
+    const elProgressBar = document.getElementById('calGpsProgressBar');
+    if (elGpsPct) elGpsPct.textContent = `${kpis.gps_ratio_pct || 0}%`;
+    if (elGpsChecks) elGpsChecks.textContent = (kpis.total_checks_gps || 0).toLocaleString('pt-BR');
+    if (elNoGpsChecks) elNoGpsChecks.textContent = (kpis.total_checks_without_gps || 0).toLocaleString('pt-BR');
+    if (elProgressBar) elProgressBar.style.width = `${Math.min(kpis.gps_ratio_pct || 0, 100)}%`;
+
+    // Card 5: Aderência
+    const elAdh = document.getElementById('calKpiAdherence');
+    const elBothSub = document.getElementById('calKpiBothDaysSub');
+    if (elAdh) elAdh.textContent = `${kpis.adherence_pct || 0}%`;
+    if (elBothSub) elBothSub.textContent = `${kpis.days_both || 0} dias simultâneos rádio & login`;
+}
+
+/**
+ * Monta a matriz de 7 colunas do calendário com células correspondentes a cada dia.
+ */
+function renderCalendarGrid(payload) {
+    const daysContainer = document.getElementById('calDaysGrid');
+    if (!daysContainer) return;
+
+    // Badges do topo
+    const elTeam = document.getElementById('calBadgeTeamCode');
+    const elBase = document.getElementById('calBadgeBase');
+    const elRegion = document.getElementById('calBadgeRegion');
+    if (elTeam) elTeam.textContent = payload.team_code || '---';
+    if (elBase) elBase.textContent = `Base: ${payload.base_code || '---'}`;
+    if (elRegion) elRegion.textContent = `Região: ${payload.region || '---'}`;
+
+    const cal = auditState.calendar;
+    // Descobre em qual dia da semana cai o 1º dia do mês (0 = Domingo, 1 = Segunda, etc.)
+    const firstDayOfWeek = new Date(cal.year, cal.month - 1, 1).getDay();
+
+    const todayObj = new Date();
+    const isCurrentYearMonth = (todayObj.getFullYear() === cal.year && (todayObj.getMonth() + 1) === cal.month);
+    const todayDay = isCurrentYearMonth ? todayObj.getDate() : -1;
+
+    let html = '';
+
+    // 1. Células vazias de offset (espaço antes do dia 1)
+    for (let i = 0; i < firstDayOfWeek; i++) {
+        html += `<div class="cal-day-card day-empty-pad"></div>`;
+    }
+
+    // 2. Células de cada dia do mês (1 a last_day)
+    const days = payload.days || [];
+    days.forEach(d => {
+        const isToday = (d.day === todayDay);
+        const dayNumStr = String(d.day).padStart(2, '0');
+
+        let stateClass = 'state-off';
+        let statusTagHtml = '<span class="cal-status-tag tag-off">Folga</span>';
+
+        if (d.has_data && (d.connected || d.logged)) {
+            if (d.connected && d.logged) {
+                if (d.checks_without_gps > d.checks_gps && d.checks_without_gps > 0) {
+                    stateClass = 'state-warning';
+                    statusTagHtml = '<span class="cal-status-tag tag-warning">Sem GPS</span>';
+                } else {
+                    stateClass = 'state-conforme';
+                    statusTagHtml = '<span class="cal-status-tag tag-conforme">Conforme</span>';
+                }
+            } else if (d.connected && !d.logged) {
+                stateClass = 'state-warning';
+                statusTagHtml = '<span class="cal-status-tag tag-warning">Sem Login</span>';
+            } else if (!d.connected && d.logged) {
+                stateClass = 'state-danger';
+                statusTagHtml = '<span class="cal-status-tag tag-danger">Sem Rádio</span>';
+            }
+        }
+
+        // Pílulas de login e rádio
+        const loginPill = d.logged
+            ? `<span class="cal-badge-pill pill-login-ok"><i data-lucide="user-check"></i> Logada ${d.login_time !== '--' ? d.login_time : ''}</span>`
+            : `<span class="cal-badge-pill pill-login-no"><i data-lucide="user-x"></i> Sem Login</span>`;
+
+        const trboPill = d.connected
+            ? `<span class="cal-badge-pill pill-trbo-ok"><i data-lucide="radio"></i> Rádio Online</span>`
+            : `<span class="cal-badge-pill pill-trbo-no"><i data-lucide="radio-off"></i> Sem Rádio</span>`;
+
+        // Métricas de checks
+        let checksHtml = '';
+        if (d.checks_online > 0) {
+            checksHtml = `
+                <div class="cal-day-checks">
+                    <div class="checks-total-row">
+                        <span>📡 ${d.checks_online} checagens</span>
+                        <span style="color: #10b981;">${d.uptime_pct}% uptime</span>
+                    </div>
+                    <div class="checks-gps-split-row">
+                        <span class="checks-split-item text-emerald"><i class="dot-em"></i> ${d.checks_gps} c/ GPS</span>
+                        <span class="checks-split-item ${d.checks_without_gps > 0 ? 'text-rose' : 'text-muted'}"><i class="dot-rs"></i> ${d.checks_without_gps} s/ GPS</span>
+                    </div>
+                    ${d.first_signal !== '--' ? `<div class="cal-day-time-window">${d.first_signal} → ${d.last_signal}</div>` : ''}
+                </div>
+            `;
+        } else {
+            checksHtml = `
+                <div class="cal-day-checks" style="opacity: 0.6;">
+                    <div class="checks-total-row">
+                        <span class="text-muted">Sem sinal de rádio</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `
+            <div class="cal-day-card ${stateClass} ${isToday ? 'day-today' : ''}" 
+                 onclick="openCalendarDayDetailModal('${payload.team_code}', '${d.date}', '${d.login_time}', ${d.checks_online}, ${d.checks_gps}, ${d.checks_without_gps}, '${(d.vehicle || '--').replace(/'/g, "\\'")}', ${d.total_sync_checks || 0})" 
+                 title="Clique para ver o histórico detalhado do dia ${dayNumStr}/${String(cal.month).padStart(2, '0')}">
+                <div class="cal-day-top">
+                    <span class="cal-day-number">${dayNumStr}</span>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        ${isToday ? '<span class="cal-today-pill">HOJE</span>' : ''}
+                        ${statusTagHtml}
+                    </div>
+                </div>
+                <div class="cal-day-badges">
+                    ${trboPill}
+                    ${loginPill}
+                </div>
+                ${checksHtml}
+            </div>
+        `;
+    });
+
+    daysContainer.innerHTML = html;
+}
+
+// Estado do Modal de Detalhes do Dia no Calendário Mensal
+let calendarModalState = {
+    teamCode: '',
+    dateStr: '',
+    loginTime: '--',
+    vehicle: '--',
+    checksOn: 0,
+    checksGps: 0,
+    checksNoGps: 0,
+    totalChecks: 0,
+    rawLogs: [],
+    activeFilter: 'all' // 'all', 'with_gps', 'without_gps'
+};
+
+/**
+ * Renderiza os cards superiores de métricas e filtros do modal do dia.
+ * Regras do usuário:
+ * - CHECAGENS C/ GPS: ONLINE e com GPS (card filtro)
+ * - CHECAGENS S/ GPS: ONLINE mas sem GPS (card filtro)
+ * - CHECAGENS TOTAIS: Total de checagens efetuadas pelo CDP no dia (card informativo)
+ * - ONLINE com ou sem GPS é considerado CONECTADO no TRBOnet
+ * - Somente CHECAGENS C/ GPS e CHECAGENS S/ GPS filtram a linha do tempo ao clicar
+ */
+function renderCalendarModalKpiSummary() {
+    const summaryEl = document.getElementById('calModalKpiSummary');
+    if (!summaryEl) return;
+
+    const s = calendarModalState;
+    const isGps = s.activeFilter === 'with_gps';
+    const isNoGps = s.activeFilter === 'without_gps';
+
+    const isConnected = s.checksOn > 0;
+    const totalChecksCount = s.totalChecks || (s.rawLogs ? s.rawLogs.length : 0);
+
+    summaryEl.innerHTML = `
+        <div class="modal-kpi-box" title="Quantidade total de vezes que o código da equipe foi verificado pelo CDP no dia">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="modal-kpi-box-label">Checagens Totais</span>
+                <span class="kpi-info-tag">CDP</span>
+            </div>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 3px;">
+                <span class="modal-kpi-box-val text-cyan">
+                    ${totalChecksCount} <span style="font-size: 0.74rem; font-weight: 600; color: var(--text-secondary);">capturas</span>
+                </span>
+            </div>
+            <div class="kpi-filter-hint-row">
+                <span style="font-size: 0.65rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">
+                    ${isConnected 
+                        ? `<span class="text-emerald" style="font-weight: 700;">● Conectado TRBOnet (${s.checksOn}x)</span>` 
+                        : '<span class="text-rose" style="font-weight: 700;">● Sem rádio no dia</span>'}
+                </span>
+            </div>
+        </div>
+
+        <div class="modal-kpi-box" title="Horário de Login na Escala e Veículo do dia">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="modal-kpi-box-label">Horário Login</span>
+                <span class="kpi-info-tag">PowerON</span>
+            </div>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 3px;">
+                <span class="modal-kpi-box-val ${s.loginTime !== '--' ? 'text-emerald' : 'text-muted'}">
+                    ${s.loginTime !== '--' ? s.loginTime : 'Sem Login'}
+                </span>
+            </div>
+            <div class="kpi-filter-hint-row">
+                <span style="font-size: 0.65rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${s.vehicle !== '--' ? s.vehicle : 'Não informado'}">
+                    Veículo: ${s.vehicle !== '--' ? s.vehicle : 'Não inf.'}
+                </span>
+            </div>
+        </div>
+
+        <div class="modal-kpi-box cal-modal-kpi-clickable ${isGps ? 'active-filter-gps' : ''}" 
+             onclick="filterCalendarDayTimeline('with_gps')" 
+             title="Clique para filtrar a linha do tempo: apenas registros ONLINE e COM GPS">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="modal-kpi-box-label">Checagens c/ GPS</span>
+                <span class="kpi-filter-tag ${isGps ? 'active-tag' : ''}">${isGps ? 'Ativo' : 'Filtrar'}</span>
+            </div>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 3px;">
+                <span class="modal-kpi-box-val text-emerald">
+                    ${s.checksGps} <span style="font-size: 0.74rem; font-weight: 600; color: var(--text-secondary);">capturas</span>
+                </span>
+            </div>
+            <div class="kpi-filter-hint-row">
+                <span style="font-size: 0.65rem; color: var(--text-muted);">${isGps ? 'Filtrando com GPS' : 'ONLINE e com GPS'}</span>
+            </div>
+        </div>
+
+        <div class="modal-kpi-box cal-modal-kpi-clickable ${isNoGps ? 'active-filter-nogps' : ''}" 
+             onclick="filterCalendarDayTimeline('without_gps')" 
+             title="Clique para filtrar a linha do tempo: apenas registros ONLINE mas SEM GPS">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="modal-kpi-box-label">Checagens s/ GPS</span>
+                <span class="kpi-filter-tag ${isNoGps ? 'active-tag' : ''}">${isNoGps ? 'Ativo' : 'Filtrar'}</span>
+            </div>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 3px;">
+                <span class="modal-kpi-box-val ${s.checksNoGps > 0 ? 'text-rose' : 'text-muted'}">
+                    ${s.checksNoGps} <span style="font-size: 0.74rem; font-weight: 600; color: var(--text-secondary);">capturas</span>
+                </span>
+            </div>
+            <div class="kpi-filter-hint-row">
+                <span style="font-size: 0.65rem; color: var(--text-muted);">${isNoGps ? 'Filtrando sem GPS' : 'ONLINE mas sem GPS'}</span>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Alterna ou define o filtro atual da linha do tempo no modal do dia.
+ * Somente os cards CHECAGENS C/ GPS e CHECAGENS S/ GPS são filtros clicáveis.
+ */
+function filterCalendarDayTimeline(filterType) {
+    if (filterType !== 'with_gps' && filterType !== 'without_gps') {
+        calendarModalState.activeFilter = 'all';
+    } else if (calendarModalState.activeFilter === filterType) {
+        calendarModalState.activeFilter = 'all'; // Clicou novamente, desseleciona o filtro
+    } else {
+        calendarModalState.activeFilter = filterType;
+    }
+
+    renderCalendarModalKpiSummary();
+    updateCalendarModalFilterBadge();
+    renderCalendarDayTimelineTable();
+    if (typeof initIcons === 'function') initIcons();
+}
+
+/**
+ * Atualiza o indicador visual de filtro ativo no cabeçalho da linha do tempo.
+ */
+function updateCalendarModalFilterBadge() {
+    const badgeEl = document.getElementById('calModalTimelineFilterBadge');
+    if (!badgeEl) return;
+
+    const s = calendarModalState;
+    if (s.activeFilter === 'with_gps') {
+        badgeEl.style.display = 'inline-flex';
+        badgeEl.className = 'filter-indicator-pill pill-filter-gps';
+        badgeEl.innerHTML = `<span>Filtrado: Online c/ GPS (${s.checksGps})</span> <span class="filter-clear-icon" onclick="event.stopPropagation(); filterCalendarDayTimeline('all')" title="Limpar filtro">✕</span>`;
+    } else if (s.activeFilter === 'without_gps') {
+        badgeEl.style.display = 'inline-flex';
+        badgeEl.className = 'filter-indicator-pill pill-filter-nogps';
+        badgeEl.innerHTML = `<span>Filtrado: Online s/ GPS (${s.checksNoGps})</span> <span class="filter-clear-icon" onclick="event.stopPropagation(); filterCalendarDayTimeline('all')" title="Limpar filtro">✕</span>`;
+    } else {
+        badgeEl.style.display = 'none';
+        badgeEl.innerHTML = '';
+    }
+}
+
+/**
+ * Renderiza as linhas da tabela de acordo com o filtro ativo.
+ * - with_gps: registros onde in_trbonet === true e has_gps === true
+ * - without_gps: registros onde in_trbonet === true e !has_gps
+ * - all: todas as checagens capturadas pelo CDP no dia
+ */
+function renderCalendarDayTimelineTable() {
+    const tableBody = document.getElementById('calModalTimelineTableBody');
+    if (!tableBody) return;
+
+    const s = calendarModalState;
+    let filtered = s.rawLogs || [];
+    if (s.activeFilter === 'with_gps') {
+        filtered = filtered.filter(r => Boolean(r.in_trbonet) && Boolean(r.has_gps));
+    } else if (s.activeFilter === 'without_gps') {
+        filtered = filtered.filter(r => Boolean(r.in_trbonet) && !r.has_gps);
+    }
+
+    if (!filtered || filtered.length === 0) {
+        let msg = 'Nenhum log de rádio registrado pelo CDP para a equipe nesta data.';
+        if (s.activeFilter === 'with_gps') msg = 'Nenhuma checagem ONLINE com sinal GPS encontrada para esta equipe neste dia.';
+        if (s.activeFilter === 'without_gps') msg = 'Nenhuma checagem ONLINE sem sinal GPS encontrada (todas as capturas online tiveram sinal GPS).';
+
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                    <div style="font-size: 0.95rem; font-weight: 600; margin-bottom: 6px;">${msg}</div>
+                    ${s.activeFilter !== 'all' ? `<button class="btn btn-sm btn-secondary" onclick="filterCalendarDayTimeline('all')" style="margin-top: 8px;">Ver todas as ${s.rawLogs.length} checagens do dia</button>` : ''}
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    const rowsHtml = filtered.map(r => {
+        const isOnline = Boolean(r.in_trbonet);
+        const hasGps = Boolean(r.has_gps);
+        let timeStr = '--:--:--';
+        if (r.captured_at) {
+            try {
+                const dt = new Date(r.captured_at);
+                timeStr = dt.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+            } catch (e) {
+                timeStr = r.captured_at;
+            }
+        }
+
+        return `
+            <tr>
+                <td style="text-align: center; font-weight: 800; font-family: var(--font-mono);">${timeStr}</td>
+                <td style="text-align: center;">
+                    <span class="badge-status ${isOnline ? 'badge-conforme' : 'badge-offline'}">
+                        ${isOnline ? 'ONLINE' : 'OFFLINE'}
+                    </span>
+                </td>
+                <td style="text-align: center;">
+                    <span class="badge-status ${hasGps ? 'badge-conforme' : (isOnline ? 'badge-alerta' : 'badge-offline')}">
+                        ${hasGps ? '📍 COM GPS' : '⚠️ SEM GPS'}
+                    </span>
+                </td>
+                <td style="text-align: center;">${r.channel || '--'}</td>
+                <td style="text-align: center; font-family: var(--font-mono);">${r.radio_id || '--'}</td>
+                <td style="text-align: center;">
+                    <span class="badge-status ${r.status === 'CONFORME' ? 'badge-conforme' : (r.status === 'OFFLINE' ? 'badge-offline' : 'badge-alerta')}">
+                        ${r.status || (isOnline ? 'CONFORME' : 'OFFLINE')}
+                    </span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tableBody.innerHTML = rowsHtml;
+}
+
+/**
+ * Exporta a linha do tempo do dia para uma planilha Excel (.XLSX).
+ */
+function exportCalendarDayTimelineXlsx() {
+    const s = calendarModalState;
+    if (!s.rawLogs || s.rawLogs.length === 0) {
+        if (typeof showToast === 'function') {
+            showToast('Nenhum registro de auditoria disponível nesta data para exportação.', 'warning');
+        } else {
+            alert('Nenhum registro disponível para exportação.');
+        }
+        return;
+    }
+
+    const formattedDate = s.dateStr.split('-').reverse().join('/');
+    const cleanDate = s.dateStr.replace(/-/g, '');
+    const filename = `Auditoria_TRBOnet_${s.teamCode}_${cleanDate}.xlsx`;
+
+    // Constrói linhas estruturadas para o Excel
+    const rows = s.rawLogs.map(r => {
+        const isOnline = Boolean(r.in_trbonet);
+        const hasGps = Boolean(r.has_gps);
+        let timeStr = '--:--:--';
+        if (r.captured_at) {
+            try {
+                const dt = new Date(r.captured_at);
+                timeStr = dt.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+            } catch (e) {
+                timeStr = r.captured_at;
+            }
+        }
+
+        return {
+            "Horário Captura (SP)": timeStr,
+            "Data": formattedDate,
+            "Código Equipe": s.teamCode,
+            "Base": r.base_code || '--',
+            "Região": r.region || '--',
+            "Conexão TRBOnet": isOnline ? 'ONLINE' : 'DESCONECTADO',
+            "Sinal GPS": hasGps ? 'COM SINAL GPS' : 'SEM SINAL GPS',
+            "Canal / Repetidora": r.channel || '--',
+            "ID do Rádio": r.radio_id || '--',
+            "Status Operacional": r.status || (isOnline ? 'CONFORME' : 'OFFLINE'),
+            "Horário Login (Escala)": r.poweron_login_time || s.loginTime || '--',
+            "Veículo": r.poweron_vehicle || s.vehicle || '--',
+            "Escala PowerON": r.in_poweron ? 'SIM' : 'NÃO',
+            "Timestamp UTC": r.captured_at || '--'
+        };
+    });
+
+    if (window.XLSX) {
+        try {
+            const ws = XLSX.utils.json_to_sheet(rows);
+            ws['!cols'] = [
+                { wch: 20 }, // Horário
+                { wch: 13 }, // Data
+                { wch: 14 }, // Equipe
+                { wch: 10 }, // Base
+                { wch: 24 }, // Região
+                { wch: 18 }, // TRBOnet
+                { wch: 18 }, // GPS
+                { wch: 24 }, // Canal
+                { wch: 14 }, // Rádio ID
+                { wch: 20 }, // Status
+                { wch: 20 }, // Horário Login
+                { wch: 20 }, // Veículo
+                { wch: 16 }, // Escala
+                { wch: 26 }  // Timestamp UTC
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, `Equipe_${s.teamCode}`);
+            XLSX.writeFile(wb, filename);
+
+            if (typeof showToast === 'function') {
+                showToast(`Planilha Excel (.xlsx) da equipe ${s.teamCode} (${formattedDate}) exportada com sucesso! (${rows.length} registros)`, 'success');
+            }
+            return;
+        } catch (err) {
+            console.warn('[EXPORT CALENDAR XLSX ERROR] Falha no SheetJS, gerando CSV:', err);
+        }
+    }
+
+    // Fallback CSV com BOM UTF-8
+    try {
+        const headers = Object.keys(rows[0]);
+        let csvContent = '\uFEFF' + headers.join(';') + '\n';
+        rows.forEach(row => {
+            const line = headers.map(h => `"${String(row[h] || '').replace(/"/g, '""')}"`).join(';');
+            csvContent += line + '\n';
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', `Auditoria_TRBOnet_${s.teamCode}_${cleanDate}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        if (typeof showToast === 'function') {
+            showToast(`Relatório exportado em CSV (${rows.length} registros)!`, 'success');
+        }
+    } catch (e) {
+        console.error('[CSV EXPORT ERROR]', e);
+        alert('Erro ao gerar exportação.');
+    }
+}
+
+/**
+ * Abre o modal de detalhes do dia específico e carrega a linha do tempo completa.
+ */
+async function openCalendarDayDetailModal(teamCode, dateStr, loginTime, checksOn, checksGps, checksNoGps, vehicle = '--', totalChecks = 0) {
+    const titleEl = document.getElementById('calModalDayTitle');
+    const subEl = document.getElementById('calModalDaySubtitle');
+    const tableBody = document.getElementById('calModalTimelineTableBody');
+
+    // Inicializa estado do modal com valores pré-carregados do card do calendário
+    calendarModalState = {
+        teamCode: String(teamCode || '').trim().toUpperCase(),
+        dateStr: dateStr,
+        loginTime: loginTime || '--',
+        vehicle: vehicle || '--',
+        checksOn: Number(checksOn) || 0,
+        checksGps: Number(checksGps) || 0,
+        checksNoGps: Number(checksNoGps) || 0,
+        totalChecks: Number(totalChecks) || 0,
+        rawLogs: [],
+        activeFilter: 'all'
+    };
+
+    const formattedDate = dateStr.split('-').reverse().join('/');
+    if (titleEl) titleEl.textContent = `EQUIPE ${calendarModalState.teamCode} | DIA ${formattedDate}`;
+    if (subEl) subEl.textContent = `Auditoria Forense de Conexões TRBOnet e Escala PowerON no dia ${formattedDate}`;
+
+    renderCalendarModalKpiSummary();
+    updateCalendarModalFilterBadge();
+
+    if (tableBody) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                    <div class="spin-animation" style="display: inline-block; margin-right: 8px;">⟳</div>
+                    Carregando transmissões de rádio do dia no Supabase...
+                </td>
+            </tr>
+        `;
+    }
+
+    openModal('calendarDayDetailModal');
+
+    // Busca as capturas linha a linha daquele dia
+    try {
+        const resp = await fetch(`/api/audit/team_timeline?team=${encodeURIComponent(calendarModalState.teamCode)}&date=${dateStr}`);
+        const data = await resp.json();
+
+        if (data.status === 'success' && Array.isArray(data.data) && data.data.length > 0) {
+            calendarModalState.rawLogs = data.data;
+
+            // Recalcula métricas exatas a partir dos logs retornados:
+            // "Se ele estiver ONLINE com ou sem GPS é considerado conectado no TRBOnet"
+            const onlineLogs = data.data.filter(r => Boolean(r.in_trbonet));
+            const countWithGps = onlineLogs.filter(r => Boolean(r.has_gps)).length;
+            const countWithoutGps = onlineLogs.filter(r => !r.has_gps).length;
+            const countOnline = countWithGps + countWithoutGps;
+            const countTotal = data.data.length;
+
+            calendarModalState.checksGps = countWithGps;
+            calendarModalState.checksNoGps = countWithoutGps;
+            calendarModalState.checksOn = countOnline;
+            calendarModalState.totalChecks = countTotal;
+
+            // Extrai horário de login e veículo se disponíveis nos logs
+            const firstLogWithLogin = data.data.find(r => r.poweron_login_time && r.poweron_login_time !== '--' && r.poweron_login_time !== '--:--');
+            if (firstLogWithLogin && (!calendarModalState.loginTime || calendarModalState.loginTime === '--')) {
+                calendarModalState.loginTime = firstLogWithLogin.poweron_login_time;
+            }
+            if (firstLogWithLogin && firstLogWithLogin.poweron_vehicle && firstLogWithLogin.poweron_vehicle !== '--' && (!calendarModalState.vehicle || calendarModalState.vehicle === '--')) {
+                calendarModalState.vehicle = firstLogWithLogin.poweron_vehicle;
+            }
+
+            renderCalendarModalKpiSummary();
+            renderCalendarDayTimelineTable();
+        } else {
+            calendarModalState.rawLogs = [];
+            renderCalendarDayTimelineTable();
+        }
+    } catch (err) {
+        console.error('[TIMELINE ERROR]', err);
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 24px; color: #ef4444;">
+                        Erro ao carregar os detalhes do dia.
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    if (typeof initIcons === 'function') initIcons();
+}
+
+// Expõe no escopo global para acionamento nos atributos HTML
+window.setAuditViewMode = setAuditViewMode;
+window.changeCalendarMonth = changeCalendarMonth;
+window.openMonthSelectPicker = openMonthSelectPicker;
+window.onNativeMonthChange = onNativeMonthChange;
+window.loadTeamCalendarData = loadTeamCalendarData;
+window.selectQuickTeam = selectQuickTeam;
+window.clearCalendarTeam = clearCalendarTeam;
+window.openCalendarDayDetailModal = openCalendarDayDetailModal;
+window.filterCalendarDayTimeline = filterCalendarDayTimeline;
+window.exportCalendarDayTimelineXlsx = exportCalendarDayTimelineXlsx;
+
+
 
 /**
  * Consulta a API local (que consulta o Supabase) para carregar os dados de auditoria com suporte a múltiplas datas.
