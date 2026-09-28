@@ -47,18 +47,25 @@ class DataManager:
         self.audit_log = []
         
         # Carregar cache de códigos registrados do TRBOnet se existir
+        self.load_registered_codes_cache()
+
+        # Carregar automaticamente o arquivo calendário se existir
+        try:
+            self.carregar_arquivo_calendario_poweron()
+        except Exception:
+            pass
+
+    def load_registered_codes_cache(self):
+        """Carrega ou recarrega o catálogo persistido de códigos cadastrados no TRBOnet."""
         try:
             cache_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'trbonet_registered_codes.json')
             if os.path.exists(cache_file):
                 with open(cache_file, 'r', encoding='utf-8') as f:
                     c_data = json.load(f)
-                    self.trbonet_registered_codes = set(c_data.get('codes', []))
-        except Exception:
-            pass
-
-        # Carregar automaticamente o arquivo calendário se existir
-        try:
-            self.carregar_arquivo_calendario_poweron()
+                    codes = c_data.get('codes', [])
+                    if not hasattr(self, 'trbonet_registered_codes') or not self.trbonet_registered_codes:
+                        self.trbonet_registered_codes = set()
+                    self.trbonet_registered_codes.update(codes)
         except Exception:
             pass
 
@@ -527,7 +534,9 @@ class DataManager:
 
             self.trbonet_teams = online_dict
             self.trbonet_offline_teams = offline_dict
-            self.trbonet_registered_codes = reg_codes
+            if not hasattr(self, 'trbonet_registered_codes') or not self.trbonet_registered_codes:
+                self.trbonet_registered_codes = set()
+            self.trbonet_registered_codes.update(reg_codes)
             self.last_trbonet_sync = self.last_update.strftime("%d/%m/%Y %H:%M:%S")
 
         # Atualizar contadores históricos das 14 bases oficiais
@@ -609,6 +618,7 @@ class DataManager:
         self.trbonet_teams = {}
         self.trbonet_offline_teams = {}
         self.trbonet_registered_codes = set()
+        self.load_registered_codes_cache()
         self.team_history = {}
         self.audit_log = []
         self.last_update = datetime.now(BR_TZ)

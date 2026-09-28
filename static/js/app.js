@@ -2695,6 +2695,7 @@ const auditState = {
     filteredData: [],
     selectedDates: [],
     datePickerInstance: null,
+    registeredCodesSet: new Set(),
     filters: {
         regions: [],
         bases: [],
@@ -2714,6 +2715,21 @@ const auditState = {
         initialized: false
     }
 };
+
+/**
+ * Verifica se um registro de auditoria é de equipe Não Cadastrada no TRBOnet One.
+ */
+function isAuditItemUnregistered(item) {
+    if (!item) return false;
+    if (item.trbonet_status === 'NAO_CADASTRADO') return true;
+    if (item.is_cadastrado === false) return true;
+    const tc = (item.team_code || '').trim().toUpperCase();
+    if (tc && auditState.registeredCodesSet && auditState.registeredCodesSet.size > 0) {
+        return !auditState.registeredCodesSet.has(tc);
+    }
+    return false;
+}
+
 
 // Dicionário oficial de nomes e regiões das bases operacionais
 const AUDIT_BASE_NAMES = {
@@ -4003,6 +4019,20 @@ async function loadAuditData(isSilent = false) {
 
     syncAuditFiltersFromDOM();
 
+    // Garante que o conjunto de códigos de rádio cadastrados no TRBOnet esteja carregado
+    if (!auditState.registeredCodesSet || auditState.registeredCodesSet.size === 0) {
+        try {
+            const regRes = await fetch('/api/audit/registered_codes');
+            const regData = await regRes.json();
+            const list = regData.codes || regData.data || [];
+            if (regData.status === 'success' && Array.isArray(list)) {
+                auditState.registeredCodesSet = new Set(list.map(c => String(c).trim().toUpperCase()));
+            }
+        } catch (regErr) {
+            console.warn('Não foi possível carregar lista de códigos registrados do TRBOnet:', regErr);
+        }
+    }
+
     const datesParam = (auditState.selectedDates && auditState.selectedDates.length > 0)
         ? auditState.selectedDates.join(',')
         : (new Date().toISOString().split('T')[0]);
@@ -4133,7 +4163,7 @@ function applyAuditFilters() {
             filtered = filtered.filter(item => {
                 const wasPw = !!item.was_in_poweron;
                 const wasOn = !!item.was_online_trbonet;
-                const isUnreg = item.trbonet_status === 'NAO_CADASTRADO' || item.is_cadastrado === false;
+                const isUnreg = isAuditItemUnregistered(item);
 
                 let st = 'OFFLINE';
                 if (isUnreg) {
@@ -4157,7 +4187,7 @@ function applyAuditFilters() {
             const connSet = new Set(connected);
             filtered = filtered.filter(item => {
                 const wasOn = !!item.was_online_trbonet;
-                const isUnreg = item.trbonet_status === 'NAO_CADASTRADO' || item.is_cadastrado === false;
+                const isUnreg = isAuditItemUnregistered(item);
                 
                 if (isUnreg) {
                     return connSet.has('NAO_CADASTRADO');
@@ -4352,7 +4382,7 @@ function renderAuditTable() {
         tbody.innerHTML = auditState.filteredData.map(item => {
             const wasOnline = item.was_online_trbonet;
             const wasPw = item.was_in_poweron;
-            const isUnregistered = item.trbonet_status === 'NAO_CADASTRADO' || item.is_cadastrado === false;
+            const isUnregistered = isAuditItemUnregistered(item);
             
             let statusBadge = '';
             if (isUnregistered) {
@@ -4599,7 +4629,7 @@ function exportAuditTableExcel() {
                         "Região": i.region || (baseInfo.region ? `Região ${baseInfo.region}` : ''),
                         "Turno": (i.turno || i.shift_code || i.shift_slot || '--').replace('Turno', '').trim(),
                         "Escala PowerON": i.was_in_poweron ? 'SIM' : 'NÃO',
-                        "Conectou TRBOnet": (i.trbonet_status === 'NAO_CADASTRADO' || i.is_cadastrado === false) ? 'NÃO CADASTRADO' : (i.was_online_trbonet ? 'SIM' : 'NÃO'),
+                        "Conectou TRBOnet": isAuditItemUnregistered(i) ? 'NÃO CADASTRADO' : (i.was_online_trbonet ? 'SIM' : 'NÃO'),
                         "Horário Marcação (Login)": marcVal,
                         "1º Sinal TRBOnet": fSeen,
                         "Coletas Online": i.times_seen_online || 0,
@@ -4678,7 +4708,7 @@ function exportAuditTableCSV() {
             const marcVal = (i.marcacao && i.marcacao !== '--') ? i.marcacao : '--';
             const fSeen = formatTime(i.first_seen_online);
 
-            csvContent += `"${i.date_ref || dateVal}";"${i.team_code}";"${i.base_code || ''}";"${baseInfo.name}";"${i.region || (baseInfo.region ? `Região ${baseInfo.region}` : '')}";"${i.was_in_poweron ? 'SIM' : 'NAO'}";"${(i.trbonet_status === 'NAO_CADASTRADO' || i.is_cadastrado === false) ? 'NAO_CADASTRADO' : (i.was_online_trbonet ? 'SIM' : 'NAO')}";"${marcVal}";"${fSeen}";"${i.times_seen_online || 0}";"${i.total_sync_checks || 0}";"${i.uptime_percentage || 0}%";"${formatTime(i.last_seen_online)}"\n`;
+            csvContent += `"${i.date_ref || dateVal}";"${i.team_code}";"${i.base_code || ''}";"${baseInfo.name}";"${i.region || (baseInfo.region ? `Região ${baseInfo.region}` : '')}";"${i.was_in_poweron ? 'SIM' : 'NAO'}";"${isAuditItemUnregistered(i) ? 'NAO_CADASTRADO' : (i.was_online_trbonet ? 'SIM' : 'NAO')}";"${marcVal}";"${fSeen}";"${i.times_seen_online || 0}";"${i.total_sync_checks || 0}";"${i.uptime_percentage || 0}%";"${formatTime(i.last_seen_online)}"\n`;
         });
     } else {
         csvContent += 'Data_Hora_Coleta;Data_Ref;Equipe;Codigo_Base;Base_Operacional;Regiao;Status;PowerON;TRBOnet;GPS;Radio_ID;Canal;Ultimo_Sinal\n';

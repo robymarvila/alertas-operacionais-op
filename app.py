@@ -1314,15 +1314,14 @@ def get_daily_audit_summary():
 
         # 4. Injeta status de cadastro no TRBOnet (identifica códigos inexistentes)
         reg_codes = set(getattr(data_manager, 'trbonet_registered_codes', set()))
-        if not reg_codes:
-            cache_file = os.path.join(os.path.dirname(__file__), 'data', 'trbonet_registered_codes.json')
-            if os.path.exists(cache_file):
-                try:
-                    with open(cache_file, 'r', encoding='utf-8') as f:
-                        c_data = json.load(f)
-                        reg_codes = set(c_data.get('codes', []))
-                except Exception:
-                    pass
+        cache_file = os.path.join(os.path.dirname(__file__), 'data', 'trbonet_registered_codes.json')
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    c_data = json.load(f)
+                    reg_codes.update(c_data.get('codes', []))
+            except Exception:
+                pass
 
         for row in res["data"]:
             tc = str(row.get("team_code") or "").strip().upper()
@@ -1339,6 +1338,21 @@ def get_daily_audit_summary():
             row["trbonet_status"] = trbonet_status
 
     return jsonify(res)
+
+@app.route('/api/audit/registered_codes', methods=['GET'])
+def get_audit_registered_codes():
+    """Retorna o conjunto completo de códigos cadastrados no TRBOnet."""
+    reg_codes = set(getattr(data_manager, 'trbonet_registered_codes', set()))
+    cache_file = os.path.join(os.path.dirname(__file__), 'data', 'trbonet_registered_codes.json')
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                c_data = json.load(f)
+                reg_codes.update(c_data.get('codes', []))
+        except Exception:
+            pass
+    code_list = sorted(list(reg_codes))
+    return jsonify({"status": "success", "count": len(code_list), "codes": code_list, "data": code_list})
 
 @app.route('/api/audit/team_timeline', methods=['GET'])
 def get_team_timeline():
