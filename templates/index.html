@@ -698,7 +698,7 @@
                     <!-- Campo de Pesquisa -->
                     <div class="search-input-group">
                         <i data-lucide="search" class="search-icon"></i>
-                        <input type="text" id="searchInput" class="search-field" placeholder="Buscar equipe (ex: ENL100, ECL121, EML, EVL) ou base..." oninput="handleSearchChange()">
+                        <input type="search" id="searchInput" name="main_teams_search_filter" class="search-field" placeholder="Buscar equipe (ex: ENL100, ECL121, EML, EVL) ou base..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" role="searchbox" readonly onfocus="this.removeAttribute('readonly');" onpointerdown="this.removeAttribute('readonly');" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" oninput="handleSearchChange()">
                         <button class="btn-clear-search" id="btnClearSearch" onclick="clearSearch()" style="display: none;">
                             <i data-lucide="x"></i>
                         </button>
@@ -928,7 +928,7 @@
                             </div>
                         </div>
                         <div class="history-table-actions">
-                            <input type="text" id="historySearchInput" class="search-field history-search" placeholder="Filtrar histórico..." oninput="handleHistorySearch()">
+                            <input type="search" id="historySearchInput" name="history_search_filter" class="search-field history-search" placeholder="Filtrar histórico..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" role="searchbox" readonly onfocus="this.removeAttribute('readonly');" onpointerdown="this.removeAttribute('readonly');" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" oninput="handleHistorySearch()">
                         </div>
                     </div>
 
@@ -1114,7 +1114,7 @@
                     <div class="period-filter-group" style="min-width: 190px;">
                         <span class="period-filter-label"><i data-lucide="search" class="mini-icon"></i> BUSCAR EQUIPE</span>
                         <div class="period-filter-select-wrap">
-                            <input type="text" id="auditSearchTeam" class="period-filter-select" style="padding-right: 12px;" placeholder="Ex: ENL100, ECL121..." oninput="debounceAuditSearch()" />
+                            <input type="search" id="auditSearchTeam" name="audit_team_search_filter" class="period-filter-select" style="padding-right: 12px;" placeholder="Ex: ENL100, ECL121..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" role="searchbox" readonly onfocus="this.removeAttribute('readonly');" onpointerdown="this.removeAttribute('readonly');" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" oninput="debounceAuditSearch()" />
                         </div>
                     </div>
 
@@ -1230,7 +1230,7 @@
                             </label>
                             <div class="cal-input-wrap">
                                 <i data-lucide="search" class="cal-input-icon"></i>
-                                <input type="text" id="calTeamInput" class="cal-text-input" placeholder="Digite o código (ex: ESL121, ECL121)..." list="calTeamsDatalist" autocomplete="off" onkeydown="if(event.key==='Enter') loadTeamCalendarData();" />
+                                <input type="search" id="calTeamInput" name="cal_team_search_filter" class="cal-text-input" placeholder="Digite o código (ex: ESL121, ECL121)..." list="calTeamsDatalist" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" role="searchbox" readonly onfocus="this.removeAttribute('readonly');" onpointerdown="this.removeAttribute('readonly');" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" onkeydown="if(event.key==='Enter') loadTeamCalendarData();" />
                                 <datalist id="calTeamsDatalist"></datalist>
                                 <button type="button" class="cal-clear-btn" id="calClearTeamBtn" onclick="clearCalendarTeam()" title="Limpar código">
                                     <i data-lucide="x"></i>
@@ -4036,13 +4036,13 @@
                         <p style="margin: 0 0 12px 0; font-size: 0.82rem; color: #94a3b8; line-height: 1.4;">
                             A alteração do planejamento operacional requer autenticação Master. Insira a senha Master para desbloquear os campos de edição.
                         </p>
-                        <div id="planningAuthInputs" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <form id="formPlanningUnlock" onsubmit="event.preventDefault(); verifyAndUnlockPlanning();" autocomplete="off" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                             <input type="password" id="planningMasterPassword" class="form-input" placeholder="Digite a Senha Master..." style="width: 220px; padding: 8px 12px; font-size: 0.85rem;" autocomplete="current-password" onkeydown="if(event.key==='Enter') verifyAndUnlockPlanning()">
-                            <button class="btn-action-purple" type="button" onclick="verifyAndUnlockPlanning()" style="padding: 8px 16px;">
+                            <button class="btn-action-purple" type="submit" style="padding: 8px 16px;">
                                 <i data-lucide="unlock" style="width: 15px; height: 15px;"></i>
                                 <span>Desbloquear Edição</span>
                             </button>
-                        </div>
+                        </form>
                         <div id="planningUnlockedBadge" style="display: none; align-items: center; gap: 8px; color: #10b981; font-weight: 800; font-size: 0.85rem;">
                             <i data-lucide="check-circle" style="width: 18px; height: 18px;"></i>
                             <span>Acesso Master Liberado — Você pode alterar e salvar o planejamento abaixo.</span>

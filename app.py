@@ -1892,20 +1892,87 @@ def export_audit_excel():
     if mode == "daily":
         res = fetch_daily_audit_summary(date_ref=date_ref, base_code=base_code)
         data_list = res.get("data", []) if res.get("status") == "success" else []
+        
+        # Enriquecer com marcação e turno caso chamado diretamente via GET
+        db_details_map = {}
+        try:
+            dates_in_res = set(filter(None, [r.get("date_ref") for r in data_list]))
+            if date_ref:
+                for d in str(date_ref).split(','):
+                    if d.strip():
+                        dates_in_res.add(d.strip())
+            if dates_in_res:
+                db_details_map = fetch_audit_delivery_details(list(dates_in_res))
+        except Exception:
+            pass
+
         rows = []
         for i in data_list:
+            tc = str(i.get("team_code") or "").strip().upper()
+            dr = str(i.get("date_ref") or "").strip()
+            det = db_details_map.get((tc, dr)) or db_details_map.get(tc) or {}
+            marc = det.get("marcacao") if isinstance(det, dict) and det.get("marcacao") and det.get("marcacao") != "--" else "--"
+            turno = (det.get("shift_code") or det.get("shift_slot") or "--") if isinstance(det, dict) else "--"
+
+            was_pw = bool(i.get("was_in_poweron"))
+            was_on = bool(i.get("was_online_trbonet"))
+            is_unreg = (i.get("trbonet_status") == "NAO_CADASTRADO" or i.get("is_cadastrado") is False)
+
+            if is_unreg:
+                status_text = "NÃO CADASTRADO"
+            elif was_pw and was_on:
+                status_text = "CONECTOU HOJE"
+            elif was_pw and not was_on:
+                status_text = "NUNCA CONECTOU"
+            elif not was_pw and was_on:
+                status_text = "APENAS TRBONET"
+            else:
+                status_text = "DESCONECTADO"
+
+            times_on = i.get("times_seen_online", 0)
+            total_checks = i.get("total_sync_checks", 0)
+            f_seen = i.get("first_seen_online", "--")
+            l_seen = i.get("last_seen_online", "--")
+
+            # Cálculo de confronto forense
+            confront_diag = "--"
+            if marc and marc != "--" and f_seen and f_seen != "--":
+                try:
+                    def parse_min(ts):
+                        parts = str(ts).strip().split(':')
+                        return int(parts[0]) * 60 + int(parts[1])
+                    diff = parse_min(f_seen) - parse_min(marc)
+                    if abs(diff) <= 15:
+                        diff_sig = f"+{diff}" if diff >= 0 else f"{diff}"
+                        confront_diag = f"Sincronizado ({diff_sig}m)"
+                    elif diff > 15:
+                        confront_diag = f"Atraso (+{diff}m)"
+                    else:
+                        confront_diag = f"Antecipado ({diff}m)"
+                except Exception:
+                    confront_diag = "Registrado"
+            elif (not marc or marc == "--") and f_seen and f_seen != "--":
+                confront_diag = "Rádio s/ Login"
+            elif marc and marc != "--" and (not f_seen or f_seen == "--"):
+                confront_diag = "Sem Sinal Rádio"
+
             rows.append({
-                "Data": i.get("date_ref", date_ref or "Hoje"),
-                "Equipe": i.get("team_code", ""),
-                "Base": i.get("base_code", ""),
+                "Data de Referência": i.get("date_ref", date_ref or "Hoje"),
+                "Código Equipe": tc,
+                "Base Operacional": i.get("base_code", ""),
+                "Código Base": i.get("base_code", ""),
                 "Região": i.get("region", ""),
-                "Escala PowerON": "SIM" if i.get("was_in_poweron") else "NÃO",
-                "Conectou TRBOnet": "SIM" if i.get("was_online_trbonet") else "NÃO",
-                "Coletas Online": i.get("times_seen_online", 0),
-                "Total Coletas": i.get("total_sync_checks", 0),
-                "Uptime (%)": f"{i.get('uptime_percentage', 0)}%",
-                "Primeiro Sinal": i.get("first_seen_online", "--"),
-                "Último Sinal": i.get("last_seen_online", "--")
+                "Turno": turno,
+                "Escala PowerON": "SIM" if was_pw else "NÃO",
+                "Conectou no TRBOnet Hoje?": status_text,
+                "Horário Marcação (Login)": marc,
+                "1º Sinal Registrado": f_seen,
+                "Coletas Online / Total": f"{times_on} / {total_checks} coletas",
+                "Coletas Online": times_on,
+                "Total Coletas": total_checks,
+                "% Uptime no Dia": f"{i.get('uptime_percentage', 0)}%",
+                "Último Sinal": l_seen,
+                "Auditoria Forense": confront_diag
             })
     else:
         res = fetch_audit_logs(date_ref=date_ref, base_code=base_code, limit=5000)
@@ -1915,13 +1982,14 @@ def export_audit_excel():
             rows.append({
                 "Data e Hora Coleta": i.get("captured_at", ""),
                 "Data Ref": i.get("date_ref", ""),
-                "Equipe": i.get("team_code", ""),
-                "Base": i.get("base_code", ""),
+                "Código Equipe": i.get("team_code", ""),
+                "Código Base": i.get("base_code", ""),
+                "Base Operacional": i.get("base_code", ""),
                 "Região": i.get("region", ""),
-                "Status": i.get("status", ""),
-                "PowerON": "SIM" if i.get("in_poweron") else "NÃO",
-                "TRBOnet": "SIM" if i.get("in_trbonet") else "NÃO",
-                "GPS": "SIM" if i.get("has_gps") else "NÃO",
+                "Status na Coleta": i.get("status", ""),
+                "Escala PowerON": "SIM" if i.get("in_poweron") else "NÃO",
+                "Conectou TRBOnet": "SIM" if i.get("in_trbonet") else "NÃO",
+                "Sinal GPS": "SIM" if i.get("has_gps") else "NÃO",
                 "ID Rádio": i.get("radio_id", ""),
                 "Canal": i.get("channel", ""),
                 "Último Sinal": i.get("last_signal", "")
@@ -1931,7 +1999,7 @@ def export_audit_excel():
     df = pd.DataFrame(rows)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Auditoria_CCO')
+        df.to_excel(writer, index=False, sheet_name='Consolidado_Auditoria'[:31])
 
     output.seek(0)
     filename = f"Auditoria_TRBOnet_PowerON_{(date_ref or 'Hoje')}_{mode}.xlsx"
@@ -1941,6 +2009,32 @@ def export_audit_excel():
         as_attachment=True,
         download_name=filename
     )
+
+@app.route('/api/export/audit_excel_post', methods=['POST'])
+def export_audit_excel_post():
+    """Gera e faz download de planilha nativa Excel (.xlsx) a partir dos dados filtrados enviados pelo cliente."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        rows = payload.get("rows", [])
+        filename = payload.get("filename", "Auditoria_TRBOnet_PowerON.xlsx")
+        sheet_name = payload.get("sheet_name", "Auditoria_CCO")
+        if not rows:
+            return jsonify({"status": "error", "message": "Nenhum registro para exportar"}), 400
+
+        import pandas as pd
+        df = pd.DataFrame(rows)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/export/csv', methods=['GET'])
 def export_csv():

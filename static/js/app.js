@@ -4268,19 +4268,22 @@ function computeAuditConfront(marcacaoStr, firstSeenStr) {
         if (firstSeenStr && firstSeenStr !== '--') {
             return {
                 badge: '<span class="audit-confront-badge badge-sync-nologin" title="Rádio transmitiu sinal, mas não há registro de login no Equipes Brasil"><i data-lucide="help-circle" style="width:12px;height:12px;"></i> Rádio s/ Login</span>',
-                deltaText: 'Rádio s/ Login'
+                deltaText: 'Rádio s/ Login',
+                label: 'Rádio s/ Login'
             };
         }
         return {
             badge: '<span class="audit-confront-badge badge-sync-nologin">--</span>',
-            deltaText: '--'
+            deltaText: '--',
+            label: '--'
         };
     }
 
     if (!firstSeenStr || firstSeenStr === '--') {
         return {
             badge: '<span class="audit-confront-badge badge-sync-noradio" title="Equipe tem login ativo no aplicativo, porém o rádio não transmitiu sinal no dia"><i data-lucide="alert-octagon" style="width:12px;height:12px;"></i> Sem Sinal Rádio</span>',
-            deltaText: 'Sem Sinal Rádio'
+            deltaText: 'Sem Sinal Rádio',
+            label: 'Sem Sinal Rádio'
         };
     }
 
@@ -4302,23 +4305,27 @@ function computeAuditConfront(marcacaoStr, firstSeenStr) {
             const diffSignal = diff >= 0 ? `+${diff}` : `${diff}`;
             return {
                 badge: `<span class="audit-confront-badge badge-sync-ok" title="Diferença de ${diffSignal} min entre login e rádio"><i data-lucide="check-circle-2" style="width:12px;height:12px;"></i> Sincronizado (${diffSignal}m)</span>`,
-                deltaText: `${diffSignal}m`
+                deltaText: `${diffSignal}m`,
+                label: `Sincronizado (${diffSignal}m)`
             };
         } else if (diff > 15) {
             return {
                 badge: `<span class="audit-confront-badge badge-sync-delay" title="Rádio transmitiu ${diff} min após a marcação"><i data-lucide="clock" style="width:12px;height:12px;"></i> Atraso +${diff}m</span>`,
-                deltaText: `+${diff}m`
+                deltaText: `+${diff}m`,
+                label: `Atraso (+${diff}m)`
             };
         } else {
             return {
                 badge: `<span class="audit-confront-badge badge-sync-early" title="Rádio transmitiu ${Math.abs(diff)} min antes do login no app"><i data-lucide="zap" style="width:12px;height:12px;"></i> Antecipado ${diff}m</span>`,
-                deltaText: `${diff}m`
+                deltaText: `${diff}m`,
+                label: `Antecipado (${diff}m)`
             };
         }
     } catch {
         return {
             badge: '<span class="audit-confront-badge badge-sync-ok">Registrado</span>',
-            deltaText: '--'
+            deltaText: '--',
+            label: 'Registrado'
         };
     }
 }
@@ -4592,10 +4599,15 @@ function debounceAuditSearch() {
 }
 
 /**
- * Exporta a tabela filtrada atual para um arquivo XLSX (.xlsx) enriquecido com todas as novas colunas.
+ * Exporta a tabela filtrada atual para um arquivo XLSX (.xlsx) enriquecido com todas as colunas da tabela de auditoria.
  */
-function exportAuditTableExcel() {
+async function exportAuditTableExcel() {
     const list = auditState.filteredData;
+    if (!list || list.length === 0) {
+        showToast('Nenhum dado disponível para exportação com os filtros aplicados.', 'info');
+        return;
+    }
+
     const dateVal = (auditState.selectedDates && auditState.selectedDates.length > 0)
         ? auditState.selectedDates.join('_')
         : 'hoje';
@@ -4610,71 +4622,134 @@ function exportAuditTableExcel() {
         } catch { return ts; }
     };
 
-    // 1. Tenta geração client-side instantânea via SheetJS
-    if (window.XLSX && list && list.length > 0) {
-        try {
-            let rows = [];
-            if (auditState.mode === 'daily') {
-                rows = list.map(i => {
-                    const baseInfo = getAuditBaseInfo(i.base_code);
-                    const marcVal = (i.marcacao && i.marcacao !== '--') ? i.marcacao : '--';
-                    const fSeen = formatTime(i.first_seen_online);
-                    const confront = computeAuditConfront(marcVal, fSeen);
+    let rows = [];
+    if (auditState.mode === 'daily') {
+        rows = list.map(i => {
+            const baseInfo = getAuditBaseInfo(i.base_code);
+            const marcVal = (i.marcacao && i.marcacao !== '--') ? i.marcacao : '--';
+            const fSeen = formatTime(i.first_seen_online);
+            const lSeen = formatTime(i.last_seen_online);
+            const confront = computeAuditConfront(marcVal, fSeen);
 
-                    return {
-                        "Data Ref": i.date_ref || dateVal,
-                        "Equipe": i.team_code || '',
-                        "Código Base": i.base_code || '',
-                        "Base Operacional": baseInfo.name,
-                        "Região": i.region || (baseInfo.region ? `Região ${baseInfo.region}` : ''),
-                        "Turno": (i.turno || i.shift_code || i.shift_slot || '--').replace('Turno', '').trim(),
-                        "Escala PowerON": i.was_in_poweron ? 'SIM' : 'NÃO',
-                        "Conectou TRBOnet": isAuditItemUnregistered(i) ? 'NÃO CADASTRADO' : (i.was_online_trbonet ? 'SIM' : 'NÃO'),
-                        "Horário Marcação (Login)": marcVal,
-                        "1º Sinal TRBOnet": fSeen,
-                        "Coletas Online": i.times_seen_online || 0,
-                        "Total Coletas": i.total_sync_checks || 0,
-                        "Uptime (%)": `${i.uptime_percentage || 0}%`,
-                        "Último Sinal": formatTime(i.last_seen_online)
-                    };
-                });
-            } else {
-                rows = list.map(i => {
-                    const baseInfo = getAuditBaseInfo(i.base_code);
-                    return {
-                        "Data e Hora Coleta": i.captured_at || '',
-                        "Data Ref": i.date_ref || '',
-                        "Equipe": i.team_code || '',
-                        "Código Base": i.base_code || '',
-                        "Base Operacional": baseInfo.name,
-                        "Região": i.region || '',
-                        "Status": i.status || '',
-                        "PowerON": i.in_poweron ? 'SIM' : 'NÃO',
-                        "TRBOnet": i.in_trbonet ? 'SIM' : 'NÃO',
-                        "GPS": i.has_gps ? 'SIM' : 'NÃO',
-                        "ID Rádio": i.radio_id || '',
-                        "Canal": i.channel || '',
-                        "Último Sinal": i.last_signal || ''
-                    };
-                });
+            const wasOnline = !!i.was_online_trbonet;
+            const wasPw = !!i.was_in_poweron;
+            const isUnregistered = isAuditItemUnregistered(i);
+
+            let statusText = 'DESCONECTADO';
+            if (isUnregistered) {
+                statusText = 'NÃO CADASTRADO';
+            } else if (wasPw && wasOnline) {
+                statusText = 'CONECTOU HOJE';
+            } else if (wasPw && !wasOnline) {
+                statusText = 'NUNCA CONECTOU';
+            } else if (!wasPw && wasOnline) {
+                statusText = 'APENAS TRBONET';
             }
 
+            const turnoVal = (i.turno || i.shift_code || i.shift_slot || '--').replace('Turno', '').trim();
+            const timesOnline = i.times_seen_online || 0;
+            const totalChecks = i.total_sync_checks || 0;
+            const uptimeVal = `${i.uptime_percentage || 0}%`;
+
+            return {
+                "Data de Referência": i.date_ref || dateVal,
+                "Código Equipe": i.team_code || '',
+                "Base Operacional": baseInfo.name || i.base_code || '',
+                "Código Base": i.base_code || '',
+                "Região": i.region || (baseInfo.region ? `Região ${baseInfo.region}` : 'Outras Bases'),
+                "Turno": turnoVal || '--',
+                "Escala PowerON": wasPw ? 'SIM' : 'NÃO',
+                "Conectou no TRBOnet Hoje?": statusText,
+                "Horário Marcação (Login)": marcVal,
+                "1º Sinal Registrado": fSeen,
+                "Coletas Online / Total": `${timesOnline} / ${totalChecks} coletas`,
+                "Coletas Online": timesOnline,
+                "Total Coletas": totalChecks,
+                "% Uptime no Dia": uptimeVal,
+                "Último Sinal": lSeen,
+                "Auditoria Forense": confront.label || confront.deltaText || '--'
+            };
+        });
+    } else {
+        rows = list.map(i => {
+            const baseInfo = getAuditBaseInfo(i.base_code);
+            const capturedTime = i.captured_at ? new Date(i.captured_at).toLocaleTimeString('pt-BR') : (i.captured_at || '--');
+            return {
+                "Data e Hora Coleta": capturedTime,
+                "Data Ref": i.date_ref || dateVal,
+                "Código Equipe": i.team_code || '',
+                "Código Base": i.base_code || '',
+                "Base Operacional": baseInfo.name || i.base_code || '',
+                "Região": i.region || (baseInfo.region ? `Região ${baseInfo.region}` : 'Outras Bases'),
+                "Status na Coleta": i.status || '',
+                "Escala PowerON": i.in_poweron ? 'SIM' : 'NÃO',
+                "Conectou TRBOnet": i.in_trbonet ? 'SIM' : 'NÃO',
+                "Sinal GPS": i.has_gps ? 'SIM' : 'NÃO',
+                "ID Rádio": i.radio_id || '--',
+                "Canal": i.channel || '--',
+                "Último Sinal": i.last_signal || '--'
+            };
+        });
+    }
+
+    // 1. Tenta geração client-side instantânea via SheetJS
+    if (window.XLSX && rows.length > 0) {
+        try {
             const ws = XLSX.utils.json_to_sheet(rows);
+            // Ajustar largura automática das colunas
+            const colWidths = Object.keys(rows[0] || {}).map(key => {
+                let maxLen = key.length;
+                for (let r = 0; r < Math.min(rows.length, 100); r++) {
+                    const val = String(rows[r][key] || '');
+                    if (val.length > maxLen) maxLen = val.length;
+                }
+                return { wch: Math.min(Math.max(maxLen + 3, 12), 45) };
+            });
+            ws['!cols'] = colWidths;
+
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Auditoria_CCO");
+            XLSX.utils.book_append_sheet(wb, ws, "Consolidado_Auditoria");
             XLSX.writeFile(wb, filename);
 
-            showToast(`Relatório de auditoria (.xlsx) exportado com sucesso (${list.length} registros)!`, 'success');
+            showToast(`Planilha Excel (.xlsx) exportada com sucesso (${list.length} registros filtrados)!`, 'success');
             return;
         } catch (err) {
-            console.warn('Falha na exportação client-side de auditoria, usando rota backend:', err);
+            console.warn('Falha na exportação client-side SheetJS, usando fallback backend:', err);
         }
     }
 
-    // 2. Fallback via backend endpoint
-    const baseVal = (auditState.filters.bases && auditState.filters.bases.length > 0) ? auditState.filters.bases.join(',') : 'ALL';
-    window.location.href = `/api/export/audit_excel?date=${encodeURIComponent(dateVal)}&base=${encodeURIComponent(baseVal)}&mode=${auditState.mode}`;
-    showToast('Download da Planilha de Auditoria (.xlsx) iniciado!', 'success');
+    // 2. Fallback via backend POST com os registros filtrados
+    try {
+        showToast('Gerando Planilha Excel (.xlsx) com dados filtrados no servidor...', 'info');
+        const resp = await fetch('/api/export/audit_excel_post', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                rows: rows,
+                filename: filename,
+                sheet_name: 'Consolidado_Auditoria'
+            })
+        });
+
+        if (resp.ok) {
+            const blob = await resp.blob();
+            const downloadUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(downloadUrl);
+            showToast(`Planilha Excel (.xlsx) baixada com sucesso (${list.length} registros)!`, 'success');
+            return;
+        }
+    } catch (backendErr) {
+        console.error('Falha na geração via servidor, acionando fallback CSV:', backendErr);
+    }
+
+    // 3. Fallback via CSV direto no cliente
+    exportAuditTableCSV();
 }
 
 window.exportAuditTableExcel = exportAuditTableExcel;
@@ -4682,7 +4757,7 @@ window.exportAuditTableExcel = exportAuditTableExcel;
 function exportAuditTableCSV() {
     const list = auditState.filteredData;
     if (!list || list.length === 0) {
-        showToast('Nenhum dado disponível para exportação.', 'info');
+        showToast('Nenhum dado disponível para exportação com os filtros aplicados.', 'info');
         return;
     }
 
@@ -4702,19 +4777,43 @@ function exportAuditTableCSV() {
     };
 
     if (auditState.mode === 'daily') {
-        csvContent += 'Data;Equipe;Codigo_Base;Base_Operacional;Regiao;Escala_PowerON;Conectou_TRBOnet;Horario_Marcacao;Primeiro_Sinal;Coletas_Online;Total_Coletas;Uptime_Percentual;Ultimo_Sinal\n';
+        csvContent += 'Data_Referencia;Codigo_Equipe;Base_Operacional;Codigo_Base;Regiao;Turno;Escala_PowerON;Conectou_TRBOnet_Hoje;Horario_Marcacao;Primeiro_Sinal;Coletas_Online_Total;Coletas_Online;Total_Coletas;Uptime_Percentual;Ultimo_Sinal;Auditoria_Forense\n';
         list.forEach(i => {
             const baseInfo = getAuditBaseInfo(i.base_code);
             const marcVal = (i.marcacao && i.marcacao !== '--') ? i.marcacao : '--';
             const fSeen = formatTime(i.first_seen_online);
+            const lSeen = formatTime(i.last_seen_online);
+            const confront = computeAuditConfront(marcVal, fSeen);
 
-            csvContent += `"${i.date_ref || dateVal}";"${i.team_code}";"${i.base_code || ''}";"${baseInfo.name}";"${i.region || (baseInfo.region ? `Região ${baseInfo.region}` : '')}";"${i.was_in_poweron ? 'SIM' : 'NAO'}";"${isAuditItemUnregistered(i) ? 'NAO_CADASTRADO' : (i.was_online_trbonet ? 'SIM' : 'NAO')}";"${marcVal}";"${fSeen}";"${i.times_seen_online || 0}";"${i.total_sync_checks || 0}";"${i.uptime_percentage || 0}%";"${formatTime(i.last_seen_online)}"\n`;
+            const wasOnline = !!i.was_online_trbonet;
+            const wasPw = !!i.was_in_poweron;
+            const isUnregistered = isAuditItemUnregistered(i);
+
+            let statusText = 'DESCONECTADO';
+            if (isUnregistered) {
+                statusText = 'NAO CADASTRADO';
+            } else if (wasPw && wasOnline) {
+                statusText = 'CONECTOU HOJE';
+            } else if (wasPw && !wasOnline) {
+                statusText = 'NUNCA CONECTOU';
+            } else if (!wasPw && wasOnline) {
+                statusText = 'APENAS TRBONET';
+            }
+
+            const turnoVal = (i.turno || i.shift_code || i.shift_slot || '--').replace('Turno', '').trim();
+            const timesOnline = i.times_seen_online || 0;
+            const totalChecks = i.total_sync_checks || 0;
+            const uptimeVal = `${i.uptime_percentage || 0}%`;
+            const diagForense = (confront.label || confront.deltaText || '--').replace(/"/g, '""');
+
+            csvContent += `"${i.date_ref || dateVal}";"${i.team_code || ''}";"${baseInfo.name || ''}";"${i.base_code || ''}";"${i.region || (baseInfo.region ? `Região ${baseInfo.region}` : 'Outras Bases')}";"${turnoVal}";"${wasPw ? 'SIM' : 'NAO'}";"${statusText}";"${marcVal}";"${fSeen}";"${timesOnline} / ${totalChecks} coletas";"${timesOnline}";"${totalChecks}";"${uptimeVal}";"${lSeen}";"${diagForense}"\n`;
         });
     } else {
-        csvContent += 'Data_Hora_Coleta;Data_Ref;Equipe;Codigo_Base;Base_Operacional;Regiao;Status;PowerON;TRBOnet;GPS;Radio_ID;Canal;Ultimo_Sinal\n';
+        csvContent += 'Data_Hora_Coleta;Data_Ref;Codigo_Equipe;Codigo_Base;Base_Operacional;Regiao;Status;PowerON;TRBOnet;GPS;Radio_ID;Canal;Ultimo_Sinal\n';
         list.forEach(i => {
             const baseInfo = getAuditBaseInfo(i.base_code);
-            csvContent += `"${i.captured_at || ''}";"${i.date_ref || ''}";"${i.team_code}";"${i.base_code || ''}";"${baseInfo.name}";"${i.region || ''}";"${i.status || ''}";"${i.in_poweron ? 'SIM' : 'NAO'}";"${i.in_trbonet ? 'SIM' : 'NAO'}";"${i.has_gps ? 'SIM' : 'NAO'}";"${i.radio_id || ''}";"${i.channel || ''}";"${i.last_signal || ''}"\n`;
+            const capturedTime = i.captured_at ? new Date(i.captured_at).toLocaleTimeString('pt-BR') : (i.captured_at || '--');
+            csvContent += `"${capturedTime}";"${i.date_ref || dateVal}";"${i.team_code || ''}";"${i.base_code || ''}";"${baseInfo.name || ''}";"${i.region || ''}";"${i.status || ''}";"${i.in_poweron ? 'SIM' : 'NAO'}";"${i.in_trbonet ? 'SIM' : 'NAO'}";"${i.has_gps ? 'SIM' : 'NAO'}";"${i.radio_id || '--'}";"${i.channel || '--'}";"${i.last_signal || '--'}"\n`;
         });
     }
 
@@ -4728,7 +4827,7 @@ function exportAuditTableCSV() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    showToast('Relatório de auditoria exportado com sucesso!', 'success');
+    showToast(`Relatório de auditoria CSV baixado com sucesso (${list.length} registros)!`, 'success');
 }
 
 window.exportAuditTableCSV = exportAuditTableCSV;
