@@ -8,7 +8,7 @@
     "role": "admin",
     "status": "approved",
     "created_at": "2026-09-01T10:57:00.183029+00:00",
-    "last_login": null
+    "last_login": "2026-09-27T09:30:21.411175"
   },
   "b70feec316ecf18d115bcaef5e812952": {
     "id": "b70feec316ecf18d115bcaef5e812952",
@@ -30,6 +30,28 @@
     "role": "operator",
     "status": "approved",
     "created_at": "2026-09-01T08:10:24.581854+00:00",
+    "last_login": null
+  },
+  "c791c63c-cfd7-2cf2-b8fd-c213b25001bc": {
+    "id": "c791c63c-cfd7-2cf2-b8fd-c213b25001bc",
+    "nome": "LEONARDO GONSEVSKI",
+    "email": "l.gonsevski@alpitelbrasil.com.br",
+    "matricula": "BR0413967728",
+    "password_hash": "pbkdf2:sha256:100000$0febbe65361daa1bf8aede761ef09a40$52c191617c88ae150cf58181a479b0a51e8b2a600f4acfa987f06f33faad6fd0",
+    "role": "operator",
+    "status": "pending",
+    "created_at": "2026-09-25T10:56:07.360983+00:00",
+    "last_login": null
+  },
+  "8e3fcc64-c05a-0505-a91d-5d3a69b13536": {
+    "id": "8e3fcc64-c05a-0505-a91d-5d3a69b13536",
+    "nome": "GUILHERME FERNANDES SIMPLICIO LOPES",
+    "email": "guilherme.lopes@alpitelbrasil.com.br",
+    "matricula": "BR0490313948",
+    "password_hash": "pbkdf2:sha256:100000$2ff22f881ca935ddd1c897dc712e60b1$6f3c5a09c20744984fdaef31d25a665db783e382b82bf5a2dd66d04c960e8776",
+    "role": "operator",
+    "status": "pending",
+    "created_at": "2026-09-26T09:22:21.022183+00:00",
     "last_login": null
   }
 }

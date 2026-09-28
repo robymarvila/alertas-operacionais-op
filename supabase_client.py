@@ -295,6 +295,52 @@ def fetch_audit_delivery_marcacoes(date_refs):
         print(f"[SUPABASE FETCH MARCACOES ERROR] {e}")
         return {}
 
+def fetch_audit_delivery_details(date_refs):
+    """
+    Busca horários de marcação e turno (shift_code, shift_slot) de team_delivery_records para auditoria.
+    Retorna dicionário {(team_code, date_ref): dict} e contingência {team_code: dict}.
+    """
+    try:
+        if not date_refs:
+            return {}
+        if isinstance(date_refs, (list, set, tuple)):
+            dates = [str(d).strip() for d in date_refs if str(d).strip()]
+        else:
+            dates = [str(d).strip() for d in str(date_refs).split(',') if str(d).strip()]
+        if not dates:
+            return {}
+        
+        if len(dates) == 1:
+            date_filter = f"date_ref=eq.{dates[0]}"
+        else:
+            date_filter = f"date_ref=in.({','.join(dates)})"
+            
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?select=team_code,date_ref,marcacao,shift_code,shift_slot,login_time,vehicle_type&{date_filter}&limit=2500"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=10)
+        details_map = {}
+        if resp.status_code == 200:
+            recs = resp.json() or []
+            for r in recs:
+                tc = (r.get("team_code") or "").strip().upper()
+                dr = (r.get("date_ref") or "").strip()
+                m = (r.get("marcacao") or "").strip()
+                s_code = (r.get("shift_code") or "").strip()
+                s_slot = (r.get("shift_slot") or "").strip()
+                info = {
+                    "marcacao": m if m and m != "--" else "--",
+                    "shift_code": s_code if s_code and s_code != "--" else "",
+                    "shift_slot": s_slot if s_slot and s_slot != "--" else "",
+                    "login_time": r.get("login_time") or "--:--",
+                    "vehicle_type": r.get("vehicle_type") or "--"
+                }
+                if tc:
+                    details_map[(tc, dr)] = info
+                    details_map[tc] = info
+        return details_map
+    except Exception as e:
+        print(f"[SUPABASE FETCH DELIVERY DETAILS ERROR] {e}")
+        return {}
+
 def fetch_team_timeline(team_code, date_ref=None):
     """
     Retorna a linha do tempo completa de coletas de uma equipe específica em um determinado dia.

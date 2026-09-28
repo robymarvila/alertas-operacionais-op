@@ -782,6 +782,7 @@
                             <button class="chip-filter active" data-status="ALL" onclick="toggleStatusFilter('ALL', this)">Todos (<span id="count-all">0</span>)</button>
                             <button class="chip-filter chip-success" data-status="ONLINE" onclick="toggleStatusFilter('ONLINE', this)">Online (<span id="count-online">0</span>)</button>
                             <button class="chip-filter chip-danger" data-status="OFFLINE" onclick="toggleStatusFilter('OFFLINE', this)">Offline Crítico (<span id="count-offline">0</span>)</button>
+                            <button class="chip-filter chip-amber" data-status="NAO_CADASTRADO" onclick="toggleStatusFilter('NAO_CADASTRADO', this)" title="Equipes em turno sem rádio/código cadastrado no TRBOnet">Não Cadastrado (<span id="count-unregistered">0</span>)</button>
                             <button class="chip-filter chip-warning" data-status="TRBO_ONLY" onclick="toggleStatusFilter('TRBO_ONLY', this)">Apenas TRBOnet (<span id="count-trbo-only">0</span>)</button>
                             <button class="chip-filter chip-info" data-status="GPS_ONLY" onclick="toggleStatusFilter('GPS_ONLY', this)">Com GPS (<span id="count-gps">0</span>)</button>
                         </div>
@@ -1033,6 +1034,24 @@
                             </div>
                             <div class="popover-items-list" id="auditFilterBaseList">
                                 <!-- Checkboxes hierárquicos preenchidos via JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3.5. Filtro de Turno Operacional (Multi-Seleção Popover: 06:00, 08:00, 12:00, 14:00, 20:00, 22:00, Outros) -->
+                    <div class="period-filter-group dropdown-popover-container">
+                        <span class="period-filter-label"><i data-lucide="clock" class="mini-icon"></i> TURNO</span>
+                        <button type="button" class="period-filter-pill-btn" id="auditFilterShiftBtn" data-target="auditFilterShiftMenu">
+                            <span id="auditFilterShiftLabel">Todos</span>
+                            <i data-lucide="chevron-right" class="pill-arrow"></i>
+                        </button>
+                        <div class="period-filter-popover" id="auditFilterShiftMenu" style="min-width: 220px;">
+                            <div class="popover-actions">
+                                <button type="button" class="popover-action-btn" data-action="select-all" data-audit-filter="shift">Todos</button>
+                                <button type="button" class="popover-action-btn" data-action="clear-all" data-audit-filter="shift">Limpar</button>
+                            </div>
+                            <div class="popover-items-list" id="auditFilterShiftList">
+                                <!-- Checkboxes preenchidos dinamicamente via JS -->
                             </div>
                         </div>
                     </div>

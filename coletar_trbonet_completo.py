@@ -78,16 +78,17 @@ def capturar_radios_trbonet_vivo():
     uia = client.IUIAutomation
     text_cond = uia.CreatePropertyCondition(auto.PropertyId.ControlTypeProperty, auto.ControlType.TextControl)
 
-    padrao_equipe = re.compile(r'\b(E[A-Z]{2}\d{2,4}[A-Z]?|N[A-Z]{2}\d{2,4}[A-Z]?)\b', re.IGNORECASE)
+    padrao_equipe = re.compile(r'\b([A-Z]{2,6}\d{2,4}[A-Z]?)\b', re.IGNORECASE)
     
     radios_gps = set()
     radios_nogps = set()
+    radios_offline = set()
+    radio_descriptions = {}
     
     current_category = "GPS"
-    stop_scrolling = False
 
     def scan_current_viewport():
-        nonlocal current_category, stop_scrolling
+        nonlocal current_category
         
         found = target_panel.Element.FindAll(4, text_cond) # 4 = TreeScope_Descendants
         count = found.Length
@@ -100,10 +101,9 @@ def capturar_radios_trbonet_vivo():
                 
             txt_lower = txt.strip().lower()
             
-            # Reconhecimento do grupo Offline / Desligado (Interrompe leitura imediatamente)
-            if ("offline" in txt_lower or "desligado" in txt_lower) and not padrao_equipe.match(txt):
-                stop_scrolling = True
-                return
+            # Reconhecimento do grupo Offline / Desligado
+            if ("offline" in txt_lower or "desligado" in txt_lower) and not padrao_equipe.search(txt):
+                current_category = "OFFLINE"
                 
             # Reconhecimento Sem GPS / No GPS / Indoor
             elif (
@@ -111,31 +111,37 @@ def capturar_radios_trbonet_vivo():
                 ("no gps" in txt_lower) or 
                 ("gps not fixed" in txt_lower) or
                 ("indoor" in txt_lower)
-            ) and not padrao_equipe.match(txt):
-                current_category = "NOGPS"
+            ) and not padrao_equipe.search(txt):
+                if current_category != "OFFLINE":
+                    current_category = "NOGPS"
                 
             # Reconhecimento Com GPS / GPS Fixed
             elif (
                 ("com gps" in txt_lower) or 
-                ("gps fixed" in txt_lower) or
+                ("gps fixed" in txt_lower) or 
                 ("gps online" in txt_lower)
-            ) and not padrao_equipe.match(txt):
-                current_category = "GPS"
+            ) and not padrao_equipe.search(txt):
+                if current_category != "OFFLINE":
+                    current_category = "GPS"
                 
             # Despachantes / Operadores do Sistema (ignora como rádio de campo)
-            elif ("dispatcher" in txt_lower or "despachador" in txt_lower) and not padrao_equipe.match(txt):
-                current_category = "DISPATCHER"
+            elif ("dispatcher" in txt_lower or "despachador" in txt_lower or "operadores online" in txt_lower) and not padrao_equipe.search(txt):
+                if current_category != "OFFLINE":
+                    current_category = "DISPATCHER"
                 
             if current_category == "DISPATCHER":
                 continue
 
             for m in padrao_equipe.findall(txt):
                 code = m.upper()
-                if len(code) >= 5 and code[:3] in {'ENL', 'ECL', 'EEL', 'EML', 'EQL', 'EVL', 'ESL'}:
-                    if current_category == "GPS":
-                        radios_gps.add(code)
-                    elif current_category == "NOGPS":
-                        radios_nogps.add(code)
+                radio_descriptions[code] = txt.strip()
+                if current_category == "GPS":
+                    radios_gps.add(code)
+                elif current_category == "NOGPS":
+                    radios_nogps.add(code)
+                elif current_category == "OFFLINE":
+                    if code not in radios_gps and code not in radios_nogps:
+                        radios_offline.add(code)
 
     # 1. Rolar suavemente para o topo (0%)
     if sp:
@@ -145,27 +151,53 @@ def capturar_radios_trbonet_vivo():
         except Exception:
             pass
 
-    # 2. Ler tela inicial (topo)
-    scan_current_viewport()
-
-    # 3. Rolar páginas até encontrar o grupo Offline / Desligado
-    if sp and not stop_scrolling:
-        for _ in range(8):
-            if stop_scrolling:
-                break
-            prev_pct = sp.VerticalScrollPercent
-            sp.Scroll(auto.ScrollAmount.NoAmount, auto.ScrollAmount.LargeIncrement)
-            time.sleep(0.04)
-            # Se chegou ao final do scroll
-            if abs(sp.VerticalScrollPercent - prev_pct) < 0.0001:
-                break
+    # FASE 1: Varredura detalhada dos grupos Online (0.0% a 11.0% com passos de 1.0%)
+    if sp:
+        view_size = getattr(sp, 'VerticalViewSize', 2.4)
+        pct = 0.0
+        while pct <= 11.0:
+            try:
+                sp.SetScrollPercent(auto.ScrollPattern.NoScrollValue, pct)
+                time.sleep(0.01)
+            except Exception:
+                pass
             scan_current_viewport()
+            pct += 1.0
+
+        # FASE 2: Varredura contínua e sobreposta dos Desligados (11.0% a 100.0%)
+        current_category = "OFFLINE"
+        step_offline = max(1.2, view_size * 0.75)
+
+        while pct <= 100.0:
+            try:
+                sp.SetScrollPercent(auto.ScrollPattern.NoScrollValue, pct)
+                time.sleep(0.01)
+            except Exception:
+                pass
+            scan_current_viewport()
+            if pct >= 100.0:
+                break
+            pct = min(100.0, pct + step_offline)
+
+        # Varredura final garantida a 100.0% (últimos itens da árvore)
+        try:
+            sp.SetScrollPercent(auto.ScrollPattern.NoScrollValue, 100.0)
+            time.sleep(0.01)
+        except Exception:
+            pass
+        scan_current_viewport()
 
         # Retornar para o topo
         try:
             sp.SetScrollPercent(auto.ScrollPattern.NoScrollValue, 0)
         except Exception:
             pass
+    else:
+        # Fallback sem scroll
+        scan_current_viewport()
+
+    # Garantir que rádios online nunca sejam sobrescritos como offline
+    radios_offline = radios_offline - radios_gps - radios_nogps
 
     t_end = time.time()
     duracao = round(t_end - t_start, 2)
@@ -179,7 +211,9 @@ def capturar_radios_trbonet_vivo():
             "gps": True,
             "last_signal": agora,
             "channel": "TRBOnet (Com GPS)",
-            "status": "ONLINE"
+            "status": "ONLINE",
+            "registered": True,
+            "description": radio_descriptions.get(code, code)
         }
 
     for code in radios_nogps:
@@ -189,16 +223,52 @@ def capturar_radios_trbonet_vivo():
                 "gps": False,
                 "last_signal": agora,
                 "channel": "TRBOnet (Sem GPS)",
-                "status": "ONLINE"
+                "status": "ONLINE",
+                "registered": True,
+                "description": radio_descriptions.get(code, code)
             }
+
+    for code in radios_offline:
+        if code not in resultado:
+            resultado[code] = {
+                "code": code,
+                "gps": False,
+                "last_signal": "--:--:--",
+                "channel": "TRBOnet (Desligado)",
+                "status": "OFFLINE",
+                "registered": True,
+                "description": radio_descriptions.get(code, code)
+            }
+
+    online_total = len(radios_gps) + len(radios_nogps)
+
+    # Salvar cache persistente de códigos cadastrados no disco
+    try:
+        import os
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(base_dir, 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        cache_path = os.path.join(data_dir, 'trbonet_registered_codes.json')
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                "updated_at": datetime.now().isoformat(),
+                "total_cadastrados": len(resultado),
+                "total_online": online_total,
+                "total_desligados": len(radios_offline),
+                "codes": sorted(list(resultado.keys()))
+            }, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
     return {
         "status": "success",
         "duration_seconds": duracao,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "total_online": len(resultado),
+        "total_online": online_total,
         "total_com_gps": len(radios_gps),
         "total_sem_gps": len(radios_nogps),
+        "total_desligados": len(radios_offline),
+        "total_cadastrados": len(resultado),
         "radios": resultado
     }
 
@@ -219,5 +289,7 @@ if __name__ == '__main__':
     print(f"Total Online: {res.get('total_online', 0)}")
     print(f"Com GPS: {res.get('total_com_gps', 0)}")
     print(f"Sem GPS: {res.get('total_sem_gps', 0)}")
+    print(f"Desligados: {res.get('total_desligados', 0)}")
+    print(f"Total Cadastrados: {res.get('total_cadastrados', 0)}")
     print("="*60)
 

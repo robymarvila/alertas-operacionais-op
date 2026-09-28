@@ -33,6 +33,8 @@ class DataManager:
         # Base de dados em tempo real (inicia 100% vazia até receber sincronização real)
         self.poweron_teams = []
         self.trbonet_teams = {}
+        self.trbonet_offline_teams = {}
+        self.trbonet_registered_codes = set()
         self.enel_team_details = {}
 
         # Registro histórico por equipe
@@ -44,6 +46,16 @@ class DataManager:
         self.update_count = 0
         self.audit_log = []
         
+        # Carregar cache de códigos registrados do TRBOnet se existir
+        try:
+            cache_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'trbonet_registered_codes.json')
+            if os.path.exists(cache_file):
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    c_data = json.load(f)
+                    self.trbonet_registered_codes = set(c_data.get('codes', []))
+        except Exception:
+            pass
+
         # Carregar automaticamente o arquivo calendário se existir
         try:
             self.carregar_arquivo_calendario_poweron()
@@ -221,6 +233,7 @@ class DataManager:
             prefix, base_name, region, is_other = self.get_base_info(code)
             in_poweron = code in self.poweron_teams
             in_trbonet = code in self.trbonet_teams
+            is_cadastrado = code in getattr(self, 'trbonet_registered_codes', set())
             
             trbo_info = self.trbonet_teams.get(code, {})
             has_gps = trbo_info.get("gps", False) if in_trbonet else False
@@ -228,7 +241,18 @@ class DataManager:
             radio_id = trbo_info.get("radio_id", "N/A") if in_trbonet else None
             channel = trbo_info.get("channel", "N/A") if in_trbonet else None
 
-            # Classificação de Status
+            # Determinação do Status TRBOnet Tripartite: CONECTADO, DESCONECTADO ou NAO_CADASTRADO
+            if in_trbonet:
+                trbonet_status = "CONECTADO"
+                trbonet_status_label = "Conectado"
+            elif is_cadastrado:
+                trbonet_status = "DESCONECTADO"
+                trbonet_status_label = "Desconectado"
+            else:
+                trbonet_status = "NAO_CADASTRADO"
+                trbonet_status_label = "Não Cadastrado"
+
+            # Classificação de Status de Conformidade
             if in_poweron and in_trbonet:
                 if has_gps:
                     status_code = "ONLINE_GPS"
@@ -245,12 +269,20 @@ class DataManager:
                     badge_class = "badge-online-nogps"
                     details_text = "Equipe conectada no TRBOnet, porém sem coordenadas de GPS válidas no momento."
             elif in_poweron and not in_trbonet:
-                status_code = "OFFLINE"
-                status_label = "Offline Crítico"
-                status_category = "APENAS_POWERON"
-                severity = "danger"
-                badge_class = "badge-offline-critical"
-                details_text = "ALERTA CCO: Equipe escalada no PowerON mas sem sinal de rádio ou conexão no TRBOnet."
+                if trbonet_status == "NAO_CADASTRADO":
+                    status_code = "NAO_CADASTRADO"
+                    status_label = "Não Cadastrado"
+                    status_category = "APENAS_POWERON"
+                    severity = "warning"
+                    badge_class = "badge-unregistered"
+                    details_text = "ALERTA: Equipe escalada em turno no Equipes Brasil, porém NÃO CADASTRADA na ferramenta TRBOnet (código inexistente no sistema)."
+                else:
+                    status_code = "OFFLINE"
+                    status_label = "Offline Crítico"
+                    status_category = "APENAS_POWERON"
+                    severity = "danger"
+                    badge_class = "badge-offline-critical"
+                    details_text = "ALERTA CCO: Equipe escalada no Equipes Brasil cadastrada no TRBOnet, mas com rádio desligado ou fora de área."
             elif not in_poweron and in_trbonet:
                 status_code = "TRBO_ONLY"
                 status_label = "Apenas TRBOnet"
@@ -304,6 +336,9 @@ class DataManager:
                 "is_other_base": False,
                 "poweron": in_poweron,
                 "trbonet": in_trbonet,
+                "trbonet_cadastrado": is_cadastrado,
+                "trbonet_status": trbonet_status,
+                "trbonet_status_label": trbonet_status_label,
                 "gps": has_gps,
                 "last_signal": last_signal,
                 "radio_id": radio_id,
@@ -340,6 +375,8 @@ class DataManager:
         total_online_poweron = online_with_gps + online_without_gps
         offline_count = sum(1 for t in teams if t["status_code"] == "OFFLINE")
         trbo_only_count = sum(1 for t in teams if t["status_code"] == "TRBO_ONLY")
+        total_nao_cadastrados = sum(1 for t in teams if t.get("trbonet_status") == "NAO_CADASTRADO" and t["poweron"])
+        total_desconectados = sum(1 for t in teams if t.get("trbonet_status") == "DESCONECTADO" and t["poweron"])
 
         compliance_rate = round((total_online_poweron / total_poweron * 100), 1) if total_poweron > 0 else 0
         gps_rate = round((online_with_gps / total_online_poweron * 100), 1) if total_online_poweron > 0 else 0
@@ -388,6 +425,8 @@ class DataManager:
                 "online_without_gps": online_without_gps,
                 "total_online_poweron": total_online_poweron,
                 "total_offline": offline_count,
+                "total_nao_cadastrados": total_nao_cadastrados,
+                "total_desconectados": total_desconectados,
                 "total_trbo_only": trbo_only_count,
                 "compliance_rate": compliance_rate,
                 "gps_rate": gps_rate,
@@ -474,10 +513,21 @@ class DataManager:
 
         if trbonet_dict is not None:
             # Filtrar somente equipes que pertencem às 14 bases oficiais
-            self.trbonet_teams = {
-                str(k).strip().upper(): v for k, v in trbonet_dict.items() 
-                if len(str(k).strip().upper()) >= 3 and str(k).strip().upper()[:3] in self.official_bases
-            }
+            online_dict = {}
+            offline_dict = {}
+            reg_codes = set()
+            for k, v in trbonet_dict.items():
+                code_clean = str(k).strip().upper()
+                reg_codes.add(code_clean)
+                st = v.get("status", "ONLINE") if isinstance(v, dict) else "ONLINE"
+                if st == "ONLINE":
+                    online_dict[code_clean] = v
+                else:
+                    offline_dict[code_clean] = v
+
+            self.trbonet_teams = online_dict
+            self.trbonet_offline_teams = offline_dict
+            self.trbonet_registered_codes = reg_codes
             self.last_trbonet_sync = self.last_update.strftime("%d/%m/%Y %H:%M:%S")
 
         # Atualizar contadores históricos das 14 bases oficiais
@@ -557,6 +607,8 @@ class DataManager:
         """Zera todos os dados em memória para estado limpo."""
         self.poweron_teams = []
         self.trbonet_teams = {}
+        self.trbonet_offline_teams = {}
+        self.trbonet_registered_codes = set()
         self.team_history = {}
         self.audit_log = []
         self.last_update = datetime.now(BR_TZ)

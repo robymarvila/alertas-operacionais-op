@@ -20,6 +20,7 @@ from supabase_client import (
     fetch_audit_logs,
     fetch_daily_audit_summary,
     fetch_audit_delivery_marcacoes,
+    fetch_audit_delivery_details,
     fetch_team_timeline,
     fetch_team_monthly_calendar_audit,
     fetch_active_teams_list,
@@ -1243,25 +1244,41 @@ def get_audit_logs():
 def get_daily_audit_summary():
     """
     Retorna o consolidado de auditoria diária (se a equipe conectou no dia, uptime, total coletas).
-    Enriquecido com horário de marcação (login do Equipes Brasil).
+    Enriquecido com horário de marcação (login do Equipes Brasil) e Turno Operacional.
     """
     date_ref = request.args.get("date")
     base_code = request.args.get("base")
     res = fetch_daily_audit_summary(date_ref=date_ref, base_code=base_code)
     
     if res.get("status") == "success" and isinstance(res.get("data"), list):
-        # 1. Mapa de marcação da memória local (hoje em tempo real)
+        # 1. Mapas de marcação e turno da memória local (hoje em tempo real)
         memory_marc_map = {}
+        memory_shift_map = {}
         try:
             for t_code, t_data in getattr(delivery_manager, 'daily_accumulated_teams', {}).items():
+                tc_clean = str(t_code).strip().upper()
                 m_val = str(t_data.get("marcacao") or t_data.get("hora_marc") or "").strip()
                 if m_val and m_val != "--":
-                    memory_marc_map[str(t_code).strip().upper()] = m_val
+                    memory_marc_map[tc_clean] = m_val
+                s_code = str(t_data.get("shift_code") or "").strip()
+                s_slot = str(t_data.get("shift_slot") or t_data.get("turno") or "").strip()
+                if s_code or s_slot:
+                    memory_shift_map[tc_clean] = {"shift_code": s_code, "shift_slot": s_slot}
         except Exception:
             pass
 
-        # 2. Mapa de marcação histórico do Supabase (para datas passadas ou registros deduplicados)
-        db_marc_map = {}
+        try:
+            for t_code, enel_d in getattr(data_manager, 'enel_team_details', {}).items():
+                tc_clean = str(t_code).strip().upper()
+                if tc_clean not in memory_shift_map:
+                    s_slot = str(enel_d.get("shift_slot") or enel_d.get("shift_code") or "").strip()
+                    if s_slot and s_slot != "--":
+                        memory_shift_map[tc_clean] = {"shift_code": s_slot, "shift_slot": s_slot}
+        except Exception:
+            pass
+
+        # 2. Mapa histórico de detalhes do Supabase (marcação e turno)
+        db_details_map = {}
         try:
             dates_in_res = set(filter(None, [r.get("date_ref") for r in res["data"]]))
             if date_ref:
@@ -1269,16 +1286,57 @@ def get_daily_audit_summary():
                     if d.strip():
                         dates_in_res.add(d.strip())
             if dates_in_res:
-                db_marc_map = fetch_audit_delivery_marcacoes(list(dates_in_res))
+                db_details_map = fetch_audit_delivery_details(list(dates_in_res))
         except Exception:
             pass
 
-        # 3. Injeta o horário de marcação em cada linha
+        # 3. Injeta horário de marcação e turno em cada linha
         for row in res["data"]:
             tc = str(row.get("team_code") or "").strip().upper()
             dr = str(row.get("date_ref") or "").strip()
-            marc = db_marc_map.get((tc, dr)) or db_marc_map.get(tc) or memory_marc_map.get(tc) or "--"
+            
+            det = db_details_map.get((tc, dr)) or db_details_map.get(tc) or memory_shift_map.get(tc) or {}
+            marc = det.get("marcacao") if isinstance(det, dict) and det.get("marcacao") and det.get("marcacao") != "--" else (memory_marc_map.get(tc) or "--")
+            
+            s_code = det.get("shift_code") if isinstance(det, dict) else ""
+            s_slot = det.get("shift_slot") if isinstance(det, dict) else ""
+            
+            if not s_code and isinstance(memory_shift_map.get(tc), dict):
+                s_code = memory_shift_map[tc].get("shift_code", "")
+            if not s_slot and isinstance(memory_shift_map.get(tc), dict):
+                s_slot = memory_shift_map[tc].get("shift_slot", "")
+
+            turno_val = s_code or s_slot or "--"
             row["marcacao"] = marc
+            row["shift_code"] = s_code
+            row["shift_slot"] = s_slot
+            row["turno"] = turno_val
+
+        # 4. Injeta status de cadastro no TRBOnet (identifica códigos inexistentes)
+        reg_codes = set(getattr(data_manager, 'trbonet_registered_codes', set()))
+        if not reg_codes:
+            cache_file = os.path.join(os.path.dirname(__file__), 'data', 'trbonet_registered_codes.json')
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        c_data = json.load(f)
+                        reg_codes = set(c_data.get('codes', []))
+                except Exception:
+                    pass
+
+        for row in res["data"]:
+            tc = str(row.get("team_code") or "").strip().upper()
+            was_online = bool(row.get("was_online_trbonet"))
+            is_cadastrado = (tc in reg_codes) if reg_codes else True
+            if was_online:
+                trbonet_status = "CONECTADO"
+            elif is_cadastrado:
+                trbonet_status = "DESCONECTADO"
+            else:
+                trbonet_status = "NAO_CADASTRADO"
+
+            row["is_cadastrado"] = is_cadastrado
+            row["trbonet_status"] = trbonet_status
 
     return jsonify(res)
 

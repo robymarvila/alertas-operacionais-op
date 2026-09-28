@@ -1401,6 +1401,39 @@ body.theme-light .text-cyan { color: #0284c7 !important; }
     box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
 }
 
+.badge-unregistered,
+.status-badge.badge-unregistered,
+.badge-status.badge-unregistered {
+    background: rgba(245, 158, 11, 0.16);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 700;
+}
+
+.badge-shift-pill {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.74rem;
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    display: inline-block;
+    letter-spacing: 0.5px;
+}
+
+.chip-filter.chip-amber.active {
+    border-color: #f59e0b;
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.15);
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+}
+
 .badge-dot {
     width: 6px;
     height: 6px;

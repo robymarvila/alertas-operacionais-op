@@ -1660,6 +1660,7 @@ function getFilteredTeams() {
         filtered = filtered.filter(t => {
             if (appState.selectedStatuses.has('ONLINE') && t.trbonet) return true;
             if (appState.selectedStatuses.has('OFFLINE') && t.status_code === 'OFFLINE') return true;
+            if (appState.selectedStatuses.has('NAO_CADASTRADO') && (t.status_code === 'NAO_CADASTRADO' || t.trbonet_status === 'NAO_CADASTRADO')) return true;
             if (appState.selectedStatuses.has('TRBO_ONLY') && t.status_code === 'TRBO_ONLY') return true;
             if (appState.selectedStatuses.has('GPS_ONLY') && t.gps) return true;
             return false;
@@ -1739,9 +1740,15 @@ function renderTableView(teams) {
             ? '<span class="badge-status badge-success"><i data-lucide="check"></i> Em Turno</span>'
             : '<span class="badge-status badge-muted"><i data-lucide="minus"></i> Fora de Escala</span>';
 
-        const trboBadge = t.trbonet 
-            ? '<span class="badge-status badge-success"><i data-lucide="radio"></i> Conectado</span>'
-            : '<span class="badge-status badge-danger"><i data-lucide="x"></i> Desconectado</span>';
+        let trboBadge = '';
+        const stTrbo = t.trbonet_status || (t.trbonet ? 'CONECTADO' : 'DESCONECTADO');
+        if (stTrbo === 'CONECTADO') {
+            trboBadge = '<span class="badge-status badge-success" title="Rádio Conectado e Ativo no TRBOnet One"><i data-lucide="radio"></i> Conectado</span>';
+        } else if (stTrbo === 'NAO_CADASTRADO') {
+            trboBadge = '<span class="badge-status badge-unregistered" title="Equipe sem código de rádio cadastrado no TRBOnet One"><i data-lucide="alert-circle"></i> Não Cadastrado</span>';
+        } else {
+            trboBadge = '<span class="badge-status badge-danger" title="Rádio cadastrado no TRBOnet One, porém Desligado/Offline"><i data-lucide="radio-off"></i> Desconectado</span>';
+        }
 
         const shiftDisplay = t.shift_slot || t.shift_code || '--';
         const frotaDisplay = t.vehicle_type || '--';
@@ -1825,7 +1832,9 @@ function renderCardsView(teams) {
                     </div>
                     <div class="team-card-row">
                         <span class="card-row-label"><i data-lucide="radio" class="mini-icon"></i> TRBOnet</span>
-                        <span class="card-row-val ${t.trbonet ? 'text-emerald' : 'text-rose'}">${t.trbonet ? 'Conectado' : 'Offline'}</span>
+                        <span class="card-row-val ${t.trbonet_status === 'CONECTADO' ? 'text-emerald font-bold' : (t.trbonet_status === 'NAO_CADASTRADO' ? 'text-amber font-bold' : 'text-rose')}">
+                            ${t.trbonet_status_label || (t.trbonet ? 'Conectado' : 'Desconectado')}
+                        </span>
                     </div>
                     <div class="team-card-row">
                         <span class="card-row-label"><i data-lucide="navigation" class="mini-icon"></i> Telemetria</span>
@@ -1857,12 +1866,14 @@ function updateFilterBadges() {
     const allEl = document.getElementById('count-all');
     const onlineEl = document.getElementById('count-online');
     const offlineEl = document.getElementById('count-offline');
+    const unregEl = document.getElementById('count-unregistered');
     const trboEl = document.getElementById('count-trbo-only');
     const gpsEl = document.getElementById('count-gps');
 
     if (allEl) allEl.textContent = target.length;
     if (onlineEl) onlineEl.textContent = target.filter(t => t.trbonet).length;
     if (offlineEl) offlineEl.textContent = target.filter(t => t.status_code === 'OFFLINE').length;
+    if (unregEl) unregEl.textContent = target.filter(t => t.status_code === 'NAO_CADASTRADO' || t.trbonet_status === 'NAO_CADASTRADO').length;
     if (trboEl) trboEl.textContent = target.filter(t => t.status_code === 'TRBO_ONLY').length;
     if (gpsEl) gpsEl.textContent = target.filter(t => t.gps).length;
 }
@@ -2105,7 +2116,15 @@ function openTeamModal(code) {
     if (desc) desc.textContent = team.details_text;
 
     if (pwStatus) pwStatus.innerHTML = team.poweron ? '<span class="text-emerald font-bold">✔ Logada no Turno</span>' : '<span class="text-muted">Fora de Escala</span>';
-    if (trboStatus) trboStatus.innerHTML = team.trbonet ? '<span class="text-emerald font-bold">✔ Rádio Conectado</span>' : '<span class="text-rose font-bold">✖ Rádio Desligado</span>';
+    if (trboStatus) {
+        if (team.trbonet_status === 'CONECTADO' || team.trbonet) {
+            trboStatus.innerHTML = '<span class="text-emerald font-bold">✔ Rádio Conectado</span>';
+        } else if (team.trbonet_status === 'NAO_CADASTRADO') {
+            trboStatus.innerHTML = '<span class="text-amber font-bold">⚠ Não Cadastrado no TRBOnet</span>';
+        } else {
+            trboStatus.innerHTML = '<span class="text-rose font-bold">✖ Rádio Desconectado</span>';
+        }
+    }
     if (gpsStatus) gpsStatus.innerHTML = team.trbonet ? (team.gps ? '<span class="text-cyan font-bold">✔ Satélite Fixado</span>' : '<span class="text-amber font-bold">⚠ Sem Fixação GPS</span>') : '<span class="text-muted">--</span>';
     if (lastSig) lastSig.textContent = team.last_signal || 'Sem sinal hoje';
 
@@ -2679,6 +2698,7 @@ const auditState = {
     filters: {
         regions: [],
         bases: [],
+        shifts: [],
         statuses: [],
         connected: [],
         poweron: [],
@@ -2787,6 +2807,7 @@ function updateAuditPillLabel(filterType, totalCount, selectedCount, firstValue)
     const labelMap = {
         'region': 'auditFilterRegionLabel',
         'base': 'auditFilterBaseLabel',
+        'shift': 'auditFilterShiftLabel',
         'status': 'auditFilterStatusLabel',
         'connected': 'auditFilterConnectedLabel',
         'poweron': 'auditFilterPoweronLabel'
@@ -2799,7 +2820,7 @@ function updateAuditPillLabel(filterType, totalCount, selectedCount, firstValue)
     } else if (selectedCount === 0) {
         el.textContent = 'Nenhum';
     } else if (selectedCount === 1) {
-        let clean = (firstValue || '').replace('Região ', '').replace('Base ', '');
+        let clean = (firstValue || '').replace('Região ', '').replace('Base ', '').replace('Turno ', '');
         el.textContent = clean || '1 sel.';
     } else {
         el.textContent = `${selectedCount} sel.`;
@@ -2816,6 +2837,7 @@ function syncAuditFiltersFromDOM() {
 
     auditState.filters.regions = getSelected('region');
     auditState.filters.bases = getSelected('base');
+    auditState.filters.shifts = getSelected('shift');
     auditState.filters.statuses = getSelected('status');
     auditState.filters.connected = getSelected('connected');
     auditState.filters.poweron = getSelected('poweron');
@@ -2978,6 +3000,26 @@ function initAuditMultiFilters() {
         `;
     }
 
+    // 2.5. TURNO OPERACIONAL (Multi-seleção de Horários)
+    const shiftList = document.getElementById('auditFilterShiftList');
+    if (shiftList) {
+        const shifts = [
+            { code: '06:00', label: 'Turno 06:00' },
+            { code: '08:00', label: 'Turno 08:00' },
+            { code: '12:00', label: 'Turno 12:00' },
+            { code: '14:00', label: 'Turno 14:00' },
+            { code: '20:00', label: 'Turno 20:00' },
+            { code: '22:00', label: 'Turno 22:00' },
+            { code: 'OUTROS', label: 'Outros Turnos' }
+        ];
+        shiftList.innerHTML = shifts.map(s => `
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="shift" value="${s.code}" checked>
+                <span>${s.label}</span>
+            </label>
+        `).join('');
+    }
+
     // 3. STATUS DA AUDITORIA
     const statusList = document.getElementById('auditFilterStatusList');
     if (statusList) {
@@ -2989,6 +3031,10 @@ function initAuditMultiFilters() {
             <label class="popover-item-label">
                 <input type="checkbox" class="popover-checkbox" data-audit-filter="status" value="APENAS_POWERON" checked>
                 <span>Apenas no Equipes Brasil</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="status" value="NAO_CADASTRADO" checked>
+                <span>Não Cadastrado no TRBOnet</span>
             </label>
             <label class="popover-item-label">
                 <input type="checkbox" class="popover-checkbox" data-audit-filter="status" value="APENAS_TRBONET" checked>
@@ -3012,6 +3058,10 @@ function initAuditMultiFilters() {
             <label class="popover-item-label">
                 <input type="checkbox" class="popover-checkbox" data-audit-filter="connected" value="NAO" checked>
                 <span>Não (Nunca Conectou)</span>
+            </label>
+            <label class="popover-item-label">
+                <input type="checkbox" class="popover-checkbox" data-audit-filter="connected" value="NAO_CADASTRADO" checked>
+                <span>Não Cadastrado</span>
             </label>
         `;
     }
@@ -4050,19 +4100,51 @@ function applyAuditFilters() {
         }
     }
 
+    // 3.5. Filtro por Turno Operacional (Multi-seleção)
+    const { shifts } = auditState.filters;
+    if (shifts && shifts.length >= 0) {
+        if (shifts.length === 0) {
+            filtered = [];
+        } else if (shifts.length < 7) {
+            const shiftSet = new Set(shifts.map(s => s.toUpperCase()));
+            const wantOutros = shiftSet.has('OUTROS');
+            filtered = filtered.filter(item => {
+                const sItem = `${item.shift_code || ''} ${item.shift_slot || ''} ${item.turno || ''}`.toUpperCase().trim();
+                if (!sItem || sItem === '--') return wantOutros;
+                for (const s of shiftSet) {
+                    if (s !== 'OUTROS' && sItem.includes(s)) return true;
+                }
+                if (wantOutros) {
+                    const knownShifts = ['06:00', '08:00', '12:00', '14:00', '20:00', '22:00'];
+                    const isKnown = knownShifts.some(ks => sItem.includes(ks));
+                    if (!isKnown) return true;
+                }
+                return false;
+            });
+        }
+    }
+
     // 4. Filtros exclusivos do modo 'daily'
     if (auditState.mode === 'daily') {
         // Status geral
-        if (statuses && statuses.length > 0 && statuses.length < 4) {
+        const allPossibleStatuses = ['CONFORME', 'APENAS_POWERON', 'NAO_CADASTRADO', 'APENAS_TRBONET', 'OFFLINE'];
+        if (statuses && statuses.length > 0 && statuses.length < allPossibleStatuses.length) {
             const statusSet = new Set(statuses);
             filtered = filtered.filter(item => {
                 const wasPw = !!item.was_in_poweron;
                 const wasOn = !!item.was_online_trbonet;
+                const isUnreg = item.trbonet_status === 'NAO_CADASTRADO' || item.is_cadastrado === false;
 
                 let st = 'OFFLINE';
-                if (wasPw && wasOn) st = 'CONFORME';
-                else if (wasPw && !wasOn) st = 'APENAS_POWERON';
-                else if (!wasPw && wasOn) st = 'APENAS_TRBONET';
+                if (isUnreg) {
+                    st = 'NAO_CADASTRADO';
+                } else if (wasPw && wasOn) {
+                    st = 'CONFORME';
+                } else if (wasPw && !wasOn) {
+                    st = 'APENAS_POWERON';
+                } else if (!wasPw && wasOn) {
+                    st = 'APENAS_TRBONET';
+                }
 
                 return statusSet.has(st);
             });
@@ -4071,9 +4153,20 @@ function applyAuditFilters() {
         }
 
         // Conectou Hoje?
-        if (connected && connected.length === 1) {
-            const wantOnline = (connected[0] === 'SIM');
-            filtered = filtered.filter(item => wantOnline ? !!item.was_online_trbonet : !item.was_online_trbonet);
+        if (connected && connected.length > 0 && connected.length < 3) {
+            const connSet = new Set(connected);
+            filtered = filtered.filter(item => {
+                const wasOn = !!item.was_online_trbonet;
+                const isUnreg = item.trbonet_status === 'NAO_CADASTRADO' || item.is_cadastrado === false;
+                
+                if (isUnreg) {
+                    return connSet.has('NAO_CADASTRADO');
+                } else if (wasOn) {
+                    return connSet.has('SIM');
+                } else {
+                    return connSet.has('NAO');
+                }
+            });
         } else if (connected && connected.length === 0) {
             filtered = [];
         }
@@ -4229,6 +4322,7 @@ function renderAuditTable() {
                 <th>Código Equipe</th>
                 <th>Base Operacional</th>
                 <th>Região</th>
+                <th>Turno</th>
                 <th>Escala PowerON</th>
                 <th>Conectou no TRBOnet Hoje?</th>
                 <th>Horário Marcação (Login)</th>
@@ -4243,7 +4337,7 @@ function renderAuditTable() {
         if (auditState.filteredData.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="11" class="empty-table-cell">
+                    <td colspan="12" class="empty-table-cell">
                         <div class="empty-state-box">
                             <i data-lucide="inbox"></i>
                             <p>Nenhum registro de auditoria encontrado para os filtros selecionados.</p>
@@ -4258,16 +4352,19 @@ function renderAuditTable() {
         tbody.innerHTML = auditState.filteredData.map(item => {
             const wasOnline = item.was_online_trbonet;
             const wasPw = item.was_in_poweron;
+            const isUnregistered = item.trbonet_status === 'NAO_CADASTRADO' || item.is_cadastrado === false;
             
             let statusBadge = '';
-            if (wasPw && wasOnline) {
+            if (isUnregistered) {
+                statusBadge = '<span class="status-badge badge-unregistered" title="Código de rádio inexistente / não cadastrado no TRBOnet"><i data-lucide="alert-circle"></i> NÃO CADASTRADO</span>';
+            } else if (wasPw && wasOnline) {
                 statusBadge = '<span class="status-badge badge-online-gps"><i data-lucide="check-circle"></i> CONECTOU HOJE</span>';
             } else if (wasPw && !wasOnline) {
                 statusBadge = '<span class="status-badge badge-offline-critical"><i data-lucide="alert-triangle"></i> NUNCA CONECTOU</span>';
             } else if (!wasPw && wasOnline) {
                 statusBadge = '<span class="status-badge badge-trbo-only"><i data-lucide="radio"></i> APENAS TRBONET</span>';
             } else {
-                statusBadge = '<span class="status-badge badge-offline-gray">OFFLINE</span>';
+                statusBadge = '<span class="status-badge badge-offline-gray">DESCONECTADO</span>';
             }
 
             const pwBadge = wasPw 
@@ -4276,6 +4373,11 @@ function renderAuditTable() {
 
             const baseInfo = getAuditBaseInfo(item.base_code);
             const basePill = `<span class="audit-base-pill" title="${baseInfo.name}"><span class="base-code-tag">${item.base_code || '--'}</span> ${baseInfo.short}</span>`;
+
+            const turnoStr = (item.turno || item.shift_code || item.shift_slot || '--').replace('Turno', '').trim();
+            const turnoPill = (turnoStr && turnoStr !== '--')
+                ? `<span class="badge-shift-pill" title="Turno ${turnoStr}">${turnoStr}</span>`
+                : '<span class="text-secondary">--</span>';
 
             const marcacaoVal = (item.marcacao && item.marcacao !== '--') ? item.marcacao : '--';
             const firstSeen = formatTime(item.first_seen_online);
@@ -4286,6 +4388,7 @@ function renderAuditTable() {
                     <td><strong class="team-code-cell">${item.team_code}</strong></td>
                     <td>${basePill}</td>
                     <td><span class="text-secondary">${item.region || (baseInfo.region ? `Região ${baseInfo.region}` : 'Outras Bases')}</span></td>
+                    <td>${turnoPill}</td>
                     <td>${pwBadge}</td>
                     <td>${statusBadge}</td>
                     <td><span class="time-cell font-bold text-cyan" style="font-family: 'JetBrains Mono', monospace;">${marcacaoVal}</span></td>
@@ -4494,8 +4597,9 @@ function exportAuditTableExcel() {
                         "Código Base": i.base_code || '',
                         "Base Operacional": baseInfo.name,
                         "Região": i.region || (baseInfo.region ? `Região ${baseInfo.region}` : ''),
+                        "Turno": (i.turno || i.shift_code || i.shift_slot || '--').replace('Turno', '').trim(),
                         "Escala PowerON": i.was_in_poweron ? 'SIM' : 'NÃO',
-                        "Conectou TRBOnet": i.was_online_trbonet ? 'SIM' : 'NÃO',
+                        "Conectou TRBOnet": (i.trbonet_status === 'NAO_CADASTRADO' || i.is_cadastrado === false) ? 'NÃO CADASTRADO' : (i.was_online_trbonet ? 'SIM' : 'NÃO'),
                         "Horário Marcação (Login)": marcVal,
                         "1º Sinal TRBOnet": fSeen,
                         "Coletas Online": i.times_seen_online || 0,
@@ -4574,7 +4678,7 @@ function exportAuditTableCSV() {
             const marcVal = (i.marcacao && i.marcacao !== '--') ? i.marcacao : '--';
             const fSeen = formatTime(i.first_seen_online);
 
-            csvContent += `"${i.date_ref || dateVal}";"${i.team_code}";"${i.base_code || ''}";"${baseInfo.name}";"${i.region || (baseInfo.region ? `Região ${baseInfo.region}` : '')}";"${i.was_in_poweron ? 'SIM' : 'NAO'}";"${i.was_online_trbonet ? 'SIM' : 'NAO'}";"${marcVal}";"${fSeen}";"${i.times_seen_online || 0}";"${i.total_sync_checks || 0}";"${i.uptime_percentage || 0}%";"${formatTime(i.last_seen_online)}"\n`;
+            csvContent += `"${i.date_ref || dateVal}";"${i.team_code}";"${i.base_code || ''}";"${baseInfo.name}";"${i.region || (baseInfo.region ? `Região ${baseInfo.region}` : '')}";"${i.was_in_poweron ? 'SIM' : 'NAO'}";"${(i.trbonet_status === 'NAO_CADASTRADO' || i.is_cadastrado === false) ? 'NAO_CADASTRADO' : (i.was_online_trbonet ? 'SIM' : 'NAO')}";"${marcVal}";"${fSeen}";"${i.times_seen_online || 0}";"${i.total_sync_checks || 0}";"${i.uptime_percentage || 0}%";"${formatTime(i.last_seen_online)}"\n`;
         });
     } else {
         csvContent += 'Data_Hora_Coleta;Data_Ref;Equipe;Codigo_Base;Base_Operacional;Regiao;Status;PowerON;TRBOnet;GPS;Radio_ID;Canal;Ultimo_Sinal\n';
