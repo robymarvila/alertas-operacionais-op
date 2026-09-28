@@ -335,6 +335,8 @@ class DataManager:
             login_time = enel_d.get("login_time") or "--:--"
             logoff_time = enel_d.get("logoff_time") or "--:--"
 
+            was_online_today = in_trbonet or (hoje_str in hist.get("trbonet_days", [])) or (hist.get("online_minutes", 0) > 0)
+
             teams.append({
                 "code": code,
                 "prefix": prefix,
@@ -343,6 +345,7 @@ class DataManager:
                 "is_other_base": False,
                 "poweron": in_poweron,
                 "trbonet": in_trbonet,
+                "was_online_today": was_online_today,
                 "trbonet_cadastrado": is_cadastrado,
                 "trbonet_status": trbonet_status,
                 "trbonet_status_label": trbonet_status_label,
@@ -399,7 +402,8 @@ class DataManager:
             b_poweron = sum(1 for t in base_teams if t["poweron"])
             b_online_trbo = sum(1 for t in base_teams if t["poweron"] and t["trbonet"])
             b_gps = sum(1 for t in base_teams if t["poweron"] and t["trbonet"] and t["gps"])
-            b_offline = sum(1 for t in base_teams if t["poweron"] and not t["trbonet"])
+            b_offline = sum(1 for t in base_teams if t["poweron"] and not t["trbonet"] and t.get("trbonet_status") != "NAO_CADASTRADO")
+            b_unregistered = sum(1 for t in base_teams if t["poweron"] and not t["trbonet"] and t.get("trbonet_status") == "NAO_CADASTRADO")
             b_trbo_only = sum(1 for t in base_teams if not t["poweron"] and t["trbonet"])
             b_total_trbo = sum(1 for t in base_teams if t["trbonet"])
             b_compliance = round((b_online_trbo / b_poweron * 100), 1) if b_poweron > 0 else 0
@@ -413,6 +417,7 @@ class DataManager:
                 "total_trbonet": b_total_trbo,
                 "with_gps": b_gps,
                 "offline": b_offline,
+                "nao_cadastrado": b_unregistered,
                 "trbo_only": b_trbo_only,
                 "compliance_rate": b_compliance,
                 "is_other": False

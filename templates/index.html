@@ -601,7 +601,28 @@
                     <div class="card-accent-bar bar-rose"></div>
                 </div>
 
-                <!-- KPI 4: Apenas no TRBOnet (Aviso) -->
+                <!-- KPI 4: Não Cadastrados no TRBOnet (Aviso de Cadastro) -->
+                <div class="kpi-card glass-card kpi-interactive-card" id="kpiCardUnregistered" onclick="toggleStatusFilter('NAO_CADASTRADO')" title="Clique para filtrar/desfiltrar equipes em turno sem código cadastrado no TRBOnet">
+                    <div class="kpi-header">
+                        <div class="kpi-icon-wrap icon-orange">
+                            <i data-lucide="alert-circle"></i>
+                        </div>
+                        <span class="kpi-category text-orange">NÃO CADASTRADO</span>
+                    </div>
+                    <div class="kpi-body">
+                        <div class="kpi-metric-row">
+                            <h2 class="kpi-number text-orange" id="kpi-unregistered">0</h2>
+                            <span class="kpi-unit text-orange">equipes</span>
+                        </div>
+                        <p class="kpi-label">Não Cadastrado no TRBOnet</p>
+                    </div>
+                    <div class="kpi-footer">
+                        <span class="kpi-subtext text-orange-light"><i data-lucide="info" class="mini-icon"></i> Na escala, rádio inexistente</span>
+                    </div>
+                    <div class="card-accent-bar bar-orange"></div>
+                </div>
+
+                <!-- KPI 5: Apenas no TRBOnet (Aviso) -->
                 <div class="kpi-card glass-card kpi-interactive-card" id="kpiCardTrboOnly" onclick="toggleStatusFilter('TRBO_ONLY')" title="Clique para filtrar/desfiltrar rádios ativos sem escala">
                     <div class="kpi-header">
                         <div class="kpi-icon-wrap icon-amber">
@@ -622,8 +643,8 @@
                     <div class="card-accent-bar bar-amber"></div>
                 </div>
 
-                <!-- KPI 5: Taxa Global de Conformidade -->
-                <div class="kpi-card glass-card kpi-card-gauge">
+                <!-- KPI 6: Taxa Global de Conformidade (TRBOnet / LOGADO) -->
+                <div class="kpi-card glass-card kpi-card-gauge" id="kpiCardCompliance">
                     <div class="kpi-header">
                         <div class="kpi-icon-wrap icon-purple">
                             <i data-lucide="activity"></i>
@@ -638,9 +659,32 @@
                         <div class="compliance-progress-wrap">
                             <div class="compliance-progress-bar" id="complianceProgressBar" style="width: 0%;"></div>
                         </div>
+
+                        <!-- Trilha de Fluxo: LOGADO > TRBOnet > N Cadastrado > Apenas TRBONet -->
+                        <div class="compliance-flow-trail" id="complianceFlowTrail" title="Relação de conciliação código a código (Fórmula: TRBOnet / LOGADO)">
+                            <div class="flow-pill flow-logado">
+                                <span class="flow-lbl">LOGADO</span>
+                                <strong class="flow-num" id="flow-val-logado">0</strong>
+                            </div>
+                            <span class="flow-sep">&gt;</span>
+                            <div class="flow-pill flow-trbo">
+                                <span class="flow-lbl">TRBOnet</span>
+                                <strong class="flow-num" id="flow-val-trbo">0</strong>
+                            </div>
+                            <span class="flow-sep">&gt;</span>
+                            <div class="flow-pill flow-unreg">
+                                <span class="flow-lbl">N Cadastrado</span>
+                                <strong class="flow-num" id="flow-val-unreg">0</strong>
+                            </div>
+                            <span class="flow-sep">&gt;</span>
+                            <div class="flow-pill flow-trboonly">
+                                <span class="flow-lbl">Apenas TRBONet</span>
+                                <strong class="flow-num" id="flow-val-trboonly">0</strong>
+                            </div>
+                        </div>
                     </div>
                     <div class="kpi-footer">
-                        <span class="kpi-subtext" id="complianceSubtext">Meta Operacional CCO: ≥ 90%</span>
+                        <span class="kpi-subtext" id="complianceSubtext">Fórmula: TRBOnet / LOGADO • Meta: ≥ 90%</span>
                     </div>
                     <div class="card-accent-bar bar-cyan"></div>
                 </div>
@@ -812,6 +856,7 @@
                                     <th onclick="sortTable('code')" class="sortable">Código Equipe <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
                                     <th onclick="sortTable('base')" class="sortable">Base Operacional <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
                                     <th onclick="sortTable('poweron')" class="sortable">Escala Equipes Brasil <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
+                                    <th onclick="sortTable('was_online_today')" class="sortable">Conectou no TRBOnet Hoje? <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
                                     <th onclick="sortTable('trbonet')" class="sortable">Rádio TRBOnet <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
                                     <th onclick="sortTable('gps')" class="sortable">Sinal GPS <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>
                                     <th onclick="sortTable('status_code')" class="sortable">Status de Conformidade <i data-lucide="chevrons-up-down" class="sort-icon"></i></th>

@@ -115,10 +115,28 @@ def get_data():
         # 1. Consulta o Supabase em tempo real
         cloud_res = fetch_latest_snapshot_from_supabase()
         if cloud_res.get("status") == "success" and cloud_res.get("data"):
+            snap_data = cloud_res["data"]
+            teams = snap_data.get("teams", [])
+            regions = snap_data.get("regions", {})
+            for reg_key, reg_val in regions.items():
+                for b in reg_val.get("bases", []):
+                    prefix = b.get("prefix")
+                    b_teams = [t for t in teams if t.get("prefix") == prefix]
+                    if b_teams:
+                        b_poweron = sum(1 for t in b_teams if t.get("poweron"))
+                        b_online_trbo = sum(1 for t in b_teams if t.get("poweron") and t.get("trbonet"))
+                        b_unreg = sum(1 for t in b_teams if t.get("poweron") and not t.get("trbonet") and (t.get("trbonet_status") == "NAO_CADASTRADO" or t.get("status_code") == "NAO_CADASTRADO"))
+                        b_trbo_only = sum(1 for t in b_teams if not t.get("poweron") and t.get("trbonet"))
+                        b["total_poweron"] = b_poweron
+                        b["online_trbo"] = b_online_trbo
+                        b["nao_cadastrado"] = b_unreg
+                        b["trbo_only"] = b_trbo_only
+                        b["compliance_rate"] = round((b_online_trbo / b_poweron * 100), 1) if b_poweron > 0 else 0
+
             resp = jsonify({
                 "status": "success",
                 "source": "supabase_cloud",
-                "data": cloud_res["data"]
+                "data": snap_data
             })
             resp.headers["Cache-Control"] = "public, max-age=5, s-maxage=10, stale-while-revalidate=20"
             return resp
@@ -1856,6 +1874,7 @@ def export_excel():
             "Frota": t.get("vehicle_type") or "--",
             "Status de Conformidade": t.get("status_label") or t.get("status_code", ""),
             "Escala Equipes Brasil": "SIM (ESCALADA)" if t.get("poweron") else "NÃO (FORA DA ESCALA)",
+            "Conectou no TRBOnet Hoje?": "SIM" if (t.get("trbonet") or t.get("was_online_today")) else ("NÃO CADASTRADO" if t.get("trbonet_status") == "NAO_CADASTRADO" else "NÃO"),
             "Conexão TRBOnet": "ONLINE (CONECTADO)" if t.get("trbonet") else "DESCONECTADO",
             "Sinal GPS": "COM SINAL GPS" if t.get("gps") else "SEM SINAL GPS",
             "ID do Rádio": t.get("radio_id") or "--",

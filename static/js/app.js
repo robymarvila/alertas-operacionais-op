@@ -994,21 +994,38 @@ function updateKPIs() {
         targetTeams = targetTeams.filter(t => matchFrota(t, appState.selectedFrotas));
     }
 
-    // Cálculo dinâmico dos 5 indicadores
+    // Cálculo dinâmico dos indicadores conforme regra de negócio:
+    // LOGADO: equipes com poweron = true
+    // TRBOnet: equipes logadas que também estão conectadas no TRBOnet (onlinePowerOn)
+    // Indicador = TRBOnet / LOGADO (onlinePowerOn / totalPowerOn)
+    // Equipes que só estão no TRBOnet (sem escala) NÃO entram no indicador.
     const totalPowerOn = targetTeams.filter(t => t.poweron).length;
     const totalTrbo = targetTeams.filter(t => t.trbonet).length;
     const withGps = targetTeams.filter(t => t.trbonet && t.gps).length;
     const withoutGps = targetTeams.filter(t => t.trbonet && !t.gps).length;
-    const totalOffline = targetTeams.filter(t => t.poweron && !t.trbonet).length;
+    const totalOffline = targetTeams.filter(t => t.poweron && !t.trbonet && t.trbonet_status !== 'NAO_CADASTRADO').length;
+    const totalUnregistered = targetTeams.filter(t => t.poweron && !t.trbonet && t.trbonet_status === 'NAO_CADASTRADO').length;
     const totalTrboOnly = targetTeams.filter(t => !t.poweron && t.trbonet).length;
     const onlinePowerOn = targetTeams.filter(t => t.poweron && t.trbonet).length;
 
-    const rate = totalPowerOn > 0 ? Math.round((onlinePowerOn / totalPowerOn) * 1000) / 10 : (totalTrbo > 0 ? 100 : 0);
+    const rate = totalPowerOn > 0 ? Math.round((onlinePowerOn / totalPowerOn) * 1000) / 10 : 0;
 
     animateCount('kpi-poweron', totalPowerOn);
     animateCount('kpi-online', totalTrbo);
     animateCount('kpi-offline', totalOffline);
+    animateCount('kpi-unregistered', totalUnregistered);
     animateCount('kpi-trbo-only', totalTrboOnly);
+
+    // Atualização da esteira/trilha de fluxo no Card do Indicador:
+    // LOGADO > TRBOnet > N Cadastrado > Apenas TRBONet
+    const flowLogado = document.getElementById('flow-val-logado');
+    const flowTrbo = document.getElementById('flow-val-trbo');
+    const flowUnreg = document.getElementById('flow-val-unreg');
+    const flowTrboOnly = document.getElementById('flow-val-trboonly');
+    if (flowLogado) flowLogado.textContent = totalPowerOn;
+    if (flowTrbo) flowTrbo.textContent = onlinePowerOn;
+    if (flowUnreg) flowUnreg.textContent = totalUnregistered;
+    if (flowTrboOnly) flowTrboOnly.textContent = totalTrboOnly;
 
     const gpsEl = document.getElementById('kpi-gps-count');
     const nogpsEl = document.getElementById('kpi-nogps-count');
@@ -1036,7 +1053,7 @@ function updateKPIs() {
         } else {
             compBadge.textContent = 'CRÍTICO';
             compBadge.className = 'gauge-status-badge badge-low';
-            if (compSub) compSub.textContent = `Equipes em escala sem rádio (${totalOffline} offline)`;
+            if (compSub) compSub.textContent = `Equipes em escala sem rádio (${totalOffline} offline + ${totalUnregistered} não cad.)`;
         }
     }
 
@@ -1135,6 +1152,24 @@ function renderRegionalBases() {
 function createBaseCardHTML(b) {
     const isAll = appState.selectedBases.has('ALL') || appState.selectedBases.size === 0;
     const isSelected = !isAll && appState.selectedBases.has(b.prefix);
+
+    // Prioriza o cálculo direto a partir de appState.teams para máxima precisão e reatividade
+    const baseTeams = (appState.teams || []).filter(t => t.prefix === b.prefix);
+
+    let totalPowerOn = (b && typeof b.total_poweron === 'number') ? b.total_poweron : 0;
+    let onlineTrbo = (b && typeof b.online_trbo === 'number') ? b.online_trbo : ((b && b.total_trbonet) || 0);
+    let unreg = (b && typeof b.nao_cadastrado === 'number') ? b.nao_cadastrado : 0;
+    let trboOnly = (b && typeof b.trbo_only === 'number') ? b.trbo_only : 0;
+
+    if (baseTeams.length > 0) {
+        totalPowerOn = baseTeams.filter(t => t.poweron).length;
+        onlineTrbo = baseTeams.filter(t => t.poweron && t.trbonet).length;
+        unreg = baseTeams.filter(t => t.poweron && !t.trbonet && (t.trbonet_status === 'NAO_CADASTRADO' || t.status_code === 'NAO_CADASTRADO')).length;
+        trboOnly = baseTeams.filter(t => !t.poweron && t.trbonet).length;
+    }
+
+    const rate = totalPowerOn > 0 ? Math.round((onlineTrbo / totalPowerOn) * 1000) / 10 : 0;
+
     return `
         <div class="base-card-premium ${isSelected ? 'active-filter' : ''}" data-base-code="${b.prefix}" onclick="toggleBaseFilter('${b.prefix}')" title="Clique para filtrar/desfiltrar a base ${b.name} (${b.prefix})">
             <div class="base-card-top">
@@ -1143,8 +1178,8 @@ function createBaseCardHTML(b) {
                     <h5 class="base-name-title">${b.name}</h5>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
-                    <span class="base-compliance-badge ${getComplianceBadgeClass(b.compliance_rate)}">
-                        ${b.compliance_rate}%
+                    <span class="base-compliance-badge ${getComplianceBadgeClass(rate)}">
+                        ${rate}%
                     </span>
                     <span class="base-filter-check" title="Base selecionada no filtro">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -1155,20 +1190,24 @@ function createBaseCardHTML(b) {
             <div class="base-metrics-grid">
                 <div class="base-metric-col">
                     <span class="metric-col-label">LOGADO</span>
-                    <span class="metric-col-val">${b.total_poweron}</span>
+                    <span class="metric-col-val">${totalPowerOn}</span>
                 </div>
                 <div class="base-metric-col">
                     <span class="metric-col-label">TRBOnet</span>
-                    <span class="metric-col-val text-emerald">${b.total_trbonet || b.online_trbo}</span>
+                    <span class="metric-col-val text-emerald">${onlineTrbo}</span>
                 </div>
                 <div class="base-metric-col">
-                    <span class="metric-col-label">Offline</span>
-                    <span class="metric-col-val ${b.offline > 0 ? 'text-rose' : ''}">${b.offline}</span>
+                    <span class="metric-col-label">N Cadastrado</span>
+                    <span class="metric-col-val text-orange">${unreg}</span>
+                </div>
+                <div class="base-metric-col">
+                    <span class="metric-col-label">Apenas TRBONet</span>
+                    <span class="metric-col-val text-purple">${trboOnly}</span>
                 </div>
             </div>
 
             <div class="base-card-progress">
-                <div class="base-card-progress-bar" style="width: ${Math.min(b.compliance_rate, 100)}%; background-color: ${getComplianceColor(b.compliance_rate)};"></div>
+                <div class="base-card-progress-bar" style="width: ${Math.min(rate, 100)}%; background-color: ${getComplianceColor(rate)};"></div>
             </div>
         </div>
     `;
@@ -1423,11 +1462,13 @@ function syncStatusUI() {
     const kpiPowerOn = document.getElementById('kpiCardPowerOn');
     const kpiOnline = document.getElementById('kpiCardOnline');
     const kpiOffline = document.getElementById('cardOfflineAlert');
+    const kpiUnregistered = document.getElementById('kpiCardUnregistered');
     const kpiTrboOnly = document.getElementById('kpiCardTrboOnly');
 
     if (kpiPowerOn) kpiPowerOn.classList.toggle('kpi-selected-filter', isAll);
     if (kpiOnline) kpiOnline.classList.toggle('kpi-selected-filter', !isAll && appState.selectedStatuses && appState.selectedStatuses.has('ONLINE'));
     if (kpiOffline) kpiOffline.classList.toggle('kpi-selected-filter', !isAll && appState.selectedStatuses && appState.selectedStatuses.has('OFFLINE'));
+    if (kpiUnregistered) kpiUnregistered.classList.toggle('kpi-selected-filter', !isAll && appState.selectedStatuses && appState.selectedStatuses.has('NAO_CADASTRADO'));
     if (kpiTrboOnly) kpiTrboOnly.classList.toggle('kpi-selected-filter', !isAll && appState.selectedStatuses && appState.selectedStatuses.has('TRBO_ONLY'));
 }
 
@@ -1718,7 +1759,7 @@ function renderTableView(teams) {
     if (teams.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="empty-state-cell">
+                <td colspan="8" class="empty-state-cell">
                     <div class="empty-state-wrap">
                         <i data-lucide="search-x" class="empty-icon"></i>
                         <p>Nenhuma equipe encontrada com os filtros selecionados.</p>
@@ -1739,6 +1780,18 @@ function renderTableView(teams) {
         const powerOnBadge = t.poweron 
             ? '<span class="badge-status badge-success"><i data-lucide="check"></i> Em Turno</span>'
             : '<span class="badge-status badge-muted"><i data-lucide="minus"></i> Fora de Escala</span>';
+
+        const hasConnectedToday = Boolean(t.trbonet || t.was_online_today || (t.history && (t.history.online_minutes > 0 || (t.history.trbonet_days_list && t.history.trbonet_days_list.length > 0))));
+        let connectedTodayBadge = '';
+        if (t.trbonet_status === 'NAO_CADASTRADO') {
+            connectedTodayBadge = '<span class="badge-status badge-unregistered" title="Código de rádio não cadastrado no TRBOnet One"><i data-lucide="alert-circle"></i> Não Cadastrado</span>';
+        } else if (hasConnectedToday) {
+            connectedTodayBadge = '<span class="badge-status badge-success" title="Rádio conectou e transmitiu sinal hoje no TRBOnet"><i data-lucide="check-circle-2"></i> Conectou Hoje</span>';
+        } else if (t.poweron) {
+            connectedTodayBadge = '<span class="badge-status badge-danger" title="Equipe escalada, porém sem transmissão de rádio hoje"><i data-lucide="x-circle"></i> Não Conectou</span>';
+        } else {
+            connectedTodayBadge = '<span class="badge-status badge-muted" title="Fora de escala / Desconectado"><i data-lucide="minus"></i> Desconectado</span>';
+        }
 
         let trboBadge = '';
         const stTrbo = t.trbonet_status || (t.trbonet ? 'CONECTADO' : 'DESCONECTADO');
@@ -1771,6 +1824,7 @@ function renderTableView(teams) {
                     </div>
                 </td>
                 <td>${powerOnBadge}</td>
+                <td>${connectedTodayBadge}</td>
                 <td>${trboBadge}</td>
                 <td>${gpsIcon}</td>
                 <td>
@@ -1805,6 +1859,14 @@ function renderCardsView(teams) {
     }
 
     grid.innerHTML = teams.map(t => {
+        const hasConnectedToday = Boolean(t.trbonet || t.was_online_today || (t.history && (t.history.online_minutes > 0 || (t.history.trbonet_days_list && t.history.trbonet_days_list.length > 0))));
+        let connectedTodayLabel = hasConnectedToday ? '🟢 Sim' : '🔴 Não';
+        if (t.trbonet_status === 'NAO_CADASTRADO') {
+            connectedTodayLabel = '⚠️ Não Cadastrado';
+        } else if (!t.poweron && !hasConnectedToday) {
+            connectedTodayLabel = '⚪ Desconectado';
+        }
+
         return `
             <div class="team-card-item glass-card card-status-${t.severity}" onclick="openTeamModal('${t.code}')">
                 <div class="team-card-header">
@@ -1829,6 +1891,10 @@ function renderCardsView(teams) {
                     <div class="team-card-row">
                         <span class="card-row-label"><i data-lucide="clipboard-check" class="mini-icon"></i> Equipes Brasil</span>
                         <span class="card-row-val ${t.poweron ? 'text-emerald' : 'text-muted'}">${t.poweron ? 'Em Turno' : 'Fora de Escala'}</span>
+                    </div>
+                    <div class="team-card-row">
+                        <span class="card-row-label"><i data-lucide="activity" class="mini-icon"></i> Conectou Hoje?</span>
+                        <span class="card-row-val font-semibold">${connectedTodayLabel}</span>
                     </div>
                     <div class="team-card-row">
                         <span class="card-row-label"><i data-lucide="radio" class="mini-icon"></i> TRBOnet</span>
@@ -2320,25 +2386,34 @@ function exportLiveTeamsExcel() {
             const lastPwLogin = summary.last_poweron_login || '--';
             const lastTrboSync = summary.last_trbonet_sync || '--';
 
-            const rows = teams.map(t => ({
-                "Código Equipe": t.code || '',
-                "Base Operacional": t.base || '',
-                "Sigla Base": t.prefix || '',
-                "Região": t.region || '',
-                "Turno": t.shift_slot || t.shift_code || '--',
-                "Frota": t.vehicle_type || '--',
-                "Status de Conformidade": t.status_label || t.status_code || '',
-                "Escala Equipes Brasil": t.poweron ? 'SIM (ESCALADA)' : 'NÃO (FORA DA ESCALA)',
-                "Conexão TRBOnet": t.trbonet ? 'ONLINE (CONECTADO)' : 'DESCONECTADO',
-                "Sinal GPS": t.gps ? 'COM SINAL GPS' : 'SEM SINAL GPS',
-                "ID do Rádio": t.radio_id || '--',
-                "Canal TRBOnet": t.channel || '--',
-                "Último Sinal Registrado": t.last_signal || lastTrboSync || '--',
-                "Horário Login": t.login_time || lastPwLogin || '--',
-                "Motorista": t.driver || '--',
-                "Placa": t.plate || '--',
-                "Diagnóstico CCO": t.details_text || ''
-            }));
+            const rows = teams.map(t => {
+                const hasConnectedToday = Boolean(t.trbonet || t.was_online_today || (t.history && (t.history.online_minutes > 0 || (t.history.trbonet_days_list && t.history.trbonet_days_list.length > 0))));
+                let conectouHojeStr = hasConnectedToday ? 'SIM' : 'NÃO';
+                if (t.trbonet_status === 'NAO_CADASTRADO') {
+                    conectouHojeStr = 'NÃO CADASTRADO';
+                }
+
+                return {
+                    "Código Equipe": t.code || '',
+                    "Base Operacional": t.base || '',
+                    "Sigla Base": t.prefix || '',
+                    "Região": t.region || '',
+                    "Turno": t.shift_slot || t.shift_code || '--',
+                    "Frota": t.vehicle_type || '--',
+                    "Status de Conformidade": t.status_label || t.status_code || '',
+                    "Escala Equipes Brasil": t.poweron ? 'SIM (ESCALADA)' : 'NÃO (FORA DA ESCALA)',
+                    "Conectou no TRBOnet Hoje?": conectouHojeStr,
+                    "Conexão TRBOnet": t.trbonet ? 'ONLINE (CONECTADO)' : 'DESCONECTADO',
+                    "Sinal GPS": t.gps ? 'COM SINAL GPS' : 'SEM SINAL GPS',
+                    "ID do Rádio": t.radio_id || '--',
+                    "Canal TRBOnet": t.channel || '--',
+                    "Último Sinal Registrado": t.last_signal || lastTrboSync || '--',
+                    "Horário Login": t.login_time || lastPwLogin || '--',
+                    "Motorista": t.driver || '--',
+                    "Placa": t.plate || '--',
+                    "Diagnóstico CCO": t.details_text || ''
+                };
+            });
 
             const ws = XLSX.utils.json_to_sheet(rows);
             const wb = XLSX.utils.book_new();
@@ -2386,9 +2461,14 @@ function exportLiveTeamsCSV() {
     const lastTrboSync = summary.last_trbonet_sync || '--';
 
     let csv = '\uFEFF'; // UTF-8 BOM para o Microsoft Excel abrir com acentuação perfeita
-    csv += 'Equipe;Base;Prefixo;Regiao;Turno;Frota;Status_Operacional;Categoria;Escala_PowerON;Conexao_TRBOnet;Sinal_GPS;Radio_ID;Canal;Ultimo_Sinal_TRBOnet;Ultimo_Login_PowerON;Motorista;Placa;Diagnostico_CCO\n';
+    csv += 'Equipe;Base;Prefixo;Regiao;Turno;Frota;Status_Operacional;Categoria;Escala_PowerON;Conectou_TRBOnet_Hoje;Conexao_TRBOnet;Sinal_GPS;Radio_ID;Canal;Ultimo_Sinal_TRBOnet;Ultimo_Login_PowerON;Motorista;Placa;Diagnostico_CCO\n';
 
     teams.forEach(t => {
+        const hasConnectedToday = Boolean(t.trbonet || t.was_online_today || (t.history && (t.history.online_minutes > 0 || (t.history.trbonet_days_list && t.history.trbonet_days_list.length > 0))));
+        let conectouHojeStr = hasConnectedToday ? 'SIM' : 'NAO';
+        if (t.trbonet_status === 'NAO_CADASTRADO') {
+            conectouHojeStr = 'NAO CADASTRADO';
+        }
         const code = (t.code || '').replace(/"/g, '""');
         const base = (t.base || '').replace(/"/g, '""');
         const prefix = (t.prefix || '').replace(/"/g, '""');
@@ -2408,7 +2488,7 @@ function exportLiveTeamsCSV() {
         const plate = (t.plate || '--').replace(/"/g, '""');
         const details = (t.details_text || '').replace(/"/g, '""');
 
-        csv += `"${code}";"${base}";"${prefix}";"${region}";"${turno}";"${frota}";"${statusLabel}";"${category}";"${poweron}";"${trbonet}";"${gps}";"${radioId}";"${channel}";"${lastSignal}";"${lastLogin}";"${driver}";"${plate}";"${details}"\n`;
+        csv += `"${code}";"${base}";"${prefix}";"${region}";"${turno}";"${frota}";"${statusLabel}";"${category}";"${poweron}";"${conectouHojeStr}";"${trbonet}";"${gps}";"${radioId}";"${channel}";"${lastSignal}";"${lastLogin}";"${driver}";"${plate}";"${details}"\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

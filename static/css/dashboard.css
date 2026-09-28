@@ -648,6 +648,7 @@ body {
 .bar-green { background: linear-gradient(90deg, #10b981, #34d399); }
 .bar-rose { background: linear-gradient(90deg, #f43f5e, #fb7185); }
 .bar-amber { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.bar-orange { background: linear-gradient(90deg, #f97316, #fb923c); }
 .bar-cyan { background: linear-gradient(90deg, #06b6d4, #38bdf8); }
 
 .kpi-header {
@@ -670,7 +671,13 @@ body {
 .icon-green { background: var(--accent-emerald-bg); color: var(--accent-emerald); }
 .icon-rose { background: var(--accent-rose-bg); color: var(--accent-rose); }
 .icon-amber { background: var(--accent-amber-bg); color: var(--accent-amber); }
+.icon-orange { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
 .icon-purple { background: rgba(168, 85, 247, 0.15); color: var(--accent-purple); }
+.text-orange { color: #fb923c !important; }
+.text-orange-light { color: rgba(251, 146, 60, 0.85); }
+.text-purple { color: #c084fc !important; }
+.text-purple-light { color: #e9d5ff !important; }
+
 
 .kpi-category {
     font-size: 0.68rem;
@@ -2103,8 +2110,8 @@ input[type="search"]::-webkit-search-results-decoration {
 
 .base-metrics-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
     background: rgba(0, 0, 0, 0.2);
     padding: 8px 10px;
     border-radius: 8px;
@@ -2116,17 +2123,83 @@ input[type="search"]::-webkit-search-results-decoration {
 }
 
 .metric-col-label {
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    font-weight: 600;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .metric-col-val {
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 700;
     color: #ffffff;
     font-family: var(--font-mono);
+}
+
+/* Trilha de Fluxo: LOGADO > TRBOnet > N Cadastrado > Apenas TRBONet */
+.compliance-flow-trail {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 6px 8px;
+    margin-top: 10px;
+}
+
+.flow-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2px 4px;
+    border-radius: 5px;
+    flex: 1;
+    min-width: 0;
+}
+
+.flow-lbl {
+    font-size: 0.56rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.flow-num {
+    font-size: 0.88rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    line-height: 1.1;
+}
+
+.flow-logado .flow-num { color: #60a5fa; }
+.flow-trbo .flow-num { color: #34d399; }
+.flow-unreg .flow-num { color: #fb923c; }
+.flow-trboonly .flow-num { color: #c084fc; }
+
+.flow-sep {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.22);
+    padding: 0 1px;
+}
+
+body.theme-light .compliance-flow-trail {
+    background: rgba(241, 245, 249, 0.95);
+    border: 1px solid rgba(203, 213, 225, 0.8);
+}
+
+body.theme-light .flow-sep {
+    color: #94a3b8;
 }
 
 .base-card-progress {
