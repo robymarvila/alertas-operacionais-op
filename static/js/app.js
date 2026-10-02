@@ -138,6 +138,8 @@ document.addEventListener('DOMContentLoaded', () => {
         navigateToView('delivery');
     } else if (hash === 'module' || hash === 'trbonet') {
         navigateToView('module');
+    } else if (hash === 'priorizador') {
+        navigateToView('priorizador');
     } else if (hash === 'admin') {
         navigateToView('admin');
     } else {
@@ -150,6 +152,8 @@ document.addEventListener('DOMContentLoaded', () => {
             navigateToView('delivery');
         } else if (currentHash === 'module' || currentHash === 'trbonet') {
             navigateToView('module');
+        } else if (currentHash === 'priorizador') {
+            navigateToView('priorizador');
         } else if (currentHash === 'admin') {
             navigateToView('admin');
         } else {
@@ -348,14 +352,17 @@ function navigateToView(viewName) {
     }
 
     // Atualiza classes no elemento raiz HTML e BODY para consistência absoluta de CSS
-    document.documentElement.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin');
-    document.body.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin');
+    document.documentElement.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin', 'route-priorizador');
+    document.body.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin', 'route-priorizador');
     if (viewName === 'delivery') {
         document.documentElement.classList.add('route-delivery');
         document.body.classList.add('route-delivery');
     } else if (viewName === 'module' || viewName === 'trbonet') {
         document.documentElement.classList.add('route-module');
         document.body.classList.add('route-module');
+    } else if (viewName === 'priorizador') {
+        document.documentElement.classList.add('route-priorizador');
+        document.body.classList.add('route-priorizador');
     } else if (viewName === 'admin') {
         document.documentElement.classList.add('route-admin');
         document.body.classList.add('route-admin');
@@ -368,16 +375,23 @@ function navigateToView(viewName) {
     const portalHub = document.getElementById('portalHubView');
     const moduleView = document.getElementById('moduleAuditView');
     const deliveryView = document.getElementById('moduleDeliveryView');
+    const priorizadorView = document.getElementById('modulePriorizadorView');
     const adminView = document.getElementById('systemAdminViewContainer');
 
     if (portalHub) portalHub.style.display = (viewName === 'hub') ? 'flex' : 'none';
     if (moduleView) moduleView.style.display = (viewName === 'module' || viewName === 'trbonet') ? 'flex' : 'none';
     if (deliveryView) deliveryView.style.display = (viewName === 'delivery') ? 'flex' : 'none';
+    if (priorizadorView) priorizadorView.style.display = (viewName === 'priorizador') ? 'flex' : 'none';
     if (adminView) adminView.style.display = (viewName === 'admin') ? 'block' : 'none';
 
     if (viewName === 'hub') {
         updateHubCard();
         updateDeliveryHubCard();
+        if (typeof updatePriorizadorHubCard === 'function') updatePriorizadorHubCard();
+    } else if (viewName === 'priorizador') {
+        if (typeof loadPriorizadorData === 'function') {
+            loadPriorizadorData(false);
+        }
     } else if (viewName === 'delivery') {
         if (window.innerWidth <= 768 && typeof switchMobileDeliverySubTab === 'function') {
             switchMobileDeliverySubTab('bases');
@@ -10931,12 +10945,14 @@ function updateMobileSubnav(viewName, subScreen) {
     const subnavBar = document.getElementById('mobileSubnavBar');
     const delSubnav = document.getElementById('mobileDeliverySubnav');
     const alrSubnav = document.getElementById('mobileAlertsSubnav');
+    const prioSubnav = document.getElementById('mobilePriorizadorSubnav');
     if (!subnavBar) return;
 
     if (viewName === 'delivery') {
         subnavBar.style.display = 'flex';
         if (delSubnav) delSubnav.style.display = 'flex';
         if (alrSubnav) alrSubnav.style.display = 'none';
+        if (prioSubnav) prioSubnav.style.display = 'none';
 
         const targetScreen = subScreen || deliveryState.currentScreen || 'online';
         document.querySelectorAll('#mobileDeliverySubnav .mobile-subnav-pill').forEach(btn => btn.classList.remove('active'));
@@ -10951,6 +10967,7 @@ function updateMobileSubnav(viewName, subScreen) {
         subnavBar.style.display = 'flex';
         if (delSubnav) delSubnav.style.display = 'none';
         if (alrSubnav) alrSubnav.style.display = 'flex';
+        if (prioSubnav) prioSubnav.style.display = 'none';
 
         const targetTab = subScreen || appState.currentMainTab || 'live';
         document.querySelectorAll('#mobileAlertsSubnav .mobile-subnav-pill').forEach(btn => btn.classList.remove('active'));
@@ -10961,10 +10978,26 @@ function updateMobileSubnav(viewName, subScreen) {
         } else if (targetTab === 'audit') {
             document.getElementById('mobSubAlertsAudit')?.classList.add('active');
         }
+    } else if (viewName === 'priorizador') {
+        subnavBar.style.display = 'flex';
+        if (delSubnav) delSubnav.style.display = 'none';
+        if (alrSubnav) alrSubnav.style.display = 'none';
+        if (prioSubnav) prioSubnav.style.display = 'flex';
+
+        const targetScreen = subScreen || (typeof priorizadorState !== 'undefined' && priorizadorState.currentScreen) || 'online';
+        document.querySelectorAll('#mobilePriorizadorSubnav .mobile-subnav-pill').forEach(btn => btn.classList.remove('active'));
+        if (targetScreen === 'online') {
+            document.getElementById('mobSubPrioOnline')?.classList.add('active');
+        } else if (targetScreen === 'dashboard') {
+            document.getElementById('mobSubPrioDashboard')?.classList.add('active');
+        } else if (targetScreen === 'history') {
+            document.getElementById('mobSubPrioHistory')?.classList.add('active');
+        }
     } else {
         subnavBar.style.display = 'none';
         if (delSubnav) delSubnav.style.display = 'none';
         if (alrSubnav) alrSubnav.style.display = 'none';
+        if (prioSubnav) prioSubnav.style.display = 'none';
     }
 }
 window.updateMobileSubnav = updateMobileSubnav;
@@ -10993,6 +11026,18 @@ function handleMobileAlertsSub(subTab) {
 }
 window.handleMobileAlertsSub = handleMobileAlertsSub;
 
+function handleMobilePrioSub(subScreen) {
+    if (appState.currentView !== 'priorizador') {
+        navigateToView('priorizador');
+    }
+    if (typeof switchPriorizadorScreen === 'function') {
+        switchPriorizadorScreen(subScreen);
+    }
+    updateMobileSubnav('priorizador', subScreen);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+window.handleMobilePrioSub = handleMobilePrioSub;
+
 function syncMobileBottomNav(activeIdentifier) {
     const navItems = document.querySelectorAll('#mobileBottomNav .nav-item');
     navItems.forEach(item => item.classList.remove('active'));
@@ -11017,6 +11062,12 @@ function syncMobileBottomNav(activeIdentifier) {
         if (subtitleEl) subtitleEl.textContent = 'EQUIPES BRASIL';
         const sub = (activeIdentifier === 'online_bid' || activeIdentifier === 'bid' || activeIdentifier === 'delivery_bid') ? 'online_bid' : ((activeIdentifier === 'history' || activeIdentifier === 'delivery_history') ? 'history' : (deliveryState.currentScreen || 'online'));
         updateMobileSubnav('delivery', sub);
+    } else if (activeIdentifier === 'priorizador') {
+        document.getElementById('navItemPriorizador')?.classList.add('active');
+        if (titleEl) titleEl.textContent = 'PRIORIZADOR';
+        if (subtitleEl) subtitleEl.textContent = 'ORDENS CRÍTICAS';
+        const sub = (typeof priorizadorState !== 'undefined' && priorizadorState.currentScreen) ? priorizadorState.currentScreen : 'online';
+        updateMobileSubnav('priorizador', sub);
     } else if (activeIdentifier === 'admin') {
         document.getElementById('navItemMore')?.classList.add('active');
         if (titleEl) titleEl.textContent = 'ADMIN & MOTORES';
@@ -11044,6 +11095,9 @@ function handleMobileNav(target) {
         navigateToView('delivery');
         if (typeof switchDeliveryScreen === 'function') switchDeliveryScreen('history');
         syncMobileBottomNav('delivery');
+    } else if (target === 'priorizador') {
+        navigateToView('priorizador');
+        syncMobileBottomNav('priorizador');
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -11077,6 +11131,8 @@ window.addEventListener('hashchange', () => {
         syncMobileBottomNav('delivery');
     } else if (hash === 'module' || hash === 'trbonet' || hash === 'alerts') {
         syncMobileBottomNav('trbonet');
+    } else if (hash === 'priorizador') {
+        syncMobileBottomNav('priorizador');
     } else if (hash === 'admin') {
         syncMobileBottomNav('admin');
     } else {
@@ -11546,3 +11602,2264 @@ window.syncMobileBottomNav = syncMobileBottomNav;
 window.promoteNodeAction = promoteNodeAction;
 window.dismissClusterAlert = dismissClusterAlert;
 window.openClusterNodeDetailsModal = openClusterNodeDetailsModal;
+
+
+// ==============================================================================
+// MÓDULO 3: PRIORIZADOR - ORDENS CRÍTICAS (LOGBOOK, SUPERVISÃO & TELEMETRIA CCO)
+// ==============================================================================
+
+if (typeof window.formatDateTimeBr !== 'function') {
+    window.formatDateTimeBr = typeof formatDateTimeBR === 'function' ? formatDateTimeBR : function(val) {
+        if (!val || val === '--') return '--/--/---- --:--:--';
+        try {
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? String(val) : d.toLocaleString('pt-BR');
+        } catch (e) { return String(val); }
+    };
+}
+
+const priorizadorState = {
+    orders: [],
+    filteredOrders: [],
+    currentVision: 'pura', // 'pura' (Visão 1: Prioridade Pura) | 'operacional' (Visão 2: Prioridade + CONTROL_DESP)
+    matrixFilter: null,    // null | 'prio1_aguard' | 'prio1_local80' | 'prio2_aguard' | 'prio2_local80' | 'prio3_aguard'
+    kpis: {
+        total_ordens: 0,
+        total_norte: 0,
+        total_leste: 0,
+        criticos_breakdown: { DJ: 0, RA: 0, CF: 0, CA: 0, BF: 0, CH: 0, RM: 0 },
+        total_ci: 0,
+        total_chi: 0.0,
+        total_urgencia_critica: 0,
+        total_aguard_desp: 0,
+        total_local_80min: 0,
+        total_supervisionadas: 0,
+        percent_supervisionadas: 0,
+        total_com_equipe: 0,
+        total_prio1: 0,
+        total_prio2: 0,
+        total_prio3: 0,
+        total_prio4: 0,
+        matrix: {
+            prio1_aguard: 0,
+            prio1_local80: 0,
+            prio2_aguard: 0,
+            prio2_local80: 0,
+            prio3_aguard: 0
+        }
+    },
+    distributions: {
+        by_equipment: {},
+        by_control_desp: {},
+        by_base: {}
+    },
+    mutations: [],
+    currentScreen: 'online', // 'online' | 'dashboard' | 'history'
+    filters: {
+        regions: ['NORTE', 'LESTE'],
+        bases: ['Base Cajati', 'Base Fagundes Filho', 'Base Vila Medeiros', 'Base Aricanduva', 'Base Catumbi', 'Base Monte Santo', 'Base Santo André'],
+        eqs: ['DJ', 'RA', 'CF', 'CA', 'BF', 'CH', 'RM', 'OUTROS'],
+        despStatuses: ['AGUARD_DESP', 'CAMI_', 'LOCAL_>=80min', 'LOCAL_<80min'],
+        prios: ['1', '2', '3', '4'],
+        datePreset: 'ALL',
+        dateSelected: null,
+        ciAltoOnly: false,
+        urgenciaOnly: false,
+        supervisionadasOnly: false,
+        comEquipeOnly: false,
+        search: ''
+    },
+    sort: {
+        column: 'prioridade',
+        direction: 'asc'
+    },
+    auditSort: {
+        column: 'mutacoes_count',
+        direction: 'desc'
+    },
+    auditSearch: '',
+    datePickerInstance: null,
+    currentDossierData: null,
+    currentDossierTab: 'ficha',
+    lastSyncTime: null,
+    isCollecting: false
+};
+
+// Alternador de Telas Segmentado do Priorizador
+function switchPriorizadorScreen(screenName) {
+    priorizadorState.currentScreen = screenName;
+
+    const btnOnline = document.getElementById('btnSwitchPrioOnline');
+    const btnDash = document.getElementById('btnSwitchPrioDashboard');
+    const btnHist = document.getElementById('btnSwitchPrioHistory');
+
+    const screenOnline = document.getElementById('priorizadorScreenOnline');
+    const screenDash = document.getElementById('priorizadorScreenDashboard');
+    const screenHist = document.getElementById('priorizadorScreenHistory');
+
+    [btnOnline, btnDash, btnHist].forEach(btn => btn?.classList.remove('active'));
+    [screenOnline, screenDash, screenHist].forEach(scr => { if (scr) scr.style.display = 'none'; });
+
+    if (screenName === 'dashboard') {
+        btnDash?.classList.add('active');
+        if (screenDash) screenDash.style.display = 'block';
+        renderPriorizadorDashboard();
+    } else if (screenName === 'history') {
+        btnHist?.classList.add('active');
+        if (screenHist) screenHist.style.display = 'block';
+        renderPriorizadorAuditOsTable();
+    } else {
+        btnOnline?.classList.add('active');
+        if (screenOnline) screenOnline.style.display = 'block';
+        renderPriorizadorTable();
+        renderPriorizadorMobileCards();
+    }
+
+    if (typeof updateMobileSubnav === 'function') {
+        updateMobileSubnav('priorizador', screenName);
+    }
+}
+window.switchPriorizadorScreen = switchPriorizadorScreen;
+
+// Carregamento de Dados do Backend
+async function loadPriorizadorData(forceRefresh = false) {
+    const pulseEl = document.getElementById('realtimePriorizadorPulse');
+    const syncTimeEl = document.getElementById('cdpPrioLastSyncTime');
+
+    if (forceRefresh) {
+        showToast('Atualizando dados do Priorizador...', 'info');
+    }
+
+    try {
+        const resp = await fetch('/api/priorizador/data', { cache: 'no-store' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        if (data && data.status === 'success') {
+            priorizadorState.orders = data.active_orders || [];
+            priorizadorState.distributions = data.distributions || priorizadorState.distributions;
+            priorizadorState.mutations = data.mutations_recent || [];
+            priorizadorState.lastSyncTime = data.last_collect_time || data.last_session?.captured_at || new Date().toISOString();
+            priorizadorState.isCollecting = data.is_collecting || false;
+
+            // Recalcula KPIs em memória para garantir consistência
+            recalculatePriorizadorKpis(data.kpis);
+
+            // Inicializa Datepicker se ainda não foi criado
+            initPriorizadorDatePicker();
+
+            // Configura os dropdowns de multi-seleção no padrão do sistema
+            setupPriorizadorFilterDropdowns();
+            syncPriorizadorFiltersFromDOM();
+
+            // Atualiza KPI cards visuais
+            updatePriorizadorKpiCards();
+            
+            // Aplica filtros e renderiza
+            applyPriorizadorFilters();
+
+            // Atualiza timestamp da coleta
+            if (syncTimeEl) {
+                const rawTime = priorizadorState.lastSyncTime || data.last_collect_time || data.last_session?.captured_at || new Date().toISOString();
+                syncTimeEl.textContent = formatDateTimeBR(rawTime);
+            }
+
+            // Atualiza badges mobile
+            const badgeUrg = document.getElementById('navBadgePrioUrgencia');
+            if (badgeUrg) {
+                const urgCount = priorizadorState.kpis.total_urgencia_critica || 0;
+                badgeUrg.textContent = urgCount;
+                badgeUrg.style.display = urgCount > 0 ? 'inline-flex' : 'none';
+            }
+
+            // Atualiza o card no Hub Central
+            updatePriorizadorHubCard();
+
+            if (forceRefresh) {
+                showToast('Painel do Priorizador sincronizado com sucesso!', 'success');
+            }
+        }
+    } catch (err) {
+        console.error('[PRIORIZADOR FETCH ERROR]', err);
+        if (forceRefresh) {
+            showToast('Erro ao consultar dados do Priorizador.', 'error');
+        }
+    }
+}
+window.loadPriorizadorData = loadPriorizadorData;
+
+// Recalcula KPIs locais considerando regras operacionais e recortes dinâmicos
+function recalculatePriorizadorKpis(payload = {}) {
+    let filteredList = payload.filteredList;
+    if (!filteredList) {
+        filteredList = (priorizadorState.filteredOrders !== undefined) ? priorizadorState.filteredOrders : (priorizadorState.orders || []);
+    }
+    const allOrders = priorizadorState.orders || [];
+    const listWithoutRegion = payload.listWithoutRegion || allOrders;
+    const listWithoutEq = payload.listWithoutEq || filteredList;
+
+    const k = priorizadorState.kpis;
+
+    // Métricas dos Cards 2 a 8 baseadas na lista filtrada ativa (filteredList)
+    k.total_ordens = filteredList.length;
+    k.total_ci = filteredList.reduce((acc, o) => acc + (Number(o.ci) || 0), 0);
+    k.total_chi = Math.round(filteredList.reduce((acc, o) => acc + (Number(o.chi) || 0), 0) * 100) / 100;
+    
+    // Prioridade Estrita
+    k.total_prio1 = filteredList.filter(o => o.prioridade_rank === 1).length;
+    k.total_prio2 = filteredList.filter(o => o.prioridade_rank === 2).length;
+    k.total_prio3 = filteredList.filter(o => o.prioridade_rank === 3).length;
+    k.total_prio4 = filteredList.filter(o => o.prioridade_rank === 4).length;
+
+    k.total_urgencia_critica = k.total_prio1;
+    k.total_aguard_desp = filteredList.filter(o => (o.control_desp || '').toUpperCase().includes('AGUARD')).length;
+    k.total_local_80min = filteredList.filter(o => (o.control_desp || '').toUpperCase().includes('LOCAL_>=80') || (o.control_desp || '').toUpperCase().includes('>=80')).length;
+    k.total_supervisionadas = filteredList.filter(o => Boolean(o.supervisor_responsavel)).length;
+    k.percent_supervisionadas = k.total_ordens > 0 ? Math.round((k.total_supervisionadas / k.total_ordens) * 100) : 0;
+    k.total_com_equipe = filteredList.filter(o => Boolean(o.equipe_codigo)).length;
+
+    // Regiões Norte vs Leste (Card 1)
+    // Calculado a partir de listWithoutRegion para manter os totais elegíveis de cada região
+    const BASES_NORTE = ['BASE FAGUNDES FILHO', 'BASE CAJATI', 'BASE VILA MEDEIROS'];
+    const BASES_LESTE = ['BASE MONTE SANTO', 'BASE ARICANDUVA', 'BASE CATUMBI', 'BASE SANTO ANDRE', 'BASE SANTO ANDRÉ'];
+
+    const checkNorte = o => {
+        const r = (o.regiao || '').toUpperCase();
+        const b = (o.base_op || '').toUpperCase();
+        return r.startsWith('NORTE') || BASES_NORTE.some(bn => b.includes(bn.replace('BASE ', '')));
+    };
+
+    const checkLeste = o => {
+        const r = (o.regiao || '').toUpperCase();
+        const b = (o.base_op || '').toUpperCase();
+        return r.startsWith('LESTE') || BASES_LESTE.some(bl => b.includes(bl.replace('BASE ', '')));
+    };
+
+    k.total_norte = listWithoutRegion.filter(checkNorte).length;
+    k.total_leste = listWithoutRegion.filter(checkLeste).length;
+
+    // Breakdown Equipamentos Críticos (DJ, RA, CF, CA, BF, CH, RM) - Card 2
+    // Calculado sobre listWithoutEq para exibir a contagem de cada equipamento no contexto regional
+    const criticos = { DJ: 0, RA: 0, CF: 0, CA: 0, BF: 0, CH: 0, RM: 0 };
+    listWithoutEq.forEach(o => {
+        const eqCode = (o.eq || '').trim().toUpperCase();
+        if (criticos[eqCode] !== undefined) {
+            criticos[eqCode]++;
+        }
+    });
+    k.criticos_breakdown = criticos;
+
+    // Matriz de Cruzamento Operacional (Visão 2)
+    k.matrix = {
+        prio1_aguard: filteredList.filter(o => o.prioridade_rank === 1 && (o.control_desp || '').toUpperCase().includes('AGUARD')).length,
+        prio1_local80: filteredList.filter(o => o.prioridade_rank === 1 && ((o.control_desp || '').toUpperCase().includes('LOCAL_>=80') || (o.control_desp || '').toUpperCase().includes('>=80'))).length,
+        prio2_aguard: filteredList.filter(o => o.prioridade_rank === 2 && (o.control_desp || '').toUpperCase().includes('AGUARD')).length,
+        prio2_local80: filteredList.filter(o => o.prioridade_rank === 2 && ((o.control_desp || '').toUpperCase().includes('LOCAL_>=80') || (o.control_desp || '').toUpperCase().includes('>=80'))).length,
+        prio3_aguard: filteredList.filter(o => o.prioridade_rank === 3 && (o.control_desp || '').toUpperCase().includes('AGUARD')).length
+    };
+}
+
+// Atualização dos Cards de KPI com Design System Ultra-Premium
+function updatePriorizadorKpiCards() {
+    const k = priorizadorState.kpis;
+    const f = priorizadorState.filters || {};
+
+    // 1. Distribuição Regional
+    const elNorte = document.getElementById('prioKpiNorteCount');
+    const elLeste = document.getElementById('prioKpiLesteCount');
+    const barNorte = document.getElementById('prioRegionalBarNorte');
+    const barLeste = document.getElementById('prioRegionalBarLeste');
+    const btnRegNorte = document.getElementById('btnPrioFilterRegNorte');
+    const btnRegLeste = document.getElementById('btnPrioFilterRegLeste');
+    const cardRegional = document.getElementById('cardPrioRegional');
+
+    if (elNorte) elNorte.textContent = (k.total_norte || 0).toLocaleString('pt-BR');
+    if (elLeste) elLeste.textContent = (k.total_leste || 0).toLocaleString('pt-BR');
+
+    const totReg = (k.total_norte + k.total_leste) || 1;
+    const pctNorte = Math.round((k.total_norte / totReg) * 100);
+    const pctLeste = 100 - pctNorte;
+
+    if (barNorte) barNorte.style.width = `${pctNorte}%`;
+    if (barLeste) barLeste.style.width = `${pctLeste}%`;
+
+    // Estados de seleção dos botões de região
+    const selRegs = f.regions || ['NORTE', 'LESTE'];
+    const isNorteActive = selRegs.length === 1 && selRegs.includes('NORTE');
+    const isLesteActive = selRegs.length === 1 && selRegs.includes('LESTE');
+    if (btnRegNorte) btnRegNorte.classList.toggle('active', isNorteActive);
+    if (btnRegLeste) btnRegLeste.classList.toggle('active', isLesteActive);
+    if (cardRegional) cardRegional.classList.toggle('kpi-card-filter-active', isNorteActive || isLesteActive);
+
+    // 2. Grandes Interrupções + Pills de Equipamentos Críticos (DJ, RA, CF, CA, BF, CH, RM)
+    const elOrders = document.getElementById('prioKpiTotalOrders');
+    if (elOrders) elOrders.textContent = (k.total_ordens || 0).toLocaleString('pt-BR');
+
+    const pillsMap = {
+        DJ: document.getElementById('prioEqCritCountDJ'),
+        RA: document.getElementById('prioEqCritCountRA'),
+        CF: document.getElementById('prioEqCritCountCF'),
+        CA: document.getElementById('prioEqCritCountCA'),
+        BF: document.getElementById('prioEqCritCountBF'),
+        CH: document.getElementById('prioEqCritCountCH'),
+        RM: document.getElementById('prioEqCritCountRM')
+    };
+
+    const breakdown = k.criticos_breakdown || {};
+    const selEqs = f.eqs || ['DJ', 'RA', 'CF', 'CA', 'BF', 'CH', 'RM', 'OUTROS'];
+    const isEqFiltering = selEqs.length < 8;
+
+    Object.keys(pillsMap).forEach(eqCode => {
+        const el = pillsMap[eqCode];
+        if (el) el.textContent = (breakdown[eqCode] || 0);
+
+        // Marca pill ativa se estiver no filtro de equipamentos
+        const pillBtn = document.querySelector(`.eq-crit-pill[data-eq="${eqCode}"]`);
+        const isEqActive = isEqFiltering && selEqs.includes(eqCode);
+        if (pillBtn) {
+            pillBtn.classList.toggle('active', isEqActive);
+        }
+    });
+
+    const cardInterrupcoes = document.getElementById('cardPrioGrandesInterrupcoes');
+    if (cardInterrupcoes) cardInterrupcoes.classList.toggle('kpi-card-filter-active', isEqFiltering);
+
+    // Atualização dos números na fita de cruzamento (Visão 2)
+    const m = k.matrix || {};
+    const elM1 = document.getElementById('kpiMatrixPrio1Aguard');
+    const elM2 = document.getElementById('kpiMatrixPrio1Local80');
+    const elM3 = document.getElementById('kpiMatrixPrio2Aguard');
+    const elM4 = document.getElementById('kpiMatrixPrio2Local80');
+    const elM5 = document.getElementById('kpiMatrixPrio3Aguard');
+    if (elM1) elM1.textContent = m.prio1_aguard || 0;
+    if (elM2) elM2.textContent = m.prio1_local80 || 0;
+    if (elM3) elM3.textContent = m.prio2_aguard || 0;
+    if (elM4) elM4.textContent = m.prio2_local80 || 0;
+    if (elM5) elM5.textContent = m.prio3_aguard || 0;
+
+    // Atualiza classes ativas na fita de matriz
+    const matrixPills = {
+        'prio1_aguard': document.getElementById('pillMatrixPrio1Aguard'),
+        'prio1_local80': document.getElementById('pillMatrixPrio1Local80'),
+        'prio2_aguard': document.getElementById('pillMatrixPrio2Aguard'),
+        'prio2_local80': document.getElementById('pillMatrixPrio2Local80'),
+        'prio3_aguard': document.getElementById('pillMatrixPrio3Aguard')
+    };
+    Object.keys(matrixPills).forEach(mk => {
+        if (matrixPills[mk]) {
+            matrixPills[mk].classList.toggle('active', priorizadorState.matrixFilter === mk);
+        }
+    });
+
+    // 3. Clientes Desligados (CI)
+    const elCi = document.getElementById('prioKpiTotalCi');
+    const elCiSub = document.getElementById('prioKpiCiMediaSubtext');
+    const cardCi = document.getElementById('cardPrioCiTotal');
+    if (elCi) elCi.textContent = (k.total_ci || 0).toLocaleString('pt-BR');
+    if (elCiSub) {
+        const mediaCi = k.total_ordens > 0 ? Math.round(k.total_ci / k.total_ordens) : 0;
+        elCiSub.innerHTML = `<i data-lucide="zap-off" class="mini-icon"></i> Média: <strong>${mediaCi.toLocaleString('pt-BR')}</strong> CI / OS`;
+    }
+    const isPrio3Active = (f.prios || []).length === 1 && f.prios.includes('3');
+    if (cardCi) cardCi.classList.toggle('kpi-card-filter-active', Boolean(f.ciAltoOnly || isPrio3Active));
+
+    // 4. Urgência Máxima (Prio 1)
+    const elUrg = document.getElementById('prioKpiUrgenciaCritica');
+    const cardUrg = document.getElementById('cardPrioUrgencia');
+    if (elUrg) elUrg.textContent = (k.total_urgencia_critica || 0).toLocaleString('pt-BR');
+    const isPrio1Active = (f.prios || []).length === 1 && f.prios.includes('1');
+    if (cardUrg) cardUrg.classList.toggle('kpi-card-filter-active', Boolean(f.urgenciaOnly || isPrio1Active));
+
+    // 5. Aguardando Despacho
+    const elAguard = document.getElementById('prioKpiAguardDesp');
+    const cardAguard = document.getElementById('cardPrioAguardDesp');
+    if (elAguard) elAguard.textContent = (k.total_aguard_desp || 0).toLocaleString('pt-BR');
+    const isAguardActive = (f.despStatuses || []).length === 1 && f.despStatuses.includes('AGUARD_DESP');
+    if (cardAguard) cardAguard.classList.toggle('kpi-card-filter-active', isAguardActive);
+
+    // 6. Tempo no Local >= 80 min
+    const elLoc80 = document.getElementById('prioKpiLocal80');
+    const cardLoc80 = document.getElementById('cardPrioLocal80');
+    if (elLoc80) elLoc80.textContent = (k.total_local_80min || 0).toLocaleString('pt-BR');
+    const isLoc80Active = (f.despStatuses || []).length === 1 && f.despStatuses.includes('LOCAL_>=80min');
+    if (cardLoc80) cardLoc80.classList.toggle('kpi-card-filter-active', isLoc80Active);
+
+    // 7. Supervisionadas
+    const elSup = document.getElementById('prioKpiSupervisionadas');
+    const elPctSup = document.getElementById('prioKpiPercentSupervisionadas');
+    const cardSup = document.getElementById('cardPrioSupervisionadas');
+    if (elSup) elSup.textContent = (k.total_supervisionadas || 0).toLocaleString('pt-BR');
+    if (elPctSup) elPctSup.textContent = `${k.percent_supervisionadas || 0}% do total`;
+    if (cardSup) cardSup.classList.toggle('kpi-card-filter-active', Boolean(f.supervisionadasOnly));
+
+    // 8. Equipes Alocadas
+    const elEquipes = document.getElementById('prioKpiEquipesAlocadas');
+    const cardEquipes = document.getElementById('cardPrioEquipesAlocadas');
+    if (elEquipes) elEquipes.textContent = (k.total_com_equipe || 0).toLocaleString('pt-BR');
+    if (cardEquipes) cardEquipes.classList.toggle('kpi-card-filter-active', Boolean(f.comEquipeOnly));
+
+    // Atualiza badge mobile
+    const badgeUrg = document.getElementById('navBadgePrioUrgencia');
+    if (badgeUrg) {
+        const urgCount = k.total_urgencia_critica || 0;
+        badgeUrg.textContent = urgCount;
+        badgeUrg.style.display = urgCount > 0 ? 'inline-flex' : 'none';
+    }
+
+    // Re-inicializa ícones lucide nos cards
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// =========================================================================
+// FILTROS MULTI-SELECT INTERATIVOS DOS CARDS & PILLS
+// =========================================================================
+
+// =========================================================================
+// SISTEMA DE MULTI-FILTROS EM POPOVER (PADRÃO BID/AUDITORIA)
+// =========================================================================
+
+function updatePriorizadorPillLabel(filterType, totalCount, selectedCount, firstValue) {
+    const labelMap = {
+        'region': 'prioFilterRegionLabel',
+        'base': 'prioFilterBaseLabel',
+        'eq': 'prioFilterEqLabel',
+        'desp': 'prioFilterDespLabel',
+        'prio': 'prioFilterPrioLabel'
+    };
+    const el = document.getElementById(labelMap[filterType]);
+    if (!el) return;
+
+    if (selectedCount === totalCount || (selectedCount === 0 && totalCount === 0)) {
+        el.textContent = 'Todos';
+    } else if (selectedCount === 0) {
+        el.textContent = 'Nenhum';
+    } else if (selectedCount === 1) {
+        let clean = (firstValue || '').replace('Região ', '').replace('Base ', '');
+        if (filterType === 'prio') {
+            const prioNames = { '1': 'Elevada', '2': 'Rede Crítica', '3': 'Grande CI', '4': 'Convencional' };
+            clean = prioNames[firstValue] || `Prio ${firstValue}`;
+        } else if (filterType === 'desp') {
+            const despNames = { 'AGUARD_DESP': 'Aguardando', 'CAMI_': 'A Caminho', 'LOCAL_>=80min': 'Local ≥80m', 'LOCAL_<80min': 'Local <80m' };
+            clean = despNames[firstValue] || firstValue;
+        }
+        el.textContent = clean || '1 sel.';
+    } else {
+        el.textContent = `${selectedCount} sel.`;
+    }
+}
+
+function syncPriorizadorFiltersFromDOM() {
+    if (!priorizadorState.filters) {
+        priorizadorState.filters = {};
+    }
+
+    const getSelected = (filterType) => {
+        const cbs = Array.from(document.querySelectorAll(`#modulePriorizadorView .popover-checkbox[data-prio-filter="${filterType}"]`));
+        const checked = cbs.filter(c => c.checked).map(c => c.value);
+        updatePriorizadorPillLabel(filterType, cbs.length, checked.length, checked[0] || '');
+        return checked;
+    };
+
+    priorizadorState.filters.regions = getSelected('region');
+    priorizadorState.filters.bases = getSelected('base');
+    priorizadorState.filters.eqs = getSelected('eq');
+    priorizadorState.filters.despStatuses = getSelected('desp');
+    priorizadorState.filters.prios = getSelected('prio');
+}
+
+function updatePriorizadorGroupCheckboxesState() {
+    document.querySelectorAll('#modulePriorizadorView .popover-group-checkbox').forEach(gcb => {
+        const grp = gcb.getAttribute('data-prio-group');
+        const children = Array.from(document.querySelectorAll(`#modulePriorizadorView .popover-checkbox[data-prio-group="${grp}"]`));
+        if (children.length === 0) return;
+        const checkedCount = children.filter(c => c.checked).length;
+        gcb.checked = (checkedCount === children.length);
+        gcb.indeterminate = (checkedCount > 0 && checkedCount < children.length);
+    });
+}
+
+function setupPriorizadorFilterDropdowns() {
+    // 1. Toggle de popovers ao clicar no botão da pílula
+    document.querySelectorAll('#modulePriorizadorView .period-filter-pill-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const targetId = btn.getAttribute('data-target');
+            const targetMenu = document.getElementById(targetId);
+            const isAlreadyActive = targetMenu && targetMenu.classList.contains('active');
+
+            // Fecha outros popovers
+            document.querySelectorAll('#modulePriorizadorView .period-filter-popover').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('#modulePriorizadorView .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+
+            if (!isAlreadyActive && targetMenu) {
+                targetMenu.classList.add('active');
+                btn.classList.add('active');
+            }
+        };
+    });
+
+    // 2. Ações de "Todos" e "Limpar" no cabeçalho do popover
+    document.querySelectorAll('#modulePriorizadorView .popover-action-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const action = btn.getAttribute('data-action');
+            const filterType = btn.getAttribute('data-prio-filter');
+            const cbs = document.querySelectorAll(`#modulePriorizadorView .popover-checkbox[data-prio-filter="${filterType}"]`);
+
+            cbs.forEach(cb => {
+                cb.checked = (action === 'select-all');
+            });
+
+            if (filterType === 'base') {
+                updatePriorizadorGroupCheckboxesState();
+            }
+
+            syncPriorizadorFiltersFromDOM();
+            applyPriorizadorFilters();
+        };
+    });
+
+    // 3. Hierarquia: selecionar grupo pai marca/desmarca todas as filhas
+    document.querySelectorAll('#modulePriorizadorView .popover-group-checkbox').forEach(gcb => {
+        gcb.onchange = (e) => {
+            const grp = gcb.getAttribute('data-prio-group');
+            const isChecked = gcb.checked;
+            document.querySelectorAll(`#modulePriorizadorView .popover-checkbox[data-prio-group="${grp}"]`).forEach(cb => {
+                cb.checked = isChecked;
+            });
+            syncPriorizadorFiltersFromDOM();
+            applyPriorizadorFilters();
+        };
+    });
+
+    // 4. Checkboxes individuais disparam re-filtro e sincronizam rótulo
+    document.querySelectorAll('#modulePriorizadorView .popover-checkbox').forEach(cb => {
+        cb.onchange = () => {
+            updatePriorizadorGroupCheckboxesState();
+            syncPriorizadorFiltersFromDOM();
+            applyPriorizadorFilters();
+        };
+    });
+
+    // 5. Clique interno no popover não propaga (mantém o popover aberto enquanto clica nos itens)
+    document.querySelectorAll('#modulePriorizadorView .period-filter-popover').forEach(p => {
+        p.onclick = (e) => {
+            e.stopPropagation();
+        };
+    });
+
+    // 6. Clique FORA fecha qualquer popover que estiver aberto
+    if (!window._priorizadorClosePopoverBound) {
+        window._priorizadorClosePopoverBound = true;
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#modulePriorizadorView .dropdown-popover-container')) {
+                document.querySelectorAll('#modulePriorizadorView .period-filter-popover').forEach(p => p.classList.remove('active'));
+                document.querySelectorAll('#modulePriorizadorView .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+            }
+        });
+    }
+}
+
+// Filtro Multi-Select de Região (Norte / Leste) via botão do Card
+function togglePriorizadorRegionFilter(region) {
+    const regUpper = String(region).toUpperCase();
+    const cbs = Array.from(document.querySelectorAll('#modulePriorizadorView .popover-checkbox[data-prio-filter="region"]'));
+    const targetCb = cbs.find(c => c.value === regUpper);
+    const otherCb = cbs.find(c => c.value !== regUpper);
+
+    if (targetCb && otherCb) {
+        if (targetCb.checked && !otherCb.checked) {
+            // Se já estava selecionado apenas esse, volta a selecionar todos
+            targetCb.checked = true;
+            otherCb.checked = true;
+        } else {
+            // Seleciona exclusivamente essa região
+            targetCb.checked = true;
+            otherCb.checked = false;
+        }
+    }
+
+    // Sincroniza também as bases correspondentes
+    const grpName = regUpper === 'NORTE' ? 'regiao-norte' : 'regiao-leste';
+    const otherGrpName = regUpper === 'NORTE' ? 'regiao-leste' : 'regiao-norte';
+    const isSingleReg = targetCb && !otherCb?.checked;
+
+    document.querySelectorAll(`#modulePriorizadorView .popover-checkbox[data-prio-group="${grpName}"]`).forEach(cb => {
+        cb.checked = true;
+    });
+    document.querySelectorAll(`#modulePriorizadorView .popover-checkbox[data-prio-group="${otherGrpName}"]`).forEach(cb => {
+        cb.checked = !isSingleReg;
+    });
+
+    updatePriorizadorGroupCheckboxesState();
+    syncPriorizadorFiltersFromDOM();
+    applyPriorizadorFilters();
+}
+window.togglePriorizadorRegionFilter = togglePriorizadorRegionFilter;
+
+// Clique no container do Card Regional (reseta se houver apenas uma região filtrada)
+function handleCardRegionalClick(event) {
+    if (event && event.target && event.target.closest('.regional-pill-btn')) return;
+    const selRegs = (priorizadorState.filters && priorizadorState.filters.regions) || [];
+    if (selRegs.length === 1) {
+        document.querySelectorAll('#modulePriorizadorView .popover-checkbox[data-prio-filter="region"]').forEach(cb => {
+            cb.checked = true;
+        });
+        document.querySelectorAll('#modulePriorizadorView .popover-checkbox[data-prio-group="regiao-norte"], #modulePriorizadorView .popover-checkbox[data-prio-group="regiao-leste"]').forEach(cb => {
+            cb.checked = true;
+        });
+        updatePriorizadorGroupCheckboxesState();
+        syncPriorizadorFiltersFromDOM();
+        applyPriorizadorFilters();
+    }
+}
+window.handleCardRegionalClick = handleCardRegionalClick;
+
+// Filtro Multi-Select de Equipamentos Críticos via Pills do Card
+function togglePriorizadorEqPill(eqCode) {
+    const code = String(eqCode).toUpperCase();
+    const cbs = Array.from(document.querySelectorAll('#modulePriorizadorView .popover-checkbox[data-prio-filter="eq"]'));
+    const targetCb = cbs.find(c => c.value === code);
+
+    if (targetCb) {
+        const currentlyChecked = cbs.filter(c => c.checked);
+        if (currentlyChecked.length === 1 && targetCb.checked) {
+            // Se for o único marcado, desmarca o filtro marcando todos de volta
+            cbs.forEach(c => c.checked = true);
+        } else if (currentlyChecked.length === cbs.length) {
+            // Se todos estavam marcados, isola o clicado
+            cbs.forEach(c => c.checked = (c.value === code));
+        } else {
+            // Se já estava em outro filtro ou subconjunto, isola o clicado
+            cbs.forEach(c => c.checked = (c.value === code));
+        }
+    }
+
+    syncPriorizadorFiltersFromDOM();
+    applyPriorizadorFilters();
+}
+window.togglePriorizadorEqPill = togglePriorizadorEqPill;
+
+// Reset do filtro de equipamentos para todos
+function resetPriorizadorEqFilter() {
+    document.querySelectorAll('#modulePriorizadorView .popover-checkbox[data-prio-filter="eq"]').forEach(cb => {
+        cb.checked = true;
+    });
+    syncPriorizadorFiltersFromDOM();
+    applyPriorizadorFilters();
+}
+window.resetPriorizadorEqFilter = resetPriorizadorEqFilter;
+
+// Clique no container do Card de Grandes Interrupções (reseta se houver filtro de equipamento)
+function handleCardGrandesInterrupcoesClick(event) {
+    if (event && event.target && event.target.closest('.eq-crit-pill')) return;
+    const selEqs = (priorizadorState.filters && priorizadorState.filters.eqs) || [];
+    if (selEqs.length < 8) {
+        resetPriorizadorEqFilter();
+    }
+}
+window.handleCardGrandesInterrupcoesClick = handleCardGrandesInterrupcoesClick;
+
+// Filtro de Urgência Máxima (1-Clique)
+function togglePriorizadorUrgenciaOnly() {
+    priorizadorState.filters.urgenciaOnly = !priorizadorState.filters.urgenciaOnly;
+    applyPriorizadorFilters();
+}
+window.togglePriorizadorUrgenciaOnly = togglePriorizadorUrgenciaOnly;
+
+// Filtro de CI > 200 (Alto Impacto)
+function togglePriorizadorCiAltoFilter() {
+    priorizadorState.filters.ciAltoOnly = !priorizadorState.filters.ciAltoOnly;
+    applyPriorizadorFilters();
+}
+window.togglePriorizadorCiAltoFilter = togglePriorizadorCiAltoFilter;
+
+// Filtro de Status de Despacho via Cards
+function togglePriorizadorDespFilter(despCode) {
+    const cbs = Array.from(document.querySelectorAll('#modulePriorizadorView .popover-checkbox[data-prio-filter="desp"]'));
+    const targetVal = despCode === 'AGUARD' ? 'AGUARD_DESP' : (despCode === 'LOCAL_80' ? 'LOCAL_>=80min' : '');
+
+    if (targetVal) {
+        const targetCb = cbs.find(c => c.value === targetVal);
+        const currentlyChecked = cbs.filter(c => c.checked);
+        if (currentlyChecked.length === 1 && targetCb?.checked) {
+            cbs.forEach(c => c.checked = true);
+        } else {
+            cbs.forEach(c => c.checked = (c.value === targetVal));
+        }
+    }
+
+    syncPriorizadorFiltersFromDOM();
+    applyPriorizadorFilters();
+}
+window.togglePriorizadorDespFilter = togglePriorizadorDespFilter;
+
+// Filtro de Supervisionadas
+function togglePriorizadorSupervisionadasFilter() {
+    priorizadorState.filters.supervisionadasOnly = !priorizadorState.filters.supervisionadasOnly;
+    applyPriorizadorFilters();
+}
+window.togglePriorizadorSupervisionadasFilter = togglePriorizadorSupervisionadasFilter;
+
+// Filtro de Com Equipe Atribuída
+function togglePriorizadorComEquipeFilter() {
+    priorizadorState.filters.comEquipeOnly = !priorizadorState.filters.comEquipeOnly;
+    applyPriorizadorFilters();
+}
+window.togglePriorizadorComEquipeFilter = togglePriorizadorComEquipeFilter;
+
+// Limpar todos os filtros (Redefine popovers para "Todos")
+function clearAllPriorizadorFilters() {
+    const f = priorizadorState.filters;
+    f.ciAltoOnly = false;
+    f.urgenciaOnly = false;
+    f.supervisionadasOnly = false;
+    f.comEquipeOnly = false;
+    f.search = '';
+    f.datePreset = 'ALL';
+    f.dateSelected = null;
+    priorizadorState.matrixFilter = null;
+
+    // Marca todos os checkboxes em todos os popovers
+    document.querySelectorAll('#modulePriorizadorView .popover-checkbox').forEach(cb => {
+        cb.checked = true;
+    });
+    document.querySelectorAll('#modulePriorizadorView .popover-group-checkbox').forEach(gcb => {
+        gcb.checked = true;
+        gcb.indeterminate = false;
+    });
+
+    // Sincroniza estado das listas e rótulos
+    syncPriorizadorFiltersFromDOM();
+
+    // Reseta campo de busca e data
+    const searchInp = document.getElementById('prioSearchInput');
+    const dateInp = document.getElementById('prioDateFilterInput');
+    if (searchInp) searchInp.value = '';
+    if (dateInp) dateInp.value = '';
+
+    const btnClearSearch = document.getElementById('btnPrioClearSearch');
+    if (btnClearSearch) btnClearSearch.style.display = 'none';
+
+    // Reseta preset de data
+    setPrioDatePreset('ALL', false);
+
+    showToast('Filtros do Priorizador redefinidos com sucesso!', 'info');
+    applyPriorizadorFilters();
+}
+window.clearAllPriorizadorFilters = clearAllPriorizadorFilters;
+
+// =========================================================================
+// FILTRO DE DATA (ESTILO TRBONET / FLATPICKR)
+// =========================================================================
+
+function initPriorizadorDatePicker() {
+    const input = document.getElementById('prioDateFilterInput');
+    if (!input || !window.flatpickr || priorizadorState.datePickerInstance) return;
+
+    priorizadorState.datePickerInstance = flatpickr(input, {
+        dateFormat: "d/m/Y",
+        altFormat: "d/m/Y",
+        locale: {
+            weekdays: {
+                shorthand: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+                longhand: ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado']
+            },
+            months: {
+                shorthand: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+                longhand: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+            }
+        },
+        onChange: function(selectedDates, dateStr) {
+            if (dateStr) {
+                priorizadorState.filters.datePreset = 'CUSTOM';
+                priorizadorState.filters.dateSelected = dateStr;
+                updatePrioDatePresetButtons('CUSTOM');
+            } else {
+                priorizadorState.filters.datePreset = 'ALL';
+                priorizadorState.filters.dateSelected = null;
+                updatePrioDatePresetButtons('ALL');
+            }
+            applyPriorizadorFilters();
+        }
+    });
+}
+
+function setPrioDatePreset(preset, triggerApply = true) {
+    priorizadorState.filters.datePreset = preset;
+    const input = document.getElementById('prioDateFilterInput');
+
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+
+    if (preset === 'TODAY') {
+        const todayStr = `${pad(today.getDate())}/${pad(today.getMonth() + 1)}/${today.getFullYear()}`;
+        if (input) input.value = todayStr;
+        priorizadorState.filters.dateSelected = todayStr;
+    } else if (preset === 'YESTERDAY') {
+        const yest = new Date(today);
+        yest.setDate(yest.getDate() - 1);
+        const yestStr = `${pad(yest.getDate())}/${pad(yest.getMonth() + 1)}/${yest.getFullYear()}`;
+        if (input) input.value = yestStr;
+        priorizadorState.filters.dateSelected = yestStr;
+    } else {
+        if (input) input.value = '';
+        priorizadorState.filters.dateSelected = null;
+    }
+
+    updatePrioDatePresetButtons(preset);
+    if (triggerApply) applyPriorizadorFilters();
+}
+window.setPrioDatePreset = setPrioDatePreset;
+
+function updatePrioDatePresetButtons(activePreset) {
+    const btnAll = document.getElementById('btnPrioDateAll');
+    const btnToday = document.getElementById('btnPrioDateToday');
+    const btnYest = document.getElementById('btnPrioDateYesterday');
+
+    [btnAll, btnToday, btnYest].forEach(b => b?.classList.remove('active'));
+    if (activePreset === 'ALL') btnAll?.classList.add('active');
+    else if (activePreset === 'TODAY') btnToday?.classList.add('active');
+    else if (activePreset === 'YESTERDAY') btnYest?.classList.add('active');
+}
+
+// =========================================================================
+// MULTI-BUSCA INTELIGENTE & APLICAÇÃO GERAL DE FILTROS
+// =========================================================================
+
+function handlePrioSearchInput(val) {
+    const btnClear = document.getElementById('btnPrioClearSearch');
+    if (btnClear) {
+        btnClear.style.display = val.trim().length > 0 ? 'flex' : 'none';
+    }
+    applyPriorizadorFilters();
+}
+window.handlePrioSearchInput = handlePrioSearchInput;
+
+function clearPrioSearch() {
+    const inp = document.getElementById('prioSearchInput');
+    if (inp) inp.value = '';
+    const btnClear = document.getElementById('btnPrioClearSearch');
+    if (btnClear) btnClear.style.display = 'none';
+    applyPriorizadorFilters();
+}
+window.clearPrioSearch = clearPrioSearch;
+
+// Motor de Filtragem Paramétrica Multidimensional do Priorizador
+function executePriorizadorFilters(orders, options = {}) {
+    const f = priorizadorState.filters || {};
+    const ignoreRegion = options.ignoreRegion || false;
+    const ignoreEq = options.ignoreEq || false;
+    const ignoreDesp = options.ignoreDesp || false;
+    const ignorePrio = options.ignorePrio || false;
+
+    const searchVal = (f.search !== undefined ? f.search : (document.getElementById('prioSearchInput')?.value || '')).trim().toLowerCase();
+
+    let res = orders || [];
+
+    const BASES_NORTE = ['BASE FAGUNDES FILHO', 'BASE CAJATI', 'BASE VILA MEDEIROS'];
+    const BASES_LESTE = ['BASE MONTE SANTO', 'BASE ARICANDUVA', 'BASE CATUMBI', 'BASE SANTO ANDRE', 'BASE SANTO ANDRÉ'];
+
+    // 1. Filtro Regiões Multi-Select & Bases Vinculadas
+    if (!ignoreRegion) {
+        const allRegions = ['NORTE', 'LESTE'];
+        const selRegions = f.regions || allRegions;
+        if (selRegions.length === 0) {
+            return [];
+        } else if (selRegions.length < allRegions.length) {
+            res = res.filter(o => {
+                const regUpper = (o.regiao || '').toUpperCase();
+                const baseUpper = (o.base_op || '').toUpperCase();
+
+                let matches = false;
+                if (selRegions.includes('NORTE')) {
+                    if (regUpper.startsWith('NORTE') || BASES_NORTE.some(bn => baseUpper.includes(bn.replace('BASE ', '')))) {
+                        matches = true;
+                    }
+                }
+                if (selRegions.includes('LESTE')) {
+                    if (regUpper.startsWith('LESTE') || BASES_LESTE.some(bl => baseUpper.includes(bl.replace('BASE ', '')))) {
+                        matches = true;
+                    }
+                }
+                return matches;
+            });
+        }
+
+        // Filtro Base / UT (Multi-Select Popover com Hierarquia)
+        const allBases = ['Base Cajati', 'Base Fagundes Filho', 'Base Vila Medeiros', 'Base Aricanduva', 'Base Catumbi', 'Base Monte Santo', 'Base Santo André'];
+        const selBases = f.bases || allBases;
+        if (selBases.length === 0) {
+            return [];
+        } else if (selBases.length < allBases.length) {
+            const selBasesClean = selBases.map(b => b.replace('Base ', '').replace('BASE ', '').trim().toUpperCase());
+            res = res.filter(o => {
+                const orderBase = (o.base_op || '').replace('BASE ', '').trim().toUpperCase();
+                return selBasesClean.some(sb => orderBase.includes(sb) || sb.includes(orderBase));
+            });
+        }
+    }
+
+    // 2. Filtro Equipamentos (EQ) Multi-Select
+    if (!ignoreEq) {
+        const CRITICOS_SET = new Set(['DJ', 'RA', 'CF', 'CA', 'BF', 'CH', 'RM']);
+        const allEqOptions = ['DJ', 'RA', 'CF', 'CA', 'BF', 'CH', 'RM', 'OUTROS'];
+        const selEqs = f.eqs || allEqOptions;
+        if (selEqs.length === 0) {
+            return [];
+        } else if (selEqs.length < allEqOptions.length) {
+            res = res.filter(o => {
+                const eqCode = (o.eq || '').trim().toUpperCase();
+                if (selEqs.includes(eqCode)) return true;
+                if (selEqs.includes('OUTROS') && !CRITICOS_SET.has(eqCode)) return true;
+                return false;
+            });
+        }
+    }
+
+    // 3. Filtro Status de Despacho (Multi-Select Popover)
+    if (!ignoreDesp) {
+        const allDespOptions = ['AGUARD_DESP', 'CAMI_', 'LOCAL_>=80min', 'LOCAL_<80min'];
+        const selDesp = f.despStatuses || allDespOptions;
+        if (selDesp.length === 0) {
+            return [];
+        } else if (selDesp.length < allDespOptions.length) {
+            res = res.filter(o => {
+                const cd = (o.control_desp || '').toUpperCase();
+                const sdt = o.status_desp_tipo || '';
+                return selDesp.some(statusOpt => {
+                    if (statusOpt === 'AGUARD_DESP') return sdt === 'AGUARD_DESP' || cd.includes('AGUARD');
+                    if (statusOpt === 'CAMI_') return sdt === 'CAMI_' || cd.includes('CAMI');
+                    if (statusOpt === 'LOCAL_>=80min') return sdt === 'LOCAL_>=80min' || cd.includes('LOCAL_>=80') || cd.includes('>=80');
+                    if (statusOpt === 'LOCAL_<80min') return sdt === 'LOCAL_<80min' || (cd.includes('LOCAL_') && !cd.includes('>=80'));
+                    return false;
+                });
+            });
+        }
+    }
+
+    // 4. Filtro Prioridade Estrita (Multi-Select Popover)
+    if (!ignorePrio) {
+        const allPrioOptions = ['1', '2', '3', '4'];
+        const selPrios = f.prios || allPrioOptions;
+        if (selPrios.length === 0) {
+            return [];
+        } else if (selPrios.length < allPrioOptions.length) {
+            res = res.filter(o => selPrios.includes(String(o.prioridade_rank)));
+        }
+    }
+
+    // 5. Filtro Urgência Máxima (Atalho dos Cards)
+    if (f.urgenciaOnly) {
+        res = res.filter(o => o.is_urgencia_critica || o.prioridade_rank === 1);
+    }
+
+    // 6. Filtro CI Alto (> 200) (Atalho dos Cards)
+    if (f.ciAltoOnly) {
+        res = res.filter(o => (Number(o.ci) || 0) > 200);
+    }
+
+    // 7. Supervisionadas
+    if (f.supervisionadasOnly) {
+        res = res.filter(o => Boolean(o.supervisor_responsavel));
+    }
+
+    // 8. Com Equipe Atribuída
+    if (f.comEquipeOnly) {
+        res = res.filter(o => Boolean(o.equipe_codigo));
+    }
+
+    // 9. Filtro de Data
+    if (f.dateSelected) {
+        res = res.filter(o => {
+            const dataDesl = String(o.data_desligamento || '');
+            return dataDesl.includes(f.dateSelected);
+        });
+    }
+
+    // 10. Filtro da Fita de Cruzamento Operacional (Visão 2)
+    if (priorizadorState.matrixFilter) {
+        const mf = priorizadorState.matrixFilter;
+        if (mf === 'prio1_aguard') {
+            res = res.filter(o => o.prioridade_rank === 1 && (o.control_desp || '').toUpperCase().includes('AGUARD'));
+        } else if (mf === 'prio1_local80') {
+            res = res.filter(o => o.prioridade_rank === 1 && ((o.control_desp || '').toUpperCase().includes('LOCAL_>=80') || (o.control_desp || '').toUpperCase().includes('>=80')));
+        } else if (mf === 'prio2_aguard') {
+            res = res.filter(o => o.prioridade_rank === 2 && (o.control_desp || '').toUpperCase().includes('AGUARD'));
+        } else if (mf === 'prio2_local80') {
+            res = res.filter(o => o.prioridade_rank === 2 && ((o.control_desp || '').toUpperCase().includes('LOCAL_>=80') || (o.control_desp || '').toUpperCase().includes('>=80')));
+        } else if (mf === 'prio3_aguard') {
+            res = res.filter(o => o.prioridade_rank === 3 && (o.control_desp || '').toUpperCase().includes('AGUARD'));
+        }
+    }
+
+    // 11. Multi-Busca Inteligente (Busca AND em todos os tokens digitados)
+    if (searchVal) {
+        const tokens = searchVal.split(/[\s,]+/).filter(Boolean);
+        res = res.filter(o => {
+            const searchableStr = [
+                o.ordem || '',
+                o.eq || '',
+                o.facility || '',
+                o.alimentador || '',
+                o.base_op || '',
+                o.regiao || '',
+                o.control_desp || '',
+                o.equipe_codigo || '',
+                o.equipe_veiculo || '',
+                o.equipe_motorista || '',
+                o.supervisor_responsavel || ''
+            ].join(' ').toLowerCase();
+
+            return tokens.every(tok => searchableStr.includes(tok));
+        });
+    }
+
+    return res;
+}
+window.executePriorizadorFilters = executePriorizadorFilters;
+
+function applyPriorizadorFilters() {
+    const f = priorizadorState.filters || {};
+    const allOrders = priorizadorState.orders || [];
+
+    const searchVal = (document.getElementById('prioSearchInput')?.value || '').trim().toLowerCase();
+    f.search = searchVal;
+
+    // 1. Conjunto filtrado completo com todas as dimensões ativas
+    let res = executePriorizadorFilters(allOrders);
+
+    // 2. Conjunto sem o filtro de região para manter o potencial regional de Norte vs Leste (Card 1)
+    const listWithoutRegion = executePriorizadorFilters(allOrders, { ignoreRegion: true });
+
+    // 3. Conjunto sem o filtro exclusivo de equipamento para dimensionar as pills do Card 2 no escopo regional
+    const listWithoutEq = executePriorizadorFilters(allOrders, { ignoreEq: true });
+
+    // Aplica Ordenação Ativa na lista filtrada
+    sortOrdersList(res, priorizadorState.sort.column, priorizadorState.sort.direction);
+
+    priorizadorState.filteredOrders = res;
+
+    // Recalcula KPIs locais com base nos conjuntos ativos
+    recalculatePriorizadorKpis({
+        filteredList: res,
+        listWithoutRegion: listWithoutRegion,
+        listWithoutEq: listWithoutEq
+    });
+
+    // Atualiza imediatamente TODOS os 8 cards de KPI e pills na tela
+    updatePriorizadorKpiCards();
+
+    // Atualiza contador e badge de resultados
+    const badgeCount = document.getElementById('prioResultsCountBadge');
+    if (badgeCount) {
+        badgeCount.textContent = `${res.length} ordens encontradas`;
+    }
+
+    // Atualiza badge de status dos filtros
+    const activeBadge = document.getElementById('prioFilterActiveCountBadge');
+    if (activeBadge) {
+        const isAllReg = (f.regions || []).length === 2;
+        const isAllBase = (f.bases || []).length === 7;
+        const isAllEq = (f.eqs || []).length === 8;
+        const isAllDesp = (f.despStatuses || []).length === 4;
+        const isAllPrio = (f.prios || []).length === 4;
+        const isPure = isAllReg && isAllBase && isAllEq && isAllDesp && isAllPrio && !f.ciAltoOnly && !f.urgenciaOnly && !f.supervisionadasOnly && !f.comEquipeOnly && !f.search && !f.dateSelected && !priorizadorState.matrixFilter;
+
+        if (isPure) {
+            activeBadge.textContent = 'Todos os filtros ativos (Sem restrições)';
+            activeBadge.style.color = '#38bdf8';
+            activeBadge.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+        } else {
+            activeBadge.textContent = `${res.length} de ${allOrders.length} ordens filtradas`;
+            activeBadge.style.color = '#f59e0b';
+            activeBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+        }
+    }
+
+    // Renderiza tela ativa
+    if (priorizadorState.currentScreen === 'online') {
+        renderPriorizadorTable();
+        renderPriorizadorMobileCards();
+    } else if (priorizadorState.currentScreen === 'dashboard') {
+        renderPriorizadorDashboard();
+    } else if (priorizadorState.currentScreen === 'history') {
+        renderPriorizadorAuditOsTable();
+    }
+}
+window.applyPriorizadorFilters = applyPriorizadorFilters;
+
+// =========================================================================
+// ALTERNÂNCIA DE VISÕES: VISÃO 1 (PURA EQ & CI) VS VISÃO 2 (OPERACIONAL)
+// =========================================================================
+
+function switchPriorizadorVision(visionType) {
+    priorizadorState.currentVision = visionType;
+
+    const btnPura = document.getElementById('btnPrioVisionPura');
+    const btnOp = document.getElementById('btnPrioVisionOperacional');
+    const matrixBar = document.getElementById('prioCrossMatrixBar');
+    const titleEl = document.getElementById('prioTableTitle');
+    const subEl = document.getElementById('prioTableSubtitle');
+    const summaryText = document.getElementById('prioVisionSummaryText');
+
+    if (visionType === 'operacional') {
+        btnPura?.classList.remove('active');
+        btnOp?.classList.add('active');
+        if (matrixBar) matrixBar.style.display = 'flex';
+        if (titleEl) titleEl.innerHTML = 'PAINEL OPERACIONAL DE GRANDES INTERRUPÇÕES • <span style="color: #c084fc;">VISÃO 2: OPERACIONAL (STATUS DESPACHO)</span>';
+        if (subEl) subEl.textContent = 'Cruzamento ativo das Prioridades Estritas com a coluna CONTROL_DESP (Aguardando Despacho, A Caminho e Tempo no Local).';
+        if (summaryText) {
+            summaryText.innerHTML = `
+                <span class="badge" style="background: rgba(124, 58, 237, 0.15); color: #c084fc; font-weight: 800; border: 1px solid rgba(124, 58, 237, 0.35);">
+                    ⚡ Foco Operacional: Prioridade Estrita atrelada ao Status CONTROL_DESP
+                </span>
+            `;
+        }
+    } else {
+        btnPura?.classList.add('active');
+        btnOp?.classList.remove('active');
+        if (matrixBar) matrixBar.style.display = 'none';
+        priorizadorState.matrixFilter = null;
+        document.querySelectorAll('.prio-matrix-pill').forEach(p => p.classList.remove('active'));
+        if (titleEl) titleEl.innerHTML = 'PAINEL OPERACIONAL DE GRANDES INTERRUPÇÕES • <span style="color: #38bdf8;">VISÃO 1: PRIORIDADE PURA</span>';
+        if (subEl) subEl.textContent = 'Priorização estrita por Equipamento Crítico (DJ, RA, CF, CA, BF, CH, RM) e Clientes Interrompidos (CI), independente de despacho.';
+        if (summaryText) {
+            summaryText.innerHTML = `
+                <span class="badge" style="background: rgba(2, 132, 199, 0.15); color: #38bdf8; font-weight: 800; border: 1px solid rgba(2, 132, 199, 0.35);">
+                    🎯 Foco Técnico: Criticidade Intrínseca de Rede & Clientes Interrompidos
+                </span>
+            `;
+        }
+    }
+
+    applyPriorizadorFilters();
+}
+window.switchPriorizadorVision = switchPriorizadorVision;
+
+function toggleMatrixFilter(filterKey) {
+    if (priorizadorState.matrixFilter === filterKey) {
+        priorizadorState.matrixFilter = null;
+    } else {
+        priorizadorState.matrixFilter = filterKey;
+    }
+
+    const pills = {
+        'prio1_aguard': document.getElementById('pillMatrixPrio1Aguard'),
+        'prio1_local80': document.getElementById('pillMatrixPrio1Local80'),
+        'prio2_aguard': document.getElementById('pillMatrixPrio2Aguard'),
+        'prio2_local80': document.getElementById('pillMatrixPrio2Local80'),
+        'prio3_aguard': document.getElementById('pillMatrixPrio3Aguard')
+    };
+
+    Object.keys(pills).forEach(k => {
+        if (pills[k]) {
+            pills[k].classList.toggle('active', priorizadorState.matrixFilter === k);
+        }
+    });
+
+    applyPriorizadorFilters();
+}
+window.toggleMatrixFilter = toggleMatrixFilter;
+
+// =========================================================================
+// CONTADOR DE TEMPO DE DESLIGAMENTO (COLUNA TIME - HH:MM:SS)
+// =========================================================================
+
+function parseDataDesligamento(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const s = dateStr.trim();
+    if (!s) return null;
+
+    // 1. Tenta formato brasileiro: DD/MM/YYYY [HH:mm[:ss]]
+    const brMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+    if (brMatch) {
+        const day = parseInt(brMatch[1], 10);
+        const month = parseInt(brMatch[2], 10) - 1;
+        const year = parseInt(brMatch[3], 10);
+        const hour = parseInt(brMatch[4] || '0', 10);
+        const min = parseInt(brMatch[5] || '0', 10);
+        const sec = parseInt(brMatch[6] || '0', 10);
+        const d = new Date(year, month, day, hour, min, sec);
+        if (!isNaN(d.getTime())) return d;
+    }
+
+    // 2. Tenta formato ISO ou YYYY-MM-DD
+    const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+    if (isoMatch) {
+        const year = parseInt(isoMatch[1], 10);
+        const month = parseInt(isoMatch[2], 10) - 1;
+        const day = parseInt(isoMatch[3], 10);
+        const hour = parseInt(isoMatch[4] || '0', 10);
+        const min = parseInt(isoMatch[5] || '0', 10);
+        const sec = parseInt(isoMatch[6] || '0', 10);
+        const d = new Date(year, month, day, hour, min, sec);
+        if (!isNaN(d.getTime())) return d;
+    }
+
+    // 3. Fallback genérico Date.parse
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+
+    return null;
+}
+window.parseDataDesligamento = parseDataDesligamento;
+
+function getOrderElapsedSeconds(order) {
+    if (!order) return 0;
+    
+    // Tenta data_desligamento
+    const d = parseDataDesligamento(order.data_desligamento);
+    if (d) {
+        const diffMs = Date.now() - d.getTime();
+        return Math.max(0, Math.floor(diffMs / 1000));
+    }
+    
+    // Fallback: se dur_min existir (duração em minutos registrada na carga)
+    if (order.dur_min !== undefined && order.dur_min !== null && !isNaN(Number(order.dur_min))) {
+        return Math.max(0, Math.floor(Number(order.dur_min) * 60));
+    }
+    
+    return 0;
+}
+window.getOrderElapsedSeconds = getOrderElapsedSeconds;
+
+function formatElapsedHHMMSS(totalSeconds) {
+    const s = Math.max(0, Math.floor(totalSeconds || 0));
+    const hours = Math.floor(s / 3600);
+    const minutes = Math.floor((s % 3600) / 60);
+    const seconds = s % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+window.formatElapsedHHMMSS = formatElapsedHHMMSS;
+
+function getPrioTimeBadgeClass(totalSeconds) {
+    const s = Number(totalSeconds) || 0;
+    if (s > 14400) {
+        return 'time-danger-pulse'; // Superior a 4 horas: vermelho pulsante neon
+    } else if (s > 7200) {
+        return 'time-warning';      // Acima de 2 horas até 4 horas: âmbar
+    } else {
+        return 'time-normal';       // Até 2 horas: normal
+    }
+}
+window.getPrioTimeBadgeClass = getPrioTimeBadgeClass;
+
+function getPrioTimeIcon(totalSeconds) {
+    const s = Number(totalSeconds) || 0;
+    if (s > 14400) return '🚨';
+    if (s > 7200) return '⏱️';
+    return '🕒';
+}
+window.getPrioTimeIcon = getPrioTimeIcon;
+
+let priorizadorLiveClockInterval = null;
+
+function startPriorizadorLiveClock() {
+    if (priorizadorLiveClockInterval) return;
+    
+    priorizadorLiveClockInterval = setInterval(() => {
+        const badges = document.querySelectorAll('.prio-time-badge[data-desligamento]');
+        if (!badges || badges.length === 0) return;
+
+        const now = Date.now();
+        badges.forEach(badge => {
+            const rawDate = badge.getAttribute('data-desligamento');
+            const fallbackSec = parseInt(badge.getAttribute('data-fallback-sec') || '0', 10);
+            const clientStart = parseInt(badge.getAttribute('data-client-start') || '0', 10);
+
+            const parsedDate = parseDataDesligamento(rawDate);
+            let elapsed = 0;
+            if (parsedDate) {
+                elapsed = Math.max(0, Math.floor((now - parsedDate.getTime()) / 1000));
+            } else if (fallbackSec > 0) {
+                const clientDiff = clientStart > 0 ? Math.floor((now - clientStart) / 1000) : 0;
+                elapsed = fallbackSec + clientDiff;
+            }
+
+            const formatted = formatElapsedHHMMSS(elapsed);
+            const textEl = badge.querySelector('.prio-time-text');
+            if (textEl && textEl.textContent !== formatted) {
+                textEl.textContent = formatted;
+            }
+
+            const iconEl = badge.querySelector('.prio-time-icon');
+            const targetIcon = getPrioTimeIcon(elapsed);
+            if (iconEl && iconEl.textContent !== targetIcon) {
+                iconEl.textContent = targetIcon;
+            }
+
+            const targetClass = getPrioTimeBadgeClass(elapsed);
+            if (!badge.classList.contains(targetClass)) {
+                badge.classList.remove('time-normal', 'time-warning', 'time-danger-pulse');
+                badge.classList.add(targetClass);
+            }
+        });
+    }, 1000);
+}
+window.startPriorizadorLiveClock = startPriorizadorLiveClock;
+
+// =========================================================================
+// CLASSIFICAÇÃO / SORTING DINÂMICO NAS TABELAS
+// =========================================================================
+
+function sortPriorizadorTable(colName) {
+    const s = priorizadorState.sort;
+    if (s.column === colName) {
+        s.direction = s.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        s.column = colName;
+        // Colunas numéricas ou de tempo começam em 'desc' (maior para menor), texto em 'asc' (A-Z)
+        const numCols = ['ci', 'chi', 'num_recla', 'dur_min', 'time_desligamento'];
+        s.direction = numCols.includes(colName) ? 'desc' : 'asc';
+        if (colName === 'prioridade') s.direction = 'asc'; // Prioridade 1 é o topo
+    }
+
+    // Atualiza os indicadores de setas nos cabeçalhos da tabela
+    const ths = document.querySelectorAll('#prioMainTable th.sortable-th');
+    ths.forEach(th => {
+        th.classList.remove('sort-active');
+        const icon = th.querySelector('.sort-icon');
+        if (icon) icon.textContent = '⇅';
+    });
+
+    const activeTh = document.querySelector(`#prioMainTable th.sortable-th[data-col="${colName}"]`);
+    if (activeTh) {
+        activeTh.classList.add('sort-active');
+        const icon = activeTh.querySelector('.sort-icon');
+        if (icon) icon.textContent = s.direction === 'asc' ? '▲' : '▼';
+    }
+
+    applyPriorizadorFilters();
+}
+window.sortPriorizadorTable = sortPriorizadorTable;
+
+function sortOrdersList(list, col, dir) {
+    const mult = dir === 'asc' ? 1 : -1;
+
+    list.sort((a, b) => {
+        if (col === 'prioridade') {
+            const rankA = Number(a.prioridade_rank) || 99;
+            const rankB = Number(b.prioridade_rank) || 99;
+            if (rankA !== rankB) {
+                return (rankA - rankB) * mult;
+            }
+            // Desempate automático por maior CI
+            return ((Number(b.ci) || 0) - (Number(a.ci) || 0)) * (mult > 0 ? 1 : -1);
+        } else if (col === 'time_desligamento') {
+            const secA = getOrderElapsedSeconds(a);
+            const secB = getOrderElapsedSeconds(b);
+            return (secA - secB) * mult;
+        } else if (col === 'ci') {
+            return ((Number(a.ci) || 0) - (Number(b.ci) || 0)) * mult;
+        } else if (col === 'chi') {
+            return ((Number(a.chi) || 0) - (Number(b.chi) || 0)) * mult;
+        } else if (col === 'num_recla') {
+            return ((Number(a.num_recla) || 0) - (Number(b.num_recla) || 0)) * mult;
+        } else if (col === 'dur_min') {
+            return ((Number(a.dur_min) || 0) - (Number(b.dur_min) || 0)) * mult;
+        } else if (col === 'ordem') {
+            return String(a.ordem || '').localeCompare(String(b.ordem || '')) * mult;
+        } else if (col === 'supervisor') {
+            return String(a.supervisor_responsavel || '').localeCompare(String(b.supervisor_responsavel || '')) * mult;
+        } else if (col === 'equipe') {
+            return String(a.equipe_codigo || '').localeCompare(String(b.equipe_codigo || '')) * mult;
+        } else if (col === 'control_desp') {
+            return String(a.control_desp || '').localeCompare(String(b.control_desp || '')) * mult;
+        } else if (col === 'eq') {
+            return String(a.eq || '').localeCompare(String(b.eq || '')) * mult;
+        } else if (col === 'facility') {
+            return String(a.facility || '').localeCompare(String(b.facility || '')) * mult;
+        } else if (col === 'alimentador') {
+            return String(a.alimentador || '').localeCompare(String(b.alimentador || '')) * mult;
+        } else if (col === 'base_op') {
+            return String(a.base_op || '').localeCompare(String(b.base_op || '')) * mult;
+        }
+        return 0;
+    });
+}
+
+// =========================================================================
+// RENDERIZAÇÃO DA TABELA PRINCIPAL E FEED MOBILE
+// =========================================================================
+
+function renderPriorizadorTable() {
+    const tbody = document.getElementById('priorizadorTableBody');
+    if (!tbody) return;
+
+    const list = priorizadorState.filteredOrders;
+    if (!list || list.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="15" style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
+                    <p style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0 0 6px 0;">Nenhuma ordem de grande interrupção encontrada.</p>
+                    <p style="font-size: 0.8rem; margin: 0;">Tente desmarcar filtros ou verificar os critérios de busca.</p>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    const isVisionOperacional = priorizadorState.currentVision === 'operacional';
+
+    tbody.innerHTML = list.map(o => {
+        const critClass = o.criticidade_badge_class || 'badge-convencional';
+        const critLabel = o.criticidade_label || 'CONVENCIONAL';
+        
+        let rowClass = '';
+        if (o.prioridade_rank === 1 || o.nivel_criticidade === 'CRITICO_MAXIMO') rowClass = 'row-critico-maximo';
+        else if (o.prioridade_rank === 2 || o.nivel_criticidade === 'EQ_CRITICO') rowClass = 'row-eq-critico';
+        else if (o.prioridade_rank === 3 || o.nivel_criticidade === 'CI_ALTO') rowClass = 'row-ci-alto';
+        else if (o.nivel_criticidade === 'LOCAL_80MIN') rowClass = 'row-local-80';
+
+        // Badge de Status CONTROL_DESP
+        const cd = o.control_desp || '--';
+        let cdBadge = '';
+        if (isVisionOperacional && o.cruzamento_label && o.cruzamento_label !== cd) {
+            // Em Visão 2, destaca o cruzamento operacional entre Prioridade e Status
+            cdBadge = `<span class="${o.cruzamento_class || 'badge'}" title="Cruzamento Operacional: ${o.regra_descricao || ''}">${o.cruzamento_label}</span>`;
+        } else {
+            if (cd.includes('AGUARD')) {
+                cdBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); font-weight: 800; font-size: 0.72rem; padding: 3px 8px; border-radius: 6px;">⏳ ${cd}</span>`;
+            } else if (cd.includes('LOCAL_>=80') || cd.includes('>=80')) {
+                cdBadge = `<span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #a855f7; border: 1px solid rgba(168, 85, 247, 0.4); font-weight: 800; font-size: 0.72rem; padding: 3px 8px; border-radius: 6px;">⏱️ ${cd}</span>`;
+            } else if (cd.includes('CAMI')) {
+                cdBadge = `<span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #0284c7; border: 1px solid rgba(14, 165, 233, 0.4); font-weight: 800; font-size: 0.72rem; padding: 3px 8px; border-radius: 6px;">🚚 ${cd}</span>`;
+            } else {
+                cdBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); font-weight: 800; font-size: 0.72rem; padding: 3px 8px; border-radius: 6px;">✓ ${cd}</span>`;
+            }
+        }
+
+        // Supervisor / Diário
+        const supNome = o.supervisor_responsavel;
+        const totalNotas = o.total_notas_supervisao || 0;
+        let supHtml = '';
+        if (supNome) {
+            supHtml = `
+                <div>
+                    <div style="font-weight: 800; font-size: 0.78rem; color: #10b981;">👤 ${supNome}</div>
+                    <small style="font-size: 0.68rem; color: var(--text-secondary); cursor: pointer;" onclick="openPriorizadorDossierModal('${o.ordem}')">
+                        ${o.status_supervisao || 'Em acompanhamento'} (${totalNotas} notas)
+                    </small>
+                </div>
+            `;
+        } else {
+            supHtml = `
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openPriorizadorDossierModal('${o.ordem}')" style="padding: 2px 8px; font-size: 0.7rem; font-weight: 800; border-radius: 6px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.35);">
+                    + Assumir
+                </button>
+            `;
+        }
+
+        // Equipe Vinculada
+        let equipeHtml = '';
+        if (o.equipe_codigo) {
+            equipeHtml = `
+                <div>
+                    <button type="button" class="team-badge clickable-team-badge" onclick="if (typeof openDeliveryTeamModal === 'function') openDeliveryTeamModal('${o.equipe_codigo}')" title="Clique para abrir detalhes da equipe" style="font-size: 0.76rem; padding: 3px 8px;">
+                        ${o.equipe_codigo}
+                    </button>
+                    <div style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 2px;">${o.equipe_veiculo || '--'}</div>
+                </div>
+            `;
+        } else {
+            equipeHtml = `<span style="color: var(--text-secondary); font-size: 0.75rem;">Sem equipe</span>`;
+        }
+
+        // Cálculo dinâmico do tempo decorrido de desligamento
+        const elapsedSec = getOrderElapsedSeconds(o);
+        const timeBadgeClass = getPrioTimeBadgeClass(elapsedSec);
+        const timeFormatted = formatElapsedHHMMSS(elapsedSec);
+        const timeIcon = getPrioTimeIcon(elapsedSec);
+
+        return `
+            <tr class="${rowClass}">
+                <!-- 1. PRIORIDADE -->
+                <td>
+                    <span class="${critClass}" title="${o.regra_descricao || ''}">${critLabel}</span>
+                </td>
+                <!-- 2. ORDEM -->
+                <td>
+                    <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: var(--text-primary); cursor: pointer;" onclick="openPriorizadorDossierModal('${o.ordem}')" title="Clique para abrir o Dossiê completo da OS">${o.ordem}</strong>
+                    <div style="font-size: 0.68rem; color: var(--text-secondary);">${o.data_desligamento || ''}</div>
+                </td>
+                <!-- 3. TIME (TEMPO DECORRIDO DE DESLIGAMENTO) -->
+                <td>
+                    <span class="prio-time-badge ${timeBadgeClass}" 
+                          data-desligamento="${o.data_desligamento || ''}" 
+                          data-fallback-sec="${(Number(o.dur_min) || 0) * 60}"
+                          data-client-start="${Date.now()}"
+                          title="Desligamento: ${o.data_desligamento || '--'} | Tempo decorrido: ${timeFormatted}">
+                        <span class="prio-time-icon">${timeIcon}</span>
+                        <span class="prio-time-text">${timeFormatted}</span>
+                    </span>
+                </td>
+                <!-- 4. SUPERVISOR -->
+                <td>
+                    ${supHtml}
+                </td>
+                <!-- 5. EQUIPE ATRIBUÍDA -->
+                <td>
+                    ${equipeHtml}
+                </td>
+                <!-- 6. STATUS DESPACHO -->
+                <td>
+                    ${cdBadge}
+                </td>
+                <!-- 7. EQ -->
+                <td>
+                    <strong style="font-weight: 900; color: #38bdf8;">${o.eq}</strong>
+                </td>
+                <!-- 8. FACILITY -->
+                <td>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-primary);">${o.facility}</span>
+                </td>
+                <!-- 9. ALIMENTADOR -->
+                <td>
+                    <span style="font-weight: 700; font-size: 0.76rem; color: var(--text-primary);">${o.alimentador}</span>
+                </td>
+                <!-- 10. CI -->
+                <td>
+                    <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: ${Number(o.ci) > 200 ? '#f43f5e' : 'var(--text-primary)'};">
+                        ${(Number(o.ci) || 0).toLocaleString('pt-BR')}
+                    </strong>
+                </td>
+                <!-- 11. CHI -->
+                <td>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--text-secondary);">
+                        ${(Number(o.chi) || 0.0).toFixed(2)}
+                    </span>
+                </td>
+                <!-- 12. RECLAMAÇÕES -->
+                <td>
+                    <span style="font-weight: 700; font-size: 0.76rem;">${o.num_recla || 0}</span>
+                </td>
+                <!-- 13. BASE OP -->
+                <td>
+                    <div style="font-size: 0.76rem; font-weight: 700; color: var(--text-primary);">${o.base_op || '--'}</div>
+                    <small style="font-size: 0.68rem; color: var(--text-secondary);">${o.regiao || ''}</small>
+                </td>
+                <!-- 14. DURAÇÃO -->
+                <td>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; color: var(--text-secondary);">${o.dur_min || 0} min</span>
+                </td>
+                <!-- 15. AÇÕES -->
+                <td style="text-align: center;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="openPriorizadorDossierModal('${o.ordem}')" title="Abrir Dossiê & Diário da OS" style="padding: 4px 10px; font-weight: 800; font-size: 0.72rem; border-radius: 8px;">
+                        🔍 Dossiê
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    // Inicia / mantém ativo o relógio vivo de atualização em tempo real
+    startPriorizadorLiveClock();
+}
+
+// Renderização do Feed de Cards Mobile
+function renderPriorizadorMobileCards() {
+    const container = document.getElementById('priorizadorMobileCardsFeed');
+    if (!container) return;
+
+    const list = priorizadorState.filteredOrders;
+    if (!list || list.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 30px 16px; color: var(--text-secondary);">
+                <p style="font-weight: 700; font-size: 0.95rem; margin: 0 0 4px 0;">Nenhuma ordem crítica filtrada.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const isVisionOperacional = priorizadorState.currentVision === 'operacional';
+
+    container.innerHTML = list.map(o => {
+        let cardModifier = '';
+        if (o.prioridade_rank === 1 || o.nivel_criticidade === 'CRITICO_MAXIMO') cardModifier = 'card-prio-urgente';
+        else if (o.prioridade_rank === 2 || o.nivel_criticidade === 'EQ_CRITICO') cardModifier = 'card-prio-atencao';
+        else if (o.prioridade_rank === 3 || o.nivel_criticidade === 'CI_ALTO') cardModifier = 'card-prio-atencao';
+        else if (o.nivel_criticidade === 'LOCAL_80MIN') cardModifier = 'card-prio-local80';
+
+        const statusDisplay = (isVisionOperacional && o.cruzamento_label) ? o.cruzamento_label : (o.control_desp || '--');
+
+        // Cálculo dinâmico do tempo decorrido de desligamento
+        const elapsedSec = getOrderElapsedSeconds(o);
+        const timeBadgeClass = getPrioTimeBadgeClass(elapsedSec);
+        const timeFormatted = formatElapsedHHMMSS(elapsedSec);
+        const timeIcon = getPrioTimeIcon(elapsedSec);
+
+        return `
+            <div class="prio-mobile-card ${cardModifier}" onclick="openPriorizadorDossierModal('${o.ordem}')">
+                <div class="prio-mobile-top">
+                    <div>
+                        <span class="${o.criticidade_badge_class || 'badge-convencional'}">${o.criticidade_label || 'ORDEM'}</span>
+                        <div style="font-family: 'JetBrains Mono', monospace; font-weight: 900; font-size: 0.9rem; color: var(--text-primary); margin-top: 4px;">
+                            ${o.ordem}
+                        </div>
+                    </div>
+                    <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                        <span class="prio-time-badge ${timeBadgeClass}" 
+                              data-desligamento="${o.data_desligamento || ''}" 
+                              data-fallback-sec="${(Number(o.dur_min) || 0) * 60}"
+                              data-client-start="${Date.now()}"
+                              style="font-size: 0.72rem; padding: 3px 8px;"
+                              title="Tempo de Desligamento: ${timeFormatted}">
+                            <span class="prio-time-icon">${timeIcon}</span>
+                            <span class="prio-time-text">${timeFormatted}</span>
+                        </span>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #38bdf8;">${o.eq} - ${o.facility}</div>
+                        <small style="color: var(--text-secondary); font-size: 0.68rem;">${o.alimentador || ''}</small>
+                    </div>
+                </div>
+
+                <div class="prio-mobile-kpi-row">
+                    <div>
+                        <small style="font-size: 0.65rem; color: var(--text-secondary); display: block;">CI</small>
+                        <strong style="font-size: 0.85rem; color: ${Number(o.ci) > 200 ? '#f43f5e' : 'var(--text-primary)'};">${(Number(o.ci) || 0).toLocaleString('pt-BR')}</strong>
+                    </div>
+                    <div>
+                        <small style="font-size: 0.65rem; color: var(--text-secondary); display: block;">STATUS</small>
+                        <strong style="font-size: 0.75rem; color: var(--text-primary);">${statusDisplay}</strong>
+                    </div>
+                    <div>
+                        <small style="font-size: 0.65rem; color: var(--text-secondary); display: block;">EQUIPE</small>
+                        <strong style="font-size: 0.75rem; color: #10b981;">${o.equipe_codigo || 'Sem equipe'}</strong>
+                    </div>
+                </div>
+
+                <div class="prio-mobile-actions">
+                    <span style="font-size: 0.72rem; color: var(--text-secondary);">
+                        ${o.supervisor_responsavel ? `👤 ${o.supervisor_responsavel}` : '⚠️ Sem supervisor'}
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm" style="padding: 3px 8px; font-size: 0.7rem; font-weight: 800;">
+                        🔍 Abrir Dossiê
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Inicia / mantém ativo o relógio vivo de atualização em tempo real
+    startPriorizadorLiveClock();
+}
+
+// =========================================================================
+// TABELA DE AUDITORIA FORENSE CONSOLIDADA POR ORDEM DE SERVIÇO (OS)
+// =========================================================================
+
+function handlePrioAuditSearch(val) {
+    const btn = document.getElementById('btnPrioClearAuditSearch');
+    if (btn) btn.style.display = val.trim().length > 0 ? 'flex' : 'none';
+    priorizadorState.auditSearch = val.trim().toLowerCase();
+    renderPriorizadorAuditOsTable();
+}
+window.handlePrioAuditSearch = handlePrioAuditSearch;
+
+function clearPrioAuditSearch() {
+    const inp = document.getElementById('prioAuditSearchInput');
+    if (inp) inp.value = '';
+    const btn = document.getElementById('btnPrioClearAuditSearch');
+    if (btn) btn.style.display = 'none';
+    priorizadorState.auditSearch = '';
+    renderPriorizadorAuditOsTable();
+}
+window.clearPrioAuditSearch = clearPrioAuditSearch;
+
+function sortPriorizadorAuditTable(colName) {
+    const s = priorizadorState.auditSort;
+    if (s.column === colName) {
+        s.direction = s.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        s.column = colName;
+        s.direction = colName === 'mutacoes_count' || colName === 'ci' ? 'desc' : 'asc';
+    }
+    renderPriorizadorAuditOsTable();
+}
+window.sortPriorizadorAuditTable = sortPriorizadorAuditTable;
+
+function renderPriorizadorAuditOsTable() {
+    const tbody = document.getElementById('prioAuditOsTableBody');
+    const badgeCount = document.getElementById('prioAuditOrdersCountBadge');
+    if (!tbody) return;
+
+    // Mapa unificado de OSs (ativas + mutações históricas)
+    const osMap = new Map();
+
+    // 1. Alimenta com as ordens ativas
+    (priorizadorState.orders || []).forEach(o => {
+        osMap.set(o.ordem, {
+            ordem: o.ordem,
+            base_op: o.base_op || '--',
+            regiao: o.regiao || '--',
+            eq: o.eq || '--',
+            facility: o.facility || '--',
+            alimentador: o.alimentador || '--',
+            control_desp: o.control_desp || '--',
+            ci: o.ci || 0,
+            chi: o.chi || 0.0,
+            equipe_codigo: o.equipe_codigo || null,
+            supervisor_responsavel: o.supervisor_responsavel || null,
+            atualizado_em: o.atualizado_em || o.data_desligamento || new Date().toISOString(),
+            mutacoes: []
+        });
+    });
+
+    // 2. Agrupa as mutações por OS
+    (priorizadorState.mutations || []).forEach(m => {
+        const ord = m.ordem;
+        if (!osMap.has(ord)) {
+            osMap.set(ord, {
+                ordem: ord,
+                base_op: '--',
+                regiao: '--',
+                eq: '--',
+                facility: '--',
+                alimentador: '--',
+                control_desp: m.control_desp_atual || '--',
+                ci: m.ci_atual || 0,
+                chi: m.chi_atual || 0.0,
+                equipe_codigo: m.equipe_atual || null,
+                supervisor_responsavel: null,
+                atualizado_em: m.coletado_em || new Date().toISOString(),
+                mutacoes: []
+            });
+        }
+        osMap.get(ord).mutacoes.push(m);
+    });
+
+    let osList = Array.from(osMap.values());
+
+    // 3. Filtro de busca na auditoria
+    const searchVal = priorizadorState.auditSearch;
+    if (searchVal) {
+        osList = osList.filter(item => {
+            const str = [
+                item.ordem,
+                item.base_op,
+                item.regiao,
+                item.eq,
+                item.facility,
+                item.alimentador,
+                item.equipe_codigo,
+                item.supervisor_responsavel
+            ].join(' ').toLowerCase();
+            return str.includes(searchVal);
+        });
+    }
+
+    // 4. Ordenação da Auditoria
+    const s = priorizadorState.auditSort;
+    const mult = s.direction === 'asc' ? 1 : -1;
+    osList.sort((a, b) => {
+        if (s.column === 'mutacoes_count') {
+            return (a.mutacoes.length - b.mutacoes.length) * mult;
+        } else if (s.column === 'ci') {
+            return (Number(a.ci) - Number(b.ci)) * mult;
+        } else if (s.column === 'ordem') {
+            return String(a.ordem).localeCompare(String(b.ordem)) * mult;
+        } else if (s.column === 'base_op') {
+            return String(a.base_op).localeCompare(String(b.base_op)) * mult;
+        } else if (s.column === 'eq') {
+            return String(a.eq).localeCompare(String(b.eq)) * mult;
+        } else if (s.column === 'control_desp') {
+            return String(a.control_desp).localeCompare(String(b.control_desp)) * mult;
+        } else if (s.column === 'equipe_codigo') {
+            return String(a.equipe_codigo || '').localeCompare(String(b.equipe_codigo || '')) * mult;
+        } else if (s.column === 'supervisor_responsavel') {
+            return String(a.supervisor_responsavel || '').localeCompare(String(b.supervisor_responsavel || '')) * mult;
+        }
+        return 0;
+    });
+
+    if (badgeCount) badgeCount.textContent = `${osList.length} OSs auditadas`;
+
+    if (osList.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="11" style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
+                    Nenhum registro de auditoria encontrado para o critério informado.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = osList.map(item => {
+        const mutCount = item.mutacoes.length;
+        const mutBadge = mutCount > 0
+            ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 800; font-size: 0.74rem; padding: 3px 8px; border-radius: 6px;">⚡ ${mutCount} alteraç${mutCount > 1 ? 'ões' : 'ão'}</span>`
+            : `<span style="color: var(--text-secondary); font-size: 0.74rem;">Sem mutações</span>`;
+
+        const supText = item.supervisor_responsavel
+            ? `<span style="font-weight: 800; color: #10b981; font-size: 0.78rem;">👤 ${item.supervisor_responsavel}</span>`
+            : `<span style="color: var(--text-secondary); font-size: 0.74rem;">Pendente</span>`;
+
+        const eqpText = item.equipe_codigo
+            ? `<span class="team-badge" style="font-size: 0.74rem; padding: 2px 7px;">${item.equipe_codigo}</span>`
+            : `<span style="color: var(--text-secondary); font-size: 0.74rem;">Sem equipe</span>`;
+
+        return `
+            <tr style="cursor: pointer;" onclick="openPriorizadorDossierModal('${item.ordem}')" title="Clique para abrir o Dossiê completo desta OS">
+                <!-- 1. ORDEM -->
+                <td>
+                    <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.84rem; color: #38bdf8;">${item.ordem}</strong>
+                </td>
+                <!-- 2. BASE / REGIÃO -->
+                <td>
+                    <div style="font-weight: 700; font-size: 0.78rem; color: var(--text-primary);">${item.base_op}</div>
+                    <small style="font-size: 0.68rem; color: var(--text-secondary);">${item.regiao}</small>
+                </td>
+                <!-- 3. EQ & FACILITY -->
+                <td>
+                    <strong style="color: #38bdf8; font-size: 0.8rem;">${item.eq}</strong>
+                    <div style="font-size: 0.72rem; color: var(--text-primary);">${item.facility}</div>
+                </td>
+                <!-- 4. ALIMENTADOR -->
+                <td>
+                    <span style="font-size: 0.76rem; font-weight: 700;">${item.alimentador}</span>
+                </td>
+                <!-- 5. STATUS DESPACHO -->
+                <td>
+                    <span style="font-size: 0.76rem;">${item.control_desp}</span>
+                </td>
+                <!-- 6. CI -->
+                <td>
+                    <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.84rem; color: ${Number(item.ci) > 200 ? '#f43f5e' : 'var(--text-primary)'};">
+                        ${(Number(item.ci) || 0).toLocaleString('pt-BR')}
+                    </strong>
+                </td>
+                <!-- 7. EQUIPE -->
+                <td>
+                    ${eqpText}
+                </td>
+                <!-- 8. SUPERVISOR -->
+                <td>
+                    ${supText}
+                </td>
+                <!-- 9. MUTAÇÕES -->
+                <td>
+                    ${mutBadge}
+                </td>
+                <!-- 10. ATUALIZADO EM -->
+                <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-secondary);">
+                    ${formatDateTimeBR(item.atualizado_em)}
+                </td>
+                <!-- 11. AÇÕES -->
+                <td style="text-align: center;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); openPriorizadorDossierModal('${item.ordem}')" style="padding: 4px 10px; font-weight: 800; font-size: 0.72rem; border-radius: 8px;">
+                        🔍 Dossiê OS
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// =========================================================================
+// MODAL ULTRA-PREMIUM DOSSIÊ DA OS (FICHA TÉCNICA + DIÁRIO + MUTAÇÕES)
+// =========================================================================
+
+async function openPriorizadorDossierModal(orderCode) {
+    const modal = document.getElementById('modalPriorizadorDossier');
+    if (!modal) return;
+
+    // Busca o dossiê consolidado via API
+    showToast(`Carregando dossiê completo da OS #${orderCode}...`, 'info');
+
+    try {
+        const resp = await fetch(`/api/priorizador/order/${encodeURIComponent(orderCode)}/dossier`);
+        const res = await resp.json();
+
+        if (!resp.ok || res.status === 'error') {
+            throw new Error(res.message || 'Falha ao buscar dossiê da OS.');
+        }
+
+        priorizadorState.currentDossierData = res;
+        const o = res.order || {};
+
+        // Cabeçalho do Modal
+        document.getElementById('modalDossierHiddenOrder').value = orderCode;
+        document.getElementById('modalDossierOrderBadge').textContent = `OS #${orderCode}`;
+        document.getElementById('modalDossierTitle').textContent = `Dossiê Operacional: ${o.eq || '--'} - ${o.facility || '--'}`;
+        document.getElementById('modalDossierSubtext').textContent = `Circuito: ${o.alimentador || '--'} | CI: ${(Number(o.ci) || 0).toLocaleString('pt-BR')} | Base: ${o.base_op || '--'} (${o.regiao || '--'})`;
+
+        // Badges do Cabeçalho
+        const pillCrit = document.getElementById('modalDossierCriticidadePill');
+        if (pillCrit) {
+            pillCrit.className = o.criticidade_badge_class || 'badge-convencional';
+            pillCrit.textContent = o.criticidade_label || 'CONVENCIONAL';
+        }
+
+        const badgeReg = document.getElementById('modalDossierRegiaoBadge');
+        if (badgeReg) badgeReg.textContent = `Região: ${o.regiao || '--'}`;
+
+        const badgeBase = document.getElementById('modalDossierBaseBadge');
+        if (badgeBase) badgeBase.textContent = `Base: ${o.base_op || '--'}`;
+
+        // Contadores das Abas
+        const cntDiario = document.getElementById('tabCounterDossierDiario');
+        if (cntDiario) cntDiario.textContent = res.total_notes || (res.timeline || []).length;
+
+        const cntMut = document.getElementById('tabCounterDossierMutacoes');
+        if (cntMut) cntMut.textContent = res.total_mutations || (res.mutations || []).length;
+
+        // ABA 1: Preenche Ficha Técnica
+        document.getElementById('dossierFichaCi').textContent = (Number(o.ci) || 0).toLocaleString('pt-BR');
+        document.getElementById('dossierFichaChi').textContent = (Number(o.chi) || 0.0).toFixed(2);
+        document.getElementById('dossierFichaDuracao').textContent = `${o.dur_min || 0} min`;
+        document.getElementById('dossierFichaDataDesligamento').textContent = o.data_desligamento ? `Desligamento: ${o.data_desligamento}` : '--';
+        document.getElementById('dossierFichaReclamacoes').textContent = o.num_recla || 0;
+        document.getElementById('dossierFichaTempoRecla').textContent = `Última reclamação: ${o.tempo_ult_recla || 0} min`;
+
+        document.getElementById('dossierFichaEq').textContent = o.eq || '--';
+        document.getElementById('dossierFichaFacility').textContent = o.facility || '--';
+        document.getElementById('dossierFichaAlimentador').textContent = o.alimentador || '--';
+        document.getElementById('dossierFichaSituacaoConj').textContent = o.situacao_conjunto || '--';
+        document.getElementById('dossierFichaOrganizacao').textContent = o.organizacao || '--';
+
+        document.getElementById('dossierFichaControlDesp').textContent = o.control_desp || '--';
+        document.getElementById('dossierFichaEquipeCod').textContent = o.equipe_codigo || 'Sem equipe associada';
+        document.getElementById('dossierFichaEquipeMotorista').textContent = o.equipe_motorista || '--';
+        document.getElementById('dossierFichaEquipeVeiculo').textContent = o.equipe_veiculo || '--';
+        document.getElementById('dossierFichaEquipeBase').textContent = o.equipe_base || '--';
+
+        // ABA 2: Diário de Bordo da Supervisão
+        const supNome = o.supervisor_responsavel;
+        const supNomeEl = document.getElementById('dossierSupervisorAtivoNome');
+        const supBadgeEl = document.getElementById('dossierSupervisorStatusBadge');
+        const inputSup = document.getElementById('inputDossierSupervisorName');
+
+        if (supNome) {
+            if (supNomeEl) supNomeEl.textContent = `👤 ${supNome}`;
+            if (supBadgeEl) supBadgeEl.textContent = o.status_supervisao || 'Em Acompanhamento Ativo';
+            if (inputSup) inputSup.value = supNome;
+        } else {
+            if (supNomeEl) supNomeEl.textContent = '⚠️ Nenhum supervisor assumiu esta ordem de serviço';
+            if (supBadgeEl) supBadgeEl.textContent = 'Pendente de Atribuição';
+        }
+
+        renderDossierDiarioTimeline(res.timeline || []);
+
+        // ABA 3: Auditoria Forense de Mutações
+        renderDossierMutationsTable(res.mutations || []);
+
+        // Abre na aba de Ficha Técnica por padrão
+        switchDossierModalTab('ficha');
+
+        // Exibe o modal
+        modal.classList.add('active');
+        modal.style.display = 'flex';
+
+    } catch (e) {
+        showToast(`Erro ao abrir dossiê: ${e.message}`, 'error');
+    }
+}
+window.openPriorizadorDossierModal = openPriorizadorDossierModal;
+window.openPriorizadorTimelineModal = openPriorizadorDossierModal; // Alias de compatibilidade
+
+function closePriorizadorDossierModal(event) {
+    if (event && event.target && event.target.id !== 'modalPriorizadorDossier' && !event.target.closest('.btn-sheet-close')) return;
+    const modal = document.getElementById('modalPriorizadorDossier');
+    if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+    }
+}
+window.closePriorizadorDossierModal = closePriorizadorDossierModal;
+window.closePriorizadorTimelineModal = closePriorizadorDossierModal; // Alias de compatibilidade
+
+// Alternador de Abas do Modal Dossiê
+function switchDossierModalTab(tabName) {
+    priorizadorState.currentDossierTab = tabName;
+
+    const btnFicha = document.getElementById('tabBtnDossierFicha');
+    const btnDiario = document.getElementById('tabBtnDossierDiario');
+    const btnMut = document.getElementById('tabBtnDossierMutacoes');
+
+    const paneFicha = document.getElementById('dossierTabFicha');
+    const paneDiario = document.getElementById('dossierTabDiario');
+    const paneMut = document.getElementById('dossierTabMutacoes');
+
+    [btnFicha, btnDiario, btnMut].forEach(b => b?.classList.remove('active'));
+    [paneFicha, paneDiario, paneMut].forEach(p => { if (p) p.style.display = 'none'; });
+
+    if (tabName === 'diario') {
+        btnDiario?.classList.add('active');
+        if (paneDiario) paneDiario.style.display = 'block';
+    } else if (tabName === 'mutacoes') {
+        btnMut?.classList.add('active');
+        if (paneMut) paneMut.style.display = 'block';
+    } else {
+        btnFicha?.classList.add('active');
+        if (paneFicha) paneFicha.style.display = 'block';
+    }
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+window.switchDossierModalTab = switchDossierModalTab;
+
+// Renderização da Linha do Tempo do Diário de Bordo
+function renderDossierDiarioTimeline(timelineList) {
+    const container = document.getElementById('dossierDiarioTimelineContainer');
+    if (!container) return;
+
+    if (!timelineList || timelineList.length === 0) {
+        container.innerHTML = `
+            <div style="color: var(--text-secondary); font-size: 0.8rem; padding: 14px 0;">
+                Nenhum apontamento registrado ainda no diário de bordo desta OS.
+                Seja o primeiro a documentar a ocorrência de campo acima!
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = timelineList.map(n => {
+        return `
+            <div class="prio-timeline-item">
+                <div class="prio-timeline-dot"></div>
+                <div class="prio-timeline-bubble">
+                    <div class="prio-timeline-meta">
+                        <div>
+                            <span class="prio-timeline-author">👤 ${n.supervisor_nome}</span>
+                            <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #0284c7; font-size: 0.68rem; margin-left: 6px;">
+                                ${n.status_etapa}
+                            </span>
+                        </div>
+                        <span class="prio-timeline-time">${formatDateTimeBR(n.registrado_em)}</span>
+                    </div>
+                    <p class="prio-timeline-text">${n.observacao}</p>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Renderização da Tabela de Mutações Forenses do Dossiê
+function renderDossierMutationsTable(mutationsList) {
+    const tbody = document.getElementById('dossierMutationsTableBody');
+    if (!tbody) return;
+
+    if (!mutationsList || mutationsList.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                    Nenhuma mutação de dados registrada pelo robô para esta ordem de serviço.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = mutationsList.map(m => {
+        return `
+            <tr>
+                <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;">${formatDateTimeBR(m.coletado_em)}</td>
+                <td><span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #0284c7; font-weight: 800;">${m.campo_alterado}</span></td>
+                <td style="color: var(--text-secondary); font-size: 0.74rem;">${m.valor_anterior || '--'}</td>
+                <td><strong style="color: #10b981; font-size: 0.74rem;">${m.valor_novo || '--'}</strong></td>
+                <td><strong>${(m.ci_atual || 0).toLocaleString('pt-BR')}</strong></td>
+                <td><small>${m.control_desp_atual || '--'}</small></td>
+                <td><small>${m.equipe_atual || 'Sem equipe'}</small></td>
+                <td style="font-size: 0.74rem; color: var(--text-primary);">${m.motivo_resumo || '--'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Submissão do Formulário de Nota da Supervisão no Dossiê
+async function submitPriorizadorDossierNote(event) {
+    event.preventDefault();
+    const ordem = document.getElementById('modalDossierHiddenOrder').value;
+    const supervisor = document.getElementById('inputDossierSupervisorName').value.trim();
+    const statusEtapa = document.getElementById('selectDossierStatusEtapa').value;
+    const obs = document.getElementById('textareaDossierObservacao').value.trim();
+    const btnSubmit = document.getElementById('btnSubmitDossierNote');
+
+    if (!ordem || !supervisor || !obs) {
+        showToast('Preencha todos os campos obrigatórios.', 'warning');
+        return;
+    }
+
+    if (btnSubmit) btnSubmit.disabled = true;
+
+    try {
+        const resp = await fetch('/api/priorizador/supervisor/note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ordem: ordem,
+                supervisor_nome: supervisor,
+                status_etapa: statusEtapa,
+                observacao: obs
+            })
+        });
+
+        const res = await resp.json();
+        if (resp.ok && res.status === 'success') {
+            showToast('Apontamento registrado com sucesso no diário!', 'success');
+            document.getElementById('textareaDossierObservacao').value = '';
+            
+            // Recarrega o dossiê da OS
+            await openPriorizadorDossierModal(ordem);
+            switchDossierModalTab('diario');
+            
+            // Recarrega lista geral para atualizar supervisor no card/tabela
+            await loadPriorizadorData(false);
+        } else {
+            showToast(res.message || 'Erro ao registrar apontamento.', 'error');
+        }
+    } catch (e) {
+        showToast(`Erro na requisição: ${e.message}`, 'error');
+    } finally {
+        if (btnSubmit) btnSubmit.disabled = false;
+    }
+}
+window.submitPriorizadorDossierNote = submitPriorizadorDossierNote;
+
+// Exportação Excel
+function exportPriorizadorExcel() {
+    showToast('Gerando planilha Excel das ordens críticas...', 'info');
+    window.location.href = '/api/priorizador/export_excel';
+}
+window.exportPriorizadorExcel = exportPriorizadorExcel;
+
+// Renderização do Dashboard & Indicadores
+function renderPriorizadorDashboard() {
+    const dist = priorizadorState.distributions;
+
+    // 1. Barras de Despacho (CONTROL_DESP)
+    const cdContainer = document.getElementById('prioDashDespachoBars');
+    if (cdContainer) {
+        const cdData = dist.by_control_desp || {};
+        const entries = Object.entries(cdData).sort((a, b) => b[1] - a[1]);
+        const maxVal = Math.max(...entries.map(e => e[1]), 1);
+
+        cdContainer.innerHTML = entries.map(([name, count]) => {
+            const pct = Math.round((count / maxVal) * 100);
+            return `
+                <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 800; margin-bottom: 4px;">
+                        <span>${name}</span>
+                        <span>${count} OSs</span>
+                    </div>
+                    <div style="height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 9999px; overflow: hidden;">
+                        <div style="height: 100%; width: ${pct}%; background: ${name.includes('AGUARD') ? '#ef4444' : (name.includes('80') ? '#a855f7' : '#0ea5e9')}; border-radius: 9999px;"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 2. Barras de Equipamento (EQ)
+    const eqContainer = document.getElementById('prioDashEquipmentBars');
+    if (eqContainer) {
+        const eqData = dist.by_equipment || {};
+        const entries = Object.entries(eqData).sort((a, b) => b[1].ci - a[1].ci);
+        const maxCi = Math.max(...entries.map(e => e[1].ci), 1);
+
+        eqContainer.innerHTML = entries.map(([eqName, info]) => {
+            const pct = Math.round((info.ci / maxCi) * 100);
+            return `
+                <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 800; margin-bottom: 4px;">
+                        <span style="color: ${info.is_critico ? '#f43f5e' : 'var(--text-primary)'};">${eqName} (${info.count} OSs)</span>
+                        <span>${(info.ci || 0).toLocaleString('pt-BR')} CI</span>
+                    </div>
+                    <div style="height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 9999px; overflow: hidden;">
+                        <div style="height: 100%; width: ${pct}%; background: ${info.is_critico ? '#f43f5e' : '#38bdf8'}; border-radius: 9999px;"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 3. Distribuição por Base
+    const baseContainer = document.getElementById('prioDashBaseBars');
+    if (baseContainer) {
+        const baseData = dist.by_base || {};
+        const entries = Object.entries(baseData).sort((a, b) => b[1].count - a[1].count).slice(0, 7);
+        const maxBase = Math.max(...entries.map(e => e[1].count), 1);
+
+        baseContainer.innerHTML = entries.map(([baseName, info]) => {
+            const pct = Math.round((info.count / maxBase) * 100);
+            return `
+                <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 800; margin-bottom: 4px;">
+                        <span>${baseName}</span>
+                        <span>${info.count} OSs | ${(info.ci || 0).toLocaleString('pt-BR')} CI</span>
+                    </div>
+                    <div style="height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 9999px; overflow: hidden;">
+                        <div style="height: 100%; width: ${pct}%; background: #10b981; border-radius: 9999px;"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 4. Radar de Supervisão CCO
+    const supContainer = document.getElementById('prioDashSupervisaoRadar');
+    if (supContainer) {
+        const k = priorizadorState.kpis;
+        const total = k.total_ordens || 0;
+        const supCount = k.total_supervisionadas || 0;
+        const semSup = total - supCount;
+        const pctSup = k.percent_supervisionadas || 0;
+
+        supContainer.innerHTML = `
+            <div style="text-align: center; padding: 14px 0;">
+                <div style="font-size: 2.2rem; font-weight: 900; color: #10b981; line-height: 1;">${pctSup}%</div>
+                <small style="color: var(--text-secondary); font-size: 0.75rem;">Índice de Cobertura de Supervisão</small>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: rgba(16, 185, 129, 0.08); border-radius: 10px; margin-bottom: 8px;">
+                <span style="font-weight: 800; font-size: 0.8rem; color: #10b981;">Acompanhadas por Supervisor:</span>
+                <strong style="color: #10b981;">${supCount} OSs</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: rgba(239, 68, 68, 0.08); border-radius: 10px;">
+                <span style="font-weight: 800; font-size: 0.8rem; color: #ef4444;">Pendentes de Acompanhamento:</span>
+                <strong style="color: #ef4444;">${semSup} OSs</strong>
+            </div>
+        `;
+    }
+}
+
+// Atualização do Card do Priorizador no Hub Central
+function updatePriorizadorHubCard() {
+    const k = priorizadorState.kpis;
+    const elUrg = document.getElementById('hubPrioUrgenciaCount');
+    const elSync = document.getElementById('hubPrioLastSync');
+    const elOrders = document.getElementById('hubPrioTotalOrders');
+    const elCi = document.getElementById('hubPrioTotalCi');
+    const elAguard = document.getElementById('hubPrioAguardDesp');
+    const elLoc80 = document.getElementById('hubPrioLocal80');
+
+    if (elUrg) elUrg.textContent = (k.total_urgencia_critica || 0).toLocaleString('pt-BR');
+    if (elOrders) elOrders.textContent = (k.total_ordens || 0).toLocaleString('pt-BR');
+    if (elCi) elCi.textContent = (k.total_ci || 0).toLocaleString('pt-BR');
+    if (elAguard) elAguard.textContent = (k.total_aguard_desp || 0).toLocaleString('pt-BR');
+    if (elLoc80) elLoc80.textContent = (k.total_local_80min || 0).toLocaleString('pt-BR');
+
+    if (elSync) {
+        const rawTime = priorizadorState.lastSyncTime || new Date().toISOString();
+        elSync.textContent = formatDateTimeBR(rawTime);
+    }
+}
+window.updatePriorizadorHubCard = updatePriorizadorHubCard;
+
+// Auto-Refresh Periódico (a cada 25 segundos se estiver no módulo Priorizador)
+setInterval(() => {
+    if (appState.currentView === 'priorizador') {
+        loadPriorizadorData(false);
+    }
+}, 25000);
+
+// Inicialização imediata dos popovers do Priorizador ao carregar DOM
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof setupPriorizadorFilterDropdowns === 'function') {
+        setupPriorizadorFilterDropdowns();
+        syncPriorizadorFiltersFromDOM();
+    }
+});
+

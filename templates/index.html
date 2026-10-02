@@ -33,7 +33,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.0.9-mobile-ultra">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.3.0-prio-mobile-light">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -146,6 +146,22 @@
             <button class="mobile-subnav-pill" id="mobSubAlertsAudit" onclick="handleMobileAlertsSub('audit')">
                 <i data-lucide="history"></i>
                 <span>AUDITORIA & HISTÓRICO</span>
+            </button>
+        </div>
+
+        <!-- Sub-Módulo Priorizador - Ordens Críticas: 3 Opções Oficiais -->
+        <div class="mobile-subnav-group" id="mobilePriorizadorSubnav" style="display: none;">
+            <button class="mobile-subnav-pill active" id="mobSubPrioOnline" onclick="handleMobilePrioSub('online')">
+                <span class="live-dot-pulse" style="background: #f43f5e;"></span>
+                <span>ONLINE / REALTIME</span>
+            </button>
+            <button class="mobile-subnav-pill" id="mobSubPrioDashboard" onclick="handleMobilePrioSub('dashboard')">
+                <i data-lucide="bar-chart-2"></i>
+                <span>DASHBOARD</span>
+            </button>
+            <button class="mobile-subnav-pill" id="mobSubPrioHistory" onclick="handleMobilePrioSub('history')">
+                <i data-lucide="history"></i>
+                <span>AUDITORIA</span>
             </button>
         </div>
     </nav>
@@ -364,6 +380,69 @@
                         <div class="module-card-footer">
                             <span class="module-access-btn">
                                 <span>Acessar ENTREGA DE EQUIPES</span>
+                                <i data-lucide="arrow-right"></i>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- CARD 3: PRIORIZADOR - ORDENS CRÍTICAS (TIBCO SPOTFIRE) -->
+                    <div class="module-card module-card-active glass-card card-priorizador-glow" onclick="navigateToView('priorizador')">
+                        <div class="module-card-glow"></div>
+                        <div class="module-card-top">
+                            <div class="module-card-icon-box" style="background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); color: #f43f5e;">
+                                <i data-lucide="zap" class="pulse-icon text-rose"></i>
+                            </div>
+                            <span class="module-status-badge badge-active" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border-color: rgba(244, 63, 94, 0.35);">
+                                <span class="badge-dot" style="background: #f43f5e;"></span> AO VIVO & MONITORANDO
+                            </span>
+                        </div>
+
+                        <div class="module-card-body">
+                            <h4 class="module-title">PRIORIZADOR - ORDENS CRÍTICAS</h4>
+                            <p class="module-subtitle-desc">Grandes Interrupções da Rede Elétrica (DJ, RA, CF, BF, CH, RM) e Gestão de Despacho CCO</p>
+
+                            <!-- Horários de Sincronização em Destaque -->
+                            <div class="module-sync-grid">
+                                <div class="module-sync-item">
+                                    <div class="sync-label-row">
+                                        <span class="dot-sm" style="background: #f43f5e;"></span>
+                                        <strong>Urgência Crítica:</strong>
+                                    </div>
+                                    <span class="sync-val text-rose" id="hubPrioUrgenciaCount">--</span>
+                                </div>
+                                <div class="module-sync-item">
+                                    <div class="sync-label-row">
+                                        <span class="dot-sm dot-trbonet"></span>
+                                        <strong>Última Sincronização:</strong>
+                                    </div>
+                                    <span class="sync-val" id="hubPrioLastSync">--:--:--</span>
+                                </div>
+                            </div>
+
+                            <!-- Mini Métricas do Módulo Priorizador -->
+                            <div class="module-mini-kpis">
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Total OS</span>
+                                    <strong class="mini-kpi-val text-cyan" id="hubPrioTotalOrders">--</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">CI Total</span>
+                                    <strong class="mini-kpi-val text-amber" id="hubPrioTotalCi">--</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Aguard. Despacho</span>
+                                    <strong class="mini-kpi-val text-rose" id="hubPrioAguardDesp">--</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Local >= 80min</span>
+                                    <strong class="mini-kpi-val text-purple" id="hubPrioLocal80">--</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="module-card-footer">
+                            <span class="module-access-btn">
+                                <span>Acessar PRIORIZADOR - ORDENS CRÍTICAS</span>
                                 <i data-lucide="arrow-right"></i>
                             </span>
                         </div>
@@ -2845,8 +2924,1042 @@
         </div>
         <!-- FIM DO MÓDULO 2 (moduleDeliveryView) -->
 
+        <!-- ================================================================= -->
+        <!-- MÓDULO 3: PRIORIZADOR - ORDENS CRÍTICAS (TIBCO SPOTFIRE)          -->
+        <!-- ================================================================= -->
+        <div id="modulePriorizadorView" class="module-view-container" style="display: none;">
+
+            <!-- Header do Módulo Priorizador -->
+            <header class="main-header glass-card" id="modulePriorizadorHeader" style="margin-bottom: 20px;">
+                <div class="header-left">
+                    <button class="btn-back-hub" id="btnBackToHubFromPriorizador" onclick="navigateToView('hub')" title="Voltar ao Hub Central de Módulos">
+                        <span>HUB CENTRAL</span>
+                    </button>
+
+                    <div class="brand-badge" onclick="navigateToView('hub')" style="cursor: pointer;" title="Ir para o Hub Central">
+                        <div class="brand-text">
+                            <h2>PRIORIZADOR - ORDENS CRÍTICAS</h2>
+                            <span>Grandes Interrupções & Despacho CCO</span>
+                        </div>
+                    </div>
+
+                    <!-- Alternador de Telas Segmentado (M3 Expressive) -->
+                    <div class="delivery-screen-switcher" id="priorizadorScreenSwitcher">
+                        <button class="screen-switch-btn active" id="btnSwitchPrioOnline" onclick="switchPriorizadorScreen('online')">
+                            <span class="live-status-dot" style="background: #f43f5e;"></span>
+                            <span>ONLINE / TEMPO REAL</span>
+                        </button>
+                        <button class="screen-switch-btn" id="btnSwitchPrioDashboard" onclick="switchPriorizadorScreen('dashboard')">
+                            <i data-lucide="bar-chart-2" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                            <span>DASHBOARD & INDICADORES</span>
+                        </button>
+                        <button class="screen-switch-btn" id="btnSwitchPrioHistory" onclick="switchPriorizadorScreen('history')">
+                            <i data-lucide="history" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                            <span>AUDITORIA & HISTÓRICO</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <!-- Relógio CCO -->
+                    <div class="header-clock-pill">
+                        <span id="digitalClockPriorizador" class="clock-digits">--:--:--</span>
+                    </div>
+
+                    <!-- Botão Seletor de Tema -->
+                    <button class="btn-theme-toggle" id="btnThemeTogglePriorizador" onclick="toggleTheme()" title="Alternar entre Tema Claro e Escuro">
+                        <span style="font-size: 0.75rem; font-weight: 800; letter-spacing: 0.05em;">TEMA</span>
+                    </button>
+
+                    <!-- Ações Rápidas -->
+                    <div class="header-actions">
+                        <!-- Badge Realtime Supabase -->
+                        <div class="realtime-status-pill" id="realtimePriorizadorBadge" title="Status da Conexão em Tempo Real">
+                            <span class="status-pulse-dot" id="realtimePriorizadorPulse" style="background: #10b981;"></span>
+                            <span class="realtime-text" id="realtimePriorizadorText">REALTIME ATIVO</span>
+                        </div>
+
+                        <!-- Botão Coletar Agora (CDP) -->
+                        <button class="btn btn-primary special-action" id="btnCollectPriorizador" title="Coletar dados agora via Robô Autônomo Spotfire CDP" onclick="triggerPriorizadorDirectCollect()">
+                            <i data-lucide="zap" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                            <span>COLETAR AGORA (CDP)</span>
+                        </button>
+
+                        <!-- Telemetria de Última Coleta CDP -->
+                        <div class="cdp-last-sync-pill" id="cdpPrioLastSyncBadge" title="Data e hora da última coleta do Priorizador. Clique para atualizar tela.">
+                            <span class="live-pulse-dot" id="cdpPrioStatusPulse" style="background: #f43f5e;" title="Robô CDP Spotfire Ativo"></span>
+                            <div class="cdp-sync-info">
+                                <span class="cdp-sync-tag">ÚLTIMA COLETA PRIORIZADOR</span>
+                                <strong class="cdp-sync-time" id="cdpPrioLastSyncTime">--/--/---- --:--:--</strong>
+                            </div>
+                            <button class="btn-mini-refresh" id="btnRefreshPriorizador" onclick="loadPriorizadorData(true)" title="Atualizar Dados">
+                                <i data-lucide="refresh-cw"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- ============================================================= -->
+            <!-- TELA 1: ONLINE / TEMPO REAL (ORDENS CRÍTICAS & SUPERVISÃO)   -->
+            <!-- ============================================================= -->
+            <div id="priorizadorScreenOnline" class="delivery-subscreen-container">
+
+                <!-- 1. BARRA DE KPIS OPERACIONAIS DO PRIORIZADOR (GRADE 4x4 AUTO-AJUSTE) -->
+                <div class="prio-kpi-grid" id="prioKpiGridContainer">
+                    
+                    <!-- CARD 1: DISTRIBUIÇÃO REGIONAL (NORTE VS LESTE COM MULTI-SELECT) -->
+                    <div class="kpi-card glass-card prio-card-regional" id="cardPrioRegional" onclick="handleCardRegionalClick(event)" title="Clique em Norte ou Leste para alternar ou no card para redefinir">
+                        <div class="kpi-header">
+                            <div class="kpi-icon-wrap icon-cyan">
+                                <i data-lucide="compass"></i>
+                            </div>
+                            <span class="kpi-category">DISTRIBUIÇÃO REGIONAL</span>
+                        </div>
+                        <div class="regional-split-body">
+                            <!-- Botão Região Norte -->
+                            <button type="button" class="regional-pill-btn regional-btn-norte" id="btnPrioFilterRegNorte" onclick="togglePriorizadorRegionFilter('NORTE')" title="Clique para filtrar apenas Região Norte (Multi-seleção)">
+                                <div class="regional-pill-header">
+                                    <span class="regional-dot dot-norte"></span>
+                                    <span class="regional-name">NORTE</span>
+                                </div>
+                                <div class="regional-metric">
+                                    <span class="regional-val text-cyan" id="prioKpiNorteCount">0</span>
+                                    <small class="regional-unit">OSs</small>
+                                </div>
+                            </button>
+
+                            <!-- Divisor Vertical / Proporção -->
+                            <div class="regional-split-divider">
+                                <span class="split-vs">VS</span>
+                            </div>
+
+                            <!-- Botão Região Leste -->
+                            <button type="button" class="regional-pill-btn regional-btn-leste" id="btnPrioFilterRegLeste" onclick="togglePriorizadorRegionFilter('LESTE')" title="Clique para filtrar apenas Região Leste (Multi-seleção)">
+                                <div class="regional-pill-header">
+                                    <span class="regional-dot dot-leste"></span>
+                                    <span class="regional-name">LESTE</span>
+                                </div>
+                                <div class="regional-metric">
+                                    <span class="regional-val text-purple" id="prioKpiLesteCount">0</span>
+                                    <small class="regional-unit">OSs</small>
+                                </div>
+                            </button>
+                        </div>
+                        <!-- Mini Barra de Proporção Norte vs Leste -->
+                        <div class="regional-progress-wrap" title="Proporção de OSs críticas entre Norte e Leste">
+                            <div class="regional-progress-bar bar-norte" id="prioRegionalBarNorte" style="width: 50%;"></div>
+                            <div class="regional-progress-bar bar-leste" id="prioRegionalBarLeste" style="width: 50%;"></div>
+                        </div>
+                        <div class="kpi-footer">
+                            <span class="kpi-subtext"><i data-lucide="filter" class="mini-icon"></i> Clique em Norte ou Leste para filtrar</span>
+                        </div>
+                        <div class="card-accent-bar bar-cyan"></div>
+                    </div>
+
+                    <!-- CARD 2: GRANDES INTERRUPÇÕES COM RESUMO POR EQUIPAMENTOS CRÍTICOS -->
+                    <div class="kpi-card glass-card prio-card-interrupcoes" id="cardPrioGrandesInterrupcoes" onclick="handleCardGrandesInterrupcoesClick(event)" title="Clique em um equipamento abaixo para filtrar ou no card para ver todos">
+                        <div class="kpi-header">
+                            <div class="kpi-icon-wrap icon-blue">
+                                <i data-lucide="layers"></i>
+                            </div>
+                            <span class="kpi-category">GRANDES INTERRUPÇÕES</span>
+                        </div>
+                        <div class="kpi-metric-row" style="margin-bottom: 6px;">
+                            <span class="kpi-number text-cyan" id="prioKpiTotalOrders">0</span>
+                            <span class="kpi-unit" style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); margin-left: 6px;">OSs Críticas</span>
+                        </div>
+                        
+                        <!-- Pills de Resumo por Equipamentos Críticos (DJ, RA, CF, BF, CH, RM) -->
+                        <div class="prio-eq-breakdown-container">
+                            <span class="prio-breakdown-label">EQUIPAMENTOS CRÍTICOS (FILTRO):</span>
+                            <div class="prio-eq-pills-row" id="prioEqPillsList">
+                                <button type="button" class="eq-crit-pill" data-eq="DJ" onclick="togglePriorizadorEqPill('DJ')" title="Filtrar Disjuntor (DJ)">
+                                    <span class="eq-crit-tag">DJ</span>
+                                    <strong class="eq-crit-num" id="prioEqCritCountDJ">0</strong>
+                                </button>
+                                <button type="button" class="eq-crit-pill" data-eq="RA" onclick="togglePriorizadorEqPill('RA')" title="Filtrar Religador Automático (RA)">
+                                    <span class="eq-crit-tag">RA</span>
+                                    <strong class="eq-crit-num" id="prioEqCritCountRA">0</strong>
+                                </button>
+                                <button type="button" class="eq-crit-pill" data-eq="CF" onclick="togglePriorizadorEqPill('CF')" title="Filtrar Chave Fusível (CF)">
+                                    <span class="eq-crit-tag">CF</span>
+                                    <strong class="eq-crit-num" id="prioEqCritCountCF">0</strong>
+                                </button>
+                                <button type="button" class="eq-crit-pill" data-eq="CA" onclick="togglePriorizadorEqPill('CA')" title="Filtrar Chave Autodesconectadora (CA)">
+                                    <span class="eq-crit-tag">CA</span>
+                                    <strong class="eq-crit-num" id="prioEqCritCountCA">0</strong>
+                                </button>
+                                <button type="button" class="eq-crit-pill" data-eq="BF" onclick="togglePriorizadorEqPill('BF')" title="Filtrar Base Fusível (BF)">
+                                    <span class="eq-crit-tag">BF</span>
+                                    <strong class="eq-crit-num" id="prioEqCritCountBF">0</strong>
+                                </button>
+                                <button type="button" class="eq-crit-pill" data-eq="CH" onclick="togglePriorizadorEqPill('CH')" title="Filtrar Chave / Chave Faca (CH)">
+                                    <span class="eq-crit-tag">CH</span>
+                                    <strong class="eq-crit-num" id="prioEqCritCountCH">0</strong>
+                                </button>
+                                <button type="button" class="eq-crit-pill" data-eq="RM" onclick="togglePriorizadorEqPill('RM')" title="Filtrar Religador Manual (RM)">
+                                    <span class="eq-crit-tag">RM</span>
+                                    <strong class="eq-crit-num" id="prioEqCritCountRM">0</strong>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-accent-bar bar-blue"></div>
+                    </div>
+
+                    <!-- CARD 3: CLIENTES DESLIGADOS (CI) -->
+                    <div class="kpi-card glass-card" id="cardPrioCiTotal" style="cursor: pointer;" onclick="togglePriorizadorCiAltoFilter()" title="Clique para filtrar ordens com CI > 200">
+                        <div class="kpi-header">
+                            <div class="kpi-icon-wrap icon-amber">
+                                <i data-lucide="users"></i>
+                            </div>
+                            <span class="kpi-category">CLIENTES DESLIGADOS</span>
+                        </div>
+                        <div class="kpi-metric-row">
+                            <span class="kpi-number text-amber" id="prioKpiTotalCi">0</span>
+                        </div>
+                        <p class="kpi-label">CI Interrompido Atual</p>
+                        <div class="kpi-footer">
+                            <span class="kpi-subtext text-amber-light" id="prioKpiCiMediaSubtext"><i data-lucide="zap-off" class="mini-icon"></i> Clientes sem energia</span>
+                        </div>
+                        <div class="card-accent-bar bar-amber"></div>
+                    </div>
+
+                    <!-- CARD 4: URGÊNCIA MÁXIMA (ALTA PRIORIDADE COM PULSO) -->
+                    <div class="kpi-card glass-card kpi-card-alert card-urgencia-destaque" id="cardPrioUrgencia" style="cursor: pointer;" onclick="togglePriorizadorUrgenciaOnly()" title="Clique para filtrar apenas Urgência Máxima">
+                        <div class="kpi-header">
+                            <div class="kpi-icon-wrap icon-rose">
+                                <i data-lucide="alert-octagon" class="pulse-icon text-rose"></i>
+                            </div>
+                            <span class="kpi-category" style="color: #f43f5e; font-weight: 800;">⚡ ALTA PRIORIDADE</span>
+                        </div>
+                        <div class="kpi-metric-row">
+                            <span class="kpi-number text-rose" id="prioKpiUrgenciaCritica">0</span>
+                        </div>
+                        <p class="kpi-label" style="color: #f43f5e; font-weight: 800;">Urgência Máxima</p>
+                        <div class="kpi-footer">
+                            <span class="kpi-subtext text-rose-light"><i data-lucide="flame" class="mini-icon"></i> EQ + CI>200 + Sem Local</span>
+                        </div>
+                        <div class="card-accent-bar bar-rose"></div>
+                    </div>
+
+                    <!-- CARD 5: FILA DE DESPACHO (AGUARDANDO) -->
+                    <div class="kpi-card glass-card" id="cardPrioAguardDesp" style="cursor: pointer;" onclick="togglePriorizadorDespFilter('AGUARD')" title="Clique para filtrar Aguardando Despacho">
+                        <div class="kpi-header">
+                            <div class="kpi-icon-wrap icon-orange">
+                                <i data-lucide="hourglass"></i>
+                            </div>
+                            <span class="kpi-category">FILA DE DESPACHO</span>
+                        </div>
+                        <div class="kpi-metric-row">
+                            <span class="kpi-number text-orange" id="prioKpiAguardDesp">0</span>
+                        </div>
+                        <p class="kpi-label">Aguardando Despacho</p>
+                        <div class="kpi-footer">
+                            <span class="kpi-subtext text-orange-light"><i data-lucide="alert-circle" class="mini-icon"></i> Sem equipe despachada</span>
+                        </div>
+                        <div class="card-accent-bar bar-orange"></div>
+                    </div>
+
+                    <!-- CARD 6: TEMPO NO LOCAL (>= 80 MIN) -->
+                    <div class="kpi-card glass-card" id="cardPrioLocal80" style="cursor: pointer;" onclick="togglePriorizadorDespFilter('LOCAL_80')" title="Clique para filtrar Local >= 80 min">
+                        <div class="kpi-header">
+                            <div class="kpi-icon-wrap icon-purple">
+                                <i data-lucide="timer-reset"></i>
+                            </div>
+                            <span class="kpi-category">TEMPO NO LOCAL</span>
+                        </div>
+                        <div class="kpi-metric-row">
+                            <span class="kpi-number text-purple" id="prioKpiLocal80">0</span>
+                        </div>
+                        <p class="kpi-label">Local >= 80 min</p>
+                        <div class="kpi-footer">
+                            <span class="kpi-subtext text-purple-light"><i data-lucide="watch" class="mini-icon"></i> Tempo estourando</span>
+                        </div>
+                        <div class="card-accent-bar bar-rose"></div>
+                    </div>
+
+                    <!-- CARD 7: SUPERVISIONADAS CCO -->
+                    <div class="kpi-card glass-card" id="cardPrioSupervisionadas" style="cursor: pointer;" onclick="togglePriorizadorSupervisionadasFilter()" title="Clique para filtrar ordens com supervisor atribuído">
+                        <div class="kpi-header">
+                            <div class="kpi-icon-wrap icon-green">
+                                <i data-lucide="user-check"></i>
+                            </div>
+                            <span class="kpi-category">ACOMPANHAMENTO CCO</span>
+                        </div>
+                        <div class="kpi-metric-row">
+                            <span class="kpi-number text-emerald" id="prioKpiSupervisionadas">0</span>
+                        </div>
+                        <p class="kpi-label">Supervisionadas</p>
+                        <div class="kpi-footer">
+                            <span class="kpi-subtext" style="color: #10b981;" id="prioKpiPercentSupervisionadas">0% do total</span>
+                        </div>
+                        <div class="card-accent-bar bar-green"></div>
+                    </div>
+
+                    <!-- CARD 8: EQUIPES VINCULADAS -->
+                    <div class="kpi-card glass-card" id="cardPrioEquipesAlocadas" style="cursor: pointer;" onclick="togglePriorizadorComEquipeFilter()" title="Clique para filtrar ordens com equipe atribuída">
+                        <div class="kpi-header">
+                            <div class="kpi-icon-wrap icon-cyan">
+                                <i data-lucide="truck"></i>
+                            </div>
+                            <span class="kpi-category">COBERTURA DE CAMPO</span>
+                        </div>
+                        <div class="kpi-metric-row">
+                            <span class="kpi-number text-cyan" id="prioKpiEquipesAlocadas">0</span>
+                        </div>
+                        <p class="kpi-label">Com Equipe Atribuída</p>
+                        <div class="kpi-footer">
+                            <span class="kpi-subtext"><i data-lucide="check-circle" class="mini-icon"></i> Cruzamento TRBOnet/EB</span>
+                        </div>
+                        <div class="card-accent-bar bar-cyan"></div>
+                    </div>
+
+                </div>
+
+                <!-- 2. BARRA DE FILTROS AVANÇADOS NO PADRÃO DO SISTEMA (PILL BUTTONS + POPOVERS) -->
+                <div class="glass-card period-filters-bar prio-filter-bar-advanced" style="padding: 18px 22px; margin-bottom: 20px; border-radius: 16px; overflow: visible; position: relative; z-index: 60;">
+                    
+                    <!-- LINHA DE TÍTULO DOS FILTROS OPERACIONAIS -->
+                    <div class="period-filters-title-row" style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                        <div class="period-filters-title" style="margin: 0; font-size: 0.86rem; font-weight: 800; display: flex; align-items: center; gap: 8px; color: var(--text-primary);">
+                            <i data-lucide="sliders-horizontal" class="period-filter-icon" style="color: #38bdf8; width: 16px; height: 16px;"></i>
+                            <span>FILTROS OPERACIONAIS DE GRANDES INTERRUPÇÕES</span>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span id="prioFilterActiveCountBadge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 800; font-size: 0.74rem; padding: 4px 12px; border-radius: 9999px; border: 1px solid rgba(56, 189, 248, 0.3);">
+                                Todos os equipamentos &amp; bases
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- LINHA 1: CONTROLES MULTI-FILTRO NO PADRÃO DO SISTEMA (PILL BUTTONS + POPOVERS) -->
+                    <div class="period-filters-controls" style="width: 100%; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px;">
+                        
+                        <!-- FILTRO 0: DATA DESLIGAMENTO (FLATPICKR + PRESETS) -->
+                        <div class="period-filter-group prio-date-filter-wrap">
+                            <span class="period-filter-label"><i data-lucide="calendar" class="mini-icon"></i> DATA DESLIGAMENTO</span>
+                            <div class="prio-date-input-group" style="display: flex; gap: 4px; align-items: center;">
+                                <input type="text" id="prioDateFilterInput" class="period-filter-select prio-date-picker-input" placeholder="Todas as datas" style="min-width: 130px; cursor: pointer; padding: 7px 12px;" readonly>
+                                <button type="button" class="prio-btn-date-preset active" id="btnPrioDateAll" onclick="setPrioDatePreset('ALL')">Todas</button>
+                                <button type="button" class="prio-btn-date-preset" id="btnPrioDateToday" onclick="setPrioDatePreset('TODAY')">Hoje</button>
+                                <button type="button" class="prio-btn-date-preset" id="btnPrioDateYesterday" onclick="setPrioDatePreset('YESTERDAY')">Ontem</button>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 1: REGIÃO (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">REGIÃO</span>
+                            <button type="button" class="period-filter-pill-btn" id="prioFilterRegionBtn" data-target="prioFilterRegionMenu">
+                                <span id="prioFilterRegionLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="prioFilterRegionMenu">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-prio-filter="region">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-prio-filter="region">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="prioFilterRegionList">
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="region" value="NORTE" checked>
+                                        <span>Região Norte</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="region" value="LESTE" checked>
+                                        <span>Região Leste</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 2: BASE / UT (MULTI-SELEÇÃO HIERÁRQUICA: NORTE / LESTE) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">BASE / UT</span>
+                            <button type="button" class="period-filter-pill-btn" id="prioFilterBaseBtn" data-target="prioFilterBaseMenu">
+                                <span id="prioFilterBaseLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="prioFilterBaseMenu" style="min-width: 250px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-prio-filter="base">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-prio-filter="base">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="prioFilterBaseList">
+                                    <div class="popover-group-section">
+                                        <label class="popover-group-header" title="Clique para selecionar/desmarcar todas as bases da Região Norte">
+                                            <input type="checkbox" class="popover-group-checkbox" data-prio-group="regiao-norte" checked>
+                                            <span>Região Norte</span>
+                                        </label>
+                                        <div class="popover-group-children">
+                                            <label class="popover-item-label child-item">
+                                                <input type="checkbox" class="popover-checkbox" data-prio-filter="base" data-prio-group="regiao-norte" value="Base Cajati" checked>
+                                                <span>Base Cajati</span>
+                                            </label>
+                                            <label class="popover-item-label child-item">
+                                                <input type="checkbox" class="popover-checkbox" data-prio-filter="base" data-prio-group="regiao-norte" value="Base Fagundes Filho" checked>
+                                                <span>Base Fagundes Filho</span>
+                                            </label>
+                                            <label class="popover-item-label child-item">
+                                                <input type="checkbox" class="popover-checkbox" data-prio-filter="base" data-prio-group="regiao-norte" value="Base Vila Medeiros" checked>
+                                                <span>Base Vila Medeiros</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="popover-group-section">
+                                        <label class="popover-group-header" title="Clique para selecionar/desmarcar todas as bases da Região Leste">
+                                            <input type="checkbox" class="popover-group-checkbox" data-prio-group="regiao-leste" checked>
+                                            <span>Região Leste</span>
+                                        </label>
+                                        <div class="popover-group-children">
+                                            <label class="popover-item-label child-item">
+                                                <input type="checkbox" class="popover-checkbox" data-prio-filter="base" data-prio-group="regiao-leste" value="Base Aricanduva" checked>
+                                                <span>Base Aricanduva</span>
+                                            </label>
+                                            <label class="popover-item-label child-item">
+                                                <input type="checkbox" class="popover-checkbox" data-prio-filter="base" data-prio-group="regiao-leste" value="Base Catumbi" checked>
+                                                <span>Base Catumbi</span>
+                                            </label>
+                                            <label class="popover-item-label child-item">
+                                                <input type="checkbox" class="popover-checkbox" data-prio-filter="base" data-prio-group="regiao-leste" value="Base Monte Santo" checked>
+                                                <span>Base Monte Santo</span>
+                                            </label>
+                                            <label class="popover-item-label child-item">
+                                                <input type="checkbox" class="popover-checkbox" data-prio-filter="base" data-prio-group="regiao-leste" value="Base Santo André" checked>
+                                                <span>Base Santo André</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 3: EQUIPAMENTO EQ (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">EQUIPAMENTO (EQ)</span>
+                            <button type="button" class="period-filter-pill-btn" id="prioFilterEqBtn" data-target="prioFilterEqMenu">
+                                <span id="prioFilterEqLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="prioFilterEqMenu" style="min-width: 240px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-prio-filter="eq">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-prio-filter="eq">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="prioFilterEqList">
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="DJ" checked>
+                                        <span>DJ - Disjuntor</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="RA" checked>
+                                        <span>RA - Religador Automático</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="CF" checked>
+                                        <span>CF - Chave Fusível</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="CA" checked>
+                                        <span>CA - Chave Autodesconectadora</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="BF" checked>
+                                        <span>BF - Base Fusível</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="CH" checked>
+                                        <span>CH - Chave / Chave Faca</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="RM" checked>
+                                        <span>RM - Religador Manual</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="OUTROS" checked>
+                                        <span>Demais Equipamentos</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 4: STATUS DESPACHO (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">STATUS DESPACHO</span>
+                            <button type="button" class="period-filter-pill-btn" id="prioFilterDespBtn" data-target="prioFilterDespMenu">
+                                <span id="prioFilterDespLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="prioFilterDespMenu" style="min-width: 240px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-prio-filter="desp">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-prio-filter="desp">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="prioFilterDespList">
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="desp" value="AGUARD_DESP" checked>
+                                        <span>⏳ Aguardando Despacho</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="desp" value="CAMI_" checked>
+                                        <span>🚚 A Caminho</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="desp" value="LOCAL_>=80min" checked>
+                                        <span>⏱️ No Local &ge; 80 min</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="desp" value="LOCAL_<80min" checked>
+                                        <span>✓ No Local &lt; 80 min</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 5: PRIORIDADE ESTRITA (MULTI-SELEÇÃO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label">PRIORIDADE</span>
+                            <button type="button" class="period-filter-pill-btn" id="prioFilterPrioBtn" data-target="prioFilterPrioMenu">
+                                <span id="prioFilterPrioLabel">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="prioFilterPrioMenu" style="min-width: 270px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" data-action="select-all" data-prio-filter="prio">Todos</button>
+                                    <button type="button" class="popover-action-btn" data-action="clear-all" data-prio-filter="prio">Limpar</button>
+                                </div>
+                                <div class="popover-items-list" id="prioFilterPrioList">
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="prio" value="1" checked>
+                                        <span>⚡ Rank 1: Elevada (Crítico + CI &gt; 200)</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="prio" value="2" checked>
+                                        <span>🔴 Rank 2: Rede Crítica (DJ, RA, CF...)</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="prio" value="3" checked>
+                                        <span>🟠 Rank 3: Grande Volume (CI &ge; 200)</span>
+                                    </label>
+                                    <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="prio" value="4" checked>
+                                        <span>⚪ Rank 4: Convencional (CI &lt; 200)</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- BOTÃO LIMPAR FILTROS -->
+                        <div class="period-filter-group" style="align-self: flex-end;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnPrioClearAllFilters" onclick="clearAllPriorizadorFilters()" title="Redefinir todos os filtros para o padrão (Todos)" style="height: 38px; padding: 0 14px; font-weight: 800; border-radius: 12px;">
+                                <i data-lucide="rotate-ccw" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                                <span>LIMPAR</span>
+                            </button>
+                        </div>
+
+                    </div>
+
+                    <!-- LINHA 2: ELEMENTO DE BUSCA MULTI-CRITÉRIO & AÇÕES -->
+                    <div class="prio-search-bottom-row" style="margin-top: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+                        
+                        <!-- Elemento de Multi-Busca Ultra-Premium -->
+                        <div class="prio-search-box-premium" style="flex-grow: 1; max-width: 820px;">
+                            <div class="prio-search-inner-wrap">
+                                <i data-lucide="search" class="prio-search-icon-sparkle"></i>
+                                <input type="text" id="prioSearchInput" class="prio-search-input-field" placeholder="Multi-busca: digite OS, equipamento (DJ, RA...), facility, circuito, equipe, base, motorista..." oninput="handlePrioSearchInput(this.value)">
+                                <button type="button" class="prio-btn-clear-search" id="btnPrioClearSearch" onclick="clearPrioSearch()" title="Limpar busca" style="display: none;">
+                                    <i data-lucide="x-circle"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Exportação Excel e Tag de Filtros Ativos -->
+                        <div style="display: flex; gap: 10px; align-items: center; justify-content: flex-end;">
+                            <div id="prioActiveFilterBadgeContainer" style="display: flex; gap: 6px; align-items: center;">
+                                <!-- Chips dinâmicos de filtros ativos -->
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-sm btn-export-excel-premium" id="btnExportPrioExcel" onclick="exportPriorizadorExcel()" title="Exportar planilha completa (.xlsx)" style="height: 42px; padding: 0 18px; font-weight: 800; border-radius: 10px; white-space: nowrap;">
+                                <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px; margin-right: 6px; color: #10b981;"></i>
+                                <span style="color: #10b981;">EXCEL (.XLSX)</span>
+                            </button>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <!-- BARRA DE SELEÇÃO DE VISÕES (VISÃO 1: PURA EQ & CI vs VISÃO 2: OPERACIONAL COM CONTROL_DESP) -->
+                <div class="prio-vision-toolbar" id="prioVisionToolbar">
+                    <div class="prio-vision-switcher" role="tablist">
+                        <button type="button" class="prio-vision-btn active" id="btnPrioVisionPura" onclick="switchPriorizadorVision('pura')" title="Visão de prioridade estrita puramente por Equipamento e CI (independente de status de despacho)">
+                            <i data-lucide="shield-alert" style="width: 15px; height: 15px;"></i>
+                            <span>VISÃO 1: PRIORIDADE PURA (EQ & CI)</span>
+                        </button>
+                        <button type="button" class="prio-vision-btn vision-btn-operacional" id="btnPrioVisionOperacional" onclick="switchPriorizadorVision('operacional')" title="Visão operacional com a coluna CONTROL_DESP atrelada à prioridade">
+                            <i data-lucide="activity" style="width: 15px; height: 15px;"></i>
+                            <span>VISÃO 2: OPERACIONAL (PRIORIDADE + STATUS DESPACHO)</span>
+                        </button>
+                    </div>
+                    <div class="prio-vision-summary" id="prioVisionSummaryText">
+                        <span class="badge" style="background: rgba(2, 132, 199, 0.15); color: #38bdf8; font-weight: 800; border: 1px solid rgba(2, 132, 199, 0.35);">
+                            🎯 Foco Técnico: Criticidade Intrínseca de Rede & Clientes Interrompidos (Independente de Despacho)
+                        </span>
+                    </div>
+                </div>
+
+                <!-- FITA DE CRUZAMENTO OPERACIONAL PRIORIDADE X CONTROL_DESP (VISÍVEL NA VISÃO 2) -->
+                <div class="prio-cross-matrix-bar" id="prioCrossMatrixBar" style="display: none;">
+                    <div style="font-size: 0.73rem; font-weight: 800; color: #c084fc; display: flex; align-items: center; gap: 5px; margin-right: 6px;">
+                        <i data-lucide="git-merge" style="width: 14px; height: 14px;"></i>
+                        <span>CRUZAMENTO OPERACIONAL:</span>
+                    </div>
+                    <button type="button" class="prio-matrix-pill" id="pillMatrixPrio1Aguard" onclick="toggleMatrixFilter('prio1_aguard')" title="Filtrar Prioridade 1 (EQ + CI > 200) Aguardando Despacho" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border-color: rgba(244, 63, 94, 0.4);">
+                        <span>🚨 Prio 1 Aguardando:</span> <strong id="kpiMatrixPrio1Aguard">0</strong>
+                    </button>
+                    <button type="button" class="prio-matrix-pill" id="pillMatrixPrio1Local80" onclick="toggleMatrixFilter('prio1_local80')" title="Filtrar Prioridade 1 no Local há ≥ 80 min" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">
+                        <span>⏱️ Prio 1 Local ≥ 80m:</span> <strong id="kpiMatrixPrio1Local80">0</strong>
+                    </button>
+                    <button type="button" class="prio-matrix-pill" id="pillMatrixPrio2Aguard" onclick="toggleMatrixFilter('prio2_aguard')" title="Filtrar Equipamento Crítico Aguardando Despacho" style="background: rgba(249, 115, 22, 0.15); color: #f97316; border-color: rgba(249, 115, 22, 0.4);">
+                        <span>🔴 Prio 2 Rede Aguardando:</span> <strong id="kpiMatrixPrio2Aguard">0</strong>
+                    </button>
+                    <button type="button" class="prio-matrix-pill" id="pillMatrixPrio2Local80" onclick="toggleMatrixFilter('prio2_local80')" title="Filtrar Equipamento Crítico no Local há ≥ 80 min" style="background: rgba(168, 85, 247, 0.12); color: #c084fc; border-color: rgba(168, 85, 247, 0.3);">
+                        <span>⏱️ Prio 2 Local ≥ 80m:</span> <strong id="kpiMatrixPrio2Local80">0</strong>
+                    </button>
+                    <button type="button" class="prio-matrix-pill" id="pillMatrixPrio3Aguard" onclick="toggleMatrixFilter('prio3_aguard')" title="Filtrar Demais Equipamentos com CI ≥ 200 Aguardando Despacho" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">
+                        <span>🟠 Prio 3 CI Aguardando:</span> <strong id="kpiMatrixPrio3Aguard">0</strong>
+                    </button>
+                </div>
+
+                <!-- 3. TABELA DE ORDENS CRÍTICAS (DESKTOP COM CABEÇALHOS CLASSIFICÁVEIS) -->
+                <div class="delivery-table-collapsible-wrapper prio-desktop-table-wrapper">
+                    <div class="delivery-table-collapsible-header">
+                        <div>
+                            <h4 style="font-size: 1rem; font-weight: 800; letter-spacing: 0.04em; color: var(--text-primary); margin-bottom: 4px;" id="prioTableTitle">
+                                PAINEL OPERACIONAL DE GRANDES INTERRUPÇÕES • VISÃO 1: PRIORIDADE PURA
+                            </h4>
+                            <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="prioTableSubtitle">
+                                Priorização estrita por Equipamento Crítico (DJ, RA, CF, CA, BF, CH, RM) e Clientes Interrompidos (CI).
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <span class="history-count-badge" id="prioResultsCountBadge" style="font-size: 0.78rem;">0 ordens encontradas</span>
+                        </div>
+                    </div>
+
+                    <div class="delivery-table-body-container" id="prioTableBodyContainer">
+                        <div class="table-responsive" style="margin-top: 12px;">
+                            <table class="data-table prio-sortable-table" id="prioMainTable">
+                                <thead>
+                                    <tr>
+                                        <th class="sortable-th" data-col="prioridade" onclick="sortPriorizadorTable('prioridade')" title="Classificar por Prioridade">
+                                            <span>PRIORIDADE</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="ordem" onclick="sortPriorizadorTable('ordem')" title="Classificar por Número de OS">
+                                            <span>ORDEM</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="time_desligamento" onclick="sortPriorizadorTable('time_desligamento')" title="Classificar por Tempo Decorrido de Desligamento (HH:MM:SS)">
+                                            <span>TIME</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="supervisor" onclick="sortPriorizadorTable('supervisor')" title="Classificar por Supervisor">
+                                            <span>SUPERVISOR / LOGBOOK</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="equipe" onclick="sortPriorizadorTable('equipe')" title="Classificar por Código da Equipe">
+                                            <span>EQUIPE ATRIBUÍDA</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="control_desp" onclick="sortPriorizadorTable('control_desp')" title="Classificar por Status de Despacho">
+                                            <span>STATUS DESPACHO</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="eq" onclick="sortPriorizadorTable('eq')" title="Classificar por Equipamento (EQ)">
+                                            <span>EQ</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="facility" onclick="sortPriorizadorTable('facility')" title="Classificar por Facility">
+                                            <span>FACILITY</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="alimentador" onclick="sortPriorizadorTable('alimentador')" title="Classificar por Alimentador / Circuito">
+                                            <span>ALIMENTADOR</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="ci" onclick="sortPriorizadorTable('ci')" title="Classificar por Clientes Interrompidos (CI)">
+                                            <span>CI</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="chi" onclick="sortPriorizadorTable('chi')" title="Classificar por CHI">
+                                            <span>CHI</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="num_recla" onclick="sortPriorizadorTable('num_recla')" title="Classificar por Número de Reclamações">
+                                            <span>RECLAMAÇÕES</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="base_op" onclick="sortPriorizadorTable('base_op')" title="Classificar por Base Operacional">
+                                            <span>BASE OP.</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th class="sortable-th" data-col="dur_min" onclick="sortPriorizadorTable('dur_min')" title="Classificar por Duração em Minutos">
+                                            <span>DURAÇÃO</span> <span class="sort-icon">⇅</span>
+                                        </th>
+                                        <th style="text-align: center;">AÇÕES</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="priorizadorTableBody">
+                                    <!-- Preenchido via JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. FEED DE CARDS MOBILE (Telas <= 768px) -->
+                <div class="mobile-team-feed" id="priorizadorMobileCardsFeed">
+                    <!-- Cards Mobile dinâmicos -->
+                </div>
+
+            </div>
+            <!-- FIM DE priorizadorScreenOnline -->
+
+            <!-- ============================================================= -->
+            <!-- TELA 2: DASHBOARD & INDICADORES                               -->
+            <!-- ============================================================= -->
+            <div id="priorizadorScreenDashboard" class="delivery-subscreen-container" style="display: none;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 24px;">
+                    
+                    <!-- Painel 1: Gargalos de Despacho (CONTROL_DESP) -->
+                    <div class="glass-card" style="padding: 20px; border-radius: 14px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="clock" class="text-rose"></i>
+                            GARGALOS DE DESPACHO (CONTROL_DESP)
+                        </h4>
+                        <div id="prioDashDespachoBars" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Renderizado via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Painel 2: Impacto por Categoria de Equipamento (EQ) -->
+                    <div class="glass-card" style="padding: 20px; border-radius: 14px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="zap" class="text-amber"></i>
+                            IMPACTO POR EQUIPAMENTO (EQ)
+                        </h4>
+                        <div id="prioDashEquipmentBars" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Renderizado via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Painel 3: Concentração por Base Operacional -->
+                    <div class="glass-card" style="padding: 20px; border-radius: 14px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="map-pin" class="text-cyan"></i>
+                            DISTRIBUIÇÃO POR BASE OPERACIONAL
+                        </h4>
+                        <div id="prioDashBaseBars" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Renderizado via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Painel 4: Cobertura de Supervisão CCO -->
+                    <div class="glass-card" style="padding: 20px; border-radius: 14px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="user-check" class="text-emerald"></i>
+                            COBERTURA DE SUPERVISÃO CCO
+                        </h4>
+                        <div id="prioDashSupervisaoRadar" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Renderizado via JS -->
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <!-- FIM DE priorizadorScreenDashboard -->
+
+            <!-- ============================================================= -->
+            <!-- TELA 3: AUDITORIA FORENSE & DOSSIÊS CONSOLIDADOS POR OS       -->
+            <!-- ============================================================= -->
+            <div id="priorizadorScreenHistory" class="delivery-subscreen-container" style="display: none;">
+                <div class="glass-card" style="padding: 22px 24px; margin-bottom: 20px; border-radius: 16px;">
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 18px;">
+                        <div>
+                            <h4 style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary); margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
+                                <i data-lucide="shield-check" class="text-cyan"></i>
+                                AUDITORIA FORENSE DE ORDENS CRÍTICAS & MUTAÇÕES (SPOTFIRE)
+                            </h4>
+                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">
+                                Visão consolidada por Ordem de Serviço (OS). Clique em qualquer linha para abrir o <strong>Dossiê Executivo Ultra-Premium</strong> com histórico de mutações e Diário de Bordo do Supervisor.
+                            </p>
+                        </div>
+                        <span class="history-count-badge" id="prioAuditOrdersCountBadge" style="font-size: 0.8rem; padding: 6px 14px;">0 OSs auditadas</span>
+                    </div>
+
+                    <!-- Barra de Busca Rápida por OS na Auditoria -->
+                    <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+                        <div class="prio-search-box-premium" style="max-width: 520px; width: 100%;">
+                            <div class="prio-search-inner-wrap">
+                                <i data-lucide="search" class="prio-search-icon-sparkle"></i>
+                                <input type="text" id="prioAuditSearchInput" class="prio-search-input-field" placeholder="Buscar por número de OS, base, facility ou supervisor..." oninput="handlePrioAuditSearch(this.value)">
+                                <button type="button" class="prio-btn-clear-search" id="btnPrioClearAuditSearch" onclick="clearPrioAuditSearch()" style="display: none;">
+                                    <i data-lucide="x-circle"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="renderPriorizadorAuditOsTable()" title="Atualizar tabela de auditoria" style="height: 42px; border-radius: 10px; font-weight: 700;">
+                            <i data-lucide="refresh-cw" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                            <span>Atualizar Auditoria</span>
+                        </button>
+                    </div>
+
+                    <!-- Tabela Consolidada POR OS -->
+                    <div class="table-responsive">
+                        <table class="data-table prio-sortable-table" id="prioAuditOsTable">
+                            <thead>
+                                <tr>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('ordem')">
+                                        <span>ORDEM (OS)</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('base_op')">
+                                        <span>REGIÃO / BASE</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('eq')">
+                                        <span>EQ & FACILITY</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('alimentador')">
+                                        <span>ALIMENTADOR</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('control_desp')">
+                                        <span>STATUS DESPACHO</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('ci')">
+                                        <span>CI ATUAL</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('equipe_codigo')">
+                                        <span>EQUIPE VINCULADA</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('supervisor_responsavel')">
+                                        <span>SUPERVISOR ATRIBUÍDO</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('mutacoes_count')">
+                                        <span>MUTAÇÕES DETECTADAS</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th class="sortable-th" onclick="sortPriorizadorAuditTable('atualizado_em')">
+                                        <span>ÚLTIMA ATUALIZAÇÃO</span> <span class="sort-icon">⇅</span>
+                                    </th>
+                                    <th style="text-align: center;">AÇÕES</th>
+                                </tr>
+                            </thead>
+                            <tbody id="prioAuditOsTableBody">
+                                <!-- Renderizado via JS consolidado por OS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <!-- FIM DE priorizadorScreenHistory -->
+
+        </div>
+        <!-- FIM DO MÓDULO 3 (modulePriorizadorView) -->
+
+        <!-- ============================================================= -->
+        <!-- MODAL ULTRA-PREMIUM: DOSSIÊ COMPLETO DA OS (DIÁRIO + AUDITORIA) -->
+        <!-- ============================================================= -->
+        <div class="modal-backdrop" id="modalPriorizadorDossier" style="display: none;" onclick="closePriorizadorDossierModal(event)">
+            <div class="modal-card glass-card prio-dossier-modal-card" style="max-width: 900px; width: 95%; max-height: 92vh; overflow-y: auto; padding: 26px 30px; border-radius: 20px;" onclick="event.stopPropagation()">
+                
+                <!-- Cabeçalho Executivo do Dossiê -->
+                <div class="dossier-header-executive" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 18px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+                            <span class="badge" id="modalDossierOrderBadge" style="background: rgba(14, 165, 233, 0.15); color: #0284c7; font-weight: 800; font-size: 0.95rem; padding: 4px 12px; border-radius: 8px; font-family: 'JetBrains Mono', monospace; border: 1px solid rgba(14, 165, 233, 0.35);">
+                                OS #00000000-0
+                            </span>
+                            <span id="modalDossierCriticidadePill"></span>
+                            <span class="badge" id="modalDossierRegiaoBadge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; font-weight: 800; font-size: 0.78rem;"></span>
+                            <span class="badge" id="modalDossierBaseBadge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 800; font-size: 0.78rem;"></span>
+                        </div>
+                        <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin: 0 0 4px 0;" id="modalDossierTitle">
+                            Dossiê Operacional & Diário de Bordo
+                        </h3>
+                        <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 0;" id="modalDossierSubtext">
+                            Equipamento: -- | Facility: -- | Circuito: -- | CI: 0
+                        </p>
+                    </div>
+                    <button type="button" class="btn-sheet-close" onclick="closePriorizadorDossierModal()" title="Fechar Dossiê">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+
+                <!-- Abas de Navegação Interna do Modal (Design System Segmentado) -->
+                <div class="dossier-tab-navigation" style="display: flex; gap: 8px; margin-bottom: 22px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                    <button type="button" class="dossier-tab-btn active" id="tabBtnDossierFicha" onclick="switchDossierModalTab('ficha')">
+                        <i data-lucide="file-text" style="width: 15px; height: 15px;"></i>
+                        <span>Ficha Técnica Completa</span>
+                    </button>
+                    <button type="button" class="dossier-tab-btn" id="tabBtnDossierDiario" onclick="switchDossierModalTab('diario')">
+                        <i data-lucide="book-open" style="width: 15px; height: 15px;"></i>
+                        <span>Diário de Bordo da Supervisão</span>
+                        <span class="dossier-pill-counter" id="tabCounterDossierDiario">0</span>
+                    </button>
+                    <button type="button" class="dossier-tab-btn" id="tabBtnDossierMutacoes" onclick="switchDossierModalTab('mutacoes')">
+                        <i data-lucide="history" style="width: 15px; height: 15px;"></i>
+                        <span>Auditoria Forense de Mutações</span>
+                        <span class="dossier-pill-counter counter-amber" id="tabCounterDossierMutacoes">0</span>
+                    </button>
+                </div>
+
+                <!-- ABA 1: FICHA TÉCNICA COMPLETA DA OS -->
+                <div id="dossierTabFicha" class="dossier-tab-pane" style="display: block;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 20px;">
+                        <div class="glass-card" style="padding: 14px 16px; border-radius: 12px;">
+                            <small style="font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase;">Clientes Interrompidos (CI)</small>
+                            <div style="font-size: 1.4rem; font-weight: 900; color: #f43f5e; font-family: 'JetBrains Mono', monospace;" id="dossierFichaCi">0</div>
+                            <span style="font-size: 0.72rem; color: var(--text-secondary);">Consumidores desligados</span>
+                        </div>
+                        <div class="glass-card" style="padding: 14px 16px; border-radius: 12px;">
+                            <small style="font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase;">Impacto CHI</small>
+                            <div style="font-size: 1.4rem; font-weight: 900; color: #c084fc; font-family: 'JetBrains Mono', monospace;" id="dossierFichaChi">0.00</div>
+                            <span style="font-size: 0.72rem; color: var(--text-secondary);">Clientes × Horas</span>
+                        </div>
+                        <div class="glass-card" style="padding: 14px 16px; border-radius: 12px;">
+                            <small style="font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase;">Duração Total</small>
+                            <div style="font-size: 1.4rem; font-weight: 900; color: var(--text-primary); font-family: 'JetBrains Mono', monospace;" id="dossierFichaDuracao">0 min</div>
+                            <span style="font-size: 0.72rem; color: var(--text-secondary);" id="dossierFichaDataDesligamento">--/--/---- --:--</span>
+                        </div>
+                        <div class="glass-card" style="padding: 14px 16px; border-radius: 12px;">
+                            <small style="font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase;">Reclamações</small>
+                            <div style="font-size: 1.4rem; font-weight: 900; color: #f59e0b; font-family: 'JetBrains Mono', monospace;" id="dossierFichaReclamacoes">0</div>
+                            <span style="font-size: 0.72rem; color: var(--text-secondary);" id="dossierFichaTempoRecla">Tempo última: --</span>
+                        </div>
+                    </div>
+
+                    <!-- Detalhamento de Rede e Equipe -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
+                        <div class="glass-card" style="padding: 18px 20px; border-radius: 12px;">
+                            <h5 style="font-size: 0.82rem; font-weight: 800; color: #38bdf8; text-transform: uppercase; margin: 0 0 12px 0;">
+                                <i data-lucide="zap" class="mini-icon"></i> Atributos de Rede Elétrica
+                            </h5>
+                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.8rem;">
+                                <div><strong>Equipamento (EQ):</strong> <span id="dossierFichaEq">--</span></div>
+                                <div><strong>Facility / Subestação:</strong> <span id="dossierFichaFacility">--</span></div>
+                                <div><strong>Alimentador / Circuito:</strong> <span id="dossierFichaAlimentador">--</span></div>
+                                <div><strong>Situação do Conjunto:</strong> <span id="dossierFichaSituacaoConj">--</span></div>
+                                <div><strong>Organização:</strong> <span id="dossierFichaOrganizacao">--</span></div>
+                            </div>
+                        </div>
+
+                        <div class="glass-card" style="padding: 18px 20px; border-radius: 12px;">
+                            <h5 style="font-size: 0.82rem; font-weight: 800; color: #10b981; text-transform: uppercase; margin: 0 0 12px 0;">
+                                <i data-lucide="truck" class="mini-icon"></i> Alocação de Recursos de Campo
+                            </h5>
+                            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.8rem;">
+                                <div><strong>Status Despacho:</strong> <span id="dossierFichaControlDesp">--</span></div>
+                                <div><strong>Código da Equipe:</strong> <span id="dossierFichaEquipeCod">Sem equipe</span></div>
+                                <div><strong>Motorista / Membros:</strong> <span id="dossierFichaEquipeMotorista">--</span></div>
+                                <div><strong>Tipo de Veículo:</strong> <span id="dossierFichaEquipeVeiculo">--</span></div>
+                                <div><strong>Base da Equipe:</strong> <span id="dossierFichaEquipeBase">--</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ABA 2: DIÁRIO DE BORDO DA SUPERVISÃO -->
+                <div id="dossierTabDiario" class="dossier-tab-pane" style="display: none;">
+                    
+                    <!-- Informação de Supervisor Atual -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; margin-bottom: 20px;">
+                        <div>
+                            <span style="font-size: 0.72rem; font-weight: 800; color: #10b981; text-transform: uppercase;">SUPERVISOR ATRIBUÍDO:</span>
+                            <div style="font-size: 0.95rem; font-weight: 800; color: var(--text-primary);" id="dossierSupervisorAtivoNome">⚠️ Nenhum supervisor assumiu esta ordem</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <span class="badge" id="dossierSupervisorStatusBadge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 800;">Em Acompanhamento</span>
+                        </div>
+                    </div>
+
+                    <!-- Formulário de Apontamento Rápido -->
+                    <div class="glass-card" style="padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; background: rgba(14, 165, 233, 0.04); border: 1px solid rgba(14, 165, 233, 0.25);">
+                        <h4 style="font-size: 0.85rem; font-weight: 800; color: #0284c7; margin: 0 0 12px 0; text-transform: uppercase;">
+                            + Novo Registro no Diário de Bordo
+                        </h4>
+                        <form id="formPrioDossierNote" onsubmit="submitPriorizadorDossierNote(event)">
+                            <input type="hidden" id="modalDossierHiddenOrder" value="">
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                <div>
+                                    <label style="font-size: 0.74rem; font-weight: 800; color: var(--text-secondary); display: block; margin-bottom: 4px;">SEU NOME (SUPERVISOR) *</label>
+                                    <input type="text" id="inputDossierSupervisorName" class="form-control" placeholder="Nome do supervisor..." required style="width: 100%; padding: 8px 12px; font-size: 0.82rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.74rem; font-weight: 800; color: var(--text-secondary); display: block; margin-bottom: 4px;">ETAPA OPERACIONAL *</label>
+                                    <select id="selectDossierStatusEtapa" class="form-control" required style="width: 100%; padding: 8px 12px; font-size: 0.82rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);">
+                                        <option value="Em Análise Inicial">1. Em Análise Inicial</option>
+                                        <option value="Aguardando Despacho / Apoio">2. Aguardando Despacho / Apoio</option>
+                                        <option value="Equipe a Caminho">3. Equipe a Caminho</option>
+                                        <option value="Equipe no Ponto de Falha">4. Equipe no Ponto de Falha</option>
+                                        <option value="Em Manobra de Reversão / Isolamento">5. Em Manobra de Reversão / Isolamento</option>
+                                        <option value="Em Intervenção Pesada / Troca de Ativo">6. Em Intervenção Pesada / Troca de Ativo</option>
+                                        <option value="Aguardando Testes / Fechamento">7. Aguardando Testes / Fechamento</option>
+                                        <option value="Concluída / Normalizada">8. Concluída / Normalizada</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style="margin-bottom: 12px;">
+                                <label style="font-size: 0.74rem; font-weight: 800; color: var(--text-secondary); display: block; margin-bottom: 4px;">OCORRÊNCIA / NOTA DO DIÁRIO *</label>
+                                <textarea id="textareaDossierObservacao" class="form-control" rows="3" placeholder="Descreva os fatos ocorridos na atividade de campo..." required style="width: 100%; padding: 8px 12px; font-size: 0.82rem; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); resize: vertical;"></textarea>
+                            </div>
+
+                            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                                <button type="submit" class="btn btn-primary" id="btnSubmitDossierNote" style="padding: 8px 22px; font-weight: 800;">
+                                    <span>REGISTRAR APONTAMENTO</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Linha do Tempo das Notas da Supervisão -->
+                    <div>
+                        <h5 style="font-size: 0.88rem; font-weight: 800; color: var(--text-primary); margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="git-commit" class="text-cyan"></i>
+                            Histórico Cronológico do Diário de Bordo
+                        </h5>
+                        <div id="dossierDiarioTimelineContainer" style="display: flex; flex-direction: column; gap: 14px; position: relative; padding-left: 20px; border-left: 2px solid var(--border-color); margin-left: 10px;">
+                            <!-- Preenchido via JS -->
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ABA 3: AUDITORIA FORENSE DE MUTAÇÕES DE DADOS (SPOTFIRE) -->
+                <div id="dossierTabMutacoes" class="dossier-tab-pane" style="display: none;">
+                    <div style="margin-bottom: 14px;">
+                        <h5 style="font-size: 0.88rem; font-weight: 800; color: var(--text-primary); margin: 0 0 6px 0; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="history" class="text-amber"></i>
+                            Trilha de Auditoria Forense do Robô Spotfire
+                        </h5>
+                        <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;">
+                            Registros detalhados de cada alteração atômica em CI, CHI, trocas de equipes e avanço de despacho registradas pelo sistema.
+                        </p>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table" style="font-size: 0.78rem;">
+                            <thead>
+                                <tr>
+                                    <th>TIMESTAMP</th>
+                                    <th>CAMPO MUTADO</th>
+                                    <th>VALOR ANTERIOR</th>
+                                    <th>VALOR NOVO</th>
+                                    <th>CI MOMENTO</th>
+                                    <th>DESPACHO MOMENTO</th>
+                                    <th>EQUIPE MOMENTO</th>
+                                    <th>RESUMO DA ALTERAÇÃO</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dossierMutationsTableBody">
+                                <!-- Preenchido via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        <!-- FIM DO MODAL DOSSIÊ ULTRA-PREMIUM -->
+
         <!-- ============================================================== -->
-        <!-- MÓDULO 3: PAINEL DE GERENCIAMENTO DO SISTEMA (ACESSO RESTRITO) -->
+        <!-- MÓDULO 4: PAINEL DE GERENCIAMENTO DO SISTEMA (ACESSO RESTRITO) -->
         <!-- ============================================================== -->
         <div class="module-view-container" id="systemAdminViewContainer" style="display: none;">
             
@@ -4299,6 +5412,13 @@
         </div>
         <span class="nav-label">Entrega</span>
     </button>
+    <button class="nav-item" id="navItemPriorizador" onclick="handleMobileNav('priorizador')">
+        <div class="nav-item-icon-wrapper">
+            <i data-lucide="zap"></i>
+            <span class="nav-badge" id="navBadgePrioUrgencia" style="display: none; background: #f43f5e;">0</span>
+        </div>
+        <span class="nav-label">Priorizador</span>
+    </button>
     <button class="nav-item" id="navItemMore" onclick="openBottomSheet('sheetMoreMenu')">
         <div class="nav-item-icon-wrapper">
             <i data-lucide="menu"></i>
@@ -4537,7 +5657,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.0.8-export-fix"></script>
+<script src="/static/js/app.js?v=5.3.0-prio-mobile-light"></script>
 
 </body>
 </html>

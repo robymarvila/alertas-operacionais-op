@@ -1036,6 +1036,14 @@ class DeliveryManager:
 
         return self.get_consolidated_state()
 
+    def get_active_teams(self) -> list:
+        """Retorna lista das equipes ativas no momento."""
+        return list(self.active_teams or [])
+
+    def get_all_teams_today(self) -> list:
+        """Retorna todas as equipes acumuladas do dia (deduplicadas)."""
+        return list(self.daily_accumulated_teams.values() if self.daily_accumulated_teams else [])
+
     def get_consolidated_state(self) -> dict:
         """Retorna o estado operacional completo com Ativas vs Total e agrupamento de bases."""
         active_list = self.active_teams

@@ -3,13 +3,13 @@
 // PWA Caching, Shell Offline & Background Network-First Synchronization
 // ==========================================================================
 
-const CACHE_NAME = 'alertas-cco-pwa-v5.0.9-mobile-ultra';
+const CACHE_NAME = 'alertas-cco-pwa-v5.1.0-prio-4x4';
 
 // Core shell assets to pre-cache on install
 const PRECACHE_ASSETS = [
     '/',
-    '/static/css/dashboard.css?v=5.0.9-mobile-ultra',
-    '/static/js/app.js?v=5.0.9-mobile-ultra',
+    '/static/css/dashboard.css?v=5.1.0-prio-4x4',
+    '/static/js/app.js?v=5.1.0-prio-4x4',
     '/manifest.webmanifest',
     '/static/manifest.webmanifest',
     '/static/icons/icon-192.png',

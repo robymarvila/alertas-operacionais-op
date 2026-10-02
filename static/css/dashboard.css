@@ -5661,13 +5661,21 @@ body.theme-light .base-mini-card {
 html.route-delivery #portalHubView { display: none !important; }
 html.route-delivery #moduleAuditView { display: none !important; }
 html.route-delivery #moduleDeliveryView { display: flex !important; }
+html.route-delivery #modulePriorizadorView { display: none !important; }
 
 html.route-module #portalHubView { display: none !important; }
 html.route-module #moduleDeliveryView { display: none !important; }
 html.route-module #moduleAuditView { display: flex !important; }
+html.route-module #modulePriorizadorView { display: none !important; }
+
+html.route-priorizador #portalHubView { display: none !important; }
+html.route-priorizador #moduleAuditView { display: none !important; }
+html.route-priorizador #moduleDeliveryView { display: none !important; }
+html.route-priorizador #modulePriorizadorView { display: flex !important; }
 
 html.route-hub #moduleAuditView { display: none !important; }
 html.route-hub #moduleDeliveryView { display: none !important; }
+html.route-hub #modulePriorizadorView { display: none !important; }
 html.route-hub #portalHubView { display: flex !important; }
 
 /* ==========================================================================
@@ -10447,8 +10455,10 @@ body.theme-light .mobile-subtab-btn.active {
 
     body.route-delivery,
     body.route-module,
+    body.route-priorizador,
     html.route-delivery body,
-    html.route-module body {
+    html.route-module body,
+    html.route-priorizador body {
         padding-top: calc(112px + env(safe-area-inset-top)) !important;
     }
 
@@ -12676,3 +12686,1573 @@ body:not(.theme-light) .filter-indicator-pill.pill-filter-nogps {
 .btn-export-xlsx:active {
     transform: translateY(0);
 }
+
+/* ==============================================================================
+   MÓDULO: PRIORIZADOR - ORDENS CRÍTICAS (DESIGN SYSTEM ULTRA-PREMIUM)
+   ============================================================================== */
+
+/* 1. Hub Card Glow */
+.card-priorizador-glow:hover {
+    border-color: rgba(244, 63, 94, 0.5) !important;
+    box-shadow: 0 12px 36px rgba(244, 63, 94, 0.18), inset 0 0 20px rgba(244, 63, 94, 0.08) !important;
+}
+
+/* 2. KPI Card Urgência Máxima Destaque */
+.card-urgencia-destaque {
+    position: relative;
+    overflow: hidden;
+}
+
+.card-urgencia-destaque::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #f43f5e, #fb7185, #f43f5e);
+    animation: prioPulseBar 2.5s infinite;
+}
+
+@keyframes prioPulseBar {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+/* 3. Badges de Criticidade */
+.badge-critico-maximo {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(244, 63, 94, 0.16) !important;
+    color: #f43f5e !important;
+    border: 1px solid rgba(244, 63, 94, 0.45) !important;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    font-size: 0.73rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    box-shadow: 0 2px 8px rgba(244, 63, 94, 0.25);
+    animation: prioBadgeGlow 2s infinite alternate;
+}
+
+@keyframes prioBadgeGlow {
+    from { box-shadow: 0 0 6px rgba(244, 63, 94, 0.2); }
+    to { box-shadow: 0 0 14px rgba(244, 63, 94, 0.45); }
+}
+
+.badge-local-80min {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(168, 85, 247, 0.16) !important;
+    color: #c084fc !important;
+    border: 1px solid rgba(168, 85, 247, 0.4) !important;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    font-size: 0.73rem;
+    font-weight: 800;
+}
+
+.badge-atencao-supervisao {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(245, 158, 11, 0.16) !important;
+    color: #f59e0b !important;
+    border: 1px solid rgba(245, 158, 11, 0.4) !important;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    font-size: 0.73rem;
+    font-weight: 800;
+}
+
+.badge-eq-critico {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(14, 165, 233, 0.14) !important;
+    color: #38bdf8 !important;
+    border: 1px solid rgba(14, 165, 233, 0.35) !important;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.badge-convencional {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(148, 163, 184, 0.12) !important;
+    color: #94a3b8 !important;
+    border: 1px solid rgba(148, 163, 184, 0.25) !important;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.badge-ci-alto {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(245, 158, 11, 0.16) !important;
+    color: #f59e0b !important;
+    border: 1px solid rgba(245, 158, 11, 0.45) !important;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    box-shadow: 0 1px 4px rgba(245, 158, 11, 0.15);
+}
+
+/* 4. Linhas da Tabela por Criticidade */
+.row-critico-maximo td:first-child {
+    border-left: 4px solid #f43f5e !important;
+}
+
+.row-critico-maximo {
+    background: rgba(244, 63, 94, 0.03);
+}
+
+.row-critico-maximo:hover {
+    background: rgba(244, 63, 94, 0.08) !important;
+}
+
+.row-eq-critico td:first-child {
+    border-left: 4px solid #38bdf8 !important;
+}
+
+.row-eq-critico {
+    background: rgba(14, 165, 233, 0.02);
+}
+
+.row-eq-critico:hover {
+    background: rgba(14, 165, 233, 0.07) !important;
+}
+
+.row-ci-alto td:first-child {
+    border-left: 4px solid #f59e0b !important;
+}
+
+.row-ci-alto {
+    background: rgba(245, 158, 11, 0.03);
+}
+
+.row-ci-alto:hover {
+    background: rgba(245, 158, 11, 0.08) !important;
+}
+
+.row-local-80 td:first-child {
+    border-left: 4px solid #a855f7 !important;
+}
+
+.row-local-80:hover {
+    background: rgba(168, 85, 247, 0.07) !important;
+}
+
+.row-atencao td:first-child {
+    border-left: 4px solid #f59e0b !important;
+}
+
+/* 5. Seletor de Visões (Visão 1: Pura vs Visão 2: Operacional com CONTROL_DESP) */
+.prio-vision-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 10px 16px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+}
+
+.prio-vision-switcher {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 3px;
+    border-radius: 10px;
+    gap: 4px;
+}
+
+.prio-vision-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 16px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.prio-vision-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.prio-vision-btn.active {
+    color: #ffffff;
+    background: linear-gradient(135deg, #0284c7, #0369a1);
+    box-shadow: 0 2px 10px rgba(2, 132, 199, 0.4);
+}
+
+.prio-vision-btn.active.vision-btn-operacional {
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    box-shadow: 0 2px 10px rgba(124, 58, 237, 0.4);
+}
+
+.prio-vision-summary {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Badges e Fita de Cruzamento Operacional (Visão 2) */
+.badge-cruzamento-aguard-urgente {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(244, 63, 94, 0.18) !important;
+    color: #f43f5e !important;
+    border: 1px solid rgba(244, 63, 94, 0.5) !important;
+    font-weight: 800;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    animation: prioBadgeGlow 2s infinite alternate;
+}
+
+.badge-cruzamento-local80 {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(168, 85, 247, 0.18) !important;
+    color: #c084fc !important;
+    border: 1px solid rgba(168, 85, 247, 0.45) !important;
+    font-weight: 800;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.badge-cruzamento-cami {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(14, 165, 233, 0.18) !important;
+    color: #38bdf8 !important;
+    border: 1px solid rgba(14, 165, 233, 0.45) !important;
+    font-weight: 800;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.badge-cruzamento-aguard-rede {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(249, 115, 22, 0.16) !important;
+    color: #f97316 !important;
+    border: 1px solid rgba(249, 115, 22, 0.4) !important;
+    font-weight: 800;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.badge-cruzamento-aguard-ci {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(245, 158, 11, 0.16) !important;
+    color: #f59e0b !important;
+    border: 1px solid rgba(245, 158, 11, 0.4) !important;
+    font-weight: 800;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.badge-cruzamento-padrao {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(148, 163, 184, 0.12) !important;
+    color: #94a3b8 !important;
+    border: 1px solid rgba(148, 163, 184, 0.25) !important;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+/* Fita de Cruzamento Prioridade x Despacho (Visão 2) */
+.prio-cross-matrix-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px dashed rgba(124, 58, 237, 0.35);
+    border-radius: 12px;
+}
+
+.prio-matrix-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.prio-matrix-pill:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+.prio-matrix-pill.active {
+    outline: 2px solid #ffffff;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+}
+
+/* 6. Botão de Filtro Rápido Urgência */
+.btn-chip-danger {
+    background: rgba(244, 63, 94, 0.12) !important;
+    color: #f43f5e !important;
+    border: 1px solid rgba(244, 63, 94, 0.35) !important;
+    font-weight: 800 !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-chip-danger:hover {
+    background: rgba(244, 63, 94, 0.22) !important;
+    border-color: #f43f5e !important;
+}
+
+.btn-chip-danger.active {
+    background: #f43f5e !important;
+    color: #ffffff !important;
+    border-color: #f43f5e !important;
+    box-shadow: 0 0 14px rgba(244, 63, 94, 0.5) !important;
+}
+
+/* 6. Linha do Tempo da Supervisão (Modal Timeline) */
+.prio-timeline-item {
+    position: relative;
+    padding-bottom: 6px;
+}
+
+.prio-timeline-dot {
+    position: absolute;
+    left: -27px;
+    top: 4px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #0284c7;
+    border: 3px solid var(--bg-card);
+    box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.4);
+}
+
+.prio-timeline-bubble {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.prio-timeline-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.prio-timeline-author {
+    font-weight: 800;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+}
+
+.prio-timeline-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+}
+
+.prio-timeline-text {
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    line-height: 1.45;
+    margin: 0;
+}
+
+/* 7. Feed de Cards Mobile */
+.prio-mobile-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.prio-mobile-card.card-prio-urgente {
+    border-left: 5px solid #f43f5e;
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.05) 0%, var(--bg-card) 60%);
+}
+
+.prio-mobile-card.card-prio-local80 {
+    border-left: 5px solid #a855f7;
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.05) 0%, var(--bg-card) 60%);
+}
+
+.prio-mobile-card.card-prio-atencao {
+    border-left: 5px solid #f59e0b;
+}
+
+.prio-mobile-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+}
+
+.prio-mobile-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+}
+
+body.theme-dark .prio-mobile-kpi-row,
+body:not(.theme-light) .prio-mobile-kpi-row {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.prio-mobile-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    gap: 8px;
+}
+
+/* ========================================================================= */
+/* 8. NOVO SISTEMA VISUAL PRIORIZADOR: GRID 4X4, MULTI-SELECT & DOSSIÊ OS    */
+/* ========================================================================= */
+
+/* Grid em Proporção 4x4 com auto-ajuste inteligente */
+.prio-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 1400px) {
+    .prio-kpi-grid {
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .prio-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Card de Filtro Ativo com Glow Neon */
+.kpi-card.kpi-card-filter-active {
+    border-color: #0ea5e9 !important;
+    box-shadow: 0 0 20px rgba(14, 165, 233, 0.35) !important;
+    transform: translateY(-2px);
+    position: relative;
+}
+
+.kpi-card.kpi-card-filter-active::after {
+    content: "✓ FILTRADO";
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 0.62rem;
+    font-weight: 900;
+    color: #38bdf8;
+    background: rgba(14, 165, 233, 0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(14, 165, 233, 0.4);
+    letter-spacing: 0.05em;
+}
+
+/* Card 1: Distribuição Regional Split (Norte vs Leste) */
+.prio-card-regional .regional-split-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 8px 0 10px 0;
+}
+
+.regional-pill-btn {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 8px 10px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+}
+
+.regional-pill-btn:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+}
+
+.regional-pill-btn.active {
+    background: rgba(14, 165, 233, 0.15);
+    border-color: #0ea5e9;
+    box-shadow: 0 0 12px rgba(14, 165, 233, 0.3);
+}
+
+.regional-pill-btn.regional-btn-leste.active {
+    background: rgba(168, 85, 247, 0.15);
+    border-color: #a855f7;
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.3);
+}
+
+.regional-pill-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+}
+
+.regional-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.regional-dot.dot-norte {
+    background: #06b6d4;
+    box-shadow: 0 0 6px #06b6d4;
+}
+
+.regional-dot.dot-leste {
+    background: #a855f7;
+    box-shadow: 0 0 6px #a855f7;
+}
+
+.regional-name {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+}
+
+.regional-metric {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.regional-val {
+    font-size: 1.35rem;
+    font-weight: 900;
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.1;
+}
+
+.regional-unit {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    font-weight: 700;
+}
+
+.regional-split-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 2px;
+}
+
+.split-vs {
+    font-size: 0.65rem;
+    font-weight: 900;
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
+.regional-progress-wrap {
+    display: flex;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.regional-progress-bar.bar-norte {
+    background: linear-gradient(90deg, #06b6d4, #0ea5e9);
+    transition: width 0.3s ease;
+}
+
+.regional-progress-bar.bar-leste {
+    background: linear-gradient(90deg, #8b5cf6, #c084fc);
+    transition: width 0.3s ease;
+}
+
+/* Card 2: Pills de Resumo por Equipamentos Críticos */
+.prio-eq-breakdown-container {
+    margin-top: 4px;
+}
+
+.prio-breakdown-label {
+    font-size: 0.64rem;
+    font-weight: 800;
+    color: var(--text-secondary);
+    letter-spacing: 0.04em;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.prio-eq-pills-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.eq-crit-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 3px 7px;
+    cursor: pointer;
+    font-size: 0.72rem;
+    transition: all 0.15s ease;
+    outline: none;
+    color: var(--text-primary);
+}
+
+.eq-crit-pill:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
+}
+
+.eq-crit-pill.active {
+    background: rgba(244, 63, 94, 0.16) !important;
+    border-color: #f43f5e !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 10px rgba(244, 63, 94, 0.35);
+}
+
+.eq-crit-tag {
+    font-weight: 900;
+    color: #38bdf8;
+    font-size: 0.72rem;
+}
+
+.eq-crit-pill.active .eq-crit-tag {
+    color: #f43f5e;
+}
+
+.eq-crit-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 0.76rem;
+}
+
+/* Barra de Filtros Avançados */
+.prio-filter-bar-advanced {
+    background: rgba(15, 23, 42, 0.65) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    backdrop-filter: blur(16px);
+}
+
+body.theme-light .prio-filter-bar-advanced {
+    background: rgba(255, 255, 255, 0.85) !important;
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+.prio-filters-top-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+}
+
+.prio-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 170px;
+}
+
+.prio-field-label {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.prio-select-control {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.prio-select-control:focus {
+    border-color: #0ea5e9;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
+}
+
+/* Datepicker & Presets estilo TRBOnet */
+.prio-date-filter-wrap {
+    min-width: 280px;
+}
+
+.prio-date-input-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.prio-date-picker-input {
+    width: 140px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.76rem;
+}
+
+.prio-btn-date-preset {
+    height: 38px;
+    padding: 0 10px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.prio-btn-date-preset:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.prio-btn-date-preset.active {
+    background: #0ea5e9;
+    color: #ffffff;
+    border-color: #0ea5e9;
+    box-shadow: 0 0 10px rgba(14, 165, 233, 0.35);
+}
+
+/* Elemento de Multi-Busca Ultra-Premium */
+.prio-search-box-premium {
+    position: relative;
+    width: 100%;
+}
+
+.prio-search-inner-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.prio-search-icon-sparkle {
+    position: absolute;
+    left: 14px;
+    width: 18px;
+    height: 18px;
+    color: #0ea5e9;
+    pointer-events: none;
+    transition: transform 0.2s ease;
+}
+
+.prio-search-input-field {
+    width: 100%;
+    height: 44px;
+    padding: 0 42px 0 44px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(14, 165, 233, 0.35);
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+}
+
+body.theme-light .prio-search-input-field {
+    background: #ffffff;
+    border: 1px solid rgba(14, 165, 233, 0.4);
+}
+
+.prio-search-input-field:focus {
+    border-color: #0ea5e9;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.25), 0 4px 18px rgba(14, 165, 233, 0.15);
+    background: rgba(0, 0, 0, 0.35);
+}
+
+body.theme-light .prio-search-input-field:focus {
+    background: #ffffff;
+}
+
+.prio-btn-clear-search {
+    position: absolute;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 50%;
+    transition: color 0.15s ease;
+}
+
+.prio-btn-clear-search:hover {
+    color: #ef4444;
+}
+
+.prio-btn-clear-search i {
+    width: 18px;
+    height: 18px;
+}
+
+/* Cabeçalhos de Tabela Classificáveis (Sorting) */
+.prio-sortable-table th.sortable-th {
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+}
+
+.prio-sortable-table th.sortable-th:hover {
+    background: rgba(14, 165, 233, 0.08) !important;
+    color: #38bdf8 !important;
+}
+
+.prio-sortable-table th.sortable-th .sort-icon {
+    font-size: 0.75rem;
+    opacity: 0.4;
+    margin-left: 4px;
+    display: inline-block;
+    transition: all 0.15s ease;
+}
+
+.prio-sortable-table th.sortable-th:hover .sort-icon {
+    opacity: 0.9;
+}
+
+.prio-sortable-table th.sortable-th.sort-active {
+    color: #38bdf8 !important;
+    background: rgba(14, 165, 233, 0.12) !important;
+}
+
+.prio-sortable-table th.sortable-th.sort-active .sort-icon {
+    opacity: 1;
+    color: #38bdf8;
+    font-weight: 900;
+}
+
+/* Modal Ultra-Premium Dossiê da OS */
+.prio-dossier-modal-card {
+    background: var(--bg-card);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.dossier-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.dossier-tab-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.dossier-tab-btn.active {
+    background: rgba(14, 165, 233, 0.15);
+    color: #38bdf8;
+    border-color: rgba(14, 165, 233, 0.35);
+    box-shadow: 0 2px 10px rgba(14, 165, 233, 0.15);
+}
+
+.dossier-pill-counter {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.dossier-pill-counter.counter-amber {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+.dossier-tab-btn.active .dossier-pill-counter {
+    background: #0ea5e9;
+    color: #ffffff;
+}
+
+/* ========================================================================= */
+/* 9. COLUNA TIME: CONTADOR DINÂMICO DE TEMPO DE DESLIGAMENTO (HH:MM:SS)     */
+/* ========================================================================= */
+
+.prio-time-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 800;
+    padding: 5px 11px;
+    border-radius: 9px;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    transition: all 0.25s ease;
+}
+
+.prio-time-badge .mini-icon {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+}
+
+/* 1. Até 2 horas: Normal (Verde Esmeralda suave) */
+.prio-time-badge.time-normal {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+/* 2. Acima de 2 horas (e até 4h): Âmbar Alerta */
+.prio-time-badge.time-warning {
+    background: rgba(245, 158, 11, 0.16);
+    color: #f59e0b;
+    border: 1.2px solid rgba(245, 158, 11, 0.55);
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.22);
+}
+
+/* 3. Superior a 4 horas: Vermelho Pulsante para sinalizar criticidade máxima */
+.prio-time-badge.time-danger-pulse {
+    background: rgba(244, 63, 94, 0.22);
+    color: #f43f5e;
+    border: 1.5px solid #f43f5e;
+    box-shadow: 0 0 14px rgba(244, 63, 94, 0.6);
+    animation: prioTimePulseGlow 1.4s infinite ease-in-out;
+}
+
+@keyframes prioTimePulseGlow {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 8px rgba(244, 63, 94, 0.5);
+        border-color: #f43f5e;
+    }
+    50% {
+        transform: scale(1.04);
+        box-shadow: 0 0 18px rgba(244, 63, 94, 0.95), inset 0 0 8px rgba(244, 63, 94, 0.35);
+        border-color: #ff1e47;
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 8px rgba(244, 63, 94, 0.5);
+        border-color: #f43f5e;
+    }
+}
+
+/* Contraste no Modo Claro (.theme-light) */
+body.theme-light .prio-time-badge.time-normal {
+    background: rgba(5, 150, 105, 0.1);
+    color: #047857;
+    border-color: rgba(5, 150, 105, 0.35);
+}
+
+body.theme-light .prio-time-badge.time-warning {
+    background: rgba(217, 119, 6, 0.12);
+    color: #b45309;
+    border-color: rgba(217, 119, 6, 0.45);
+    box-shadow: 0 2px 8px rgba(217, 119, 6, 0.15);
+}
+
+body.theme-light .prio-time-badge.time-danger-pulse {
+    background: rgba(225, 29, 72, 0.14);
+    color: #be123c;
+    border-color: #e11d48;
+}
+
+/* ========================================================================= */
+/* 10. PRIORIZADOR: COMPATIBILIDADE MOBILE 100% (TELAS <= 768px)              */
+/* ========================================================================= */
+@media (max-width: 768px) {
+    /* 1. Ocultar tabela pesada de 15 colunas e exibir Feed de Cards Mobile */
+    .prio-desktop-table-wrapper,
+    #priorizadorScreenOnline #prioTableBodyContainer,
+    #priorizadorScreenOnline #prioTableBodyContainer .table-responsive,
+    #priorizadorScreenHistory #prioAuditTableContainer .table-responsive {
+        display: none !important;
+    }
+
+    #priorizadorMobileCardsFeed {
+        display: flex !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        flex-direction: column !important;
+        gap: 12px !important;
+        width: 100% !important;
+        padding-bottom: 24px !important;
+    }
+
+    /* 2. Subnavegação Móvel do Priorizador */
+    #mobilePriorizadorSubnav {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        justify-content: space-around;
+        padding: 0 4px;
+    }
+
+    #mobilePriorizadorSubnav .mobile-subnav-pill {
+        flex: 1;
+        justify-content: center;
+        padding: 8px 6px;
+        font-size: 0.72rem;
+        gap: 6px;
+    }
+
+    /* 3. Toolbar de Visões no Mobile */
+    .prio-vision-toolbar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        padding: 12px 14px !important;
+        margin-bottom: 14px !important;
+    }
+
+    .prio-vision-switcher {
+        width: 100% !important;
+        display: grid !important;
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 4px !important;
+        padding: 4px !important;
+    }
+
+    .prio-vision-btn {
+        flex: 1 1 auto !important;
+        justify-content: center !important;
+        padding: 8px 4px !important;
+        font-size: 0.72rem !important;
+        text-align: center !important;
+    }
+
+    .prio-vision-summary {
+        width: 100% !important;
+        justify-content: space-between !important;
+        font-size: 0.76rem !important;
+    }
+
+    /* 4. Matriz Cruzada e Pills de Equipamentos */
+    .prio-cross-matrix-bar {
+        padding: 10px 12px !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        gap: 8px !important;
+    }
+
+    .prio-matrix-pill {
+        padding: 6px 10px !important;
+        font-size: 0.72rem !important;
+        white-space: nowrap !important;
+    }
+
+    .prio-eq-breakdown-container {
+        padding: 10px 12px !important;
+    }
+
+    .prio-eq-pills-row {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        flex-wrap: nowrap !important;
+        padding-bottom: 6px !important;
+        gap: 6px !important;
+    }
+
+    .eq-crit-pill {
+        padding: 5px 9px !important;
+        font-size: 0.72rem !important;
+        white-space: nowrap !important;
+    }
+
+    /* 5. Barra de Filtros Avançados */
+    .prio-filter-bar-advanced {
+        padding: 12px !important;
+        margin-bottom: 16px !important;
+    }
+
+    .prio-filters-top-row {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+
+    .prio-search-box-premium {
+        width: 100% !important;
+    }
+
+    .period-filters-controls {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+    }
+
+    .period-filter-popover {
+        position: fixed !important;
+        left: 12px !important;
+        right: 12px !important;
+        top: 60px !important;
+        width: auto !important;
+        max-width: calc(100vw - 24px) !important;
+        min-width: 0 !important;
+        z-index: 99999 !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    /* 6. Grid de KPIs no Mobile (1 ou 2 colunas confortáveis) */
+    .prio-kpi-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+        margin-bottom: 16px !important;
+    }
+
+    @media (max-width: 480px) {
+        .prio-kpi-grid {
+            grid-template-columns: 1fr !important;
+        }
+    }
+
+    /* 7. Modal Ultra-Premium Dossiê da OS */
+    .prio-dossier-modal-card {
+        width: 95vw !important;
+        max-width: 95vw !important;
+        max-height: 90vh !important;
+        margin: 5vh auto !important;
+        padding: 16px !important;
+        border-radius: 16px !important;
+    }
+
+    .dossier-tabs-nav {
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch !important;
+        gap: 6px !important;
+        padding-bottom: 4px !important;
+    }
+
+    .dossier-tab-btn {
+        padding: 7px 12px !important;
+        font-size: 0.74rem !important;
+        white-space: nowrap !important;
+    }
+}
+
+/* ========================================================================= */
+/* 11. PRIORIZADOR: COMPATIBILIDADE MODO CLARO 100% (body.theme-light)         */
+/* ========================================================================= */
+
+/* 1. Header do Módulo Priorizador e Toolbar de Visões */
+body.theme-light .prio-vision-toolbar {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.theme-light .prio-vision-switcher {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .prio-vision-btn {
+    color: #64748b !important;
+}
+
+body.theme-light .prio-vision-btn:hover {
+    color: #0f172a !important;
+    background: rgba(0, 0, 0, 0.04) !important;
+}
+
+body.theme-light .prio-vision-btn.active {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+}
+
+body.theme-light .prio-vision-btn.active.vision-btn-operacional {
+    color: #0284c7 !important;
+    border-color: #0284c7 !important;
+}
+
+body.theme-light .prio-vision-btn.active.vision-btn-critico {
+    color: #e11d48 !important;
+    border-color: #e11d48 !important;
+}
+
+body.theme-light .prio-vision-btn.active.vision-btn-local80 {
+    color: #9333ea !important;
+    border-color: #9333ea !important;
+}
+
+body.theme-light .prio-vision-summary {
+    color: #64748b !important;
+}
+
+body.theme-light .prio-summary-pill {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+}
+
+/* 2. Matriz Cruzada de Supervisão & Pills */
+body.theme-light .prio-cross-matrix-bar {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .prio-matrix-label {
+    color: #64748b !important;
+}
+
+body.theme-light .prio-matrix-pill {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #334155 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.theme-light .prio-matrix-pill:hover {
+    background: #f1f5f9 !important;
+    border-color: #94a3b8 !important;
+    color: #0f172a !important;
+}
+
+body.theme-light .prio-matrix-pill.active {
+    background: #0284c7 !important;
+    border-color: #0284c7 !important;
+    color: #ffffff !important;
+    outline: 2px solid #0284c7 !important;
+    box-shadow: 0 0 12px rgba(2, 132, 199, 0.3) !important;
+}
+
+body.theme-light .prio-eq-breakdown-container {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .prio-breakdown-label {
+    color: #64748b !important;
+}
+
+body.theme-light .eq-crit-pill {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #334155 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.theme-light .eq-crit-pill:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+}
+
+body.theme-light .eq-crit-pill.active {
+    background: #0284c7 !important;
+    border-color: #0284c7 !important;
+    color: #ffffff !important;
+}
+
+/* 3. Filtros Avançados */
+body.theme-light .prio-field-label {
+    color: #475569 !important;
+}
+
+body.theme-light .prio-select-control {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+}
+
+body.theme-light .prio-select-control:focus {
+    border-color: #0284c7 !important;
+    box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.2) !important;
+}
+
+body.theme-light .prio-date-picker-input {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+}
+
+body.theme-light .prio-btn-date-preset {
+    background: #f1f5f9 !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #475569 !important;
+}
+
+body.theme-light .prio-btn-date-preset:hover {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+body.theme-light .prio-btn-date-preset.active {
+    background: #0284c7 !important;
+    border-color: #0284c7 !important;
+    color: #ffffff !important;
+}
+
+/* 4. Tabelas do Priorizador (Tempo Real e Auditoria) */
+body.theme-light #prioMainTable,
+body.theme-light #prioAuditTable {
+    background: #ffffff !important;
+    color: #0f172a !important;
+}
+
+body.theme-light #prioMainTable thead th,
+body.theme-light #prioAuditTable thead th {
+    background: #f8fafc !important;
+    color: #334155 !important;
+    border-bottom: 2px solid #e2e8f0 !important;
+}
+
+body.theme-light #prioMainTable tbody td,
+body.theme-light #prioAuditTable tbody td {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+}
+
+body.theme-light #prioMainTable tbody tr:hover td,
+body.theme-light #prioAuditTable tbody tr:hover td {
+    background: #f8fafc !important;
+}
+
+body.theme-light .row-critico-maximo td {
+    background: rgba(244, 63, 94, 0.08) !important;
+}
+
+body.theme-light .row-eq-critico td {
+    background: rgba(14, 165, 233, 0.08) !important;
+}
+
+body.theme-light .row-ci-alto td {
+    background: rgba(245, 158, 11, 0.08) !important;
+}
+
+body.theme-light .row-local-80 td {
+    background: rgba(168, 85, 247, 0.08) !important;
+}
+
+body.theme-light .prio-sortable-table th.sortable-th.sort-active {
+    color: #0284c7 !important;
+    background: rgba(2, 132, 199, 0.08) !important;
+}
+
+body.theme-light .prio-sortable-table th.sortable-th.sort-active .sort-icon {
+    color: #0284c7 !important;
+}
+
+/* 5. Feed de Cards Mobile no Modo Claro */
+body.theme-light .prio-mobile-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.theme-light .prio-mobile-card.card-prio-urgente {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.06) 0%, #ffffff 60%) !important;
+    border-left: 5px solid #e11d48 !important;
+}
+
+body.theme-light .prio-mobile-card.card-prio-local80 {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.06) 0%, #ffffff 60%) !important;
+    border-left: 5px solid #9333ea !important;
+}
+
+body.theme-light .prio-mobile-card.card-prio-atencao {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.06) 0%, #ffffff 60%) !important;
+    border-left: 5px solid #d97706 !important;
+}
+
+body.theme-light .prio-mobile-kpi-row {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .prio-mobile-actions {
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+/* 6. Modal Dossiê da OS no Modo Claro */
+body.theme-light .prio-dossier-modal-card {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15) !important;
+}
+
+body.theme-light .dossier-tab-btn {
+    color: #64748b !important;
+}
+
+body.theme-light .dossier-tab-btn:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+}
+
+body.theme-light .dossier-tab-btn.active {
+    background: rgba(2, 132, 199, 0.1) !important;
+    color: #0284c7 !important;
+    border-color: rgba(2, 132, 199, 0.3) !important;
+}
+
+body.theme-light .dossier-pill-counter {
+    background: #e2e8f0 !important;
+    color: #334155 !important;
+}
+
+body.theme-light .dossier-pill-counter.counter-amber {
+    background: rgba(217, 119, 6, 0.12) !important;
+    color: #b45309 !important;
+}
+
+body.theme-light .dossier-tab-btn.active .dossier-pill-counter {
+    background: #0284c7 !important;
+    color: #ffffff !important;
+}
+
+body.theme-light .prio-timeline-bubble {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .prio-timeline-text {
+    color: #1e293b !important;
+}
+
+body.theme-light .prio-timeline-time {
+    color: #64748b !important;
+}
+
+body.theme-light .prio-timeline-author {
+    color: #0284c7 !important;
+}
+
+/* 7. Subnavegação Mobile no Modo Claro */
+body.theme-light #mobilePriorizadorSubnav .mobile-subnav-pill {
+    background: #ffffff !important;
+    color: #475569 !important;
+    border: 1px solid #cbd5e1 !important;
+}
+
+body.theme-light #mobilePriorizadorSubnav .mobile-subnav-pill:hover {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+}
+
+body.theme-light #mobilePriorizadorSubnav .mobile-subnav-pill.active {
+    background: #0284c7 !important;
+    color: #ffffff !important;
+    border-color: #0284c7 !important;
+    box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25) !important;
+}
+
+/* 8. Telas Subsequentes do Priorizador no Modo Claro (Dashboard e Histórico) */
+body.theme-light #priorizadorScreenDashboard .glass-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.theme-light #priorizadorScreenDashboard h4 {
+    color: #0f172a !important;
+}
+
+body.theme-light #prioDashDespachoBars .progress-track {
+    background: #e2e8f0 !important;
+}
+
+body.theme-light #prioAuditTableContainer {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+
+

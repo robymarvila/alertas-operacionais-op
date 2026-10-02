@@ -1612,8 +1612,248 @@ def fetch_active_teams_list() -> list:
     return []
 
 
+# ==============================================================================
+# MÓDULO: PRIORIZADOR - ORDENS CRÍTICAS (SUPABASE INTEGRATION)
+# ==============================================================================
+
+def push_priorizador_session(session_data: dict) -> bool:
+    """Registra uma nova sessão de extração do robô CDP do Priorizador."""
+    try:
+        from cluster_manager import cluster_manager
+        if not cluster_manager.is_feeding_database():
+            return False
+
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/priorizador_sync_sessions"
+        payload = {
+            "total_ordens": session_data.get("total_ordens", 0),
+            "total_ci": session_data.get("total_ci", 0),
+            "total_chi": session_data.get("total_chi", 0.0),
+            "qtd_urgencia_critica": session_data.get("qtd_urgencia_critica", 0),
+            "qtd_aguard_desp": session_data.get("qtd_aguard_desp", 0),
+            "qtd_local_80min": session_data.get("qtd_local_80min", 0),
+            "qtd_com_equipe": session_data.get("qtd_com_equipe", 0),
+            "tempo_coleta_segundos": session_data.get("tempo_coleta_segundos", 0.0),
+            "status": session_data.get("status", "SUCCESS"),
+            "origem_disparo": session_data.get("origem", "Robô CDP Automático")
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=8)
+        return resp.status_code in [200, 201]
+    except Exception as e:
+        print(f"[SUPABASE PRIORIZADOR SESSION ERROR] {e}", flush=True)
+        return False
 
 
+def push_priorizador_active_orders(orders_list: list) -> bool:
+    """Executa UPSERT em lote das ordens críticas ativas no Supabase."""
+    try:
+        from cluster_manager import cluster_manager
+        if not cluster_manager.is_feeding_database():
+            return False
+
+        if not orders_list:
+            return True
+
+        headers = get_headers()
+        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+        url = f"{BASE_REST_URL}/priorizador_active_orders"
+
+        # Lotes de 50 registros
+        batch_size = 50
+        for i in range(0, len(orders_list), batch_size):
+            batch = orders_list[i:i + batch_size]
+            payload = []
+            for o in batch:
+                payload.append({
+                    "ordem": o.get("ordem"),
+                    "control_desp": o.get("control_desp", "--"),
+                    "data_desligamento": o.get("data_desligamento", "--"),
+                    "qtd_reinc_60": o.get("qtd_reinc_60", 0),
+                    "eq": o.get("eq", "--"),
+                    "facility": o.get("facility", "--"),
+                    "alimentador": o.get("alimentador", "--"),
+                    "interrupcoes": o.get("interrupcoes", 0),
+                    "ci": o.get("ci", 0),
+                    "chi": o.get("chi", 0.0),
+                    "dm_parcial": o.get("dm_parcial", 0.0),
+                    "num_recla": o.get("num_recla", 0),
+                    "base_op": o.get("base_op", "--"),
+                    "situacao_conjunto": o.get("situacao_conjunto", "--"),
+                    "organizacao": o.get("organizacao", "--"),
+                    "aval_dif": o.get("aval_dif", "--"),
+                    "regiao": o.get("regiao", "--"),
+                    "tempo_ult_recla_min": o.get("tempo_ult_recla_min", 0),
+                    "meta_dm": o.get("meta_dm", 0.0),
+                    "dur_min": o.get("dur_min", 0),
+                    "chi_projetado": o.get("chi_projetado", 0.0),
+                    "num_equipes": o.get("num_equipes", 0),
+                    "tp": o.get("tp", "--"),
+                    "tp_1e": o.get("tp_1e", "--"),
+                    "tp_2e": o.get("tp_2e", "--"),
+                    "nivel_criticidade": o.get("nivel_criticidade", "CONVENCIONAL"),
+                    "prioridade_rank": o.get("prioridade_rank", 4),
+                    "prioridade_codigo": o.get("prioridade_codigo", "PRIO_4_CONVENCIONAL"),
+                    "is_urgencia_critica": o.get("is_urgencia_critica", False),
+                    "equipe_codigo": o.get("equipe_codigo"),
+                    "equipe_motorista": o.get("equipe_motorista"),
+                    "equipe_veiculo": o.get("equipe_veiculo"),
+                    "equipe_status": o.get("equipe_status"),
+                    "equipe_base": o.get("equipe_base"),
+                    "equipe_vinculada_em": o.get("equipe_vinculada_em"),
+                    "supervisor_responsavel": o.get("supervisor_responsavel"),
+                    "status_supervisao": o.get("status_supervisao", "Pendente"),
+                    "ultima_nota_supervisao": o.get("ultima_nota_supervisao"),
+                    "ultima_atualizacao_supervisao": o.get("ultima_atualizacao_supervisao"),
+                    "total_notas_supervisao": o.get("total_notas_supervisao", 0),
+                    "hash_dados": o.get("hash_dados"),
+                    "is_active": True,
+                    "primeira_coleta_em": o.get("primeira_coleta_em"),
+                    "atualizado_em": o.get("atualizado_em")
+                })
+
+            resp = requests.post(url, headers=headers, json=payload, timeout=12)
+            if resp.status_code not in [200, 201]:
+                print(f"[SUPABASE PRIORIZADOR ORDERS WARN] Batch {i//batch_size}: Status {resp.status_code} - {resp.text[:100]}", flush=True)
+
+        return True
+    except Exception as e:
+        print(f"[SUPABASE PRIORIZADOR ORDERS ERROR] {e}", flush=True)
+        return False
 
 
+def deactivate_missing_priorizador_orders(active_orders_list: list) -> bool:
+    """Marca como inativas no Supabase as ordens que não estão mais no snapshot atual."""
+    try:
+        from cluster_manager import cluster_manager
+        if not cluster_manager.is_feeding_database():
+            return False
 
+        headers = get_headers()
+        current_ordens = [f'"{o.get("ordem")}"' for o in active_orders_list if o.get("ordem")]
+        if not current_ordens:
+            # Se não há ordens ativas, marca todas como inativas
+            url = f"{BASE_REST_URL}/priorizador_active_orders?is_active=eq.true"
+            requests.patch(url, headers=headers, json={"is_active": False}, timeout=8)
+            return True
+
+        in_filter = ",".join(current_ordens)
+        url = f"{BASE_REST_URL}/priorizador_active_orders?is_active=eq.true&ordem=not.in.({in_filter})"
+        resp = requests.patch(url, headers=headers, json={"is_active": False}, timeout=10)
+        return resp.status_code in [200, 204]
+    except Exception as e:
+        print(f"[SUPABASE DEACTIVATE OLD ORDERS ERROR] {e}", flush=True)
+        return False
+
+
+def push_priorizador_mutations(mutations_list: list) -> bool:
+    """Persiste os registros de mutações atômicas na tabela de auditoria."""
+    try:
+        from cluster_manager import cluster_manager
+        if not cluster_manager.is_feeding_database():
+            return False
+
+        if not mutations_list:
+            return True
+
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/priorizador_order_history"
+
+        payload = []
+        for m in mutations_list:
+            payload.append({
+                "ordem": m.get("ordem"),
+                "coletado_em": m.get("coletado_em"),
+                "campo_alterado": m.get("campo_alterado"),
+                "valor_anterior": m.get("valor_anterior"),
+                "valor_novo": m.get("valor_novo"),
+                "ci_atual": m.get("ci_atual", 0),
+                "chi_atual": m.get("chi_atual", 0.0),
+                "control_desp_atual": m.get("control_desp_atual"),
+                "equipe_atual": m.get("equipe_atual"),
+                "motivo_resumo": m.get("motivo_resumo")
+            })
+
+        resp = requests.post(url, headers=headers, json=payload, timeout=8)
+        return resp.status_code in [200, 201]
+    except Exception as e:
+        print(f"[SUPABASE PRIORIZADOR MUTATIONS ERROR] {e}", flush=True)
+        return False
+
+
+def insert_priorizador_supervisor_note(note_data: dict) -> bool:
+    """Insere um novo apontamento na Linha do Tempo da Supervisão."""
+    try:
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/priorizador_supervisor_timeline"
+        payload = {
+            "ordem": note_data.get("ordem"),
+            "supervisor_nome": note_data.get("supervisor_nome"),
+            "status_etapa": note_data.get("status_etapa"),
+            "observacao": note_data.get("observacao"),
+            "ci_momento": note_data.get("ci_momento", 0),
+            "chi_momento": note_data.get("chi_momento", 0.0),
+            "equipe_momento": note_data.get("equipe_momento"),
+            "registrado_em": note_data.get("registrado_em")
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=6)
+        return resp.status_code in [200, 201]
+    except Exception as e:
+        print(f"[SUPABASE INSERT SUPERVISOR NOTE ERROR] {e}", flush=True)
+        return False
+
+
+def update_priorizador_order_supervisor(ordem: str, supervisor: str, status_etapa: str, nota: str, data_iso: str) -> bool:
+    """Atualiza o cabeçalho da ordem com o supervisor e status mais recente."""
+    try:
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/priorizador_active_orders?ordem=eq.{ordem}"
+        payload = {
+            "supervisor_responsavel": supervisor,
+            "status_supervisao": status_etapa,
+            "ultima_nota_supervisao": nota,
+            "ultima_atualizacao_supervisao": data_iso
+        }
+        resp = requests.patch(url, headers=headers, json=payload, timeout=6)
+        return resp.status_code in [200, 204]
+    except Exception as e:
+        print(f"[SUPABASE UPDATE ORDER SUPERVISOR ERROR] {e}", flush=True)
+        return False
+
+
+def fetch_priorizador_timeline_by_order(ordem: str) -> list:
+    """Busca no Supabase todo o histórico da Linha do Tempo de uma OS específica."""
+    try:
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/priorizador_supervisor_timeline?ordem=eq.{ordem}&order=registrado_em.desc&limit=100"
+        resp = requests.get(url, headers=headers, timeout=6)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as e:
+        print(f"[SUPABASE FETCH TIMELINE ERROR] {e}", flush=True)
+    return []
+
+
+def fetch_priorizador_active_orders() -> list:
+    """Consulta as ordens ativas registradas no Supabase."""
+    try:
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/priorizador_active_orders?is_active=eq.true&order=ci.desc&limit=500"
+        resp = requests.get(url, headers=headers, timeout=8)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as e:
+        print(f"[SUPABASE FETCH ACTIVE ORDERS ERROR] {e}", flush=True)
+    return []
+
+
+def fetch_priorizador_mutations_history(limit=100) -> list:
+    """Busca o histórico recente de mutações atômicas para a tela de Auditoria."""
+    try:
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/priorizador_order_history?order=coletado_em.desc&limit={limit}"
+        resp = requests.get(url, headers=headers, timeout=8)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as e:
+        print(f"[SUPABASE FETCH MUTATIONS ERROR] {e}", flush=True)
+    return []

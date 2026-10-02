@@ -9,6 +9,7 @@ echo.
 set "URL_ENEL=https://equipesbrasil.enelint.global/teams-list"
 set "URL_SPOTFIRE=http://elabziplra00.enelint.global:8090/spotfire/wp/analysis?file=/SP/COD/Scanner%%205.0"
 set "URL_BID=https://suite360.bidtech.com.br/app/checklists/visao-operacional"
+set "URL_PRIORIZADOR=http://elabziplra00.enelint.global:8090/spotfire/wp/analysis?file=/SP/COD/Priorizador"
 
 :: 1. Verifica se porta 9222 ja esta ativa
 netstat -ano | findstr "127.0.0.1:9222" | findstr "LISTENING" >nul
@@ -20,13 +21,13 @@ if %errorlevel% equ 0 (
 :: 2. Dispara Google Chrome ou Microsoft Edge
 if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
     echo [INFO] Abrindo Google Chrome com depuracao remota na porta 9222...
-    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\.chrome_cdp" "%URL_ENEL%" "%URL_SPOTFIRE%" "%URL_BID%"
+    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\.chrome_cdp" "%URL_ENEL%" "%URL_SPOTFIRE%" "%URL_BID%" "%URL_PRIORIZADOR%"
     goto AGUARDAR_CDP
 )
 
 if exist "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" (
     echo [INFO] Abrindo Microsoft Edge com depuracao remota na porta 9222...
-    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\.edge_cdp" "%URL_ENEL%" "%URL_SPOTFIRE%" "%URL_BID%"
+    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\.edge_cdp" "%URL_ENEL%" "%URL_SPOTFIRE%" "%URL_BID%" "%URL_PRIORIZADOR%"
     goto AGUARDAR_CDP
 )
 

@@ -20,6 +20,7 @@ CDP_PORT = 9222
 URL_ENEL = "https://equipesbrasil.enelint.global/teams-list"
 URL_SPOTFIRE = "http://elabziplra00.enelint.global:8090/spotfire/wp/analysis?file=/SP/COD/Scanner%205.0"
 URL_BID = "https://suite360.bidtech.com.br/app/checklists/visao-operacional"
+URL_PRIORIZADOR = "http://elabziplra00.enelint.global:8090/spotfire/wp/analysis?file=/SP/COD/Priorizador"
 
 # Caminhos padrão do Google Chrome e Microsoft Edge no Windows
 CHROME_PATHS = [

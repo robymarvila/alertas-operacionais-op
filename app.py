@@ -14,6 +14,7 @@ from datetime import datetime
 from data_manager import data_manager
 from delivery_manager import delivery_manager
 from fleet_client import fleet_client
+from priorizador_manager import priorizador_manager
 from supabase_client import (
     push_snapshot_to_supabase,
     fetch_latest_snapshot_from_supabase,
@@ -75,6 +76,11 @@ def view_trbonet():
 def view_teams():
     """Acesso direto ao Módulo 2: ENTREGA DE EQUIPES."""
     return redirect('/#delivery', code=302)
+
+@app.route('/priorizador')
+def view_priorizador():
+    """Acesso direto ao Módulo 3: PRIORIZADOR - ORDENS CRÍTICAS."""
+    return redirect('/#priorizador', code=302)
 
 @app.route('/static/<path:filename>')
 def custom_static(filename):
@@ -2577,6 +2583,203 @@ def api_fleet_audit_plates():
         "matched_ok": matched_ok
     })
 
+# ==============================================================================
+# ROTAS DA API: MÓDULO PRIORIZADOR - ORDENS CRÍTICAS
+# ==============================================================================
+
+@app.route('/api/priorizador/data', methods=['GET'])
+def get_priorizador_data():
+    """Retorna o estado consolidado com KPIs, ordens ativas, distribuições e mutações."""
+    global priorizador_manager
+    try:
+        import sys
+        pm = sys.modules.get('priorizador_manager', None)
+        inst = getattr(pm, 'priorizador_manager', priorizador_manager)
+        data = inst.get_dashboard_data()
+        # Se memória estiver vazia, tenta alimentar via Supabase
+        if not data.get("active_orders"):
+            try:
+                from supabase_client import fetch_priorizador_active_orders
+                cloud_orders = fetch_priorizador_active_orders()
+                if cloud_orders:
+                    inst.active_orders = {o["ordem"]: o for o in cloud_orders if o.get("ordem")}
+                    data = inst.get_dashboard_data()
+            except Exception:
+                pass
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/priorizador/sync', methods=['POST', 'GET'])
+def trigger_priorizador_sync():
+    """Dispara a extração imediata do Priorizador via robô CDP ou comando em nuvem."""
+    is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+    if is_cloud:
+        try:
+            from supabase_client import create_sync_command, wait_for_command_completion
+            cmd_id = create_sync_command("CAPTURE_PRIORIZADOR", payload={"requested_by": "UI Cloud User", "source": "Priorizador Button"})
+            if not cmd_id:
+                return jsonify({"status": "error", "message": "Falha ao enfileirar comando remoto no Supabase."}), 500
+            comp = wait_for_command_completion(cmd_id, timeout_seconds=45)
+            if comp and comp.get("status") == "COMPLETED":
+                return jsonify({"status": "success", "message": "Extração do Priorizador concluída na máquina local!", "data": comp.get("result_payload")})
+            else:
+                return jsonify({"status": "warning", "message": "Comando enviado à máquina local mas ainda em execução.", "command_id": cmd_id}), 202
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+    else:
+        try:
+            import importlib, sys
+            if 'priorizador_manager' in sys.modules:
+                importlib.reload(sys.modules['priorizador_manager'])
+            from coletor_priorizador_cdp import executar_ciclo_sincronizacao_priorizador
+            res = executar_ciclo_sincronizacao_priorizador(source_label="Disparo Manual UI")
+            return jsonify(res)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/priorizador/reload', methods=['POST', 'GET'])
+def reload_priorizador_module():
+    """Recarrega os módulos em tempo de execução e atualiza o estado."""
+    global priorizador_manager
+    try:
+        import importlib, sys
+        old_orders = getattr(priorizador_manager, 'active_orders', {})
+        old_mutations = getattr(priorizador_manager, 'mutation_history', [])
+        old_sessions = getattr(priorizador_manager, 'sync_sessions', [])
+        old_notes = getattr(priorizador_manager, 'supervision_notes', {})
+
+        for mod_name in ['priorizador_manager', 'coletor_priorizador_cdp', 'supabase_client', 'delivery_manager']:
+            if mod_name in sys.modules:
+                importlib.reload(sys.modules[mod_name])
+
+        import priorizador_manager as pm_mod
+        priorizador_manager = pm_mod.priorizador_manager
+
+        if old_orders:
+            priorizador_manager.active_orders = old_orders
+        if old_mutations:
+            priorizador_manager.mutation_history = old_mutations
+        if old_sessions:
+            priorizador_manager.sync_sessions = old_sessions
+        if old_notes:
+            priorizador_manager.supervision_notes = old_notes
+
+        return jsonify({
+            "status": "success",
+            "message": "Módulos recarregados com sucesso!",
+            "kpis": priorizador_manager.get_dashboard_data()["kpis"]
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/priorizador/timeline/<ordem>', methods=['GET'])
+def get_priorizador_timeline(ordem):
+    """Retorna o histórico da Linha do Tempo da Supervisão para uma ordem específica."""
+    global priorizador_manager
+    try:
+        import sys
+        pm = sys.modules.get('priorizador_manager', None)
+        inst = getattr(pm, 'priorizador_manager', priorizador_manager)
+        timeline = inst.get_timeline_by_order(ordem)
+        return jsonify({"status": "success", "ordem": ordem, "timeline": timeline, "total": len(timeline)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/priorizador/order/<ordem>/dossier', methods=['GET'])
+def get_priorizador_order_dossier(ordem):
+    """Retorna o dossiê completo de uma OS: dados técnicos, histórico de mutações e diário de bordo."""
+    global priorizador_manager
+    try:
+        import sys
+        pm = sys.modules.get('priorizador_manager', None)
+        inst = getattr(pm, 'priorizador_manager', priorizador_manager)
+        dossier = inst.get_order_dossier(ordem)
+        return jsonify(dossier)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/priorizador/supervisor/note', methods=['POST'])
+def save_priorizador_supervisor_note():
+    """Adiciona um novo apontamento na Linha do Tempo e atualiza o supervisor da OS."""
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        ordem = body.get("ordem")
+        supervisor = body.get("supervisor_nome") or body.get("supervisor")
+        status_etapa = body.get("status_etapa") or "Em Acompanhamento"
+        observacao = body.get("observacao") or body.get("nota")
+
+        if not ordem or not supervisor or not observacao:
+            return jsonify({"status": "error", "message": "Campos 'ordem', 'supervisor_nome' e 'observacao' são obrigatórios."}), 400
+
+        res = priorizador_manager.registrar_nota_supervisao(ordem, supervisor, status_etapa, observacao)
+        status_code = 200 if res.get("status") == "success" else 400
+        return jsonify(res), status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/priorizador/export_excel', methods=['GET'])
+def export_priorizador_excel():
+    """Exporta planilha Excel (.xlsx) com todas as 25 colunas e dados operacionais."""
+    try:
+        orders = list(priorizador_manager.active_orders.values())
+        if not orders:
+            try:
+                from supabase_client import fetch_priorizador_active_orders
+                orders = fetch_priorizador_active_orders()
+            except Exception:
+                pass
+
+        rows = []
+        for o in orders:
+            rows.append({
+                "Ordem": o.get("ordem", ""),
+                "Nível Criticidade": o.get("criticidade_label", o.get("nivel_criticidade", "")),
+                "Urgência Crítica": "Sim" if o.get("is_urgencia_critica") else "Não",
+                "Control Despacho": o.get("control_desp", ""),
+                "Data Desligamento": o.get("data_desligamento", ""),
+                "Qtd Reincidência -60": o.get("qtd_reinc_60", 0),
+                "Equipamento (EQ)": o.get("eq", ""),
+                "Facility": o.get("facility", ""),
+                "Alimentador": o.get("alimentador", ""),
+                "Clientes Interrompidos (CI)": o.get("ci", 0),
+                "CHI Acumulado": o.get("chi", 0.0),
+                "DM Parcial": o.get("dm_parcial", 0.0),
+                "Número Reclamações": o.get("num_recla", 0),
+                "Base Operacional": o.get("base_op", ""),
+                "Região": o.get("regiao", ""),
+                "Organização": o.get("organizacao", ""),
+                "Situação Conjunto": o.get("situacao_conjunto", ""),
+                "Tempo Última Reclamação (min)": o.get("tempo_ult_recla_min", 0),
+                "Duração Total (min)": o.get("dur_min", 0),
+                "CHI Projetado": o.get("chi_projetado", 0.0),
+                "Equipe Atribuída": o.get("equipe_codigo") or "Sem equipe",
+                "Motorista Equipe": o.get("equipe_motorista") or "--",
+                "Tipo Veículo Equipe": o.get("equipe_veiculo") or "--",
+                "Status Equipe": o.get("equipe_status") or "--",
+                "Supervisor Responsável": o.get("supervisor_responsavel") or "Pendente",
+                "Status Supervisão": o.get("status_supervisao") or "--",
+                "Última Nota Supervisão": o.get("ultima_nota_supervisao") or "--"
+            })
+
+        import pandas as pd
+        df = pd.DataFrame(rows)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Priorizador_Ordens_Criticas')
+
+        output.seek(0)
+        filename = f"Priorizador_Ordens_Criticas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/health', methods=['GET'])
 def health():
     return jsonify({
@@ -2590,6 +2793,7 @@ ENGINE_THREADS = {
     "enel_cdp": None,
     "spotfire_cdp": None,
     "bid_cdp": None,
+    "priorizador_cdp": None,
     "daily_10am_audit": None,
     "cloud_listener": None,
     "cloud_pull_sync": None
@@ -2598,7 +2802,8 @@ ENGINE_THREADS = {
 ENGINE_STOP_EVENTS = {
     "enel_cdp": None,
     "spotfire_cdp": None,
-    "bid_cdp": None
+    "bid_cdp": None,
+    "priorizador_cdp": None
 }
 
 def cloud_pull_sync_worker(interval_seconds=25):
@@ -2750,6 +2955,11 @@ def remote_command_listener_worker(poll_interval=2.5):
                     res = executar_ciclo_sincronizacao_bid()
                     status = "COMPLETED" if res.get("status") == "success" else "ERROR"
                     update_command_status(cmd_id, status, res)
+                elif cmd_name in ["CAPTURE_PRIORIZADOR", "SYNC_PRIORIZADOR", "COLETAR_PRIORIZADOR"]:
+                    from coletor_priorizador_cdp import executar_ciclo_sincronizacao_priorizador
+                    res = executar_ciclo_sincronizacao_priorizador(source_label="Disparo Remoto Solicitado na Nuvem")
+                    status = "COMPLETED" if res.get("status") == "success" else "ERROR"
+                    update_command_status(cmd_id, status, res)
                 elif cmd_name in ["RESTART_ENGINES", "REINICIAR_MOTORES"]:
                     print("[REMOTE COMMAND] Reiniciando motores locais em segundo plano no Windows...", flush=True)
                     start_background_jobs(force_restart=True)
@@ -2855,6 +3065,20 @@ def start_background_jobs(force_restart=False):
                 ENGINE_THREADS["bid_cdp"] = bg_bid
         except Exception as err:
             print(f"[WARN] Falha ao iniciar worker BidTech CDP: {err}", flush=True)
+
+        # 5.1 Rotina de auto-captura autônoma do TIBCO Spotfire - PRIORIZADOR (120s)
+        try:
+            from coletor_priorizador_cdp import priorizador_background_worker
+            if force_restart and ENGINE_STOP_EVENTS.get("priorizador_cdp") is not None:
+                ENGINE_STOP_EVENTS["priorizador_cdp"].set()
+            if force_restart or ENGINE_THREADS["priorizador_cdp"] is None or not ENGINE_THREADS["priorizador_cdp"].is_alive():
+                stop_evt_prio = threading.Event()
+                ENGINE_STOP_EVENTS["priorizador_cdp"] = stop_evt_prio
+                bg_prio = threading.Thread(target=priorizador_background_worker, args=(120, stop_evt_prio), daemon=True)
+                bg_prio.start()
+                ENGINE_THREADS["priorizador_cdp"] = bg_prio
+        except Exception as err:
+            print(f"[WARN] Falha ao iniciar worker Priorizador CDP: {err}", flush=True)
 
         # 6. Agendador da conferência forense diária das 10:00
         if force_restart or ENGINE_THREADS["daily_10am_audit"] is None or not ENGINE_THREADS["daily_10am_audit"].is_alive():
