@@ -914,6 +914,52 @@ function initSupabaseRealtime(retryCount = 0) {
             )
             .on(
                 'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'priorizador_sync_sessions' },
+                (payload) => {
+                    console.log('[REALTIME WS] Nova coleta Priorizador (Spotfire) gravada no Supabase!', payload);
+                    if (typeof loadPriorizadorData === 'function') {
+                        loadPriorizadorData(false);
+                    }
+                    if (typeof updatePriorizadorHubCard === 'function') {
+                        updatePriorizadorHubCard();
+                    }
+                    showRealtimeIndicator('Priorizador Atualizado ao Vivo');
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'priorizador_active_orders' },
+                (payload) => {
+                    console.log('[REALTIME WS] Ordens críticas do Priorizador atualizadas no Supabase!', payload);
+                    if (typeof loadPriorizadorData === 'function') {
+                        loadPriorizadorData(false);
+                    }
+                    if (typeof updatePriorizadorHubCard === 'function') {
+                        updatePriorizadorHubCard();
+                    }
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'priorizador_supervisor_timeline' },
+                (payload) => {
+                    console.log('[REALTIME WS] Novo apontamento no Diário de Bordo gravado no Supabase:', payload);
+                    const modalDossier = document.getElementById('modalPriorizadorDossier');
+                    const activeOrder = document.getElementById('modalDossierHiddenOrder')?.value;
+                    const eventOrder = payload?.new?.ordem;
+                    if (modalDossier && modalDossier.style.display !== 'none' && activeOrder && activeOrder === eventOrder) {
+                        if (typeof openPriorizadorDossierModal === 'function') {
+                            openPriorizadorDossierModal(activeOrder);
+                        }
+                    }
+                    if (typeof loadPriorizadorData === 'function') {
+                        loadPriorizadorData(false);
+                    }
+                    showRealtimeIndicator('Diário de Bordo Atualizado');
+                }
+            )
+            .on(
+                'postgres_changes',
                 { event: '*', schema: 'public', table: 'system_engine_health' },
                 (payload) => {
                     console.log('[REALTIME WS] Estado do motor operacional atualizado:', payload);
@@ -930,6 +976,14 @@ function initSupabaseRealtime(retryCount = 0) {
                     } else if (engineName === 'enel_cdp_collector') {
                         loadDeliveryData(false);
                         showRealtimeIndicator('Robô Enel SP Sincronizado');
+                    } else if (engineName === 'priorizador_cdp_collector') {
+                        if (typeof loadPriorizadorData === 'function') {
+                            loadPriorizadorData(false);
+                        }
+                        if (typeof updatePriorizadorHubCard === 'function') {
+                            updatePriorizadorHubCard();
+                        }
+                        showRealtimeIndicator('Robô Priorizador Sincronizado');
                     }
                     if (appState.currentView === 'admin') {
                         loadAdminEngineStatus();
@@ -11846,7 +11900,9 @@ async function loadPriorizadorData(forceRefresh = false) {
     }
 
     try {
-        const resp = await fetch('/api/priorizador/data', { cache: 'no-store' });
+        const cacheBust = Date.now();
+        const fetchUrl = forceRefresh ? `/api/priorizador/data?refresh=1&_=${cacheBust}` : `/api/priorizador/data?_=${cacheBust}`;
+        const resp = await fetch(fetchUrl, { cache: 'no-store' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
 
@@ -13668,6 +13724,8 @@ async function openPriorizadorDossierModal(orderCode) {
         // Exibe o modal
         modal.classList.add('active');
         modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
 
     } catch (e) {
         showToast(`Erro ao abrir dossiê: ${e.message}`, 'error');
@@ -13677,15 +13735,26 @@ window.openPriorizadorDossierModal = openPriorizadorDossierModal;
 window.openPriorizadorTimelineModal = openPriorizadorDossierModal; // Alias de compatibilidade
 
 function closePriorizadorDossierModal(event) {
-    if (event && event.target && event.target.id !== 'modalPriorizadorDossier' && !event.target.closest('.btn-sheet-close')) return;
+    if (event && event.target && event.target.id !== 'modalPriorizadorDossier' && !event.target.closest('.btn-dossier-close') && !event.target.closest('.btn-sheet-close') && !event.target.closest('.btn-dossier-footer-close')) return;
     const modal = document.getElementById('modalPriorizadorDossier');
     if (modal) {
         modal.classList.remove('active');
         modal.style.display = 'none';
+        document.body.style.overflow = '';
     }
 }
 window.closePriorizadorDossierModal = closePriorizadorDossierModal;
 window.closePriorizadorTimelineModal = closePriorizadorDossierModal; // Alias de compatibilidade
+
+// Listener global de tecla Escape para fechar o Dossiê
+window.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+        const modal = document.getElementById('modalPriorizadorDossier');
+        if (modal && (modal.classList.contains('active') || modal.style.display === 'flex')) {
+            closePriorizadorDossierModal();
+        }
+    }
+});
 
 // Alternador de Abas do Modal Dossiê
 function switchDossierModalTab(tabName) {
@@ -13717,40 +13786,68 @@ function switchDossierModalTab(tabName) {
 }
 window.switchDossierModalTab = switchDossierModalTab;
 
-// Renderização da Linha do Tempo do Diário de Bordo
+// Renderização da Linha do Tempo do Diário de Bordo (Design Ultra-Premium com Avatares e Badges de Etapa)
 function renderDossierDiarioTimeline(timelineList) {
     const container = document.getElementById('dossierDiarioTimelineContainer');
     if (!container) return;
 
     if (!timelineList || timelineList.length === 0) {
         container.innerHTML = `
-            <div style="color: var(--text-secondary); font-size: 0.8rem; padding: 14px 0;">
-                Nenhum apontamento registrado ainda no diário de bordo desta OS.
-                Seja o primeiro a documentar a ocorrência de campo acima!
+            <div class="dossier-timeline-empty">
+                <i data-lucide="book-open" class="dossier-empty-icon"></i>
+                <p class="dossier-empty-title">Nenhum apontamento registrado ainda no diário desta OS.</p>
+                <p class="dossier-empty-sub">Utilize o formulário acima para registrar a primeira evolução operacional.</p>
             </div>
         `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
         return;
     }
 
     container.innerHTML = timelineList.map(n => {
+        const etapa = n.status_etapa || 'Em Acompanhamento';
+        let badgeStyle = 'background: rgba(14, 165, 233, 0.15); color: #0284c7; border: 1px solid rgba(14, 165, 233, 0.35);';
+        let dotColor = '#0284c7';
+
+        if (etapa.includes('Concluída') || etapa.includes('Normalizada')) {
+            badgeStyle = 'background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);';
+            dotColor = '#10b981';
+        } else if (etapa.includes('Ponto de Falha') || etapa.includes('Intervenção')) {
+            badgeStyle = 'background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35);';
+            dotColor = '#f43f5e';
+        } else if (etapa.includes('Aguardando') || etapa.includes('Apoio')) {
+            badgeStyle = 'background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35);';
+            dotColor = '#f59e0b';
+        } else if (etapa.includes('Manobra') || etapa.includes('Reversão')) {
+            badgeStyle = 'background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35);';
+            dotColor = '#a855f7';
+        }
+
+        const supervisorName = n.supervisor_nome || 'Supervisor';
+        const initial = supervisorName.trim().charAt(0).toUpperCase();
+
         return `
             <div class="prio-timeline-item">
-                <div class="prio-timeline-dot"></div>
+                <div class="prio-timeline-dot" style="background: ${dotColor}; box-shadow: 0 0 0 3px ${dotColor}33;"></div>
                 <div class="prio-timeline-bubble">
                     <div class="prio-timeline-meta">
-                        <div>
-                            <span class="prio-timeline-author">👤 ${n.supervisor_nome}</span>
-                            <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #0284c7; font-size: 0.68rem; margin-left: 6px;">
-                                ${n.status_etapa}
-                            </span>
+                        <div class="dossier-timeline-author-block">
+                            <span class="dossier-timeline-avatar">${initial}</span>
+                            <span class="prio-timeline-author">${supervisorName}</span>
                         </div>
-                        <span class="prio-timeline-time">${formatDateTimeBR(n.registrado_em)}</span>
+                        <div class="dossier-timeline-meta-right">
+                            <span class="badge badge-timeline-stage" style="${badgeStyle}">
+                                ${etapa}
+                            </span>
+                            <span class="prio-timeline-time">${formatDateTimeBR(n.registrado_em)}</span>
+                        </div>
                     </div>
                     <p class="prio-timeline-text">${n.observacao}</p>
                 </div>
             </div>
         `;
     }).join('');
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 // Renderização da Tabela de Mutações Forenses do Dossiê

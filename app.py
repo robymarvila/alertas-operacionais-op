@@ -53,8 +53,8 @@ def add_cors_headers(response):
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
 
-    # Evita cacheamento agressivo de HTML e Service Worker no navegador
-    if request.path in ['/', '/hub', '/trbonet', '/sw.js', '/static/sw.js', '/manifest.webmanifest'] or (response.mimetype and 'text/html' in response.mimetype):
+    # Evita cacheamento agressivo de APIs, HTML e Service Worker no navegador
+    if request.path.startswith('/api/') or request.path in ['/', '/hub', '/trbonet', '/priorizador', '/sw.js', '/static/sw.js', '/manifest.webmanifest'] or (response.mimetype and 'text/html' in response.mimetype):
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
@@ -2684,24 +2684,43 @@ def api_fleet_audit_plates():
 
 @app.route('/api/priorizador/data', methods=['GET'])
 def get_priorizador_data():
-    """Retorna o estado consolidado com KPIs, ordens ativas, distribuições e mutações."""
+    """Retorna o estado consolidado com KPIs, ordens ativas, distribuições e mutações em tempo real."""
     global priorizador_manager
     try:
-        import sys
+        import sys, os
         pm = sys.modules.get('priorizador_manager', None)
         inst = getattr(pm, 'priorizador_manager', priorizador_manager)
-        data = inst.get_dashboard_data()
-        # Se memória estiver vazia, tenta alimentar via Supabase
-        if not data.get("active_orders"):
+        
+        is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
+        force_refresh = request.args.get("refresh") in ["1", "true"]
+        
+        # Em ambiente Cloud (Vercel) ou sob demanda ou se memória local estiver vazia, sincroniza com Supabase
+        if is_cloud or force_refresh or not getattr(inst, 'active_orders', None):
             try:
-                from supabase_client import fetch_priorizador_active_orders
+                from supabase_client import fetch_priorizador_active_orders, fetch_latest_priorizador_session, fetch_priorizador_mutations_history
                 cloud_orders = fetch_priorizador_active_orders()
                 if cloud_orders:
                     inst.active_orders = {o["ordem"]: o for o in cloud_orders if o.get("ordem")}
-                    data = inst.get_dashboard_data()
-            except Exception:
-                pass
-        return jsonify(data)
+                
+                latest_sess = fetch_latest_priorizador_session()
+                if latest_sess and latest_sess.get("captured_at"):
+                    inst.last_sync_session = latest_sess
+                    inst.last_collect_time = latest_sess.get("captured_at")
+
+                if is_cloud and not getattr(inst, 'mutation_history', None):
+                    muts = fetch_priorizador_mutations_history(limit=100)
+                    if muts:
+                        inst.mutation_history = muts
+            except Exception as e_cloud:
+                print(f"[PRIORIZADOR CLOUD SYNC WARN] {e_cloud}", flush=True)
+
+        data = inst.get_dashboard_data()
+        
+        resp = jsonify(data)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -2777,7 +2796,9 @@ def get_priorizador_timeline(ordem):
         pm = sys.modules.get('priorizador_manager', None)
         inst = getattr(pm, 'priorizador_manager', priorizador_manager)
         timeline = inst.get_timeline_by_order(ordem)
-        return jsonify({"status": "success", "ordem": ordem, "timeline": timeline, "total": len(timeline)})
+        resp = jsonify({"status": "success", "ordem": ordem, "timeline": timeline, "total": len(timeline)})
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        return resp
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -2790,7 +2811,9 @@ def get_priorizador_order_dossier(ordem):
         pm = sys.modules.get('priorizador_manager', None)
         inst = getattr(pm, 'priorizador_manager', priorizador_manager)
         dossier = inst.get_order_dossier(ordem)
-        return jsonify(dossier)
+        resp = jsonify(dossier)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        return resp
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 

@@ -363,7 +363,12 @@ class PriorizadorManager:
                         res["equipe_veiculo"] = t.get("vehicle_type") or t.get("veiculo_portal") or "--"
                         res["equipe_status"] = h.get("status") or t.get("status_equipes_brasil") or t.get("status") or "Logada"
                         res["equipe_base"] = t.get("base_display") or t.get("base_name") or "--"
-                        res["equipe_vinculada_em"] = h.get("last_seen") or h.get("first_seen") or datetime.now(BR_TZ).isoformat()
+                        v_time = h.get("last_seen") or h.get("first_seen")
+                        if v_time and len(str(v_time)) <= 8 and ':' in str(v_time):
+                            today_str = datetime.now(BR_TZ).strftime('%Y-%m-%d')
+                            res["equipe_vinculada_em"] = f"{today_str}T{v_time}-03:00"
+                        else:
+                            res["equipe_vinculada_em"] = v_time or datetime.now(BR_TZ).isoformat()
                         return res
 
         except Exception as e:
@@ -756,7 +761,7 @@ class PriorizadorManager:
                     from supabase_client import get_supabase_client
                     client = get_supabase_client()
                     if client:
-                        resp = client.table("priorizador_mutations").select("*").eq("ordem", clean_ordem).order("coletado_em", desc=False).execute()
+                        resp = client.table("priorizador_order_history").select("*").eq("ordem", clean_ordem).order("coletado_em", desc=False).execute()
                         if resp.data:
                             order_mutations = resp.data
                 except Exception as e:

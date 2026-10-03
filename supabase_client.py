@@ -1644,8 +1644,34 @@ def push_priorizador_session(session_data: dict) -> bool:
         return False
 
 
+def _sanitize_prio_timestamptz(val):
+    """Garante formato ISO-8601 timestamptz compatível com PostgreSQL ou retorna None."""
+    if not val or not isinstance(val, str):
+        return None
+    val = val.strip()
+    if not val or val in ['--', 'None', 'null', 'undefined']:
+        return None
+    # Se for apenas hora HH:MM:SS
+    if len(val) <= 8 and ':' in val:
+        import pytz
+        from datetime import datetime
+        br_tz = pytz.timezone('America/Sao_Paulo')
+        today_str = datetime.now(br_tz).strftime('%Y-%m-%d')
+        return f"{today_str}T{val}-03:00"
+    # Se for DD/MM/YYYY HH:MM:SS
+    if '/' in val:
+        try:
+            parts = val.split(' ')
+            d, m, y = parts[0].split('/')
+            time_part = parts[1] if len(parts) > 1 else '00:00:00'
+            return f"{y}-{m.zfill(2)}-{d.zfill(2)}T{time_part}-03:00"
+        except Exception:
+            return None
+    return val
+
+
 def push_priorizador_active_orders(orders_list: list) -> bool:
-    """Executa UPSERT em lote das ordens críticas ativas no Supabase."""
+    """Executa UPSERT em lote das ordens críticas ativas no Supabase com sanitização estrita."""
     try:
         from cluster_manager import cluster_manager
         if not cluster_manager.is_feeding_database():
@@ -1653,6 +1679,11 @@ def push_priorizador_active_orders(orders_list: list) -> bool:
 
         if not orders_list:
             return True
+
+        import pytz
+        from datetime import datetime
+        br_tz = pytz.timezone('America/Sao_Paulo')
+        now_iso = datetime.now(br_tz).isoformat()
 
         headers = get_headers()
         headers["Prefer"] = "resolution=merge-duplicates,return=representation"
@@ -1691,24 +1722,22 @@ def push_priorizador_active_orders(orders_list: list) -> bool:
                     "tp_1e": o.get("tp_1e", "--"),
                     "tp_2e": o.get("tp_2e", "--"),
                     "nivel_criticidade": o.get("nivel_criticidade", "CONVENCIONAL"),
-                    "prioridade_rank": o.get("prioridade_rank", 4),
-                    "prioridade_codigo": o.get("prioridade_codigo", "PRIO_4_CONVENCIONAL"),
                     "is_urgencia_critica": o.get("is_urgencia_critica", False),
                     "equipe_codigo": o.get("equipe_codigo"),
                     "equipe_motorista": o.get("equipe_motorista"),
                     "equipe_veiculo": o.get("equipe_veiculo"),
                     "equipe_status": o.get("equipe_status"),
                     "equipe_base": o.get("equipe_base"),
-                    "equipe_vinculada_em": o.get("equipe_vinculada_em"),
+                    "equipe_vinculada_em": _sanitize_prio_timestamptz(o.get("equipe_vinculada_em")),
                     "supervisor_responsavel": o.get("supervisor_responsavel"),
                     "status_supervisao": o.get("status_supervisao", "Pendente"),
                     "ultima_nota_supervisao": o.get("ultima_nota_supervisao"),
-                    "ultima_atualizacao_supervisao": o.get("ultima_atualizacao_supervisao"),
+                    "ultima_atualizacao_supervisao": _sanitize_prio_timestamptz(o.get("ultima_atualizacao_supervisao")),
                     "total_notas_supervisao": o.get("total_notas_supervisao", 0),
                     "hash_dados": o.get("hash_dados"),
                     "is_active": True,
-                    "primeira_coleta_em": o.get("primeira_coleta_em"),
-                    "atualizado_em": o.get("atualizado_em")
+                    "primeira_coleta_em": _sanitize_prio_timestamptz(o.get("primeira_coleta_em")) or now_iso,
+                    "atualizado_em": _sanitize_prio_timestamptz(o.get("atualizado_em")) or now_iso
                 })
 
             resp = requests.post(url, headers=headers, json=payload, timeout=12)
@@ -1834,16 +1863,53 @@ def fetch_priorizador_timeline_by_order(ordem: str) -> list:
 
 
 def fetch_priorizador_active_orders() -> list:
-    """Consulta as ordens ativas registradas no Supabase."""
+    """Consulta as ordens ativas registradas no Supabase e enriquece com classificação de prioridade estrita."""
     try:
         headers = get_headers()
         url = f"{BASE_REST_URL}/priorizador_active_orders?is_active=eq.true&order=ci.desc&limit=500"
         resp = requests.get(url, headers=headers, timeout=8)
         if resp.status_code == 200:
-            return resp.json()
+            raw_orders = resp.json()
+            if not raw_orders:
+                return []
+            try:
+                from priorizador_manager import priorizador_manager
+                for o in raw_orders:
+                    crit = priorizador_manager.classificar_criticidade(
+                        o.get("eq", ""),
+                        o.get("ci", 0),
+                        o.get("control_desp", "")
+                    )
+                    o["criticidade_label"] = crit.get("label")
+                    o["criticidade_badge_class"] = crit.get("badge_class")
+                    o["regra_descricao"] = crit.get("regra_descricao")
+                    o["prioridade_rank"] = crit.get("prioridade_rank", 4)
+                    o["prioridade_codigo"] = crit.get("prioridade_codigo", "PRIO_4_CONVENCIONAL")
+                    o["is_urgencia_critica"] = crit.get("is_urgencia_critica", False)
+                    o["status_desp_tipo"] = crit.get("status_desp_tipo")
+                    o["cruzamento_label"] = crit.get("cruzamento_label")
+                    o["cruzamento_class"] = crit.get("cruzamento_class")
+            except Exception as e_crit:
+                print(f"[FETCH PRIORIZADOR CLASSIFY WARN] {e_crit}", flush=True)
+            return raw_orders
     except Exception as e:
         print(f"[SUPABASE FETCH ACTIVE ORDERS ERROR] {e}", flush=True)
     return []
+
+
+def fetch_latest_priorizador_session() -> dict:
+    """Busca a sessão mais recente do robô CDP do Priorizador gravada no Supabase."""
+    try:
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/priorizador_sync_sessions?order=captured_at.desc&limit=1"
+        resp = requests.get(url, headers=headers, timeout=6)
+        if resp.status_code == 200:
+            recs = resp.json()
+            if recs and len(recs) > 0:
+                return recs[0]
+    except Exception as e:
+        print(f"[SUPABASE FETCH LATEST PRIORIZADOR SESSION ERROR] {e}", flush=True)
+    return {}
 
 
 def fetch_priorizador_mutations_history(limit=100) -> list:

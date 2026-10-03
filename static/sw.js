@@ -3,13 +3,13 @@
 // PWA Caching, Shell Offline & Background Network-First Synchronization
 // ==========================================================================
 
-const CACHE_NAME = 'alertas-cco-pwa-v5.1.0-prio-4x4';
+const CACHE_NAME = 'alertas-cco-pwa-v5.3.0-prio-realtime';
 
 // Core shell assets to pre-cache on install
 const PRECACHE_ASSETS = [
     '/',
-    '/static/css/dashboard.css?v=5.1.0-prio-4x4',
-    '/static/js/app.js?v=5.1.0-prio-4x4',
+    '/static/css/dashboard.css?v=5.3.0-prio-realtime',
+    '/static/js/app.js?v=5.3.0-prio-realtime',
     '/manifest.webmanifest',
     '/static/manifest.webmanifest',
     '/static/icons/icon-192.png',
@@ -55,7 +55,7 @@ self.addEventListener('activate', (event) => {
 
 // 3. Fetch Event: Hybrid Strategy
 // - Navegação HTML (/): Network-First (sempre busca a versão mais recente e atualizada)
-// - API Requests (/api/): Network-First com Cache Fallback
+// - API Requests (/api/): Network-First estrito sem poluição de cache
 // - Static assets (CSS, JS, Fonts, Images): Stale-While-Revalidate
 self.addEventListener('fetch', (event) => {
     const request = event.request;
@@ -95,17 +95,10 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // B. Requisições de API: Network-First
+    // B. Requisições de API: Network-First estrito (sempre tempo real quando online)
     if (url.pathname.startsWith('/api/')) {
         event.respondWith(
             fetch(request)
-                .then((response) => {
-                    if (response && response.status === 200) {
-                        const clone = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-                    }
-                    return response;
-                })
                 .catch(async () => {
                     const cached = await caches.match(request);
                     if (cached) return cached;
