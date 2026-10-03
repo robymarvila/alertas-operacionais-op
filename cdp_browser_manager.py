@@ -110,13 +110,15 @@ def garantir_navegador_cdp_ativo(max_wait_seconds=10) -> bool:
         "--no-first-run",
         "--no-default-browser-check",
         URL_ENEL,
-        URL_SPOTFIRE
+        URL_SPOTFIRE,
+        URL_BID,
+        URL_PRIORIZADOR
     ]
 
     try:
         if os.name == 'nt':
             # No Windows, dispara via WMI Win32_Process.Create para desvincular de Job Objects
-            cmd_line = f'"{browser["exe"]}" --remote-debugging-port={CDP_PORT} --user-data-dir="{browser["profile_dir"]}" --no-first-run --no-default-browser-check "{URL_ENEL}" "{URL_SPOTFIRE}"'
+            cmd_line = f'"{browser["exe"]}" --remote-debugging-port={CDP_PORT} --user-data-dir="{browser["profile_dir"]}" --no-first-run --no-default-browser-check "{URL_ENEL}" "{URL_SPOTFIRE}" "{URL_BID}" "{URL_PRIORIZADOR}"'
             ps_cmd = f"Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{{CommandLine = '{cmd_line}'}}"
             subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True)
             print(f"[CDP MANAGER] {browser['name']} disparado com sucesso via WMI independente.", flush=True)
@@ -150,8 +152,12 @@ def listar_alvos_cdp():
 
 def garantir_abas_operacionais():
     """
-    Garante que tanto a aba do EquipesBrasil quanto a aba do Spotfire
-    estejam presentes no navegador. Se alguma não existir, abre uma nova aba.
+    Garante que todas as 4 abas operacionais estejam presentes no navegador:
+    1. EquipesBrasil ENEL SP
+    2. Scanner 5.0 (TIBCO Spotfire)
+    3. BidTech (Visão Operacional)
+    4. Priorizador (Ordens Críticas Spotfire)
+    Se alguma não existir, abre uma nova aba dedicada sem sobrepor as existentes.
     """
     if not is_cdp_port_open():
         if not garantir_navegador_cdp_ativo():
@@ -159,15 +165,18 @@ def garantir_abas_operacionais():
 
     targets = listar_alvos_cdp()
     has_enel = False
-    has_spotfire = False
+    has_scanner = False
     has_bid = False
+    has_priorizador = False
 
     for t in targets:
         if t.get('type') == 'page':
             u = (t.get('url') or '').lower()
             title = (t.get('title') or '').lower()
-            if 'spotfire' in u or 'spotfire' in title or 'elabziplra00' in u:
-                has_spotfire = True
+            if 'priorizador' in u or 'priorizador' in title:
+                has_priorizador = True
+            elif 'scanner' in u or 'scanner' in title:
+                has_scanner = True
             elif 'equipesbrasil.enelint.global' in u or 'filtro avançado' in title:
                 has_enel = True
             elif 'suite360.bidtech.com.br' in u or 'visao-operacional' in u or 'visão operacional' in title:
@@ -183,15 +192,15 @@ def garantir_abas_operacionais():
         except Exception as e:
             print(f"[CDP MANAGER WARN] Falha ao criar aba da Enel: {e}", flush=True)
 
-    # Abre aba do Spotfire se ausente
-    if not has_spotfire:
+    # Abre aba do Scanner 5.0 se ausente
+    if not has_scanner:
         try:
             create_url = f"http://{CDP_HOST}:{CDP_PORT}/json/new?{urllib.parse.quote(URL_SPOTFIRE, safe=':/?=&')}"
             req = urllib.request.Request(create_url, method='PUT')
             with urllib.request.urlopen(req, timeout=5) as resp:
-                print("[CDP MANAGER] Nova aba do TIBCO Spotfire criada com sucesso.", flush=True)
+                print("[CDP MANAGER] Nova aba do Scanner 5.0 (TIBCO Spotfire) criada com sucesso.", flush=True)
         except Exception as e:
-            print(f"[CDP MANAGER WARN] Falha ao criar aba do Spotfire: {e}", flush=True)
+            print(f"[CDP MANAGER WARN] Falha ao criar aba do Scanner 5.0: {e}", flush=True)
 
     # Abre aba do BidTech se ausente
     if not has_bid:
@@ -202,5 +211,15 @@ def garantir_abas_operacionais():
                 print("[CDP MANAGER] Nova aba da Visão Operacional BidTech criada com sucesso.", flush=True)
         except Exception as e:
             print(f"[CDP MANAGER WARN] Falha ao criar aba do BidTech: {e}", flush=True)
+
+    # Abre aba do Priorizador se ausente
+    if not has_priorizador:
+        try:
+            create_url = f"http://{CDP_HOST}:{CDP_PORT}/json/new?{urllib.parse.quote(URL_PRIORIZADOR, safe=':/?=&')}"
+            req = urllib.request.Request(create_url, method='PUT')
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                print("[CDP MANAGER] Nova aba dedicada do Priorizador (TIBCO Spotfire) criada com sucesso.", flush=True)
+        except Exception as e:
+            print(f"[CDP MANAGER WARN] Falha ao criar aba do Priorizador: {e}", flush=True)
 
     return True

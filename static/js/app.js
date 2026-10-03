@@ -127,6 +127,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initAuth();
     fetchDashboardData(false);
     loadDeliveryData(false);
+    if (typeof loadPriorizadorData === 'function') {
+        loadPriorizadorData(false);
+    }
     startAutoRefreshTimer();
     initSupabaseRealtime(); // WebSocket Realtime com Supabase (Padrão Fleet Operação)
     sendTelemetryHeartbeat();
@@ -779,15 +782,22 @@ function startAutoRefreshTimer() {
 // Sincronização Unificada em Tempo Real de Todos os Módulos
 async function refreshAllRealtimeData(isManual = false) {
     try {
-        await Promise.allSettled([
+        const refreshTasks = [
             fetchDashboardData(isManual),
             loadDeliveryData(isManual)
-        ]);
+        ];
+        if (typeof loadPriorizadorData === 'function') {
+            refreshTasks.push(loadPriorizadorData(isManual));
+        }
+        await Promise.allSettled(refreshTasks);
         if (appState.currentMainTab === 'audit') {
             loadAuditData(true);
         }
         updateHubCard();
         updateDeliveryHubCard();
+        if (typeof updatePriorizadorHubCard === 'function') {
+            updatePriorizadorHubCard();
+        }
     } catch (e) {
         console.warn('[REALTIME] Erro no ciclo de atualização:', e);
     }
@@ -8918,7 +8928,21 @@ async function loadAdminEngineStatus() {
         if (sBid) sBid.textContent = bid.last_sync || '--:--:--';
         if (rBid) rBid.textContent = `${bid.records || 0} equipes`;
 
-        // 5. Supabase Cloud
+        // 5. Robô CDP Priorizador (TIBCO Spotfire)
+        const prio = engines.priorizador_cdp || {};
+        const bPrio = document.getElementById('engineBadgePriorizador');
+        const mPrio = document.getElementById('engineMsgPriorizador');
+        const sPrio = document.getElementById('engineSyncPriorizador');
+        const rPrio = document.getElementById('engineRecordsPriorizador');
+        if (bPrio) {
+            bPrio.className = `engine-status-badge ${prio.status === 'OPERATIONAL' ? 'badge-operational' : (prio.status === 'ERROR_CONNECTION' ? 'badge-error-connection' : 'badge-stopped')}`;
+            bPrio.textContent = prio.status === 'OPERATIONAL' ? 'OPERACIONAL' : (prio.status === 'ERROR_CONNECTION' ? 'FALHA DE CONEXÃO' : 'MOTOR PARADO');
+        }
+        if (mPrio) mPrio.textContent = prio.message || '--';
+        if (sPrio) sPrio.textContent = prio.last_sync || '--:--:--';
+        if (rPrio) rPrio.textContent = `${prio.records || 0} OSs`;
+
+        // 6. Supabase Cloud
         const cloud = engines.cloud_sync || {};
         const bCloud = document.getElementById('engineBadgeCloud');
         const mCloud = document.getElementById('engineMsgCloud');
@@ -8928,7 +8952,7 @@ async function loadAdminEngineStatus() {
         }
         if (mCloud) mCloud.textContent = cloud.message || '--';
 
-        // 6. Cluster de Redundância (Máquina 1 vs Máquina 2)
+        // 7. Cluster de Redundância (Máquina 1 vs Máquina 2)
         if (data.cluster) {
             renderClusterOverview(data.cluster);
         }
@@ -9242,6 +9266,7 @@ async function openClusterNodeDetailsModal(nodeId) {
             const engNames = [
                 { id: 'enel_cdp', label: 'Robô CDP Enel SP', icon: 'users', desc: 'Coleta EquipesBrasil a cada 2 min' },
                 { id: 'spotfire_cdp', label: 'Robô CDP Spotfire', icon: 'bar-chart-2', desc: 'Extração Scanner 5.0 a cada 30 min' },
+                { id: 'priorizador_cdp', label: 'Robô CDP Priorizador', icon: 'zap', desc: 'Ordens Críticas Spotfire a cada 2 min' },
                 { id: 'bid_cdp', label: 'Robô CDP BidTech', icon: 'check-square', desc: 'Checklists Visão Operacional 2 min' },
                 { id: 'trbonet', label: 'Motor TRBOnet One', icon: 'radio', desc: 'Conciliação de rádios e GPS 2 min' }
             ];
@@ -9764,6 +9789,74 @@ async function openEngineDetailsModal(engineKey) {
                     </div>
                 `;
             }
+        } else if (engineKey === 'priorizador_cdp') {
+            if (subtitleEl) subtitleEl.textContent = 'Automação Chrome DevTools Protocol na porta 9222 (Ordens Críticas Spotfire & Despacho CCO)';
+            if (iconEl) iconEl.setAttribute('data-lucide', 'zap');
+            if (badgeBox) { badgeBox.style.background = 'rgba(244, 63, 94, 0.15)'; badgeBox.style.borderColor = 'rgba(244, 63, 94, 0.35)'; }
+            if (commTagEl) commTagEl.textContent = 'Chrome CDP 9222 (Priorizador)';
+            if (actionText) actionText.textContent = data.action_label || 'Forçar Extração do Priorizador Agora';
+
+            const totalOrders = summ.total_orders ?? 0;
+            const criticos = summ.grupo_prioritario ?? 0;
+            const aguard = summ.aguardando_despacho ?? 0;
+            const ciTotal = summ.ci_total ?? 0;
+
+            if (kpisEl) {
+                kpisEl.innerHTML = `
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">TOTAL DE ORDENS</span>
+                        <strong style="font-size: 1.35rem; color: #00f2fe; font-family: 'JetBrains Mono';">${totalOrders}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">GRUPO PRIORITÁRIO</span>
+                        <strong style="font-size: 1.35rem; color: #f43f5e; font-family: 'JetBrains Mono';">${criticos}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">AGUARD. DESPACHO</span>
+                        <strong style="font-size: 1.35rem; color: #f59e0b; font-family: 'JetBrains Mono';">${aguard}</strong>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); border-radius: 12px; padding: 12px; text-align: center;">
+                        <span style="font-size: 0.7rem; color: var(--text-secondary); display: block;">CI TOTAL ACUMULADO</span>
+                        <strong style="font-size: 1.35rem; color: #10b981; font-family: 'JetBrains Mono';">${ciTotal.toLocaleString('pt-BR')}</strong>
+                    </div>
+                `;
+            }
+
+            const samples = data.sample_records || [];
+            if (contentEl) {
+                let rowsHtml = samples.map(o => `
+                    <tr>
+                        <td><strong style="color: var(--text-primary); font-family: 'JetBrains Mono';">${o.ordem || '--'}</strong></td>
+                        <td><span class="status-badge" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3); font-weight: 800;">${o.eq || '--'}</span></td>
+                        <td><span style="font-size: 0.75rem; color: #00f2fe;">${o.regiao || o.base_op || '--'}</span></td>
+                        <td><strong style="color: #f59e0b; font-family: 'JetBrains Mono';">${o.ci || 0}</strong></td>
+                        <td><small style="color: var(--text-secondary);">${o.control_desp || '--'}</small></td>
+                        <td><span style="font-size: 0.75rem; color: var(--text-secondary);">${o.equipe_codigo || 'Sem equipe'}</span></td>
+                    </tr>
+                `).join('');
+
+                contentEl.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <strong style="font-size: 0.88rem; color: var(--text-primary);"><i data-lucide="zap" style="width: 15px; height: 15px; margin-right: 6px; vertical-align: middle; color: #f43f5e;"></i> Amostragem de Ordens Críticas Coletadas</strong>
+                        <small style="color: var(--text-secondary);">Exibindo ${samples.length} de ${totalOrders}</small>
+                    </div>
+                    <div style="max-height: 240px; overflow-y: auto;">
+                        <table class="data-table" style="width: 100%; font-size: 0.8rem;">
+                            <thead>
+                                <tr>
+                                    <th>Nº Ordem</th>
+                                    <th>Equipamento</th>
+                                    <th>Região / Base</th>
+                                    <th>CI</th>
+                                    <th>Despacho</th>
+                                    <th>Equipe</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml || '<tr><td colspan="6" style="text-align: center;">Nenhuma ordem crítica ativa</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
         }
 
         initIcons();
@@ -9783,12 +9876,34 @@ async function triggerCurrentEngineAction() {
         triggerEnelCdpCapture();
     } else if (currentSelectedEngine === 'spotfire_cdp') {
         triggerSpotfireCdpCapture();
+    } else if (currentSelectedEngine === 'priorizador_cdp') {
+        triggerPriorizadorCdpCapture();
     } else if (currentSelectedEngine === 'bid_cdp') {
         triggerBidCdpCapture();
     } else if (currentSelectedEngine === 'cloud_sync') {
         showToast('Sincronizando estado operacional com o Supabase...', 'info');
         if (typeof fetchDashboardData === 'function') fetchDashboardData(true);
         if (typeof loadDeliveryData === 'function') loadDeliveryData(true);
+    }
+}
+
+async function triggerPriorizadorCdpCapture() {
+    showToast('Iniciando extração do Priorizador de Ordens Críticas (Spotfire)...', 'info');
+    try {
+        const resp = await fetch('/api/priorizador/sync', { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok && (data.status === 'success' || data.success)) {
+            showToast(data.message || 'Dados do Priorizador extraídos com sucesso!', 'success');
+            loadAdminEngineStatus();
+            if (typeof loadPriorizadorData === 'function') loadPriorizadorData(true);
+            if (currentSelectedEngine === 'priorizador_cdp') {
+                openEngineDetailsModal('priorizador_cdp');
+            }
+        } else {
+            showToast(data.message || 'Falha ao sincronizar Priorizador.', 'danger');
+        }
+    } catch (err) {
+        showToast('Erro ao comunicar com Robô Priorizador: ' + err.message, 'danger');
     }
 }
 
@@ -11848,6 +11963,7 @@ function recalculatePriorizadorKpis(payload = {}) {
         }
     });
     k.criticos_breakdown = criticos;
+    k.total_grupo_prioritario = Object.values(criticos).reduce((a, b) => a + b, 0);
 
     // Matriz de Cruzamento Operacional (Visão 2)
     k.matrix = {
@@ -13827,20 +13943,59 @@ function renderPriorizadorDashboard() {
 
 // Atualização do Card do Priorizador no Hub Central
 function updatePriorizadorHubCard() {
-    const k = priorizadorState.kpis;
+    const k = priorizadorState.kpis || {};
     const elUrg = document.getElementById('hubPrioUrgenciaCount');
     const elSync = document.getElementById('hubPrioLastSync');
     const elOrders = document.getElementById('hubPrioTotalOrders');
     const elCi = document.getElementById('hubPrioTotalCi');
     const elAguard = document.getElementById('hubPrioAguardDesp');
     const elLoc80 = document.getElementById('hubPrioLocal80');
+    const elNorte = document.getElementById('hubPrioNorteCount');
+    const elLeste = document.getElementById('hubPrioLesteCount');
+    const elRatio = document.getElementById('hubPrioRegionalRatio');
+    const barNorte = document.getElementById('hubPrioBarNorte');
+    const barLeste = document.getElementById('hubPrioBarLeste');
 
-    if (elUrg) elUrg.textContent = (k.total_urgencia_critica || 0).toLocaleString('pt-BR');
+    // 1. Quantidade de equipamentos dentro do Grupo Prioritário (DJ, RA, CF, CA, BF, CH, RM)
+    let prioGroupCount = k.total_grupo_prioritario;
+    if (prioGroupCount === undefined || prioGroupCount === null) {
+        if (k.criticos_breakdown) {
+            prioGroupCount = Object.values(k.criticos_breakdown).reduce((a, b) => a + (Number(b) || 0), 0);
+        } else if (Array.isArray(priorizadorState.orders) && priorizadorState.orders.length > 0) {
+            const CRITICOS_SET = new Set(['DJ', 'RA', 'CF', 'CA', 'BF', 'CH', 'RM']);
+            prioGroupCount = priorizadorState.orders.filter(o => CRITICOS_SET.has((o.eq || '').trim().toUpperCase())).length;
+        } else {
+            prioGroupCount = k.total_urgencia_critica || 0;
+        }
+    }
+    if (elUrg) elUrg.textContent = Number(prioGroupCount || 0).toLocaleString('pt-BR');
+
+    // 2. Grandes Interrupções separadas por Norte e Leste
+    const norte = Number(k.total_norte || 0);
+    const leste = Number(k.total_leste || 0);
+    if (elNorte) elNorte.textContent = norte.toLocaleString('pt-BR');
+    if (elLeste) elLeste.textContent = leste.toLocaleString('pt-BR');
+
+    const totReg = norte + leste;
+    if (totReg > 0) {
+        const pctNorte = Math.round((norte / totReg) * 100);
+        const pctLeste = 100 - pctNorte;
+        if (elRatio) elRatio.textContent = `${pctNorte}% Norte • ${pctLeste}% Leste`;
+        if (barNorte) barNorte.style.width = `${pctNorte}%`;
+        if (barLeste) barLeste.style.width = `${pctLeste}%`;
+    } else {
+        if (elRatio) elRatio.textContent = `0% Norte • 0% Leste`;
+        if (barNorte) barNorte.style.width = `50%`;
+        if (barLeste) barLeste.style.width = `50%`;
+    }
+
+    // 3. Mini Métricas de Apoio CCO
     if (elOrders) elOrders.textContent = (k.total_ordens || 0).toLocaleString('pt-BR');
     if (elCi) elCi.textContent = (k.total_ci || 0).toLocaleString('pt-BR');
     if (elAguard) elAguard.textContent = (k.total_aguard_desp || 0).toLocaleString('pt-BR');
     if (elLoc80) elLoc80.textContent = (k.total_local_80min || 0).toLocaleString('pt-BR');
 
+    // 4. Data e Hora da Última Sincronização
     if (elSync) {
         const rawTime = priorizadorState.lastSyncTime || new Date().toISOString();
         elSync.textContent = formatDateTimeBR(rawTime);

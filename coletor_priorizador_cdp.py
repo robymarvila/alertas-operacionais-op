@@ -65,23 +65,17 @@ def localizar_aba_priorizador(criar_se_nao_existir=True):
     if not targets:
         return None
 
-    # 1. Prioriza aba que já contenha 'priorizador' no título ou URL
+    # 1. Prioriza aba que já contenha 'priorizador' no título ou URL (NUNCA capturar aba do Scanner 5.0!)
     for t in targets:
         if t.get('type') == 'page':
             t_url = (t.get('url') or '').lower()
             t_title = (t.get('title') or '').lower()
+            if 'scanner' in t_title or 'scanner' in t_url:
+                continue
             if 'priorizador' in t_title or 'priorizador' in t_url:
                 return t
 
-    # 2. Em seguida, busca qualquer aba do Spotfire
-    for t in targets:
-        if t.get('type') == 'page':
-            t_url = (t.get('url') or '').lower()
-            t_title = (t.get('title') or '').lower()
-            if SPOTFIRE_DOMAIN in t_url or 'spotfire' in t_url:
-                return t
-
-    # 3. Cria nova aba se solicitado
+    # 2. Cria nova aba SEPARADA dedicada exclusivamente ao Priorizador
     if criar_se_nao_existir:
         try:
             target_open_url = urllib.parse.quote(PRIORIZADOR_URL, safe=':/?=&')
@@ -89,6 +83,7 @@ def localizar_aba_priorizador(criar_se_nao_existir=True):
             req = urllib.request.Request(create_url, method='PUT')
             with urllib.request.urlopen(req, timeout=5) as resp:
                 new_tab = json.loads(resp.read().decode('utf-8'))
+                print(f"[PRIORIZADOR CDP] Nova página aberta exclusivamente com link do Priorizador: {new_tab.get('id')}", flush=True)
                 time.sleep(4.0)
                 return new_tab
         except Exception as e:
@@ -293,6 +288,19 @@ def extrair_arquivo_priorizador_via_cdp(client) -> str:
             pass
 
     # 2. Verifica se a análise está pronta na aba ativa ou navega
+    current_check = client.evaluate('''(() => {
+        const title = (document.title || '').toLowerCase();
+        const url = (window.location.href || '').toLowerCase();
+        return {
+            isScanner: title.includes('scanner') || url.includes('scanner'),
+            isPriorizador: title.includes('priorizador') || url.includes('priorizador'),
+            url: url
+        };
+    })()''')
+
+    if current_check and current_check.get("isScanner"):
+        raise RuntimeError("Conflito evitado: a aba selecionada pertence ao Scanner 5.0! O robô do Priorizador utilizará apenas sua própria aba dedicada.")
+
     is_ready_now = client.evaluate('''(() => {
         const title = (document.title || '').toLowerCase();
         const url = (window.location.href || '').toLowerCase();
@@ -303,7 +311,7 @@ def extrair_arquivo_priorizador_via_cdp(client) -> str:
     })()''')
 
     if not is_ready_now:
-        print(f"[PRIORIZADOR CDP] Navegando aba para URL oficial do Priorizador...", flush=True)
+        print(f"[PRIORIZADOR CDP] Navegando aba dedicada para URL oficial do Priorizador...", flush=True)
         client.call("Page.navigate", {"url": PRIORIZADOR_URL})
         time.sleep(5.0)
 
@@ -545,11 +553,36 @@ def executar_ciclo_sincronizacao_priorizador(source_label="Robô CDP Automático
         print(f"[PRIORIZADOR CDP] Tabela carregada com {len(df)} linhas e {len(df.columns)} colunas.", flush=True)
 
         res = priorizador_manager.processar_dataframe_spotfire(df, source_label=source_label)
+
+        # Atualiza a saúde do motor no sistema e Supabase
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health(
+                engine_name="priorizador_cdp_collector",
+                status="OPERATIONAL",
+                is_running=True,
+                records_count=len(df),
+                engine_label="Robô CDP Priorizador (Ordens Críticas)"
+            )
+        except Exception:
+            pass
+
         return res
 
     except Exception as e:
         print(f"[PRIORIZADOR CDP EXCEPTION] {e}", flush=True)
         priorizador_manager.last_collect_status = "ERROR"
+        try:
+            from supabase_client import update_engine_health
+            update_engine_health(
+                engine_name="priorizador_cdp_collector",
+                status="ERROR_CONNECTION",
+                is_running=True,
+                last_error=str(e),
+                engine_label="Robô CDP Priorizador (Ordens Críticas)"
+            )
+        except Exception:
+            pass
         return {"status": "error", "message": str(e)}
 
     finally:

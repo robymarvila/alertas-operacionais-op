@@ -826,6 +826,8 @@ class PriorizadorManager:
                 if eq_code in criticos_breakdown:
                     criticos_breakdown[eq_code] += 1
 
+            tot_grupo_prioritario = sum(criticos_breakdown.values())
+
             # Distribuição por Equipamento (EQ)
             eq_dist: Dict[str, Dict[str, Any]] = {}
             for o in orders:
@@ -859,9 +861,11 @@ class PriorizadorManager:
                     "total_norte": tot_norte,
                     "total_leste": tot_leste,
                     "criticos_breakdown": criticos_breakdown,
+                    "total_grupo_prioritario": tot_grupo_prioritario,
                     "total_ci": tot_ci,
                     "total_chi": tot_chi,
-                    "total_urgencia_critica": tot_urgencia,
+                    "total_urgencia_critica": tot_grupo_prioritario if tot_urgencia == 0 else tot_urgencia,
+                    "total_urgencia_estrita": tot_urgencia,
                     "total_aguard_desp": tot_aguard,
                     "total_local_80min": tot_loc80,
                     "total_supervisionadas": tot_supervisionadas,

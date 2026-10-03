@@ -241,19 +241,23 @@ def localizar_aba_spotfire(criar_se_nao_existir=False):
     if not targets:
         return None
 
-    # 1. Prioriza aba já carregada no Scanner 5.0
+    # 1. Prioriza aba já carregada no Scanner 5.0 (NUNCA capturar o Priorizador!)
     for t in targets:
         if t.get('type') == 'page':
             t_url = (t.get('url') or '').lower()
             t_title = (t.get('title') or '').lower()
+            if 'priorizador' in t_title or 'priorizador' in t_url:
+                continue
             if 'scanner' in t_title or 'scanner' in t_url:
                 return t
 
-    # 2. Em seguida, busca qualquer aba do Spotfire
+    # 2. Em seguida, busca aba do Spotfire QUE NÃO SEJA O PRIORIZADOR
     for t in targets:
         if t.get('type') == 'page':
             t_url = (t.get('url') or '').lower()
             t_title = (t.get('title') or '').lower()
+            if 'priorizador' in t_title or 'priorizador' in t_url:
+                continue
             if SPOTFIRE_DOMAIN in t_url or 'spotfire' in t_url or 'spotfire' in t_title:
                 return t
 
@@ -503,13 +507,25 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
     # =========================================================================
     # ETAPA 1: F5 (Page.reload) e Confirmação de Carregamento Completo
     # =========================================================================
+    current_check = client.evaluate('''(() => {
+        const title = (document.title || '').toLowerCase();
+        const url = (window.location.href || '').toLowerCase();
+        return {
+            isPriorizador: title.includes('priorizador') || url.includes('priorizador'),
+            isScanner: title.includes('scanner') || url.includes('scanner')
+        };
+    })()''')
+
+    if current_check and current_check.get("isPriorizador"):
+        raise RuntimeError("Conflito evitado: a aba conectada pertence ao Priorizador! O Scanner 5.0 utilizará apenas sua própria aba dedicada.")
+
     current_url = client.evaluate("window.location.href") or ""
     is_ready_now = client.evaluate('''(() => {
         const visuals = document.querySelectorAll('.sf-element-visual').length;
         const tabs = document.querySelectorAll('.sf-element-page-tab, .sfx_page-tab, .sfc-navigation-tab').length;
         const title = (document.title || '').toLowerCase();
         const url = window.location.href.toLowerCase();
-        const isScanner = title.includes('scanner') || url.includes('scanner') || url.includes('analysis');
+        const isScanner = title.includes('scanner') || url.includes('scanner');
         return (visuals > 0 || tabs > 0) && isScanner;
     })()''')
 

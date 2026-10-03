@@ -10,6 +10,7 @@ Write-Host ""
 $urlEnel = "https://equipesbrasil.enelint.global/teams-list"
 $urlSpotfire = "http://elabziplra00.enelint.global:8090/spotfire/wp/analysis?file=/SP/COD/Scanner%205.0"
 $urlBid = "https://suite360.bidtech.com.br/app/checklists/visao-operacional"
+$urlPriorizador = "http://elabziplra00.enelint.global:8090/spotfire/wp/analysis?file=/SP/COD/Priorizador"
 
 $cdpPort = 9222
 $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
@@ -41,12 +42,12 @@ if ($isCdpActive) {
     if (Test-Path $chromePath) {
         Write-Host "[INFO] Abrindo Google Chrome com depuracao remota na porta 9222..." -ForegroundColor Green
         $userData = Join-Path $userProfile ".chrome_cdp"
-        Start-Process -FilePath $chromePath -ArgumentList "--remote-debugging-port=9222", "--user-data-dir=$userData", "--no-first-run", "--no-default-browser-check", $urlEnel, $urlSpotfire, $urlBid
+        Start-Process -FilePath $chromePath -ArgumentList "--remote-debugging-port=9222", "--user-data-dir=$userData", "--no-first-run", "--no-default-browser-check", $urlEnel, $urlSpotfire, $urlBid, $urlPriorizador
         Write-Host "[OK] Google Chrome disparado com sucesso!" -ForegroundColor Green
     } elseif (Test-Path $edgePath) {
         Write-Host "[INFO] Abrindo Microsoft Edge com depuracao remota na porta 9222..." -ForegroundColor Green
         $userData = Join-Path $userProfile ".edge_cdp"
-        Start-Process -FilePath $edgePath -ArgumentList "--remote-debugging-port=9222", "--user-data-dir=$userData", "--no-first-run", "--no-default-browser-check", $urlEnel, $urlSpotfire, $urlBid
+        Start-Process -FilePath $edgePath -ArgumentList "--remote-debugging-port=9222", "--user-data-dir=$userData", "--no-first-run", "--no-default-browser-check", $urlEnel, $urlSpotfire, $urlBid, $urlPriorizador
         Write-Host "[OK] Microsoft Edge disparado com sucesso!" -ForegroundColor Green
     } else {
         Write-Host "[AVISO] Nem o Chrome nem o Edge foram encontrados nos caminhos padrao." -ForegroundColor Yellow

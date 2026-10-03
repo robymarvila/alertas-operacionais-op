@@ -406,16 +406,47 @@
                                 <div class="module-sync-item">
                                     <div class="sync-label-row">
                                         <span class="dot-sm" style="background: #f43f5e;"></span>
-                                        <strong>Urgência Crítica:</strong>
+                                        <strong>Grupo Prioritário:</strong>
                                     </div>
-                                    <span class="sync-val text-rose" id="hubPrioUrgenciaCount">--</span>
+                                    <div style="display: flex; align-items: baseline; gap: 4px;">
+                                        <span class="sync-val text-rose font-mono" id="hubPrioUrgenciaCount" style="font-size: 1.15rem; font-weight: 800;">--</span>
+                                        <span style="font-size: 0.65rem; color: var(--text-secondary); font-weight: 600;">(DJ, RA, CF, BF...)</span>
+                                    </div>
                                 </div>
                                 <div class="module-sync-item">
                                     <div class="sync-label-row">
                                         <span class="dot-sm dot-trbonet"></span>
                                         <strong>Última Sincronização:</strong>
                                     </div>
-                                    <span class="sync-val" id="hubPrioLastSync">--:--:--</span>
+                                    <span class="sync-val font-mono" id="hubPrioLastSync">--/--/---- --:--:--</span>
+                                </div>
+                            </div>
+
+                            <!-- Destaque Regional de Grandes Interrupções (Norte x Leste) -->
+                            <div class="prio-hub-regions-wrap" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 10px 12px; margin: 10px 0 12px 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <span style="font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Grandes Interrupções por Região</span>
+                                    <span style="font-size: 0.68rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;" id="hubPrioRegionalRatio">--% Norte • --% Leste</span>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between;">
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span class="dot-sm" style="background: #10b981; width: 7px; height: 7px;"></span>
+                                            <span style="font-size: 0.72rem; font-weight: 700; color: #10b981;">Norte:</span>
+                                        </div>
+                                        <strong id="hubPrioNorteCount" class="text-emerald" style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem;">0</strong>
+                                    </div>
+                                    <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between;">
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span class="dot-sm" style="background: #38bdf8; width: 7px; height: 7px;"></span>
+                                            <span style="font-size: 0.72rem; font-weight: 700; color: #38bdf8;">Leste:</span>
+                                        </div>
+                                        <strong id="hubPrioLesteCount" class="text-cyan" style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem;">0</strong>
+                                    </div>
+                                </div>
+                                <div class="module-progress-bar-bg" style="height: 5px; border-radius: 999px; background: rgba(255,255,255,0.06); overflow: hidden; display: flex;">
+                                    <div id="hubPrioBarNorte" style="height: 100%; width: 50%; background: #10b981; transition: width 0.4s ease;"></div>
+                                    <div id="hubPrioBarLeste" style="height: 100%; width: 50%; background: #38bdf8; transition: width 0.4s ease;"></div>
                                 </div>
                             </div>
 
@@ -423,25 +454,25 @@
                             <div class="module-mini-kpis">
                                 <div class="mini-kpi-col">
                                     <span class="mini-kpi-lbl">Total OS</span>
-                                    <strong class="mini-kpi-val text-cyan" id="hubPrioTotalOrders">--</strong>
+                                    <strong class="mini-kpi-val text-cyan font-mono" id="hubPrioTotalOrders">--</strong>
                                 </div>
                                 <div class="mini-kpi-col">
                                     <span class="mini-kpi-lbl">CI Total</span>
-                                    <strong class="mini-kpi-val text-amber" id="hubPrioTotalCi">--</strong>
+                                    <strong class="mini-kpi-val text-amber font-mono" id="hubPrioTotalCi">--</strong>
                                 </div>
                                 <div class="mini-kpi-col">
                                     <span class="mini-kpi-lbl">Aguard. Despacho</span>
-                                    <strong class="mini-kpi-val text-rose" id="hubPrioAguardDesp">--</strong>
+                                    <strong class="mini-kpi-val text-rose font-mono" id="hubPrioAguardDesp">--</strong>
                                 </div>
                                 <div class="mini-kpi-col">
                                     <span class="mini-kpi-lbl">Local >= 80min</span>
-                                    <strong class="mini-kpi-val text-purple" id="hubPrioLocal80">--</strong>
+                                    <strong class="mini-kpi-val text-purple font-mono" id="hubPrioLocal80">--</strong>
                                 </div>
                             </div>
                         </div>
 
                         <div class="module-card-footer">
-                            <span class="module-access-btn">
+                            <span class="module-access-btn btn-access-priorizador" style="border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
                                 <span>Acessar PRIORIZADOR - ORDENS CRÍTICAS</span>
                                 <i data-lucide="arrow-right"></i>
                             </span>
@@ -4248,7 +4279,33 @@
                         </div>
                     </div>
 
-                    <!-- Motor 5: Supabase Cloud -->
+                    <!-- Motor 5: Robô CDP Priorizador (TIBCO Spotfire) -->
+                    <div class="engine-health-card glass-card clickable-engine-card" id="engineCardPriorizador" onclick="openEngineDetailsModal('priorizador_cdp')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para ver o resumo dos dados do Priorizador">
+                        <div class="engine-card-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div class="engine-icon-wrap" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.35); display: flex; align-items: center; justify-content: center; color: #f43f5e;">
+                                <i data-lucide="zap"></i>
+                            </div>
+                            <span class="engine-status-badge badge-operational" id="engineBadgePriorizador">OPERACIONAL</span>
+                        </div>
+                        <h4 class="engine-title" style="font-size: 1.05rem; font-weight: 800; margin: 0 0 6px 0;">Robô CDP Priorizador (Spotfire)</h4>
+                        <p class="engine-diag-msg" id="engineMsgPriorizador" style="font-size: 0.8rem; color: var(--text-secondary); min-height: 38px;">Aguardando ciclo de extração...</p>
+                        <div class="engine-metrics-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid var(--border-glass); padding-top: 12px; margin-top: 10px;">
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">ÚLTIMA EXTRAÇÃO CDP</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--text-primary);" id="engineSyncPriorizador">--:--:--</strong>
+                            </div>
+                            <div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); display: block;">ORDENS CRÍTICAS</span>
+                                <strong style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: #f43f5e;" id="engineRecordsPriorizador">--</strong>
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-top: 10px; font-size: 0.72rem; color: var(--text-secondary); opacity: 0.8;">
+                            <i data-lucide="info" style="width: 12px; height: 12px;"></i>
+                            <span>Clique para detalhes</span>
+                        </div>
+                    </div>
+
+                    <!-- Motor 6: Supabase Cloud -->
                     <div class="engine-health-card glass-card clickable-engine-card" id="engineCardCloud" onclick="openEngineDetailsModal('cloud_sync')" style="cursor: pointer; transition: all 0.2s ease;" title="Clique para ver o status da conexão em nuvem">
                         <div class="engine-card-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                             <div class="engine-icon-wrap" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(192, 132, 252, 0.15); border: 1px solid rgba(192, 132, 252, 0.35); display: flex; align-items: center; justify-content: center; color: #c084fc;">

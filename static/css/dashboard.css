@@ -2857,6 +2857,29 @@ body.theme-light .card-delivery-glow:hover {
     box-shadow: 0 26px 50px -12px rgba(0, 180, 216, 0.22), 0 8px 16px -4px rgba(15, 23, 42, 0.05);
 }
 
+/* Card 3: Priorizador - Ordens Críticas (Spotfire) */
+.card-priorizador-glow {
+    background: linear-gradient(160deg, rgba(20, 16, 32, 0.9) 0%, rgba(244, 63, 94, 0.08) 100%);
+    border: 1px solid rgba(244, 63, 94, 0.35);
+    box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.4), 0 0 25px rgba(244, 63, 94, 0.12);
+}
+
+body.theme-light .card-priorizador-glow {
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.95) 0%, rgba(244, 63, 94, 0.05) 100%);
+    border: 1.5px solid rgba(244, 63, 94, 0.35);
+    box-shadow: 0 20px 40px -12px rgba(244, 63, 94, 0.12), 0 4px 8px -2px rgba(15, 23, 42, 0.03);
+}
+
+.card-priorizador-glow:hover {
+    transform: translateY(-6px) scale(1.015);
+    border-color: #f43f5e;
+    box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.5), 0 0 35px rgba(244, 63, 94, 0.35);
+}
+
+body.theme-light .card-priorizador-glow:hover {
+    box-shadow: 0 26px 50px -12px rgba(244, 63, 94, 0.22), 0 8px 16px -4px rgba(15, 23, 42, 0.05);
+}
+
 .glow-cyan-purple {
     position: absolute;
     top: -50%;
@@ -3102,6 +3125,21 @@ body.theme-light .module-progress-bar-bg {
 .module-card-active:hover .module-access-btn.btn-access-delivery {
     background: linear-gradient(135deg, #0369a1, #6d28d9);
     box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
+    padding-right: 12px;
+}
+
+.module-access-btn.btn-access-priorizador {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.15), rgba(244, 63, 94, 0.25));
+    color: #f43f5e;
+    border: 1px solid rgba(244, 63, 94, 0.4);
+    box-shadow: 0 4px 14px rgba(244, 63, 94, 0.2);
+}
+
+.module-card-active:hover .module-access-btn.btn-access-priorizador {
+    background: linear-gradient(135deg, #e11d48, #be123c);
+    color: #ffffff;
+    border-color: #f43f5e;
+    box-shadow: 0 6px 20px rgba(244, 63, 94, 0.5);
     padding-right: 12px;
 }
 

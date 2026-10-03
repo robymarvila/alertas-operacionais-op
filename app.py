@@ -465,6 +465,7 @@ def get_engine_status():
                 "enel_cdp": parse_engine_cloud("enel_cdp_collector", "Robô CDP Enel SP (Equipes & Turnos)", "Operacional: Conexão CDP ativa lendo 500 linhas a cada 2 min."),
                 "spotfire_cdp": parse_engine_cloud("spotfire_cdp_collector", "Robô CDP Scanner 5.0 (TIBCO Spotfire)", "Operacional: Extração automatizada do Scanner 5.0 a cada 30 min."),
                 "bid_cdp": parse_engine_cloud("bid_cdp_collector", "Robô CDP BidTech (Checklist Operacional)", "Operacional: Leitura automatizada da Visão Operacional BidTech a cada 2 min."),
+                "priorizador_cdp": parse_engine_cloud("priorizador_cdp_collector", "Robô CDP Priorizador (Spotfire)", "Operacional: Leitura automatizada do Priorizador de Ordens Críticas a cada 2 min."),
                 "cloud_sync": {
                     "name": "cloud_sync_listener",
                     "label": "Banco em Nuvem Supabase",
@@ -484,6 +485,7 @@ def get_engine_status():
     thread_trbo_alive = ENGINE_THREADS.get("trbonet") is not None and ENGINE_THREADS["trbonet"].is_alive()
     thread_spotfire_alive = ENGINE_THREADS.get("spotfire_cdp") is not None and ENGINE_THREADS["spotfire_cdp"].is_alive()
     thread_bid_alive = ENGINE_THREADS.get("bid_cdp") is not None and ENGINE_THREADS["bid_cdp"].is_alive()
+    thread_prio_alive = ENGINE_THREADS.get("priorizador_cdp") is not None and ENGINE_THREADS["priorizador_cdp"].is_alive()
 
     # 1. Motor Enel CDP
     if not thread_enel_alive:
@@ -566,7 +568,34 @@ def get_engine_status():
                          records_count=bid_records_count,
                          engine_label="Robô CDP BidTech (Checklist Operacional)")
 
-    # 5. Sincronizador Nuvem Supabase
+    # 5. Motor Priorizador CDP (Spotfire)
+    if not thread_prio_alive:
+        prio_status = "STOPPED"
+        prio_error_type = "PROCESS_STOPPED"
+        prio_msg = "Motor Parado: A rotina de auto-captura do Priorizador está inativa."
+    elif not port_9222_open:
+        prio_status = "ERROR_CONNECTION"
+        prio_error_type = "CONNECTION_REFUSED"
+        prio_msg = "Falha de Conexão: Porta 9222 fechada no navegador Spotfire Priorizador."
+    else:
+        prio_status = "OPERATIONAL"
+        prio_error_type = "NONE"
+        prio_msg = "Operacional: Extração automatizada do Priorizador a cada 2 min."
+
+    try:
+        from priorizador_manager import priorizador_manager
+        prio_records_count = len(priorizador_manager.active_orders)
+        prio_sync_time = priorizador_manager.last_collect_time or "--:--:--"
+    except Exception:
+        prio_records_count = 0
+        prio_sync_time = "--:--:--"
+
+    update_engine_health("priorizador_cdp_collector", prio_status, is_running=thread_prio_alive,
+                         error_type=prio_error_type, last_error=prio_msg,
+                         records_count=prio_records_count,
+                         engine_label="Robô CDP Priorizador (Spotfire)")
+
+    # 6. Sincronizador Nuvem Supabase
     try:
         resp = requests.get(f"{BASE_REST_URL}/system_engine_health?select=engine_name&limit=1", headers=get_headers(), timeout=6)
         cloud_ok = resp.status_code in [200, 206]
@@ -625,6 +654,16 @@ def get_engine_status():
                 "message": bid_msg,
                 "last_sync": bid_sync_time,
                 "records": bid_records_count
+            },
+            "priorizador_cdp": {
+                "name": "priorizador_cdp_collector",
+                "label": "Robô CDP Priorizador (Spotfire)",
+                "status": prio_status,
+                "is_running": thread_prio_alive,
+                "error_type": prio_error_type,
+                "message": prio_msg,
+                "last_sync": format_datetime_br(prio_sync_time),
+                "records": prio_records_count
             },
             "cloud_sync": {
                 "name": "cloud_sync_listener",
@@ -898,6 +937,62 @@ def get_engine_details(engine_key):
             "sample_records": sample_teams,
             "action_command": "CAPTURE_BID",
             "action_label": "Disparar Sincronização BidTech (CDP) Agora"
+        })
+
+    elif engine_key in ["priorizador_cdp", "priorizador_cdp_collector"]:
+        db_rec = engines_db.get("priorizador_cdp_collector", {})
+        try:
+            from priorizador_manager import priorizador_manager
+            last_sync_raw = priorizador_manager.last_collect_time
+            active_orders = list(priorizador_manager.active_orders.values())
+        except Exception:
+            last_sync_raw = None
+            active_orders = []
+
+        last_sync = format_datetime_br(db_rec.get("last_success_sync") or last_sync_raw)
+        
+        CRITICOS_SET = {'DJ', 'RA', 'CF', 'CA', 'BF', 'CH', 'RM'}
+        grupo_prio_count = sum(1 for o in active_orders if (o.get("eq") or "").strip().upper() in CRITICOS_SET)
+        norte_count = sum(1 for o in active_orders if "NORTE" in str(o.get("regiao", "")).upper() or any(b in str(o.get("base_op", "")).upper() for b in ["FAGUNDES", "CAJATI", "MEDEIROS"]))
+        leste_count = sum(1 for o in active_orders if "LESTE" in str(o.get("regiao", "")).upper() or any(b in str(o.get("base_op", "")).upper() for b in ["MONTE SANTO", "ARICANDUVA", "CATUMBI", "SANTO ANDR"]))
+        aguard_count = sum(1 for o in active_orders if "AGUARD" in str(o.get("control_desp", "")).upper())
+        ci_total = sum(int(o.get("ci", 0) or 0) for o in active_orders)
+
+        sample_orders = []
+        for o in active_orders[:12]:
+            sample_orders.append({
+                "ordem": o.get("ordem"),
+                "eq": o.get("eq"),
+                "facility": o.get("facility"),
+                "base_op": o.get("base_op"),
+                "regiao": o.get("regiao"),
+                "ci": o.get("ci", 0),
+                "control_desp": o.get("control_desp"),
+                "equipe_codigo": o.get("equipe_codigo") or "--"
+            })
+
+        return jsonify({
+            "status": "success",
+            "engine_key": "priorizador_cdp",
+            "name": "priorizador_cdp_collector",
+            "label": "Robô CDP Priorizador (Ordens Críticas Spotfire)",
+            "icon": "zap",
+            "last_sync": last_sync,
+            "engine_status": db_rec.get("status", "OPERATIONAL"),
+            "is_running": db_rec.get("is_running", True),
+            "summary": {
+                "total_orders": len(active_orders),
+                "grupo_prioritario": grupo_prio_count,
+                "norte_count": norte_count,
+                "leste_count": leste_count,
+                "aguard_despacho": aguard_count,
+                "ci_total": ci_total,
+                "interval": "2 minutos (120s)",
+                "target": "TIBCO Spotfire /SP/COD/Priorizador (Aba ANALISTAS)"
+            },
+            "sample_records": sample_orders,
+            "action_command": "CAPTURE_PRIORIZADOR",
+            "action_label": "Disparar Extração Priorizador Agora"
         })
 
     elif engine_key in ["cloud_sync", "cloud_sync_listener"]:
@@ -3101,7 +3196,8 @@ def start_background_jobs(force_restart=False):
                     "trbonet": ENGINE_THREADS.get("trbonet") is not None and ENGINE_THREADS["trbonet"].is_alive(),
                     "enel_cdp": ENGINE_THREADS.get("enel_cdp") is not None and ENGINE_THREADS["enel_cdp"].is_alive(),
                     "spotfire_cdp": ENGINE_THREADS.get("spotfire_cdp") is not None and ENGINE_THREADS["spotfire_cdp"].is_alive(),
-                    "bid_cdp": ENGINE_THREADS.get("bid_cdp") is not None and ENGINE_THREADS["bid_cdp"].is_alive()
+                    "bid_cdp": ENGINE_THREADS.get("bid_cdp") is not None and ENGINE_THREADS["bid_cdp"].is_alive(),
+                    "priorizador_cdp": ENGINE_THREADS.get("priorizador_cdp") is not None and ENGINE_THREADS["priorizador_cdp"].is_alive()
                 }
             cluster_manager.start_background_heartbeat(_get_engines_summary)
         except Exception as err:
