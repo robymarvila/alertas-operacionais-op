@@ -1573,13 +1573,14 @@ function matchFrota(team, selectedFrotas) {
     const vRaw = `${team.vehicle_type || ''} ${team.unified_group || ''} ${team.tipo || ''}`.toLowerCase();
 
     for (const f of selectedFrotas) {
+        if ((f === 'RAMAL' || f === 'PROJETO_RAMAL' || f === 'PROJETO RAMAL') && vRaw.includes('ramal')) return true;
         if (f === 'CESTO' && vRaw.includes('cesto')) return true;
         if (f === 'LEVE' && (vRaw.includes('leve') || vRaw.includes('veículo leve') || vRaw.includes('veiculo leve'))) return true;
         if (f === 'MOTO' && vRaw.includes('moto')) return true;
-        if (f === 'LINHA_VIVA' && vRaw.includes('linha viva')) return true;
-        if (f === 'MUNCK' && (vRaw.includes('munck') || vRaw.includes('munk'))) return true;
+        if (f === 'LINHA_VIVA' && vRaw.includes('linha viva') && !vRaw.includes('ramal')) return true;
+        if (f === 'MUNCK' && (vRaw.includes('munck') || vRaw.includes('munk')) && !vRaw.includes('ramal')) return true;
         if (f === 'OUTROS') {
-            const isKnown = vRaw.includes('cesto') || vRaw.includes('leve') || vRaw.includes('moto') || vRaw.includes('linha viva') || vRaw.includes('munck') || vRaw.includes('munk');
+            const isKnown = vRaw.includes('ramal') || vRaw.includes('cesto') || vRaw.includes('leve') || vRaw.includes('moto') || vRaw.includes('linha viva') || vRaw.includes('munck') || vRaw.includes('munk');
             if (!isKnown) return true;
         }
     }
@@ -5533,8 +5534,35 @@ async function loadDeliveryData(forceRefresh = false) {
         const result = await resp.json();
 
         if (result.status === 'success') {
-            deliveryState.activeTeams = result.active_teams || [];
-            deliveryState.dailyTotalTeams = result.daily_total_teams || [];
+            const RAMAL_CODES = new Set([
+                'ENL216', 'ENL217', 'ENL218', 'ENL219', 'ENL220',
+                'ECL216', 'ECL217', 'ECL218', 'ECL219', 'ECL220',
+                'EEL216', 'EEL217', 'EEL218', 'EEL219', 'EEL220'
+            ]);
+            const sanitizeTeam = (t) => {
+                if (!t) return t;
+                const c = String(t.team_code || '').trim().toUpperCase();
+                const isRamal = RAMAL_CODES.has(c) || t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal';
+                const isMoto = !isRamal && (t.vehicle_type === 'Moto' || t.unified_group === 'Moto' || (c.replace(/\D/g, '').startsWith('7')));
+                if (isRamal) {
+                    t.vehicle_type = 'Projeto Ramal';
+                    t.unified_group = 'Projeto Ramal';
+                    t.vehicle_category = 'Projeto Ramal';
+                    t.shift_slot = 'Turno 08:00';
+                    t.shift_code = '08:00';
+                    t.shift_pill_class = 'shift-08h';
+                    t.turno = 'Manhã';
+                } else if (isMoto) {
+                    t.shift_slot = 'Turno 08:00';
+                    t.shift_code = '08:00';
+                    t.shift_pill_class = 'shift-08h';
+                    t.turno = 'Manhã';
+                }
+                return t;
+            };
+
+            deliveryState.activeTeams = (result.active_teams || []).map(sanitizeTeam);
+            deliveryState.dailyTotalTeams = (result.daily_total_teams || []).map(sanitizeTeam);
             deliveryState.summaryActive = result.summary_active || {};
             deliveryState.summaryTotal = result.summary_total || {};
             deliveryState.intradayCurve = result.intraday_curve || {};
@@ -5669,82 +5697,71 @@ function setRegionalViewMode(mode) {
 window.setRegionalViewMode = setRegionalViewMode;
 
 // Aplicação de Filtros Múltiplos (Regiões, Bases, Turnos, Frotas e Busca)
-function applyDeliveryFilters() {
-    const { regions, bases, shifts, vehicles, search } = deliveryState.filters;
-    const q = (search || '').trim().toUpperCase();
-    const isModeActive = deliveryState.regionalViewMode !== 'total';
+// Função auxiliar para testar se uma equipe atende aos filtros de entrega
+function checkTeamMatchesDeliveryFilters(t, filters, q) {
+    if (!t) return false;
+    const { regions, bases, shifts, vehicles, statusLogin } = filters || {};
 
-    // Regra Operacional Estrita:
-    // No painel ONLINE / TEMPO REAL, caso uma equipe não apareça mais na extração do EB ela não é considerada
-    // nem ativa e nem programada. Somente equipes presentes no EB aparecem (seja Logada ou Programada).
-    const isOnlineScreen = deliveryState.currentScreen === 'online';
-    const sourceList = (isOnlineScreen && isModeActive)
-        ? (deliveryState.activeTeams.length > 0 ? deliveryState.activeTeams : deliveryState.dailyTotalTeams.filter(t => t.is_active !== false))
-        : (deliveryState.dailyTotalTeams.length > 0 ? deliveryState.dailyTotalTeams : deliveryState.activeTeams);
+    // 1. Filtro por Status Login (TODAS / LOGADA / PROGRAMADA)
+    const sLoginFilter = statusLogin || 'ALL';
+    if (sLoginFilter !== 'ALL') {
+        const teamStatusLogin = t.status_login || (t.marcacao && t.marcacao !== '--' ? 'LOGADA' : 'PROGRAMADA');
+        if (teamStatusLogin !== sLoginFilter) return false;
+    }
 
-    // 1. Escopo de Turno, Frota e Busca (usado para alimentar os cards da Região Norte, Região Leste e Bases)
-    const scopeFiltered = sourceList.filter(t => {
-        if (isModeActive && t.is_active === false) return false;
+    // 2. Filtro por Turnos Múltiplos
+    if (shifts && shifts.size > 0 && !shifts.has(t.shift_code)) return false;
 
-        // Filtro por Status Login (TODAS / LOGADA / PROGRAMADA)
-        const sLoginFilter = deliveryState.filters.statusLogin || 'ALL';
-        if (sLoginFilter !== 'ALL') {
-            const teamStatusLogin = t.status_login || (t.marcacao && t.marcacao !== '--' ? 'LOGADA' : 'PROGRAMADA');
-            if (teamStatusLogin !== sLoginFilter) return false;
-        }
-
-        // Filtro por Turnos Múltiplos
-        if (shifts.size > 0 && !shifts.has(t.shift_code)) return false;
-
-        // Filtro por Frota / Veículos Múltiplos com normalização fonética/acentos
-        if (vehicles.size > 0) {
-            const cleanStr = s => String(s || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-            let matchVehicle = false;
-            for (const v of vehicles) {
-                const vClean = cleanStr(v);
-                const tTypeClean = cleanStr(t.vehicle_type);
-                const tGroupClean = cleanStr(t.unified_group);
-                if (vClean.includes('munk') || vClean.includes('linha viva')) {
-                    if (tTypeClean.includes('linha viva') || tTypeClean.includes('munck') || tTypeClean.includes('munk') || tGroupClean.includes('munk') || tGroupClean.includes('linha viva')) {
-                        matchVehicle = true;
-                        break;
-                    }
-                } else if (vClean.includes('cesto') && (tTypeClean.includes('cesto') || tGroupClean.includes('cesto'))) {
-                    matchVehicle = true;
-                    break;
-                } else if (vClean.includes('leve') && (tTypeClean.includes('leve') || tGroupClean.includes('leve'))) {
-                    matchVehicle = true;
-                    break;
-                } else if (vClean.includes('moto') && (tTypeClean.includes('moto') || tGroupClean.includes('moto'))) {
-                    matchVehicle = true;
-                    break;
-                } else if (tTypeClean === vClean || tGroupClean === vClean) {
+    // 3. Filtro por Frota / Veículos Múltiplos com normalização fonética/acentos
+    if (vehicles && vehicles.size > 0) {
+        const cleanStr = s => String(s || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+        let matchVehicle = false;
+        for (const v of vehicles) {
+            const vClean = cleanStr(v);
+            const tTypeClean = cleanStr(t.vehicle_type);
+            const tGroupClean = cleanStr(t.unified_group);
+            if (vClean.includes('ramal')) {
+                if (tTypeClean.includes('ramal') || tGroupClean.includes('ramal')) {
                     matchVehicle = true;
                     break;
                 }
+            } else if (vClean.includes('munk') || vClean.includes('linha viva')) {
+                if ((tTypeClean.includes('linha viva') || tTypeClean.includes('munck') || tTypeClean.includes('munk') || tGroupClean.includes('munk') || tGroupClean.includes('linha viva')) && !tTypeClean.includes('ramal') && !tGroupClean.includes('ramal')) {
+                    matchVehicle = true;
+                    break;
+                }
+            } else if (vClean.includes('cesto') && (tTypeClean.includes('cesto') || tGroupClean.includes('cesto'))) {
+                matchVehicle = true;
+                break;
+            } else if (vClean.includes('leve') && (tTypeClean.includes('leve') || tGroupClean.includes('leve'))) {
+                matchVehicle = true;
+                break;
+            } else if (vClean.includes('moto') && (tTypeClean.includes('moto') || tGroupClean.includes('moto'))) {
+                matchVehicle = true;
+                break;
+            } else if (tTypeClean === vClean || tGroupClean === vClean) {
+                matchVehicle = true;
+                break;
             }
-            if (!matchVehicle) return false;
         }
+        if (!matchVehicle) return false;
+    }
 
-        // Filtro por Busca Textual
-        if (q) {
-            const matchCode = (t.team_code || '').toUpperCase().includes(q);
-            const matchBase = (t.base_name || '').toUpperCase().includes(q);
-            const matchDriver = (t.driver || '').toUpperCase().includes(q);
-            const matchPlate = (t.plate || '').toUpperCase().includes(q);
-            const matchType = (t.vehicle_type || '').toUpperCase().includes(q);
-            if (!matchCode && !matchBase && !matchDriver && !matchPlate && !matchType) return false;
-        }
+    // 4. Filtro por Busca Textual
+    if (q) {
+        const matchCode = (t.team_code || '').toUpperCase().includes(q);
+        const matchBase = (t.base_name || '').toUpperCase().includes(q);
+        const matchDriver = (t.driver || '').toUpperCase().includes(q);
+        const matchPlate = (t.plate || '').toUpperCase().includes(q);
+        const matchType = (t.vehicle_type || '').toUpperCase().includes(q);
+        if (!matchCode && !matchBase && !matchDriver && !matchPlate && !matchType) return false;
+    }
 
-        return true;
-    });
+    // 5. Filtro por Regiões e Bases Múltiplas
+    const hasRegions = regions && regions.size > 0;
+    const hasBases = bases && bases.size > 0;
 
-    // 2. Filtro Completo incluindo Regiões e Bases Múltiplas (para tabela e gráficos)
-    deliveryState.filteredTeams = scopeFiltered.filter(t => {
-        const hasRegions = regions.size > 0;
-        const hasBases = bases.size > 0;
-
-        // Filtro por Região Múltipla
+    if (hasRegions || hasBases) {
         let matchRegion = false;
         if (hasRegions) {
             for (const r of regions) {
@@ -5755,7 +5772,6 @@ function applyDeliveryFilters() {
             }
         }
 
-        // Filtro por Base Múltipla com correspondência resiliente
         let matchBase = false;
         if (hasBases) {
             const bDisp = (t.base_display || '').toLowerCase();
@@ -5778,9 +5794,6 @@ function applyDeliveryFilters() {
             }
         }
 
-        // Regra de Composição Geográfica Resiliente:
-        // Se tanto regiões quanto bases específicas foram clicadas, a equipe é exibida se corresponder a
-        // qualquer uma das regiões selecionadas OU a qualquer uma das bases selecionadas (União Inteligente)
         if (hasRegions && hasBases) {
             if (!matchRegion && !matchBase) return false;
         } else if (hasRegions) {
@@ -5788,20 +5801,51 @@ function applyDeliveryFilters() {
         } else if (hasBases) {
             if (!matchBase) return false;
         }
+    }
 
-        return true;
-    });
+    return true;
+}
 
-    renderDeliveryKPIs();
+// Aplicação de Filtros Múltiplos (Regiões, Bases, Turnos, Frotas e Busca)
+function applyDeliveryFilters() {
+    const { regions, bases, search } = deliveryState.filters;
+    const q = (search || '').trim().toUpperCase();
+    const isModeActive = deliveryState.regionalViewMode !== 'total';
+
+    const baseActiveList = (deliveryState.activeTeams.length > 0)
+        ? deliveryState.activeTeams
+        : deliveryState.dailyTotalTeams.filter(t => t.is_active !== false);
+
+    const baseTotalDayList = (deliveryState.dailyTotalTeams.length > 0)
+        ? deliveryState.dailyTotalTeams
+        : deliveryState.activeTeams;
+
+    // 1. Listas filtradas com TODOS os filtros (alimentam os Cards Superiores do Hero Grid)
+    const filteredActiveList = baseActiveList.filter(t => checkTeamMatchesDeliveryFilters(t, deliveryState.filters, q));
+    const filteredTotalDayList = baseTotalDayList.filter(t => checkTeamMatchesDeliveryFilters(t, deliveryState.filters, q));
+
+    deliveryState.filteredActiveTeams = filteredActiveList;
+    deliveryState.filteredTotalDayTeams = filteredTotalDayList;
+
+    // 2. Escopo de Turno, Frota e Busca para os cards geográficos (Região Norte, Região Leste e Bases)
+    const scopeFilters = { ...deliveryState.filters, regions: new Set(), bases: new Set() };
+    const sourceForBases = isModeActive ? baseActiveList : baseTotalDayList;
+    const scopeFiltered = sourceForBases.filter(t => checkTeamMatchesDeliveryFilters(t, scopeFilters, q));
+
+    // 3. Filtro Completo para Alimentar a Tabela Nominal e os Gráficos
+    deliveryState.filteredTeams = isModeActive ? filteredActiveList : filteredTotalDayList;
+
+    // Renderização Reativa Integrada
+    renderDeliveryKPIs(filteredActiveList, filteredTotalDayList);
     renderGroupedBasesMetrics(scopeFiltered);
     renderDeliveryCharts();
     renderDeliveryTable();
 }
 
-// Renderização dos KPIs do Deck Superior
-function renderDeliveryKPIs() {
-    const activeList = deliveryState.activeTeams;
-    const totalDayList = deliveryState.dailyTotalTeams;
+// Renderização dos KPIs do Deck Superior (Reativo a Todos os Filtros Ativos)
+function renderDeliveryKPIs(filteredActive, filteredTotalDay) {
+    const activeList = filteredActive || deliveryState.filteredActiveTeams || deliveryState.activeTeams;
+    const totalDayList = filteredTotalDay || deliveryState.filteredTotalDayTeams || deliveryState.dailyTotalTeams;
 
     const elHeroActive = document.getElementById('delHeroActive');
     const elHeroTotalDay = document.getElementById('delHeroTotalDay');
@@ -5809,29 +5853,56 @@ function renderDeliveryKPIs() {
     if (elHeroActive) elHeroActive.textContent = activeList.length;
     if (elHeroTotalDay) elHeroTotalDay.textContent = totalDayList.length;
 
-    // Métricas por tipo de veículo (Ativas vs Total Dia)
-    const sumActive = deliveryState.summaryActive || {};
-    const sumTotal = deliveryState.summaryTotal || {};
+    // Feedback no subtítulo dos cards Hero quando houver filtros aplicados
+    const { regions, bases, shifts, vehicles, search, statusLogin } = deliveryState.filters || {};
+    const hasAnyFilter = (regions && regions.size > 0) || (bases && bases.size > 0) || (shifts && shifts.size > 0) || (vehicles && vehicles.size > 0) || (search && search.trim()) || (statusLogin && statusLogin !== 'ALL');
+    const elHeroActiveSub = document.getElementById('delHeroActiveSub');
+    const elHeroTotalSub = document.getElementById('delHeroTotalSub');
+    if (elHeroActiveSub) {
+        elHeroActiveSub.textContent = hasAnyFilter ? 'Filtrado pela seleção atual' : 'Snapshot ao vivo da coleta';
+    }
+    if (elHeroTotalSub) {
+        elHeroTotalSub.textContent = hasAnyFilter ? 'Acumulado com filtros ativos' : 'Equipes únicas logadas hoje';
+    }
+
+    // Contagem precisa por tipo de veículo (Ativas vs Total Dia)
+    const countFleet = (list) => {
+        return {
+            cesto: list.filter(t => t.vehicle_type === 'Cesto Aéreo').length,
+            leve: list.filter(t => t.vehicle_type === 'Veículo Leve').length,
+            moto: list.filter(t => t.vehicle_type === 'Moto').length,
+            munck: list.filter(t => (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk') && t.vehicle_type !== 'Projeto Ramal' && t.unified_group !== 'Projeto Ramal').length,
+            ramal: list.filter(t => t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal').length
+        };
+    };
+
+    const cntActive = countFleet(activeList);
+    const cntTotal = countFleet(totalDayList);
 
     const elCestoAct = document.getElementById('delFleetCestoActive');
     const elCestoTot = document.getElementById('delFleetCestoTotal');
-    if (elCestoAct) elCestoAct.textContent = sumActive.cesto || 0;
-    if (elCestoTot) elCestoTot.textContent = sumTotal.cesto || 0;
+    if (elCestoAct) elCestoAct.textContent = cntActive.cesto;
+    if (elCestoTot) elCestoTot.textContent = cntTotal.cesto;
 
     const elLeveAct = document.getElementById('delFleetLeveActive');
     const elLeveTot = document.getElementById('delFleetLeveTotal');
-    if (elLeveAct) elLeveAct.textContent = sumActive.leve || 0;
-    if (elLeveTot) elLeveTot.textContent = sumTotal.leve || 0;
+    if (elLeveAct) elLeveAct.textContent = cntActive.leve;
+    if (elLeveTot) elLeveTot.textContent = cntTotal.leve;
 
     const elMotoAct = document.getElementById('delFleetMotoActive');
     const elMotoTot = document.getElementById('delFleetMotoTotal');
-    if (elMotoAct) elMotoAct.textContent = sumActive.moto || 0;
-    if (elMotoTot) elMotoTot.textContent = sumTotal.moto || 0;
+    if (elMotoAct) elMotoAct.textContent = cntActive.moto;
+    if (elMotoTot) elMotoTot.textContent = cntTotal.moto;
 
     const elPesadoAct = document.getElementById('delFleetPesadoActive');
     const elPesadoTot = document.getElementById('delFleetPesadoTotal');
-    if (elPesadoAct) elPesadoAct.textContent = sumActive.linhaviva_munck || 0;
-    if (elPesadoTot) elPesadoTot.textContent = sumTotal.linhaviva_munck || 0;
+    if (elPesadoAct) elPesadoAct.textContent = cntActive.munck;
+    if (elPesadoTot) elPesadoTot.textContent = cntTotal.munck;
+
+    const elRamalAct = document.getElementById('delFleetRamalActive');
+    const elRamalTot = document.getElementById('delFleetRamalTotal');
+    if (elRamalAct) elRamalAct.textContent = cntActive.ramal;
+    if (elRamalTot) elRamalTot.textContent = cntTotal.ramal;
 }
 
 // Cálculo Dinâmico e Reativo dos Cards de Regiões e Bases
@@ -5839,20 +5910,20 @@ function computeRegionalBreakdown(teamList) {
     const list = teamList || [];
     const breakdown = {
         regiao_norte: {
-            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
+            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
             bases: {
-                'Base Fagundes Filho': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
-                'Base Cajati': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
-                'Base Vila Medeiros': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 }
+                'Base Fagundes Filho': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
+                'Base Cajati': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
+                'Base Vila Medeiros': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 }
             }
         },
         regiao_leste: {
-            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
+            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
             bases: {
-                'Base Monte Santo': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
-                'Base Aricanduva': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
-                'Base Catumbi': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 },
-                'Base Santo André': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0 }
+                'Base Monte Santo': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
+                'Base Aricanduva': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
+                'Base Catumbi': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
+                'Base Santo André': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 }
             }
         }
     };
@@ -5871,7 +5942,8 @@ function computeRegionalBreakdown(teamList) {
     };
 
     list.forEach(t => {
-        const isPesado = t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk';
+        const isRamal = t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal';
+        const isPesado = !isRamal && (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk');
         const isCesto = t.vehicle_type === 'Cesto Aéreo';
         const isLeve = t.vehicle_type === 'Veículo Leve';
         const isMoto = t.vehicle_type === 'Moto';
@@ -5891,6 +5963,7 @@ function computeRegionalBreakdown(teamList) {
             if (isLeve) targetReg.total_block.leve++;
             if (isMoto) targetReg.total_block.moto++;
             if (isPesado) targetReg.total_block.linhaviva_munck++;
+            if (isRamal) targetReg.total_block.ramal++;
 
             if (targetReg.bases[baseKey]) {
                 targetReg.bases[baseKey].total++;
@@ -5898,6 +5971,7 @@ function computeRegionalBreakdown(teamList) {
                 if (isLeve) targetReg.bases[baseKey].leve++;
                 if (isMoto) targetReg.bases[baseKey].moto++;
                 if (isPesado) targetReg.bases[baseKey].linhaviva_munck++;
+                if (isRamal) targetReg.bases[baseKey].ramal++;
             }
         }
     });
@@ -5936,12 +6010,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elNorteLeve = document.getElementById('delNorteTotalLeve');
     const elNorteMoto = document.getElementById('delNorteTotalMoto');
     const elNortePesado = document.getElementById('delNorteTotalPesado');
+    const elNorteRamal = document.getElementById('delNorteTotalRamal');
 
     if (elNorteNum) elNorteNum.textContent = nb.total || 0;
     if (elNorteCesto) elNorteCesto.textContent = nb.cesto || 0;
     if (elNorteLeve) elNorteLeve.textContent = nb.leve || 0;
     if (elNorteMoto) elNorteMoto.textContent = nb.moto || 0;
     if (elNortePesado) elNortePesado.textContent = nb.linhaviva_munck || 0;
+    if (elNorteRamal) elNorteRamal.textContent = nb.ramal || 0;
 
     // Bases do Norte
     const nbBases = regNorte.bases || {};
@@ -5951,11 +6027,13 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBFagLeve = document.getElementById('delBaseFagundesLeve');
     const elBFagMoto = document.getElementById('delBaseFagundesMoto');
     const elBFagPesado = document.getElementById('delBaseFagundesPesado');
+    const elBFagRamal = document.getElementById('delBaseFagundesRamal');
     if (elBFagTot) elBFagTot.textContent = bFag.total || 0;
     if (elBFagCesto) elBFagCesto.textContent = bFag.cesto || 0;
     if (elBFagLeve) elBFagLeve.textContent = bFag.leve || 0;
     if (elBFagMoto) elBFagMoto.textContent = bFag.moto || 0;
     if (elBFagPesado) elBFagPesado.textContent = bFag.linhaviva_munck || 0;
+    if (elBFagRamal) elBFagRamal.textContent = bFag.ramal || 0;
 
     const bCaj = nbBases['Base Cajati'] || {};
     const elBCajTot = document.getElementById('delBaseCajatiTotal');
@@ -5963,11 +6041,13 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBCajLeve = document.getElementById('delBaseCajatiLeve');
     const elBCajMoto = document.getElementById('delBaseCajatiMoto');
     const elBCajPesado = document.getElementById('delBaseCajatiPesado');
+    const elBCajRamal = document.getElementById('delBaseCajatiRamal');
     if (elBCajTot) elBCajTot.textContent = bCaj.total || 0;
     if (elBCajCesto) elBCajCesto.textContent = bCaj.cesto || 0;
     if (elBCajLeve) elBCajLeve.textContent = bCaj.leve || 0;
     if (elBCajMoto) elBCajMoto.textContent = bCaj.moto || 0;
     if (elBCajPesado) elBCajPesado.textContent = bCaj.linhaviva_munck || 0;
+    if (elBCajRamal) elBCajRamal.textContent = bCaj.ramal || 0;
 
     const bMed = nbBases['Base Vila Medeiros'] || {};
     const elBMedTot = document.getElementById('delBaseVilaMedeirosTotal');
@@ -5975,11 +6055,13 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBMedLeve = document.getElementById('delBaseVilaMedeirosLeve');
     const elBMedMoto = document.getElementById('delBaseVilaMedeirosMoto');
     const elBMedPesado = document.getElementById('delBaseVilaMedeirosPesado');
+    const elBMedRamal = document.getElementById('delBaseVilaMedeirosRamal');
     if (elBMedTot) elBMedTot.textContent = bMed.total || 0;
     if (elBMedCesto) elBMedCesto.textContent = bMed.cesto || 0;
     if (elBMedLeve) elBMedLeve.textContent = bMed.leve || 0;
     if (elBMedMoto) elBMedMoto.textContent = bMed.moto || 0;
     if (elBMedPesado) elBMedPesado.textContent = bMed.linhaviva_munck || 0;
+    if (elBMedRamal) elBMedRamal.textContent = bMed.ramal || 0;
 
     // Totalizador Leste
     const lb = regLeste.total_block || {};
@@ -6235,10 +6317,11 @@ function renderDeliveryCharts() {
             const dataCesto = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Cesto Aéreo').length);
             const dataLeve = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Veículo Leve').length);
             const dataMoto = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Moto').length);
-            const dataPesado = shifts.map(s => list.filter(t => t.shift_code === s && (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck')).length);
+            const dataPesado = shifts.map(s => list.filter(t => t.shift_code === s && (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck') && t.vehicle_type !== 'Projeto Ramal').length);
+            const dataRamal = shifts.map(s => list.filter(t => t.shift_code === s && (t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal')).length);
 
             // Calcula o maior total para dar folga no topo do eixo Y
-            const totalsPerShift = shifts.map((_, i) => dataCesto[i] + dataLeve[i] + dataMoto[i] + dataPesado[i]);
+            const totalsPerShift = shifts.map((_, i) => dataCesto[i] + dataLeve[i] + dataMoto[i] + dataPesado[i] + dataRamal[i]);
             const maxShiftTotal = Math.max(...totalsPerShift, 5);
 
             // Plugin para desenhar as quantidades no topo da coluna e dentro dos blocos
@@ -6296,7 +6379,8 @@ function renderDeliveryCharts() {
                         { label: 'Cesto Aéreo', data: dataCesto, backgroundColor: 'rgba(0, 242, 254, 0.85)', borderRadius: 6 },
                         { label: 'Veículo Leve', data: dataLeve, backgroundColor: 'rgba(59, 130, 246, 0.85)', borderRadius: 6 },
                         { label: 'Moto', data: dataMoto, backgroundColor: 'rgba(16, 185, 129, 0.85)', borderRadius: 6 },
-                        { label: 'Linha Viva / Munck', data: dataPesado, backgroundColor: 'rgba(192, 132, 252, 0.85)', borderRadius: 6 }
+                        { label: 'Linha Viva / Munck', data: dataPesado, backgroundColor: 'rgba(192, 132, 252, 0.85)', borderRadius: 6 },
+                        { label: 'Projeto Ramal', data: dataRamal, backgroundColor: 'rgba(249, 115, 22, 0.85)', borderRadius: 6 }
                     ]
                 },
                 options: {
@@ -6350,12 +6434,19 @@ function renderDeliveryCharts() {
                     : 'Total de Equipes Ativas por Tipologia Veicular';
             }
 
-            const fleetCategories = ['Cesto Aéreo', 'Veículo Leve', 'Moto', 'Linha Viva + Munk'];
+            const fleetCategories = [
+                ['Cesto', 'Aéreo'],
+                ['Veículo', 'Leve'],
+                'Moto',
+                ['Linha Viva', '+ Munk'],
+                ['Projeto', 'Ramal']
+            ];
             const fleetCounts = [
                 list.filter(t => t.vehicle_type === 'Cesto Aéreo').length,
                 list.filter(t => t.vehicle_type === 'Veículo Leve').length,
                 list.filter(t => t.vehicle_type === 'Moto').length,
-                list.filter(t => t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck').length
+                list.filter(t => (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck') && t.vehicle_type !== 'Projeto Ramal').length,
+                list.filter(t => t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal').length
             ];
 
             const maxFleetCount = Math.max(...fleetCounts, 5);
@@ -6395,13 +6486,15 @@ function renderDeliveryCharts() {
                             'rgba(0, 242, 254, 0.85)',
                             'rgba(59, 130, 246, 0.85)',
                             'rgba(16, 185, 129, 0.85)',
-                            'rgba(192, 132, 252, 0.85)'
+                            'rgba(192, 132, 252, 0.85)',
+                            'rgba(249, 115, 22, 0.85)'
                         ],
                         borderColor: [
                             '#00f2fe',
                             '#3b82f6',
                             '#10b981',
-                            '#c084fc'
+                            '#c084fc',
+                            '#f97316'
                         ],
                         borderWidth: 1.5,
                         borderRadius: 8
@@ -6413,7 +6506,13 @@ function renderDeliveryCharts() {
                     scales: {
                         x: {
                             grid: { display: false },
-                            ticks: { color: textColor, font: { family: 'Plus Jakarta Sans', weight: '700', size: 11 } }
+                            ticks: {
+                                color: textColor,
+                                font: { family: 'Plus Jakarta Sans', weight: '700', size: 11 },
+                                maxRotation: 0,
+                                minRotation: 0,
+                                autoSkip: false
+                            }
                         },
                         y: {
                             suggestedMax: Math.ceil(maxFleetCount * 1.18) + 1,
@@ -6428,7 +6527,14 @@ function renderDeliveryCharts() {
                             titleColor: '#00f2fe',
                             bodyColor: '#f8fafc',
                             padding: 12,
-                            cornerRadius: 10
+                            cornerRadius: 10,
+                            callbacks: {
+                                title: function(context) {
+                                    if (!context || !context.length) return '';
+                                    const raw = context[0].label;
+                                    return Array.isArray(raw) ? raw.join(' ') : raw;
+                                }
+                            }
                         }
                     }
                 },
@@ -6617,7 +6723,10 @@ function renderDeliveryTable() {
                 </td>
                 <!-- 4. VEÍCULO -->
                 <td>
-                    <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type || t.veiculo_portal || '--'}</span>
+                    ${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal') 
+                        ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>` 
+                        : `<span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type || t.veiculo_portal || '--'}</span>`
+                    }
                 </td>
                 <!-- 5. EQUIPE (Clicável para abrir Modal Ultra-Premium) -->
                 <td>
@@ -7498,7 +7607,7 @@ function renderDailyAuditTable() {
                 <td><span class="team-badge" style="font-weight: 800;">${t.team_code}</span></td>
                 <td><strong style="color: var(--text-primary);">${t.base_display || t.base_name}</strong></td>
                 <td>${t.region} / <small style="font-weight: 800;">${t.company}</small></td>
-                <td><strong>${t.vehicle_type}</strong></td>
+                <td>${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal') ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>` : `<strong>${t.vehicle_type || '--'}</strong>`}</td>
                 <td><span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">${t.login_time || '--:--'}</span></td>
                 <td><strong style="color:#38bdf8; font-family:'JetBrains Mono', monospace;">${t.login_real || '--:--'}</strong></td>
                 <td>${logoffHtml}</td>
@@ -7545,6 +7654,7 @@ async function loadComparisonAudit(dates) {
                 leve: summary.leve || 0,
                 moto: summary.moto || 0,
                 linhaviva: summary.linhaviva_munck || 0,
+                ramal: summary.ramal || 0,
                 shifts: summary.shifts || {},
                 teams: res.teams || []
             };
@@ -7562,11 +7672,12 @@ async function loadComparisonAudit(dates) {
                         <span class="hero-big-number text-cyan" style="font-size: 1.8rem;">${r.total}</span>
                         <span class="hero-unit">equipes</span>
                     </div>
-                    <div style="display: flex; gap: 8px; font-size: 0.72rem; color: var(--text-secondary); margin-top: 4px;">
+                    <div style="display: flex; gap: 8px; font-size: 0.72rem; color: var(--text-secondary); margin-top: 4px; flex-wrap: wrap;">
                         <span>C: <strong>${r.cesto}</strong></span>
                         <span>L: <strong>${r.leve}</strong></span>
                         <span>M: <strong>${r.moto}</strong></span>
                         <span>LV: <strong>${r.linhaviva}</strong></span>
+                        <span>PR: <strong style="color: #fb923c;">${r.ramal || 0}</strong></span>
                     </div>
                 </div>
             `).join('');
@@ -7597,6 +7708,7 @@ async function loadComparisonAudit(dates) {
                         <td><strong style="color: #60a5fa; font-family: 'JetBrains Mono';">${r.leve}</strong></td>
                         <td><strong style="color: #10b981; font-family: 'JetBrains Mono';">${r.moto}</strong></td>
                         <td><strong style="color: #c084fc; font-family: 'JetBrains Mono';">${r.linhaviva}</strong></td>
+                        <td><strong style="color: #fb923c; font-family: 'JetBrains Mono';">${r.ramal || 0}</strong></td>
                         <td><span class="shift-pill">${topShiftDisplay}</span></td>
                     </tr>
                 `;
@@ -7629,13 +7741,13 @@ function renderComparisonBarChart(results) {
         { bg: 'rgba(239, 68, 68, 0.85)', border: '#ef4444' }
     ];
 
-    const labels = ['Total Entregue', 'Cesto Aéreo', 'Veículo Leve', 'Moto', 'Linha Viva + Munk'];
+    const labels = ['Total Entregue', 'Cesto Aéreo', 'Veículo Leve', 'Moto', 'Linha Viva + Munk', 'Projeto Ramal'];
 
     const datasets = results.map((r, idx) => {
         const color = dateColors[idx % dateColors.length];
         return {
             label: r.dateFormatted,
-            data: [r.total, r.cesto, r.leve, r.moto, r.linhaviva],
+            data: [r.total, r.cesto, r.leve, r.moto, r.linhaviva, r.ramal || 0],
             backgroundColor: color.bg,
             borderColor: color.border,
             borderWidth: 1.5,
@@ -7723,7 +7835,8 @@ function exportComparisonExcel() {
         "Cesto Aéreo": r.cesto,
         "Veículo Leve": r.leve,
         "Moto": r.moto,
-        "Linha Viva + Munk": r.linhaviva
+        "Linha Viva + Munk": r.linhaviva,
+        "Projeto Ramal": r.ramal || 0
     }));
     if (window.XLSX) {
         const ws = XLSX.utils.json_to_sheet(rows);
@@ -7751,6 +7864,7 @@ async function loadMonthlyHistoryAudit() {
         const elAvgLeve = document.getElementById('histMonthAvgLeve');
         const elAvgMoto = document.getElementById('histMonthAvgMoto');
         const elAvgPesado = document.getElementById('histMonthAvgPesado');
+        const elAvgRamal = document.getElementById('histMonthAvgRamal');
 
         if (elAvgTot) elAvgTot.textContent = (data.avg_total || 0).toFixed(1);
         if (elDays) elDays.textContent = `Calculado sobre ${data.operating_days || 0} dias com operação registrada`;
@@ -7758,6 +7872,7 @@ async function loadMonthlyHistoryAudit() {
         if (elAvgLeve) elAvgLeve.textContent = (data.avg_leve || 0).toFixed(1);
         if (elAvgMoto) elAvgMoto.textContent = (data.avg_moto || 0).toFixed(1);
         if (elAvgPesado) elAvgPesado.textContent = (data.avg_linhaviva_munck || 0).toFixed(1);
+        if (elAvgRamal) elAvgRamal.textContent = (data.avg_ramal || 0).toFixed(1);
 
         // Gráfico Mensal de Barras Diárias com Linha de Média
         renderMonthlyBarChart(data);

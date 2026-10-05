@@ -5646,6 +5646,19 @@ body.theme-light .auth-tab-btn.active {
     box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
 }
 
+.pill-ramal {
+    background: rgba(249, 115, 22, 0.15);
+    color: #fb923c;
+    border: 1px solid rgba(249, 115, 22, 0.4);
+    box-shadow: 0 0 14px rgba(249, 115, 22, 0.28);
+}
+
+.badge-vehicle-ramal {
+    background: rgba(249, 115, 22, 0.18);
+    color: #fb923c;
+    border: 1px solid rgba(249, 115, 22, 0.35);
+}
+
 .pill-outros {
     background: rgba(148, 163, 184, 0.12);
     color: #cbd5e1;
@@ -5868,7 +5881,7 @@ html.route-hub #portalHubView { display: flex !important; }
 /* Deck de Destaque Duplo: ATIVAS vs TOTAL */
 .delivery-dual-hero-grid {
     display: grid;
-    grid-template-columns: 1.2fr 1.2fr repeat(4, 1fr);
+    grid-template-columns: 1.2fr 1.2fr repeat(5, 1fr);
     gap: 14px;
     margin-bottom: 20px;
 }

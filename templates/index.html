@@ -1798,6 +1798,21 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Card 7: Projeto Ramal -->
+                    <div class="fleet-liquid-card">
+                        <span class="fleet-liquid-title" style="color: #fb923c;">PROJETO RAMAL</span>
+                        <div class="fleet-liquid-vals">
+                            <div class="fleet-val-block">
+                                <span>ATIVAS</span>
+                                <strong style="color: #fb923c;" id="delFleetRamalActive">0</strong>
+                            </div>
+                            <div class="fleet-val-block" style="text-align: right;">
+                                <span>TOTAL DIA</span>
+                                <strong style="color: #94a3b8;" id="delFleetRamalTotal">0</strong>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ALTERNADOR MOBILE DE SEÇÕES (Apenas Telas <= 768px: Bases / Gráficos / Equipes) -->
@@ -1842,6 +1857,7 @@
                                 <button class="pill-chip" data-vehicle="Veículo Leve" onclick="setDeliveryVehicleFilter('Veículo Leve', this)">VEÍCULO LEVE</button>
                                 <button class="pill-chip" data-vehicle="Moto" onclick="setDeliveryVehicleFilter('Moto', this)">MOTO</button>
                                 <button class="pill-chip" data-vehicle="Linha Viva + Munk" onclick="setDeliveryVehicleFilter('Linha Viva + Munk', this)">LINHA VIVA + MUNK</button>
+                                <button class="pill-chip" data-vehicle="Projeto Ramal" onclick="setDeliveryVehicleFilter('Projeto Ramal', this)">PROJETO RAMAL</button>
                             </div>
                         </div>
 
@@ -1956,6 +1972,7 @@
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delNorteTotalLeve">0</span></div>
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delNorteTotalMoto">0</span></div>
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delNorteTotalPesado">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delNorteTotalRamal">0</span></div>
                                 </div>
                             </div>
                             <!-- Grid das 3 Bases do Norte -->
@@ -1971,6 +1988,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseFagundesLeve">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseFagundesMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseFagundesPesado">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseFagundesRamal">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Cajati -->
@@ -1984,6 +2002,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseCajatiLeve">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseCajatiMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseCajatiPesado">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseCajatiRamal">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Vila Medeiros -->
@@ -1997,6 +2016,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseVilaMedeirosLeve">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseVilaMedeirosMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseVilaMedeirosPesado">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseVilaMedeirosRamal">0</span></div>
                                     </div>
                                 </div>
                             </div>
@@ -2669,6 +2689,7 @@
                                         <th>VEÍCULO LEVE</th>
                                         <th>MOTO</th>
                                         <th>LINHA VIVA + MUNK</th>
+                                        <th>PROJETO RAMAL</th>
                                         <th>TURNO PRINCIPAL</th>
                                     </tr>
                                 </thead>
@@ -2706,6 +2727,10 @@
                         <div class="fleet-liquid-card">
                             <span class="fleet-liquid-title" style="color: #c084fc;">MÉDIA LV + MUNK</span>
                             <strong class="hero-big-number" style="color: #c084fc; font-size: 1.5rem;" id="histMonthAvgPesado">0.0</strong>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title" style="color: #fb923c;">MÉDIA PROJETO RAMAL</span>
+                            <strong class="hero-big-number" style="color: #fb923c; font-size: 1.5rem;" id="histMonthAvgRamal">0.0</strong>
                         </div>
                     </div>
 
