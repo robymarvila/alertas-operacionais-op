@@ -2286,6 +2286,15 @@ def get_delivery_available_dates():
     """Retorna datas e meses com dados disponíveis no Supabase para o calendário e seletores."""
     return jsonify(delivery_manager.get_available_audit_dates())
 
+@app.route('/api/delivery/history-3days-summary', methods=['GET'])
+def get_delivery_history_3days_summary():
+    """Retorna o resumo forense dos últimos 3 dias (Norte x Leste x Total) para o Hub Central."""
+    force = request.args.get('force') in ['1', 'true'] or request.args.get('_') is not None
+    if force:
+        delivery_manager._recent_3days_cache = None
+        delivery_manager._recent_3days_cache_ts = 0
+    return jsonify(delivery_manager.get_recent_3days_audit_summary())
+
 @app.route('/api/commands/<cmd_id>', methods=['GET'])
 def get_command_status_route(cmd_id):
     """Consulta o status de um comando assíncrono (PENDING, PROCESSING, COMPLETED, ERROR)."""

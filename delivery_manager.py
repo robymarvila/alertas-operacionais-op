@@ -1078,7 +1078,9 @@ class DeliveryManager:
             # Curva Intraday de entrada por turno
             "intraday_curve": self.intraday_curve,
             # Estrutura hierárquica das bases para renderização ágil
-            "geo_groups": self.geo_groups
+            "geo_groups": self.geo_groups,
+            # Resumo Forense dos Últimos 3 Dias (Norte x Leste x Total) para o Hub Central
+            "recent_3days": self.get_recent_3days_audit_summary(today_metrics=metrics_total)
         }
 
     def get_team_details(self, team_code: str) -> dict:
@@ -2329,6 +2331,103 @@ class DeliveryManager:
                 "message": str(e),
                 "dates": [],
                 "months": []
+            }
+
+    def get_recent_3days_audit_summary(self, today_metrics: dict = None) -> dict:
+        """
+        Retorna o consolidado dos últimos 3 dias disponíveis na Auditoria & Histórico:
+        - Datas consideradas
+        - Total entregue nos 3 dias
+        - Total Norte nos 3 dias
+        - Total Leste nos 3 dias
+        - Médias diárias
+        - Detalhamento por dia
+        Utiliza cache em memória com TTL de 30s para datas passadas, integrando
+        as métricas em tempo real de hoje sem recursão.
+        """
+        import time
+        now_ts = time.time()
+        if hasattr(self, '_recent_3days_cache') and self._recent_3days_cache:
+            if now_ts - getattr(self, '_recent_3days_cache_ts', 0) < 20:
+                return self._recent_3days_cache
+
+        try:
+            avail = self.get_available_audit_dates()
+            dates = avail.get("dates", [])[:3]
+            if not dates:
+                dates = [self.current_date_str]
+
+            daily_list = []
+            tot_3days = 0
+            norte_3days = 0
+            leste_3days = 0
+
+            for d in dates:
+                if d == self.current_date_str:
+                    if today_metrics:
+                        tot = today_metrics.get("total", len(self.daily_accumulated_teams))
+                        norte_cnt = today_metrics.get("regiao_norte", {}).get("total_block", {}).get("total", 0)
+                        leste_cnt = today_metrics.get("regiao_leste", {}).get("total_block", {}).get("total", 0)
+                    else:
+                        tot = len(self.daily_accumulated_teams)
+                        norte_cnt = sum(1 for t in self.daily_accumulated_teams.values() if t.get("geo") == "Norte" or t.get("team_code", "")[:3] in ["ENL", "ECL", "EEL"])
+                        leste_cnt = sum(1 for t in self.daily_accumulated_teams.values() if t.get("geo") == "Leste" or t.get("team_code", "")[:3] in ["EML", "EQL", "EVL", "ESL"])
+                else:
+                    aud = self.get_daily_audit_data(d)
+                    tot = aud.get("total_delivered", 0)
+                    sum_reg = aud.get("summary", {})
+                    norte_cnt = sum_reg.get("regiao_norte", {}).get("total_block", {}).get("total", 0)
+                    leste_cnt = sum_reg.get("regiao_leste", {}).get("total_block", {}).get("total", 0)
+
+                tot_3days += tot
+                norte_3days += norte_cnt
+                leste_3days += leste_cnt
+
+                d_parts = d.split("-")
+                d_br = f"{d_parts[2]}/{d_parts[1]}" if len(d_parts) == 3 else d
+                daily_list.append({
+                    "date": d,
+                    "date_br": d_br,
+                    "total": tot,
+                    "norte": norte_cnt,
+                    "leste": leste_cnt
+                })
+
+            num_days = max(len(dates), 1)
+            first_d = dates[-1].split("-")
+            last_d = dates[0].split("-")
+            f_br = f"{first_d[2]}/{first_d[1]}" if len(first_d) == 3 else dates[-1]
+            l_br = f"{last_d[2]}/{last_d[1]}" if len(last_d) == 3 else dates[0]
+            range_label = f"{f_br} a {l_br}" if f_br != l_br else f_br
+
+            res = {
+                "status": "success",
+                "dates": dates,
+                "date_range_label": range_label,
+                "total_3days": tot_3days,
+                "norte_3days": norte_3days,
+                "leste_3days": leste_3days,
+                "avg_norte_day": round(norte_3days / num_days, 1),
+                "avg_leste_day": round(leste_3days / num_days, 1),
+                "daily_breakdown": daily_list
+            }
+
+            self._recent_3days_cache = res
+            self._recent_3days_cache_ts = now_ts
+            return res
+        except Exception as e:
+            print(f"[WARN 3DAYS AUDIT SUMMARY] {e}", flush=True)
+            return {
+                "status": "error",
+                "message": str(e),
+                "dates": [],
+                "date_range_label": "--",
+                "total_3days": 0,
+                "norte_3days": 0,
+                "leste_3days": 0,
+                "avg_norte_day": 0,
+                "avg_leste_day": 0,
+                "daily_breakdown": []
             }
 
 delivery_manager = DeliveryManager()

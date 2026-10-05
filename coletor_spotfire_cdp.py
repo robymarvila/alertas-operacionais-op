@@ -26,6 +26,7 @@ import time
 import re
 import urllib.request
 import threading
+import shutil
 from datetime import datetime, date, timedelta
 try:
     import websocket
@@ -43,10 +44,33 @@ _SPOTFIRE_LOCK = threading.Lock()
 
 WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS_DIR = os.path.join(WORKSPACE_DIR, "temp_spotfire_downloads")
+USER_DOWNLOADS_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
 try:
     os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 except Exception:
     pass
+
+def prune_old_user_downloads(prefix="Scanner 5.0", max_keep=3):
+    """Remove arquivos antigos de exportação do diretório de Downloads do usuário para economizar espaço em disco."""
+    try:
+        if not os.path.exists(USER_DOWNLOADS_DIR):
+            return
+        matches = []
+        for f in os.listdir(USER_DOWNLOADS_DIR):
+            if (prefix.lower() in f.lower() or 'tabela completa' in f.lower()) and (f.endswith('.csv') or f.endswith('.tsv') or f.endswith('.txt')):
+                p = os.path.join(USER_DOWNLOADS_DIR, f)
+                try:
+                    matches.append((p, os.path.getmtime(p)))
+                except Exception:
+                    pass
+        matches.sort(key=lambda x: x[1], reverse=True)
+        for p, _ in matches[max_keep:]:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 # 7 Bases Oficiais Definidas para Data Quality e Confronto Operacional (Região Norte e Região Leste)
 # Região Norte: ENL (Base Fagundes Filho), ECL (Base Cajati), EEL (Base Vila Medeiros)
@@ -491,11 +515,16 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
     5. Valida a 'Tabela Completa todas Colunas' e a presença do cabeçalho 'Data Referência'.
     6. Aciona botão direito -> Export -> Export table e monitora download inteligente (.crdownload e estabilização de tamanho) até 300s.
     """
-    # Configura diretório de download silencioso
-    client.call("Page.setDownloadBehavior", {
-        "behavior": "allow",
-        "downloadPath": DOWNLOADS_DIR
-    })
+    # Configura diretório de download silencioso via Browser e Page domains
+    for method in ["Browser.setDownloadBehavior", "Page.setDownloadBehavior"]:
+        try:
+            client.call(method, {
+                "behavior": "allow",
+                "downloadPath": DOWNLOADS_DIR,
+                "eventsEnabled": True
+            })
+        except Exception:
+            pass
 
     # Limpa arquivos residuais no diretório
     for f in os.listdir(DOWNLOADS_DIR):
@@ -1249,6 +1278,17 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
         client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": target_data_cell["x"], "y": target_data_cell["y"], "button": "right", "clickCount": 1})
         time.sleep(0.8)
 
+    # Re-aplica permissões de download imediatamente antes do clique de exportação
+    for method in ["Browser.setDownloadBehavior", "Page.setDownloadBehavior"]:
+        try:
+            client.call(method, {
+                "behavior": "allow",
+                "downloadPath": DOWNLOADS_DIR,
+                "eventsEnabled": True
+            })
+        except Exception:
+            pass
+
     print("[SPOTFIRE CDP] Acionando Export -> Export table...", flush=True)
     click_res = client.evaluate('''
     (async () => {
@@ -1339,34 +1379,72 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
                 print(f"[SPOTFIRE CDP EXPORT MODAL] Modal de exportação do Spotfire concluído! Servidor liberou o arquivo ({last_reported_rows} linhas). Aguardando download...", flush=True)
                 last_reported_rows = -2  # Marcador para não repetir o log
 
-        # FASE 2: Checa se há arquivos no diretório de downloads
-        files = os.listdir(DOWNLOADS_DIR)
-        cr_downloads = [f for f in files if f.endswith('.crdownload')]
-        completed_files = [
-            f for f in files
-            if (f.endswith('.tsv') or f.endswith('.txt') or f.endswith('.csv')) and not f.endswith('.crdownload')
-        ]
+        # FASE 2: Checa se há arquivos em DOWNLOADS_DIR ou na pasta Downloads do Usuário
+        cr_downloads = []
+        completed_candidates = []
+
+        # 1. Pasta dedicada local
+        if os.path.exists(DOWNLOADS_DIR):
+            for f in os.listdir(DOWNLOADS_DIR):
+                p = os.path.join(DOWNLOADS_DIR, f)
+                if f.endswith('.crdownload'):
+                    cr_downloads.append(p)
+                elif f.endswith('.tsv') or f.endswith('.txt') or f.endswith('.csv'):
+                    completed_candidates.append(p)
+
+        # 2. Pasta Downloads do Usuário (onde o Chrome grava por padrão no Windows)
+        if os.path.exists(USER_DOWNLOADS_DIR):
+            for f in os.listdir(USER_DOWNLOADS_DIR):
+                f_low = f.lower()
+                if not ('scanner' in f_low or 'tabela completa' in f_low):
+                    continue
+                p = os.path.join(USER_DOWNLOADS_DIR, f)
+                try:
+                    mtime = os.path.getmtime(p)
+                except Exception:
+                    continue
+                # Apenas arquivos criados ou modificados neste ciclo (com margem de 15 segundos)
+                if mtime < start_wait - 15:
+                    continue
+
+                if f.endswith('.crdownload'):
+                    cr_downloads.append(p)
+                elif f.endswith('.tsv') or f.endswith('.txt') or f.endswith('.csv'):
+                    completed_candidates.append(p)
 
         if cr_downloads:
             # Download do navegador em andamento ativo
-            cr_path = os.path.join(DOWNLOADS_DIR, cr_downloads[0])
+            cr_path = cr_downloads[0]
             try:
                 cr_sz = round(os.path.getsize(cr_path) / 1024, 1)
                 last_activity_time = time.time()
                 if int(time.time() - start_wait) % 3 == 0:
-                    print(f"[SPOTFIRE CDP DOWNLOAD] Transferindo arquivo pelo navegador: {cr_downloads[0]} ({cr_sz} KB)...", flush=True)
+                    print(f"[SPOTFIRE CDP DOWNLOAD] Transferindo arquivo pelo navegador ({os.path.basename(cr_path)}: {cr_sz} KB)...", flush=True)
             except Exception:
                 pass
 
-        if completed_files and not cr_downloads:
-            candidate = os.path.join(DOWNLOADS_DIR, completed_files[0])
+        if completed_candidates and not cr_downloads:
+            # Ordena pelo mtime mais recente
+            completed_candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            candidate = completed_candidates[0]
             try:
                 curr_size = os.path.getsize(candidate)
                 if curr_size > 1000:
                     if curr_size == last_size:
                         stable_cycles += 1
                         if stable_cycles >= 3:  # 3 ciclos consecutivos de estabilidade (3 segundos sem alteração de bytes)
-                            downloaded_file = candidate
+                            # Se o arquivo foi capturado na pasta Downloads do Usuário, transfere para DOWNLOADS_DIR
+                            if os.path.dirname(os.path.abspath(candidate)) == os.path.abspath(USER_DOWNLOADS_DIR):
+                                dest_path = os.path.join(DOWNLOADS_DIR, os.path.basename(candidate))
+                                shutil.copy2(candidate, dest_path)
+                                print(f"[SPOTFIRE CDP DOWNLOAD] Arquivo capturado da pasta Downloads do usuário e transferido para workspace: {os.path.basename(candidate)}", flush=True)
+                                try:
+                                    os.remove(candidate)
+                                except Exception:
+                                    pass
+                                downloaded_file = dest_path
+                            else:
+                                downloaded_file = candidate
                             break
                     else:
                         stable_cycles = 0
@@ -1686,6 +1764,7 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
             print(f"[CLEANUP] Arquivo temporário de exportação excluído com sucesso.", flush=True)
         except Exception:
             pass
+        prune_old_user_downloads("Scanner 5.0", max_keep=3)
 
         if not records:
             elapsed = round(time.time() - start_t, 2)

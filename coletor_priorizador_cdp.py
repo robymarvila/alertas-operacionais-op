@@ -20,6 +20,7 @@ import time
 import re
 import urllib.request
 import threading
+import shutil
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 
@@ -40,6 +41,7 @@ _PRIORIZADOR_LOCK = threading.Lock()
 
 WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS_DIR = os.path.join(WORKSPACE_DIR, "temp_spotfire_downloads")
+USER_DOWNLOADS_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
@@ -275,10 +277,15 @@ def extrair_arquivo_priorizador_via_cdp(client) -> str:
     5. Monitora download inteligente no diretório temp_spotfire_downloads.
     """
     # 1. Configura diretório de download silencioso
-    client.call("Page.setDownloadBehavior", {
-        "behavior": "allow",
-        "downloadPath": DOWNLOADS_DIR
-    })
+    for method in ["Browser.setDownloadBehavior", "Page.setDownloadBehavior"]:
+        try:
+            client.call(method, {
+                "behavior": "allow",
+                "downloadPath": DOWNLOADS_DIR,
+                "eventsEnabled": True
+            })
+        except Exception:
+            pass
 
     # Limpa arquivos prévios
     for f in os.listdir(DOWNLOADS_DIR):
@@ -459,25 +466,79 @@ def extrair_arquivo_priorizador_via_cdp(client) -> str:
     if not click_export_res or not click_export_res.get("success"):
         print(f"[PRIORIZADOR CDP WARN] Falha no acionamento do submenu de exportação: {click_export_res}", flush=True)
 
+    # Re-aplica permissões de download imediatamente antes do clique de exportação
+    for method in ["Browser.setDownloadBehavior", "Page.setDownloadBehavior"]:
+        try:
+            client.call(method, {
+                "behavior": "allow",
+                "downloadPath": DOWNLOADS_DIR,
+                "eventsEnabled": True
+            })
+        except Exception:
+            pass
+
     # 7. Monitoramento Inteligente do Download
-    print(f"[PRIORIZADOR CDP] Monitorando chegada do download na pasta '{DOWNLOADS_DIR}'...", flush=True)
+    print(f"[PRIORIZADOR CDP] Monitorando chegada do download na pasta '{DOWNLOADS_DIR}' e Downloads do usuário...", flush=True)
     start_dl = time.time()
     downloaded_file = None
 
-    while time.time() - start_dl < 45:
+    while time.time() - start_dl < 60:
         time.sleep(1.0)
-        files = os.listdir(DOWNLOADS_DIR)
-        valid_files = [f for f in files if not f.endswith('.crdownload') and not f.endswith('.tmp') and os.path.getsize(os.path.join(DOWNLOADS_DIR, f)) > 0]
-        if valid_files:
-            # Garante que o tamanho estabilizou
-            cand = os.path.join(DOWNLOADS_DIR, valid_files[0])
-            size1 = os.path.getsize(cand)
-            time.sleep(1.0)
-            size2 = os.path.getsize(cand)
-            if size1 == size2 and size1 > 50:
-                downloaded_file = cand
-                print(f"[PRIORIZADOR CDP OK] Download concluído com sucesso: {os.path.basename(downloaded_file)} ({size1:,} bytes)!", flush=True)
-                break
+        candidates = []
+
+        # 1. Pasta local do workspace
+        if os.path.exists(DOWNLOADS_DIR):
+            for f in os.listdir(DOWNLOADS_DIR):
+                p = os.path.join(DOWNLOADS_DIR, f)
+                if not f.endswith('.crdownload') and not f.endswith('.tmp'):
+                    try:
+                        if os.path.getsize(p) > 50:
+                            candidates.append(p)
+                    except Exception:
+                        pass
+
+        # 2. Pasta Downloads do Usuário (onde o Chrome grava por padrão no Windows)
+        if os.path.exists(USER_DOWNLOADS_DIR):
+            for f in os.listdir(USER_DOWNLOADS_DIR):
+                f_low = f.lower()
+                if not ('priorizador' in f_low or 'grandes interrup' in f_low):
+                    continue
+                p = os.path.join(USER_DOWNLOADS_DIR, f)
+                try:
+                    mtime = os.path.getmtime(p)
+                except Exception:
+                    continue
+                if mtime >= start_dl - 15 and not f.endswith('.crdownload') and not f.endswith('.tmp'):
+                    try:
+                        if os.path.getsize(p) > 50:
+                            candidates.append(p)
+                    except Exception:
+                        pass
+
+        if candidates:
+            # Ordena pelo mtime mais recente
+            candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            cand = candidates[0]
+            try:
+                size1 = os.path.getsize(cand)
+                time.sleep(1.0)
+                size2 = os.path.getsize(cand)
+                if size1 == size2 and size1 > 50:
+                    if os.path.dirname(os.path.abspath(cand)) == os.path.abspath(USER_DOWNLOADS_DIR):
+                        dest = os.path.join(DOWNLOADS_DIR, os.path.basename(cand))
+                        shutil.copy2(cand, dest)
+                        print(f"[PRIORIZADOR CDP DOWNLOAD] Arquivo capturado da pasta Downloads do usuário: {os.path.basename(cand)} -> {dest}", flush=True)
+                        try:
+                            os.remove(cand)
+                        except Exception:
+                            pass
+                        downloaded_file = dest
+                    else:
+                        downloaded_file = cand
+                    print(f"[PRIORIZADOR CDP OK] Download concluído com sucesso: {os.path.basename(downloaded_file)} ({size1:,} bytes)!", flush=True)
+                    break
+            except Exception:
+                pass
 
     return downloaded_file or ""
 

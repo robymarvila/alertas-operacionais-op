@@ -337,6 +337,7 @@
 
                         <div class="module-card-body">
                             <h4 class="module-title">ENTREGA DE EQUIPES</h4>
+                            <p class="module-subtitle-desc">Acompanhamento Executivo de Disponibilidade Diária e Auditoria Forense (Enel SP)</p>
 
                             <!-- Horários de Sincronização em Destaque -->
                             <div class="module-sync-grid">
@@ -345,40 +346,72 @@
                                         <span class="dot-sm dot-emerald"></span>
                                         <strong>Equipes Ativas:</strong>
                                     </div>
-                                    <span class="sync-val text-emerald" id="hubDeliveryActiveCount">--</span>
+                                    <span class="sync-val text-emerald font-mono" id="hubDeliveryActiveCount">--</span>
                                 </div>
                                 <div class="module-sync-item">
                                     <div class="sync-label-row">
                                         <span class="dot-sm dot-trbonet"></span>
                                         <strong>Última Sincronização:</strong>
                                     </div>
-                                    <span class="sync-val" id="hubDeliveryLastSync">--:--:--</span>
+                                    <span class="sync-val font-mono" id="hubDeliveryLastSync">--:--:--</span>
                                 </div>
                             </div>
 
-                            <!-- Mini Métricas do Módulo de Entrega -->
-                            <div class="module-mini-kpis">
+                            <!-- Destaque Regional de Entrega Hoje (Norte x Leste) -->
+                            <div class="delivery-hub-today-wrap">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <span style="font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 5px;">
+                                        <i data-lucide="calendar-check" style="width: 12px; height: 12px; color: #10b981;"></i>
+                                        Entrega Hoje por Região
+                                    </span>
+                                    <span style="font-size: 0.68rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;" id="hubDeliveryTodayRatio">--% Norte • --% Leste</span>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
+                                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between;">
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span class="dot-sm" style="background: #10b981; width: 7px; height: 7px;"></span>
+                                            <span style="font-size: 0.72rem; font-weight: 700; color: #10b981;">Norte:</span>
+                                        </div>
+                                        <strong id="hubDeliveryTodayNorte" class="text-emerald" style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem;">--</strong>
+                                    </div>
+                                    <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between;">
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span class="dot-sm" style="background: #38bdf8; width: 7px; height: 7px;"></span>
+                                            <span style="font-size: 0.72rem; font-weight: 700; color: #38bdf8;">Leste:</span>
+                                        </div>
+                                        <strong id="hubDeliveryTodayLeste" class="text-cyan" style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem;">--</strong>
+                                    </div>
+                                </div>
+                                <div class="module-progress-bar-bg" style="height: 5px; border-radius: 999px; background: rgba(255,255,255,0.06); overflow: hidden; display: flex;">
+                                    <div id="hubDeliveryTodayBarNorte" style="height: 100%; width: 50%; background: #10b981; transition: width 0.4s ease;"></div>
+                                    <div id="hubDeliveryTodayBarLeste" style="height: 100%; width: 50%; background: #38bdf8; transition: width 0.4s ease;"></div>
+                                </div>
+                            </div>
+
+                            <!-- Mini Métricas do Módulo de Entrega (Hoje) -->
+                            <div class="module-mini-kpis" style="margin-top: 10px; margin-bottom: 12px;">
                                 <div class="mini-kpi-col">
                                     <span class="mini-kpi-lbl">Total Entregue</span>
-                                    <strong class="mini-kpi-val text-cyan" id="hubMiniDeliveredTotal">--</strong>
+                                    <strong class="mini-kpi-val text-cyan font-mono" id="hubMiniDeliveredTotal">--</strong>
                                 </div>
                                 <div class="mini-kpi-col">
                                     <span class="mini-kpi-lbl">Cesto Aéreo</span>
-                                    <strong class="mini-kpi-val text-emerald" id="hubMiniCesto">--</strong>
+                                    <strong class="mini-kpi-val text-emerald font-mono" id="hubMiniCesto">--</strong>
                                 </div>
                                 <div class="mini-kpi-col">
                                     <span class="mini-kpi-lbl">Veículo Leve</span>
-                                    <strong class="mini-kpi-val text-blue" id="hubMiniLeve">--</strong>
+                                    <strong class="mini-kpi-val text-blue font-mono" id="hubMiniLeve">--</strong>
                                 </div>
                                 <div class="mini-kpi-col">
                                     <span class="mini-kpi-lbl">Linha Viva/Munck</span>
-                                    <strong class="mini-kpi-val text-purple" id="hubMiniPesado">--</strong>
+                                    <strong class="mini-kpi-val text-purple font-mono" id="hubMiniPesado">--</strong>
                                 </div>
                             </div>
+
                         </div>
 
                         <div class="module-card-footer">
-                            <span class="module-access-btn">
+                            <span class="module-access-btn btn-access-delivery">
                                 <span>Acessar ENTREGA DE EQUIPES</span>
                                 <i data-lucide="arrow-right"></i>
                             </span>
@@ -472,7 +505,7 @@
                         </div>
 
                         <div class="module-card-footer">
-                            <span class="module-access-btn btn-access-priorizador" style="border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
+                            <span class="module-access-btn btn-access-priorizador">
                                 <span>Acessar PRIORIZADOR - ORDENS CRÍTICAS</span>
                                 <i data-lucide="arrow-right"></i>
                             </span>
@@ -5738,7 +5771,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.3.0-prio-realtime"></script>
+<script src="/static/js/app.js?v=5.4.1-prio-btn-clean"></script>
 
 </body>
 </html>

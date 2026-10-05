@@ -5432,6 +5432,7 @@ const deliveryState = {
     intradayCurve: {},
     geoGroups: {},
     lastSync: '--:--:--',
+    recent3Days: null,
     filters: {
         regions: new Set(),
         bases: new Set(),
@@ -5537,6 +5538,9 @@ async function loadDeliveryData(forceRefresh = false) {
             deliveryState.summaryActive = result.summary_active || {};
             deliveryState.summaryTotal = result.summary_total || {};
             deliveryState.intradayCurve = result.intraday_curve || {};
+            if (result.recent_3days) {
+                deliveryState.recent3Days = result.recent_3days;
+            }
             const rawSync = (result.timestamp && result.timestamp !== '--') ? result.timestamp : (result.last_sync && result.last_sync !== '--' ? result.last_sync : '');
             if (rawSync) {
                 deliveryState.lastSync = rawSync;
@@ -5579,6 +5583,7 @@ function updateDeliveryHubCard() {
     const activeTotal = deliveryState.activeTeams.length;
     const dayTotal = deliveryState.dailyTotalTeams.length;
     const sumActive = deliveryState.summaryActive || {};
+    const sumTotal = deliveryState.summaryTotal || {};
 
     const elActive = document.getElementById('hubDeliveryActiveCount');
     const elTotal = document.getElementById('hubMiniDeliveredTotal');
@@ -5598,7 +5603,46 @@ function updateDeliveryHubCard() {
             : (document.getElementById('cdpLastSyncTime')?.textContent || '--');
         elLastSync.textContent = (syncVal && syncVal !== '--') ? syncVal : '--:--:--';
     }
+
+    // 1. Separação por Região Norte e Leste da Entrega de Hoje (Total Acumulado)
+    let hojeNorte = 0;
+    let hojeLeste = 0;
+
+    if (sumTotal.regiao_norte && sumTotal.regiao_norte.total_block) {
+        hojeNorte = sumTotal.regiao_norte.total_block.total || 0;
+    } else if (deliveryState.dailyTotalTeams.length > 0) {
+        hojeNorte = deliveryState.dailyTotalTeams.filter(t => t.geo === 'Norte' || ['ENL', 'ECL', 'EEL'].includes((t.team_code || '').slice(0, 3))).length;
+    }
+
+    if (sumTotal.regiao_leste && sumTotal.regiao_leste.total_block) {
+        hojeLeste = sumTotal.regiao_leste.total_block.total || 0;
+    } else if (deliveryState.dailyTotalTeams.length > 0) {
+        hojeLeste = deliveryState.dailyTotalTeams.filter(t => t.geo === 'Leste' || ['EML', 'EQL', 'EVL', 'ESL'].includes((t.team_code || '').slice(0, 3))).length;
+    }
+
+    const elHojeNorte = document.getElementById('hubDeliveryTodayNorte');
+    const elHojeLeste = document.getElementById('hubDeliveryTodayLeste');
+    const elHojeRatio = document.getElementById('hubDeliveryTodayRatio');
+    const barHojeNorte = document.getElementById('hubDeliveryTodayBarNorte');
+    const barHojeLeste = document.getElementById('hubDeliveryTodayBarLeste');
+
+    if (elHojeNorte) elHojeNorte.textContent = hojeNorte;
+    if (elHojeLeste) elHojeLeste.textContent = hojeLeste;
+
+    const totHojeReg = hojeNorte + hojeLeste;
+    if (totHojeReg > 0) {
+        const pctN = Math.round((hojeNorte / totHojeReg) * 100);
+        const pctL = 100 - pctN;
+        if (elHojeRatio) elHojeRatio.textContent = `${pctN}% Norte • ${pctL}% Leste`;
+        if (barHojeNorte) barHojeNorte.style.width = `${pctN}%`;
+        if (barHojeLeste) barHojeLeste.style.width = `${pctL}%`;
+    } else {
+        if (elHojeRatio) elHojeRatio.textContent = `--% Norte • --% Leste`;
+        if (barHojeNorte) barHojeNorte.style.width = `50%`;
+        if (barHojeLeste) barHojeLeste.style.width = `50%`;
+    }
 }
+window.updateDeliveryHubCard = updateDeliveryHubCard;
 
 // Alternador do Modo de Visualização dos Cards Regionais (Ativas vs Total do Dia)
 function setRegionalViewMode(mode) {
@@ -7306,6 +7350,7 @@ async function handleCarregarBaseClick() {
             }
             await reloadAuditAvailableDates();
             refreshCurrentHistoryAudit();
+            if (typeof fetchRecent3DaysSummary === 'function') fetchRecent3DaysSummary(true);
         } else if (res && res.status === 'waiting_login') {
             showToast(res.message, 'warning');
         } else {
