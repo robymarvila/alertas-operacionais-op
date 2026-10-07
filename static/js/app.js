@@ -341,9 +341,9 @@ function applyTheme(theme) {
 // NAVEGAÇÃO ENTRE PORTAL HUB E MÓDULO OPERACIONAL
 // ==========================================================================
 function navigateToView(viewName) {
-    if (viewName === 'admin') {
+    if (viewName === 'admin' || viewName === 'tv') {
         if (!authState.isAuthenticated) {
-            showToast('Acesso Restrito: Autentique-se com sua matrícula e senha para acessar o Painel de Gerenciamento.', 'warning');
+            showToast('Acesso Restrito: Autentique-se com sua matrícula e senha para acessar esta funcionalidade.', 'warning');
             openAuthModal();
             return;
         }
@@ -355,8 +355,8 @@ function navigateToView(viewName) {
     }
 
     // Atualiza classes no elemento raiz HTML e BODY para consistência absoluta de CSS
-    document.documentElement.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin', 'route-priorizador');
-    document.body.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin', 'route-priorizador');
+    document.documentElement.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin', 'route-priorizador', 'route-tv');
+    document.body.classList.remove('route-hub', 'route-module', 'route-delivery', 'route-admin', 'route-priorizador', 'route-tv');
     if (viewName === 'delivery') {
         document.documentElement.classList.add('route-delivery');
         document.body.classList.add('route-delivery');
@@ -369,6 +369,9 @@ function navigateToView(viewName) {
     } else if (viewName === 'admin') {
         document.documentElement.classList.add('route-admin');
         document.body.classList.add('route-admin');
+    } else if (viewName === 'tv') {
+        document.documentElement.classList.add('route-tv');
+        document.body.classList.add('route-tv');
     } else {
         document.documentElement.classList.add('route-hub');
         document.body.classList.add('route-hub');
@@ -380,12 +383,14 @@ function navigateToView(viewName) {
     const deliveryView = document.getElementById('moduleDeliveryView');
     const priorizadorView = document.getElementById('modulePriorizadorView');
     const adminView = document.getElementById('systemAdminViewContainer');
+    const tvView = document.getElementById('tvDashboardViewContainer');
 
     if (portalHub) portalHub.style.display = (viewName === 'hub') ? 'flex' : 'none';
     if (moduleView) moduleView.style.display = (viewName === 'module' || viewName === 'trbonet') ? 'flex' : 'none';
     if (deliveryView) deliveryView.style.display = (viewName === 'delivery') ? 'flex' : 'none';
     if (priorizadorView) priorizadorView.style.display = (viewName === 'priorizador') ? 'flex' : 'none';
     if (adminView) adminView.style.display = (viewName === 'admin') ? 'block' : 'none';
+    if (tvView) tvView.style.display = (viewName === 'tv') ? 'flex' : 'none';
 
     if (viewName === 'hub') {
         updateHubCard();
@@ -404,6 +409,10 @@ function navigateToView(viewName) {
     } else if (viewName === 'admin') {
         switchAdminTab('engines');
         loadAdminEngineStatus();
+    } else if (viewName === 'tv') {
+        if (typeof initTvDashboard === 'function') {
+            initTvDashboard();
+        }
     } else {
         switchMainTab(appState.currentMainTab || 'live');
     }
@@ -5080,8 +5089,15 @@ function updateAuthUI() {
         if (manageShortBtn) manageShortBtn.style.display = isAdmin ? 'inline-flex' : 'none';
         const btnHubAdmin = document.getElementById('btnHubAdminPanel');
         const btnGoToAdmin = document.getElementById('btnGoToAdminPanel');
+        const btnHubTv = document.getElementById('btnHubTvPanel');
+        const btnGoToTv = document.getElementById('btnGoToTvPanel');
+        const cardHubTv = document.getElementById('cardHubTvPanel');
+
         if (btnHubAdmin) btnHubAdmin.style.display = 'inline-flex';
         if (btnGoToAdmin) btnGoToAdmin.style.display = 'inline-flex';
+        if (btnHubTv) btnHubTv.style.display = 'inline-flex';
+        if (btnGoToTv) btnGoToTv.style.display = 'inline-flex';
+        if (cardHubTv) cardHubTv.style.display = 'block';
     } else {
         if (loginForm) loginForm.style.display = 'block';
         if (activeBox) activeBox.style.display = 'none';
@@ -5089,8 +5105,15 @@ function updateAuthUI() {
         if (manageShortBtn) manageShortBtn.style.display = 'none';
         const btnHubAdmin = document.getElementById('btnHubAdminPanel');
         const btnGoToAdmin = document.getElementById('btnGoToAdminPanel');
+        const btnHubTv = document.getElementById('btnHubTvPanel');
+        const btnGoToTv = document.getElementById('btnGoToTvPanel');
+        const cardHubTv = document.getElementById('cardHubTvPanel');
+
         if (btnHubAdmin) btnHubAdmin.style.display = 'none';
         if (btnGoToAdmin) btnGoToAdmin.style.display = 'none';
+        if (btnHubTv) btnHubTv.style.display = 'none';
+        if (btnGoToTv) btnGoToTv.style.display = 'none';
+        if (cardHubTv) cardHubTv.style.display = 'none';
     }
 
     initIcons();
@@ -8143,11 +8166,34 @@ function initPeriodFiltersControls(uniqueDimensions) {
         `).join('');
     }
 
-    // Tipo Veículo (Hierarquia Oficial: TMA e SOT)
+    // Tipo Veículo (Hierarquia Oficial: TMA, SOT e PROJETOS)
     const vehList = document.getElementById('wfFilterVehicleList');
     if (vehList) {
         const tmaVehicles = ['Cesto Aéreo', 'Veículo Leve', 'Moto'];
         const sotVehicles = ['Linha Viva', 'Munck'];
+        const projetoVehicles = ['Projeto Ramal'];
+        const standardVehicles = new Set([...tmaVehicles, ...sotVehicles, ...projetoVehicles]);
+        const otherVehicles = (uniqueDimensions.vehicles || []).filter(v => !standardVehicles.has(v));
+
+        let othersSectionHtml = '';
+        if (otherVehicles.length > 0) {
+            othersSectionHtml = `
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Clique para selecionar/desmarcar Outros Veículos">
+                    <input type="checkbox" class="popover-group-checkbox" data-group="outros_veiculos" checked>
+                    <span>OUTROS</span>
+                </label>
+                <div class="popover-group-children">
+                    ${otherVehicles.map(v => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-filter="vehicle" data-group="outros_veiculos" value="${v}" checked>
+                            <span>${v}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            `;
+        }
 
         vehList.innerHTML = `
             <div class="popover-group-section">
@@ -8178,6 +8224,21 @@ function initPeriodFiltersControls(uniqueDimensions) {
                     `).join('')}
                 </div>
             </div>
+            <div class="popover-group-section">
+                <label class="popover-group-header" title="Clique para selecionar/desmarcar Projeto Ramal">
+                    <input type="checkbox" class="popover-group-checkbox" data-group="projetos" checked>
+                    <span>PROJETOS</span>
+                </label>
+                <div class="popover-group-children">
+                    ${projetoVehicles.map(v => `
+                        <label class="popover-item-label child-item">
+                            <input type="checkbox" class="popover-checkbox" data-filter="vehicle" data-group="projetos" value="${v}" checked>
+                            <span>${v}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            ${othersSectionHtml}
         `;
     }
 
@@ -14274,4 +14335,767 @@ document.addEventListener('DOMContentLoaded', () => {
         syncPriorizadorFiltersFromDOM();
     }
 });
+
+// ==========================================================================
+// MÓDULO 4: PAINEL TV CCO - MONITORAMENTO PANORÂMICO VIDEO WALL
+// DESIGN: GOOGLE MATERIAL 3 EXPRESSIVE & APPLE LIQUID GLASS
+// ==========================================================================
+
+const tvDashboardState = {
+    geoScope: 'ALL', // 'ALL' | 'NORTE' | 'LESTE'
+    countdown: 30,
+    countdownTimer: null,
+    clockTimer: null,
+    deliveryData: null,
+    priorizadorData: null,
+    charts: {
+        fleetChart: null,
+        hourlyChart: null,
+        baseChart: null
+    },
+    isFullscreen: false,
+    isLoading: false,
+    initialized: false
+};
+
+const TV_RAMAL_CODES = new Set([
+    'ENL216', 'ENL217', 'ENL218', 'ENL219', 'ENL220',
+    'ECL216', 'ECL217', 'ECL218', 'ECL219', 'ECL220',
+    'EEL216', 'EEL217', 'EEL218', 'EEL219', 'EEL220'
+]);
+
+function isTvRamalTeam(teamId) {
+    if (!teamId) return false;
+    const cleanId = String(teamId).trim().toUpperCase();
+    return TV_RAMAL_CODES.has(cleanId);
+}
+
+function initTvDashboard() {
+    startTvClock();
+    setupTvFullscreenListener();
+    setTvGeoScope(tvDashboardState.geoScope || 'ALL', false);
+    loadTvDashboardData(true);
+    startTvCountdown();
+    tvDashboardState.initialized = true;
+    setTimeout(initIcons, 60);
+}
+window.initTvDashboard = initTvDashboard;
+
+function startTvClock() {
+    if (tvDashboardState.clockTimer) clearInterval(tvDashboardState.clockTimer);
+    updateTvClockDisplay();
+    tvDashboardState.clockTimer = setInterval(updateTvClockDisplay, 1000);
+}
+
+function updateTvClockDisplay() {
+    const clkEl = document.getElementById('tvDigitalClock');
+    const dtEl = document.getElementById('tvDigitalDate');
+    const now = new Date();
+    
+    if (clkEl) {
+        clkEl.textContent = now.toLocaleTimeString('pt-BR', { hour12: false });
+    }
+    if (dtEl) {
+        const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        const dayOfWeek = days[now.getDay()];
+        dtEl.textContent = `${dayOfWeek}, ${now.toLocaleDateString('pt-BR')}`;
+    }
+}
+
+function startTvCountdown() {
+    if (tvDashboardState.countdownTimer) clearInterval(tvDashboardState.countdownTimer);
+    tvDashboardState.countdown = 30;
+    updateTvCountdownDisplay();
+
+    tvDashboardState.countdownTimer = setInterval(() => {
+        if (appState.currentView !== 'tv') return;
+        tvDashboardState.countdown -= 1;
+        if (tvDashboardState.countdown <= 0) {
+            tvDashboardState.countdown = 30;
+            loadTvDashboardData(false);
+        }
+        updateTvCountdownDisplay();
+    }, 1000);
+}
+
+function updateTvCountdownDisplay() {
+    const textEl = document.getElementById('tvCountdownText');
+    const circleEl = document.getElementById('tvCountdownCircle');
+    if (textEl) {
+        textEl.textContent = `${tvDashboardState.countdown}s`;
+    }
+    if (circleEl) {
+        // Circunferência de raio 16 = 2 * PI * 16 ≈ 100.53
+        const totalLen = 100.53;
+        const progress = (30 - tvDashboardState.countdown) / 30;
+        circleEl.style.strokeDashoffset = (totalLen * progress).toFixed(1);
+    }
+}
+
+function setTvGeoScope(scope, reload = true) {
+    tvDashboardState.geoScope = scope;
+
+    const btnAll = document.getElementById('tvBtnGeoAll');
+    const btnNorte = document.getElementById('tvBtnGeoNorte');
+    const btnLeste = document.getElementById('tvBtnGeoLeste');
+
+    if (btnAll) btnAll.classList.toggle('active', scope === 'ALL');
+    if (btnNorte) btnNorte.classList.toggle('active', scope === 'NORTE');
+    if (btnLeste) btnLeste.classList.toggle('active', scope === 'LESTE');
+
+    const delSub = document.getElementById('tvDeliverySubTitle');
+    const prioSub = document.getElementById('tvPriorizadorSubTitle');
+
+    const scopeLabel = scope === 'ALL' ? 'Norte + Leste' : `Apenas Região ${scope}`;
+    if (delSub) delSub.textContent = `Equipes Ativas em Campo (${scopeLabel}) • Turnos & Tipologias`;
+    if (prioSub) prioSub.textContent = `Fila de Emergências (${scopeLabel}) • Clientes Interrompidos (CI) & Despacho`;
+
+    if (reload && tvDashboardState.deliveryData && tvDashboardState.priorizadorData) {
+        renderTvDashboard();
+    }
+}
+window.setTvGeoScope = setTvGeoScope;
+
+async function loadTvDashboardData(isManual = false) {
+    if (tvDashboardState.isLoading) return;
+    tvDashboardState.isLoading = true;
+
+    const delBadge = document.getElementById('tvDeliveryStatusBadge');
+    const prioBadge = document.getElementById('tvPrioStatusBadge');
+    if (delBadge) delBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Atualizando...';
+    if (prioBadge) prioBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Sincronizando...';
+    initIcons();
+
+    try {
+        const [delRes, prioRes] = await Promise.all([
+            fetch('/api/delivery/data?_=' + Date.now()).then(r => r.json()).catch(err => {
+                console.warn('Erro ao carregar /api/delivery/data:', err);
+                return null;
+            }),
+            fetch('/api/priorizador/data?_=' + Date.now()).then(r => r.json()).catch(err => {
+                console.warn('Erro ao carregar /api/priorizador/data:', err);
+                return null;
+            })
+        ]);
+
+        if (delRes && delRes.status === 'success') {
+            tvDashboardState.deliveryData = delRes;
+        }
+        if (prioRes && prioRes.status === 'success') {
+            tvDashboardState.priorizadorData = prioRes;
+        }
+
+        renderTvDashboard();
+
+        if (delBadge) delBadge.innerHTML = '<i data-lucide="activity"></i> Sincronizado';
+        if (prioBadge) prioBadge.innerHTML = '<i data-lucide="shield-alert"></i> CCO Ativo';
+        if (isManual) {
+            tvDashboardState.countdown = 30;
+            updateTvCountdownDisplay();
+        }
+    } catch (err) {
+        console.error('Falha geral no loadTvDashboardData:', err);
+        if (delBadge) delBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
+        if (prioBadge) prioBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
+    } finally {
+        tvDashboardState.isLoading = false;
+        initIcons();
+    }
+}
+window.loadTvDashboardData = loadTvDashboardData;
+
+function renderTvDashboard() {
+    renderTvDeliverySection();
+    renderTvPriorizadorSection();
+    renderTvTop5Orders();
+}
+
+// --------------------------------------------------------------------------
+// SEÇÃO 1: ENTREGA DE EQUIPES & FROTAS
+// --------------------------------------------------------------------------
+function renderTvDeliverySection() {
+    const data = tvDashboardState.deliveryData;
+    if (!data) return;
+
+    const scope = tvDashboardState.geoScope;
+    let teams = Array.isArray(data.active_teams) ? [...data.active_teams] : [];
+
+    // Bases mapeadas para Região Norte
+    const BASES_NORTE = new Set(['FAGUNDES FILHO', 'CAJATI', 'VILA MEDEIROS', 'NORTE']);
+
+    if (scope === 'NORTE') {
+        teams = teams.filter(t => {
+            const b = String(t.base_name || t.base_display || t.base_code || '').trim().toUpperCase();
+            const r = String(t.region || '').trim().toUpperCase();
+            return BASES_NORTE.has(b) || b.includes('NORTE') || b.includes('FAGUNDES') || b.includes('CAJATI') || b.includes('MEDEIROS') || r.includes('NORTE');
+        });
+    } else if (scope === 'LESTE') {
+        teams = teams.filter(t => {
+            const b = String(t.base_name || t.base_display || t.base_code || '').trim().toUpperCase();
+            const r = String(t.region || '').trim().toUpperCase();
+            const isNorte = BASES_NORTE.has(b) || b.includes('NORTE') || b.includes('FAGUNDES') || b.includes('CAJATI') || b.includes('MEDEIROS') || r.includes('NORTE');
+            return !isNorte;
+        });
+    }
+
+    let cesto = 0;
+    let leve = 0;
+    let moto = 0;
+    let linhaVivaMunk = 0;
+    let ramal = 0;
+
+    teams.forEach(t => {
+        const id = String(t.team_code || t.team_id || t.equipe || '').trim().toUpperCase();
+        const tipo = String(t.vehicle_type || t.unified_group || t.tipo || '').trim().toUpperCase();
+
+        if (isTvRamalTeam(id) || tipo.includes('RAMAL')) {
+            ramal += 1;
+        } else if (tipo.includes('MOTO') || id.replace(/\D/g, '').startsWith('7')) {
+            moto += 1;
+        } else if (tipo.includes('CESTO') || tipo.includes('AEREO') || tipo.includes('AÉREO')) {
+            cesto += 1;
+        } else if (tipo.includes('LINHA VIVA') || tipo.includes('MUNK') || tipo.includes('GUINDASTE')) {
+            linhaVivaMunk += 1;
+        } else {
+            leve += 1;
+        }
+    });
+
+    const totalAtivas = teams.length;
+
+    // Atualiza KPIs no DOM
+    const elTot = document.getElementById('tvKpiTotalAtivas');
+    const elCesto = document.getElementById('tvKpiCestoAereo');
+    const elLeve = document.getElementById('tvKpiVeiculoLeve');
+    const elMoto = document.getElementById('tvKpiMoto');
+    const elMunk = document.getElementById('tvKpiLinhaVivaMunk');
+    const elRamal = document.getElementById('tvKpiProjetoRamal');
+    const elTarget = document.getElementById('tvKpiTargetAtivas');
+
+    if (elTot) elTot.textContent = totalAtivas.toLocaleString('pt-BR');
+    if (elCesto) elCesto.textContent = cesto.toLocaleString('pt-BR');
+    if (elLeve) elLeve.textContent = leve.toLocaleString('pt-BR');
+    if (elMoto) elMoto.textContent = moto.toLocaleString('pt-BR');
+    if (elMunk) elMunk.textContent = linhaVivaMunk.toLocaleString('pt-BR');
+    if (elRamal) elRamal.textContent = ramal.toLocaleString('pt-BR');
+
+    // Meta se disponível no backend
+    const meta = data.target_teams || (scope === 'NORTE' ? 70 : scope === 'LESTE' ? 95 : 165);
+    if (elTarget) elTarget.textContent = `Meta: ${meta}`;
+
+    // Renderiza Gráfico 1: Composição da Frota (Doughnut)
+    renderTvFleetChart([cesto, leve, moto, linhaVivaMunk, ramal]);
+
+    // Renderiza Gráfico 2: Curva de Entrega por Horário
+    renderTvHourlyChart(teams, data.intraday_curve);
+}
+
+function renderTvFleetChart(values) {
+    const ctx = document.getElementById('tvDeliveryFleetChart');
+    if (!ctx) return;
+
+    if (tvDashboardState.charts.fleetChart) {
+        tvDashboardState.charts.fleetChart.destroy();
+        tvDashboardState.charts.fleetChart = null;
+    }
+
+    const labels = [
+        ['Cesto', 'Aéreo'],
+        ['Veículo', 'Leve'],
+        ['Moto', '(08:00)'],
+        ['Linha Viva', '+ Munk'],
+        ['Projeto', 'Ramal']
+    ];
+
+    const bgColors = [
+        '#00f2fe', // Cesto Aéreo (Cyan Neon)
+        '#10b981', // Veículo Leve (Emerald)
+        '#f59e0b', // Moto (Âmbar)
+        '#a855f7', // Linha Viva + Munk (Roxo)
+        '#a3e635'  // Projeto Ramal (Lima Neon)
+    ];
+
+    tvDashboardState.charts.fleetChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: values,
+                backgroundColor: bgColors,
+                borderColor: 'rgba(15, 23, 42, 0.85)',
+                borderWidth: 2,
+                hoverOffset: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '62%',
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: '#94a3b8',
+                        font: { size: 10, weight: '700', family: 'Plus Jakarta Sans' },
+                        boxWidth: 10,
+                        boxHeight: 10,
+                        padding: 8
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const lbl = Array.isArray(context.label) ? context.label.join(' ') : context.label;
+                            const val = context.raw || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+                            return ` ${lbl}: ${val} equipes (${pct}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderTvHourlyChart(teams, serverCurve) {
+    const ctx = document.getElementById('tvDeliveryHourlyChart');
+    if (!ctx) return;
+
+    if (tvDashboardState.charts.hourlyChart) {
+        tvDashboardState.charts.hourlyChart.destroy();
+        tvDashboardState.charts.hourlyChart = null;
+    }
+
+    // Horários das 06:00 às 22:00
+    const hours = [];
+    for (let h = 6; h <= 22; h++) {
+        hours.push(String(h).padStart(2, '0') + ':00');
+    }
+
+    const counts = hours.map(() => 0);
+
+    // Se temos equipes ativas filtradas para a tela, calcula a distribuição horária exata
+    // garantindo as regras: Moto = 08:00, Projeto Ramal = 08:00
+    teams.forEach(t => {
+        const id = String(t.team_code || t.team_id || t.equipe || '').trim().toUpperCase();
+        const tipo = String(t.vehicle_type || t.unified_group || t.tipo || '').trim().toUpperCase();
+        
+        let hora = '08:00';
+        if (isTvRamalTeam(id) || tipo.includes('RAMAL') || tipo.includes('MOTO') || id.replace(/\D/g, '').startsWith('7')) {
+            hora = '08:00';
+        } else if (t.shift_code || t.entry_time || t.hora_inicio || t.turno_inicio) {
+            const raw = String(t.shift_code || t.entry_time || t.hora_inicio || t.turno_inicio);
+            const match = raw.match(/(\d{1,2}):(\d{2})/);
+            if (match) {
+                hora = String(match[1]).padStart(2, '0') + ':00';
+            }
+        }
+
+        const idx = hours.indexOf(hora);
+        if (idx >= 0) {
+            counts[idx] += 1;
+        } else {
+            // Se for antes das 06:00, agrupa em 06:00; se após 22:00, agrupa em 22:00
+            const hNum = parseInt(hora, 10);
+            if (hNum < 6) counts[0] += 1;
+            else counts[counts.length - 1] += 1;
+        }
+    });
+
+    // Se não há equipes filtradas e serverCurve existe, usa serverCurve como fallback
+    const hasData = counts.some(c => c > 0);
+    let finalCounts = counts;
+    if (!hasData && serverCurve && typeof serverCurve === 'object') {
+        finalCounts = hours.map(h => Number(serverCurve[h] || 0));
+    }
+
+    tvDashboardState.charts.hourlyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: hours,
+            datasets: [{
+                label: 'Equipes Entregues',
+                data: finalCounts,
+                borderColor: '#00f2fe',
+                backgroundColor: 'rgba(0, 242, 254, 0.12)',
+                borderWidth: 2.5,
+                fill: true,
+                tension: 0.35,
+                pointRadius: 3,
+                pointBackgroundColor: '#00f2fe',
+                pointBorderColor: '#0f172a',
+                pointBorderWidth: 1.5,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                    ticks: {
+                        color: '#64748b',
+                        font: { size: 9, family: 'JetBrains Mono' },
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 9
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        color: '#64748b',
+                        font: { size: 9, family: 'JetBrains Mono' },
+                        precision: 0
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: function(items) {
+                            return `Horário: ${items[0].label}`;
+                        },
+                        label: function(context) {
+                            return ` ${context.raw} equipes alocadas`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// --------------------------------------------------------------------------
+// SEÇÃO 2: PRIORIZADOR & ORDENS CRÍTICAS
+// --------------------------------------------------------------------------
+function renderTvPriorizadorSection() {
+    const data = tvDashboardState.priorizadorData;
+    if (!data) return;
+
+    const scope = tvDashboardState.geoScope;
+    let orders = Array.isArray(data.active_orders) ? [...data.active_orders] : (Array.isArray(data.orders) ? [...data.orders] : []);
+
+    // Filtra pelo escopo geográfico se não for ALL
+    if (scope === 'NORTE') {
+        orders = orders.filter(o => {
+            const r = String(o.regiao || o.regional || '').toUpperCase();
+            const b = String(o.base_op || o.base || '').toUpperCase();
+            return r.includes('NORTE') || b.includes('FAGUNDES') || b.includes('CAJATI') || b.includes('VILA MEDEIROS') || b.includes('MEDEIROS');
+        });
+    } else if (scope === 'LESTE') {
+        orders = orders.filter(o => {
+            const r = String(o.regiao || o.regional || '').toUpperCase();
+            const b = String(o.base_op || o.base || '').toUpperCase();
+            return r.includes('LESTE') || b.includes('PENHA') || b.includes('ITAQUERA') || b.includes('SAO MIGUEL') || b.includes('ARICANDUVA');
+        });
+    }
+
+    // Calcula KPIs a partir das ordens
+    let totalOs = orders.length;
+    let totalCi = 0;
+    let altaPrioridade = 0;
+    let aguardDesp = 0;
+    let local80 = 0;
+    let semAtend = 0;
+    let deslocamento = 0;
+
+    const baseCountMap = {};
+
+    orders.forEach(o => {
+        const ci = Number(o.ci || 0);
+        totalCi += ci;
+
+        const prio = String(o.criticidade_label || o.prioridade || '').toUpperCase();
+        const rank = Number(o.prioridade_rank || 99);
+        if (rank <= 2 || prio.includes('P1') || prio.includes('P2') || prio.includes('ALTA') || prio.includes('EMERG') || o.is_urgencia_critica) {
+            altaPrioridade += 1;
+        }
+
+        const desp = String(o.control_desp || o.status_despacho || o.status || '').toUpperCase();
+        if (desp.includes('AGUARD') || desp.includes('PEND') || desp.includes('SEM ATEND')) {
+            aguardDesp += 1;
+            semAtend += 1;
+        } else if (desp.includes('DESLOC') || desp.includes('A CAMINHO') || desp.includes('CAMI')) {
+            deslocamento += 1;
+        } else if (desp.includes('LOCAL')) {
+            const tempoLocal = Number(o.dur_min || o.tempo_local_min || o.aging_min || 0);
+            if (tempoLocal >= 80) {
+                local80 += 1;
+            }
+        }
+
+        const base = String(o.base_op || o.base || 'OUTRAS').trim().toUpperCase();
+        baseCountMap[base] = (baseCountMap[base] || 0) + 1;
+    });
+
+    // Se o escopo for ALL e o backend fornecer KPIs agregados, alinha os KPIs
+    if (scope === 'ALL' && data.kpis) {
+        const k = data.kpis;
+        totalOs = Number(k.total_ordens || totalOs);
+        totalCi = Number(k.total_ci || totalCi);
+        altaPrioridade = Number(k.total_grupo_prioritario || k.total_prio1_elevada || altaPrioridade);
+        aguardDesp = Number(k.total_aguard_desp || aguardDesp);
+        local80 = Number(k.total_local_80min || local80);
+    } else if (scope === 'NORTE' && data.kpis) {
+        totalOs = Number(data.kpis.total_norte || totalOs);
+    } else if (scope === 'LESTE' && data.kpis) {
+        totalOs = Number(data.kpis.total_leste || totalOs);
+    }
+
+    // Se distributions.by_base existir no backend e scope === ALL, podemos mesclar
+    if (scope === 'ALL' && data.distributions && data.distributions.by_base) {
+        Object.assign(baseCountMap, data.distributions.by_base);
+    }
+
+    // Atualiza KPIs do Priorizador no DOM
+    const elOs = document.getElementById('tvKpiPrioTotalOs');
+    const elCi = document.getElementById('tvKpiPrioTotalCi');
+    const elAlta = document.getElementById('tvKpiPrioAltaPrioridade');
+    const elAguard = document.getElementById('tvKpiPrioAguardDesp');
+
+    const elLoc80 = document.getElementById('tvStatLocal80');
+    const elSemAtend = document.getElementById('tvStatSemAtendimento');
+    const elDesloc = document.getElementById('tvStatEmDeslocamento');
+
+    if (elOs) elOs.textContent = totalOs.toLocaleString('pt-BR');
+    if (elCi) elCi.textContent = totalCi.toLocaleString('pt-BR');
+    if (elAlta) elAlta.textContent = altaPrioridade.toLocaleString('pt-BR');
+    if (elAguard) elAguard.textContent = aguardDesp.toLocaleString('pt-BR');
+
+    if (elLoc80) elLoc80.textContent = local80.toLocaleString('pt-BR');
+    if (elSemAtend) elSemAtend.textContent = semAtend.toLocaleString('pt-BR');
+    if (elDesloc) elDesloc.textContent = deslocamento.toLocaleString('pt-BR');
+
+    // Gráfico de Distribuição de OS por Base
+    renderTvBaseChart(baseCountMap);
+}
+
+function renderTvBaseChart(baseCountMap) {
+    const ctx = document.getElementById('tvPriorizadorBaseChart');
+    if (!ctx) return;
+
+    if (tvDashboardState.charts.baseChart) {
+        tvDashboardState.charts.baseChart.destroy();
+        tvDashboardState.charts.baseChart = null;
+    }
+
+    // Ordena as bases por volume de OS decrescente
+    const sorted = Object.entries(baseCountMap)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6);
+
+    const labels = sorted.map(item => item[0]);
+    const values = sorted.map(item => item[1]);
+
+    if (labels.length === 0) {
+        labels.push('Sem Ordens');
+        values.push(0);
+    }
+
+    tvDashboardState.charts.baseChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'OS em Aberto',
+                data: values,
+                backgroundColor: 'rgba(245, 158, 11, 0.45)',
+                borderColor: '#f59e0b',
+                borderWidth: 1.5,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            indexAxis: 'y', // Barra horizontal para leitura rápida em TV
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        color: '#64748b',
+                        font: { size: 9, family: 'JetBrains Mono' },
+                        precision: 0
+                    }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: {
+                        color: '#cbd5e1',
+                        font: { size: 10, weight: '700', family: 'Plus Jakarta Sans' }
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return ` ${context.raw} ordens em aberto nesta base`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// --------------------------------------------------------------------------
+// SEÇÃO 3: TOP 5 OS EM ABERTO PENDENTES DE TRATAMENTO
+// --------------------------------------------------------------------------
+function renderTvTop5Orders() {
+    const grid = document.getElementById('tvTop5CardsGrid');
+    if (!grid) return;
+
+    const data = tvDashboardState.priorizadorData;
+    const rawOrders = (data && (data.active_orders || data.orders)) ? (data.active_orders || data.orders) : [];
+    if (!Array.isArray(rawOrders) || rawOrders.length === 0) {
+        grid.innerHTML = '<div class="tv-top5-empty">Nenhuma ordem prioritária pendente de tratamento no momento.</div>';
+        return;
+    }
+
+    const scope = tvDashboardState.geoScope;
+    let orders = [...rawOrders];
+
+    // Filtra pelo escopo geográfico
+    if (scope === 'NORTE') {
+        orders = orders.filter(o => {
+            const r = String(o.regiao || o.regional || '').toUpperCase();
+            const b = String(o.base_op || o.base || '').toUpperCase();
+            return r.includes('NORTE') || b.includes('FAGUNDES') || b.includes('CAJATI') || b.includes('VILA MEDEIROS') || b.includes('MEDEIROS');
+        });
+    } else if (scope === 'LESTE') {
+        orders = orders.filter(o => {
+            const r = String(o.regiao || o.regional || '').toUpperCase();
+            const b = String(o.base_op || o.base || '').toUpperCase();
+            return r.includes('LESTE') || b.includes('PENHA') || b.includes('ITAQUERA') || b.includes('SAO MIGUEL') || b.includes('ARICANDUVA');
+        });
+    }
+
+    // Filtra ordens pendentes (não concluídas / canceladas)
+    orders = orders.filter(o => {
+        const s = String(o.status || o.control_desp || '').toUpperCase();
+        return !s.includes('CONCLU') && !s.includes('FINAL') && !s.includes('CANC');
+    });
+
+    // Ordenação de criticidade estrita:
+    // 1. Prioridade (P1 > P2 > P3 / rank numérico menor)
+    // 2. Clientes Interrompidos (CI) decrescente
+    // 3. Aging (tempo de espera) decrescente
+    orders.sort((a, b) => {
+        const rankA = Number(a.prioridade_rank || (String(a.criticidade_label || a.prioridade).includes('P1') ? 1 : 5));
+        const rankB = Number(b.prioridade_rank || (String(b.criticidade_label || b.prioridade).includes('P1') ? 1 : 5));
+        if (rankA !== rankB) return rankA - rankB;
+
+        const ciA = Number(a.ci || 0);
+        const ciB = Number(b.ci || 0);
+        if (ciB !== ciA) return ciB - ciA;
+
+        const agingA = Number(a.dur_min || a.aging_min || 0);
+        const agingB = Number(b.dur_min || b.aging_min || 0);
+        return agingB - agingA;
+    });
+
+    const top5 = orders.slice(0, 5);
+
+    if (top5.length === 0) {
+        grid.innerHTML = '<div class="tv-top5-empty">Todas as ordens críticas estão tratadas ou em atendimento finalizado!</div>';
+        return;
+    }
+
+    grid.innerHTML = top5.map((os, idx) => {
+        const osNum = os.ordem || os.numero_os || os.os || `#ORD-${idx + 1}`;
+        const prioTag = os.criticidade_label || os.prioridade || 'P1 CRÍTICA';
+        const baseName = os.base_op || os.base || 'BASE NÃO INFORMADA';
+        const regiao = os.regiao || (scope === 'ALL' ? 'ENEL SP' : scope);
+        const ciVal = Number(os.ci || 0).toLocaleString('pt-BR');
+        
+        // Aging formatado
+        const agingMin = Number(os.dur_min || os.aging_min || 0);
+        const hours = Math.floor(agingMin / 60);
+        const mins = agingMin % 60;
+        const agingStr = `${String(hours).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m`;
+        const agingColor = agingMin >= 120 ? '#ef4444' : agingMin >= 60 ? '#f59e0b' : '#00f2fe';
+
+        const despStatus = os.control_desp || os.status_despacho || 'AGUARDANDO DESPACHO';
+        const endereco = os.alimentador ? `Alim: ${os.alimentador}` : (os.eq ? `Eq: ${os.eq}` : 'São Paulo - SP');
+
+        return `
+            <div class="tv-top5-card">
+                <div class="tv-top5-card-top">
+                    <span class="tv-top5-num">${escapeHtml(osNum)}</span>
+                    <span class="tv-top5-prio-tag">${escapeHtml(prioTag)}</span>
+                </div>
+                <div class="tv-top5-base-row">
+                    <i data-lucide="map-pin"></i>
+                    <span>${escapeHtml(baseName)} • ${escapeHtml(regiao)}</span>
+                </div>
+                <div class="tv-top5-metrics-row">
+                    <div class="tv-top5-metric-item">
+                        <span class="tv-top5-metric-lbl">CLIENTES (CI)</span>
+                        <strong class="tv-top5-metric-val text-amber">${ciVal}</strong>
+                    </div>
+                    <div class="tv-top5-metric-item">
+                        <span class="tv-top5-metric-lbl">TEMPO DE FILA</span>
+                        <strong class="tv-top5-metric-val" style="color: ${agingColor};">${agingStr}</strong>
+                    </div>
+                </div>
+                <div class="tv-top5-status-footer">
+                    <span class="tv-top5-status-text" title="${escapeHtml(despStatus)} • ${escapeHtml(endereco)}">
+                        ${escapeHtml(despStatus)}
+                    </span>
+                    <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: var(--text-secondary); opacity: 0.7;"></i>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    initIcons();
+}
+
+// --------------------------------------------------------------------------
+// MODO TELA CHEIA (FULLSCREEN)
+// --------------------------------------------------------------------------
+function toggleTvFullscreen() {
+    const fsIcon = document.getElementById('tvFsIcon');
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().then(() => {
+            tvDashboardState.isFullscreen = true;
+            if (fsIcon) fsIcon.setAttribute('data-lucide', 'minimize');
+            initIcons();
+        }).catch(err => {
+            console.warn('Erro ao solicitar fullscreen:', err);
+        });
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen().then(() => {
+                tvDashboardState.isFullscreen = false;
+                if (fsIcon) fsIcon.setAttribute('data-lucide', 'maximize');
+                initIcons();
+            }).catch(err => {
+                console.warn('Erro ao sair do fullscreen:', err);
+            });
+        }
+    }
+}
+window.toggleTvFullscreen = toggleTvFullscreen;
+
+function setupTvFullscreenListener() {
+    document.addEventListener('fullscreenchange', () => {
+        const fsIcon = document.getElementById('tvFsIcon');
+        const isFs = !!document.fullscreenElement;
+        tvDashboardState.isFullscreen = isFs;
+        if (fsIcon) {
+            fsIcon.setAttribute('data-lucide', isFs ? 'minimize' : 'maximize');
+            initIcons();
+        }
+    });
+}
+
 
