@@ -4692,10 +4692,10 @@
                         <div class="tv-kpi-card tv-kpi-ramal">
                             <div class="tv-kpi-card-header">
                                 <span class="tv-kpi-label">PROJETO RAMAL</span>
-                                <span class="tv-kpi-tag-turno">08:00</span>
+                                <span class="tv-kpi-tag-turno tag-ramal-orange">08:00</span>
                             </div>
                             <div class="tv-kpi-val-row">
-                                <span class="tv-kpi-value text-lime font-mono" id="tvKpiProjetoRamal">--</span>
+                                <span class="tv-kpi-value text-orange font-mono" id="tvKpiProjetoRamal">--</span>
                                 <span class="tv-kpi-sub-target" id="tvKpiRamalSub">--%</span>
                             </div>
                         </div>
@@ -4703,22 +4703,33 @@
 
                     <!-- SUB-GRID DE GRÁFICOS: 1º DISTRIBUIÇÃO HORÁRIO/TURNO (TOPO) + 2º COMPOSIÇÃO DA FROTA EM BARRAS (ABAIXO) -->
                     <div class="tv-charts-subgrid tv-delivery-charts-stack">
-                        <!-- Gráfico 1 (Primeiro / Topo): DISTRIBUIÇÃO DE EQUIPES POR HORÁRIO & TURNO -->
+                        <!-- Gráfico 1 (Primeiro / Topo): DISTRIBUIÇÃO DE EQUIPES POR HORÁRIO & TURNO (EMPILHADO) -->
                         <div class="tv-chart-box tv-chart-hourly-box">
                             <div class="tv-chart-header">
-                                <i data-lucide="trending-up" class="mini-icon text-cyan"></i>
-                                <span>DISTRIBUIÇÃO DE EQUIPES POR HORÁRIO & TURNO</span>
+                                <div class="tv-chart-title-wrap">
+                                    <i data-lucide="trending-up" class="mini-icon text-cyan"></i>
+                                    <span>DISTRIBUIÇÃO DE EQUIPES POR HORÁRIO & TURNO</span>
+                                </div>
+                                <div class="tv-shift-legend">
+                                    <span class="legend-chip"><span class="chip-color-dot" style="background:#00f2fe;"></span> Cesto</span>
+                                    <span class="legend-chip"><span class="chip-color-dot" style="background:#3b82f6;"></span> Leve</span>
+                                    <span class="legend-chip"><span class="chip-color-dot" style="background:#10b981;"></span> Moto</span>
+                                    <span class="legend-chip"><span class="chip-color-dot" style="background:#c084fc;"></span> L. Viva</span>
+                                    <span class="legend-chip"><span class="chip-color-dot" style="background:#f97316;"></span> Ramal</span>
+                                </div>
                             </div>
                             <div class="tv-chart-canvas-wrap">
                                 <canvas id="tvDeliveryHourlyChart"></canvas>
                             </div>
                         </div>
 
-                        <!-- Gráfico 2 (Abaixo): COMPOSIÇÃO DA FROTA EM CAMPO (EM BARRAS) -->
+                        <!-- Gráfico 2 (Abaixo): COMPOSIÇÃO DA FROTA EM CAMPO (BARRAS VERTICAIS) -->
                         <div class="tv-chart-box tv-chart-fleet-bar-box">
                             <div class="tv-chart-header">
-                                <i data-lucide="bar-chart-2" class="mini-icon text-cyan"></i>
-                                <span>COMPOSIÇÃO DA FROTA EM CAMPO</span>
+                                <div class="tv-chart-title-wrap">
+                                    <i data-lucide="bar-chart-2" class="mini-icon text-cyan"></i>
+                                    <span>COMPOSIÇÃO DA FROTA EM CAMPO</span>
+                                </div>
                             </div>
                             <div class="tv-chart-canvas-wrap">
                                 <canvas id="tvDeliveryFleetChart"></canvas>

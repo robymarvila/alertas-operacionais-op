@@ -15522,13 +15522,25 @@ body.route-tv .main-content-layout {
 }
 
 .tv-kpi-ramal {
-    background: linear-gradient(135deg, rgba(163, 230, 53, 0.09), rgba(132, 204, 22, 0.04));
-    border-color: rgba(163, 230, 53, 0.35);
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(234, 88, 12, 0.04));
+    border-color: rgba(249, 115, 22, 0.35);
 }
 
-.tv-kpi-ramal .text-lime {
-    color: #a3e635;
-    text-shadow: 0 0 10px rgba(163, 230, 53, 0.35);
+.tv-kpi-ramal:hover {
+    border-color: rgba(249, 115, 22, 0.55);
+    box-shadow: 0 0 12px rgba(249, 115, 22, 0.2);
+}
+
+.tv-kpi-ramal .text-orange,
+.text-orange {
+    color: #f97316 !important;
+    text-shadow: 0 0 10px rgba(249, 115, 22, 0.35);
+}
+
+.tag-ramal-orange {
+    background: rgba(249, 115, 22, 0.18) !important;
+    border-color: rgba(249, 115, 22, 0.45) !important;
+    color: #f97316 !important;
 }
 
 .tv-kpi-prio-open {
@@ -15593,6 +15605,7 @@ body.route-tv .main-content-layout {
 .tv-chart-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 6px;
     font-size: 0.7rem;
     font-weight: 800;
@@ -15601,6 +15614,41 @@ body.route-tv .main-content-layout {
     text-transform: uppercase;
     margin-bottom: 4px;
     flex-shrink: 0;
+}
+
+.tv-chart-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tv-shift-legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.legend-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.chip-color-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    display: inline-block;
 }
 
 .tv-chart-canvas-wrap {
@@ -16152,7 +16200,17 @@ body.theme-light .tv-top5-metrics-row {
 /* Responsividade Ultrawide / 4K / Mobile */
 @media (max-width: 1400px) {
     .tv-fleet-kpis-grid {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 5px;
+    }
+    .tv-fleet-kpis-grid .tv-kpi-card {
+        padding: 5px 6px;
+    }
+    .tv-fleet-kpis-grid .tv-kpi-label {
+        font-size: 0.58rem;
+    }
+    .tv-fleet-kpis-grid .tv-kpi-value {
+        font-size: 1.25rem;
     }
     .tv-top5-cards-grid {
         grid-template-columns: repeat(3, 1fr);

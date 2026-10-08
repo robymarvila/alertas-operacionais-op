@@ -14640,13 +14640,13 @@ function renderTvDeliverySection() {
     // 1º Gráfico (Topo): Distribuição de Equipes por Horário e Turno
     renderTvHourlyChart(teams, data.intraday_curve);
 
-    // 2º Gráfico (Abaixo): Composição da Frota em Campo (Em Barras)
+    // 2º Gráfico (Abaixo): Composição da Frota em Campo (Em Barras Verticais)
     renderTvFleetChart([
         { label: 'Cesto Aéreo', value: cesto, color: '#00f2fe' },
-        { label: 'Veículo Leve', value: leve, color: '#10b981' },
-        { label: 'Linha Viva + Munk', value: linhaVivaMunk, color: '#a855f7' },
-        { label: 'Projeto Ramal', value: ramal, color: '#a3e635' },
-        { label: 'Moto', value: moto, color: '#f59e0b' }
+        { label: 'Veículo Leve', value: leve, color: '#3b82f6' },
+        { label: 'Moto', value: moto, color: '#10b981' },
+        { label: 'Linha Viva + Munk', value: linhaVivaMunk, color: '#c084fc' },
+        { label: 'Projeto Ramal', value: ramal, color: '#f97316' }
     ], totalAtivas);
 }
 
@@ -14661,25 +14661,27 @@ function renderTvFleetChart(items, totalAtivas) {
 
     const labels = items.map(i => i.label);
     const values = items.map(i => i.value);
-    const bgColors = items.map(i => i.color + '44');
+    const bgColors = items.map(i => i.color + 'bb');
     const borderColors = items.map(i => i.color);
+    const maxVal = Math.max(...values, 5);
 
-    // Plugin para desenhar a quantidade exata e porcentagem no final de cada barra horizontal
-    const tvFleetBarLabelsPlugin = {
-        id: 'tvFleetBarLabels',
+    // Plugin para desenhar a quantidade exata e porcentagem no topo de cada barra vertical
+    const tvFleetVBarLabelsPlugin = {
+        id: 'tvFleetVBarLabels',
         afterDatasetsDraw(chart) {
-            const { ctx: c } = chart;
+            const { ctx: c, scales: { y } } = chart;
+            const isLightMode = document.body.classList.contains('theme-light');
             chart.data.datasets.forEach((dataset, i) => {
                 const meta = chart.getDatasetMeta(i);
                 meta.data.forEach((bar, index) => {
                     const val = dataset.data[index];
                     const pct = totalAtivas > 0 ? Math.round((val / totalAtivas) * 100) : 0;
                     c.save();
-                    c.fillStyle = borderColors[index] || '#cbd5e1';
+                    c.fillStyle = isLightMode ? '#0f172a' : (borderColors[index] || '#cbd5e1');
                     c.font = 'bold 11px "JetBrains Mono", monospace';
-                    c.textAlign = 'left';
-                    c.textBaseline = 'middle';
-                    c.fillText(` ${val} equipes (${pct}%)`, bar.x + 5, bar.y);
+                    c.textAlign = 'center';
+                    c.textBaseline = 'bottom';
+                    c.fillText(`${val} (${pct}%)`, bar.x, bar.y - 4);
                     c.restore();
                 });
             });
@@ -14696,32 +14698,33 @@ function renderTvFleetChart(items, totalAtivas) {
                 backgroundColor: bgColors,
                 borderColor: borderColors,
                 borderWidth: 1.5,
-                borderRadius: 5,
-                maxBarThickness: 17
+                borderRadius: 6,
+                maxBarThickness: 38
             }]
         },
         options: {
-            indexAxis: 'y', // Barra horizontal para excelente leitura e proporcionalidade
+            indexAxis: 'x', // Barras verticais conforme solicitado para melhor visualização
             responsive: true,
             maintainAspectRatio: false,
             layout: {
-                padding: { right: 115 }
+                padding: { top: 22, bottom: 2, left: 4, right: 4 }
             },
             scales: {
                 x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: '#cbd5e1',
+                        font: { size: 10, weight: '700', family: 'Plus Jakarta Sans' }
+                    }
+                },
+                y: {
                     beginAtZero: true,
+                    suggestedMax: Math.ceil(maxVal * 1.25) + 1,
                     grid: { color: 'rgba(255, 255, 255, 0.04)' },
                     ticks: {
                         color: '#64748b',
                         font: { size: 9, family: 'JetBrains Mono' },
                         precision: 0
-                    }
-                },
-                y: {
-                    grid: { display: false },
-                    ticks: {
-                        color: '#cbd5e1',
-                        font: { size: 10, weight: '700', family: 'Plus Jakarta Sans' }
                     }
                 }
             },
@@ -14739,7 +14742,7 @@ function renderTvFleetChart(items, totalAtivas) {
                 }
             }
         },
-        plugins: [tvFleetBarLabelsPlugin]
+        plugins: [tvFleetVBarLabelsPlugin]
     });
 }
 
@@ -14752,63 +14755,121 @@ function renderTvHourlyChart(teams, serverCurve) {
         tvDashboardState.charts.hourlyChart = null;
     }
 
-    // Horários / Turnos operacionais com foco nas janelas de entrega
+    // Horários / Turnos operacionais
     const shiftSlots = ['06:00', '08:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
-    const counts = shiftSlots.map(() => 0);
 
-    teams.forEach(t => {
+    function getTeamCategory(t) {
         const id = String(t.team_code || t.team_id || t.equipe || '').trim().toUpperCase();
         const tipo = String(t.vehicle_type || t.unified_group || t.tipo || '').trim().toUpperCase();
 
-        let hora = '08:00';
-        if (isTvRamalTeam(id) || tipo.includes('RAMAL') || tipo.includes('MOTO') || id.replace(/\D/g, '').startsWith('7')) {
-            hora = '08:00';
-        } else if (t.shift_code || t.entry_time || t.hora_inicio || t.turno_inicio) {
-            const raw = String(t.shift_code || t.entry_time || t.hora_inicio || t.turno_inicio);
-            const match = raw.match(/(\d{1,2}):(\d{2})/);
-            if (match) {
-                hora = String(match[1]).padStart(2, '0') + ':00';
-            }
-        }
-
-        // Encontra o slot mais próximo
-        const hNum = parseInt(hora, 10);
-        let bestIdx = 1; // Default 08:00
-        if (hNum <= 6) bestIdx = 0;
-        else if (hNum <= 8) bestIdx = 1;
-        else if (hNum <= 12) bestIdx = 2;
-        else if (hNum <= 14) bestIdx = 3;
-        else if (hNum <= 16) bestIdx = 4;
-        else if (hNum <= 18) bestIdx = 5;
-        else if (hNum <= 20) bestIdx = 6;
-        else bestIdx = 7;
-
-        counts[bestIdx] += 1;
-    });
-
-    // Se counts estiver vazio e serverCurve existir, mescla
-    const hasData = counts.some(c => c > 0);
-    let finalCounts = counts;
-    if (!hasData && serverCurve && typeof serverCurve === 'object') {
-        finalCounts = shiftSlots.map(s => Number(serverCurve[s] || 0));
+        if (isTvRamalTeam(id) || tipo.includes('RAMAL')) return 'ramal';
+        if (tipo.includes('MOTO') || id.replace(/\D/g, '').startsWith('7')) return 'moto';
+        if (tipo.includes('CESTO') || tipo.includes('AEREO') || tipo.includes('AÉREO')) return 'cesto';
+        if (tipo.includes('LINHA VIVA') || tipo.includes('MUNK') || tipo.includes('MUNCK') || tipo.includes('GUINDASTE')) return 'pesado';
+        return 'leve';
     }
 
-    // Plugin customizado para desenhar os números no topo de cada barra para leitura em TV
-    const tvBarLabelsPlugin = {
-        id: 'tvBarLabels',
+    function getTeamShiftSlot(t) {
+        const id = String(t.team_code || t.team_id || t.equipe || '').trim().toUpperCase();
+        const tipo = String(t.vehicle_type || t.unified_group || t.tipo || '').trim().toUpperCase();
+
+        // Macroregra operacional: Ramal e Moto com entrada sempre fixada no Turno 08:00 (Manhã)
+        if (isTvRamalTeam(id) || tipo.includes('RAMAL') || tipo.includes('MOTO') || id.replace(/\D/g, '').startsWith('7')) {
+            return '08:00';
+        }
+
+        let raw = String(t.shift_code || t.entry_time || t.hora_inicio || t.turno_inicio || '');
+        let match = raw.match(/(\d{1,2}):(\d{2})/);
+        if (match) {
+            const h = parseInt(match[1], 10);
+            if (h <= 6) return '06:00';
+            if (h <= 8) return '08:00';
+            if (h <= 12) return '12:00';
+            if (h <= 14) return '14:00';
+            if (h <= 16) return '16:00';
+            if (h <= 18) return '18:00';
+            if (h <= 20) return '20:00';
+            return '22:00';
+        }
+        return '08:00';
+    }
+
+    // Matriz de dados empilhados: Turnos x Categorias
+    const matrix = {};
+    shiftSlots.forEach(s => {
+        matrix[s] = { cesto: 0, leve: 0, moto: 0, pesado: 0, ramal: 0, total: 0 };
+    });
+
+    teams.forEach(t => {
+        const cat = getTeamCategory(t);
+        const shift = getTeamShiftSlot(t);
+        if (matrix[shift]) {
+            matrix[shift][cat] += 1;
+            matrix[shift].total += 1;
+        }
+    });
+
+    // Se teams for vazio mas serverCurve existir, fallback
+    const hasData = shiftSlots.some(s => matrix[s].total > 0);
+    if (!hasData && serverCurve && typeof serverCurve === 'object') {
+        shiftSlots.forEach(s => {
+            const count = Number(serverCurve[s] || 0);
+            if (count > 0) {
+                matrix[s].cesto = count;
+                matrix[s].total = count;
+            }
+        });
+    }
+
+    const dataCesto = shiftSlots.map(s => matrix[s].cesto);
+    const dataLeve = shiftSlots.map(s => matrix[s].leve);
+    const dataMoto = shiftSlots.map(s => matrix[s].moto);
+    const dataPesado = shiftSlots.map(s => matrix[s].pesado);
+    const dataRamal = shiftSlots.map(s => matrix[s].ramal);
+    const totalsPerShift = shiftSlots.map(s => matrix[s].total);
+    const maxShiftTotal = Math.max(...totalsPerShift, 5);
+
+    // Plugin para desenhar total no topo da coluna e quantidade interna nos blocos empilhados
+    const tvStackedBarLabelsPlugin = {
+        id: 'tvStackedBarLabels',
         afterDatasetsDraw(chart) {
-            const { ctx: c } = chart;
-            chart.data.datasets.forEach((dataset, i) => {
-                const meta = chart.getDatasetMeta(i);
-                meta.data.forEach((bar, index) => {
-                    const val = dataset.data[index];
+            const { ctx: c, scales: { x, y } } = chart;
+            const isLightMode = document.body.classList.contains('theme-light');
+            const textTopColor = isLightMode ? '#0f172a' : '#00f2fe';
+
+            // 1. Total acumulado no topo de cada coluna de horário
+            chart.data.labels.forEach((_, i) => {
+                const total = totalsPerShift[i];
+                if (total > 0) {
+                    const xPos = x.getPixelForValue(i);
+                    const yPos = y.getPixelForValue(total);
+                    c.save();
+                    c.fillStyle = textTopColor;
+                    c.font = 'bold 12px "JetBrains Mono", monospace';
+                    c.textAlign = 'center';
+                    c.textBaseline = 'bottom';
+                    c.fillText(total, xPos, yPos - 4);
+                    c.restore();
+                }
+            });
+
+            // 2. Rótulo interno dentro de cada segmento colorido se houver altura suficiente
+            chart.data.datasets.forEach((dataset, dsIdx) => {
+                const meta = chart.getDatasetMeta(dsIdx);
+                meta.data.forEach((bar, i) => {
+                    const val = dataset.data[i];
                     if (val > 0) {
-                        c.save();
-                        c.fillStyle = '#00f2fe';
-                        c.font = 'bold 11px "JetBrains Mono", monospace';
-                        c.textAlign = 'center';
-                        c.fillText(String(val), bar.x, bar.y - 5);
-                        c.restore();
+                        const barHeight = Math.abs(bar.base - bar.y);
+                        if (barHeight >= 14) {
+                            c.save();
+                            c.fillStyle = '#ffffff';
+                            c.font = 'bold 10px "JetBrains Mono", monospace';
+                            c.textAlign = 'center';
+                            c.textBaseline = 'middle';
+                            const midY = (bar.y + bar.base) / 2;
+                            c.fillText(val, bar.x, midY);
+                            c.restore();
+                        }
                     }
                 });
             });
@@ -14819,32 +14880,73 @@ function renderTvHourlyChart(teams, serverCurve) {
         type: 'bar',
         data: {
             labels: shiftSlots,
-            datasets: [{
-                label: 'Equipes Entregues',
-                data: finalCounts,
-                backgroundColor: 'rgba(0, 242, 254, 0.45)',
-                borderColor: '#00f2fe',
-                borderWidth: 1.5,
-                borderRadius: 6,
-                maxBarThickness: 36
-            }]
+            datasets: [
+                {
+                    label: 'Cesto Aéreo',
+                    data: dataCesto,
+                    backgroundColor: 'rgba(0, 242, 254, 0.85)',
+                    borderColor: '#00f2fe',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    stack: 'shifts'
+                },
+                {
+                    label: 'Veículo Leve',
+                    data: dataLeve,
+                    backgroundColor: 'rgba(59, 130, 246, 0.85)',
+                    borderColor: '#3b82f6',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    stack: 'shifts'
+                },
+                {
+                    label: 'Moto',
+                    data: dataMoto,
+                    backgroundColor: 'rgba(16, 185, 129, 0.85)',
+                    borderColor: '#10b981',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    stack: 'shifts'
+                },
+                {
+                    label: 'Linha Viva + Munk',
+                    data: dataPesado,
+                    backgroundColor: 'rgba(192, 132, 252, 0.85)',
+                    borderColor: '#c084fc',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    stack: 'shifts'
+                },
+                {
+                    label: 'Projeto Ramal',
+                    data: dataRamal,
+                    backgroundColor: 'rgba(249, 115, 22, 0.85)',
+                    borderColor: '#f97316',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    stack: 'shifts'
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             layout: {
-                padding: { top: 18 }
+                padding: { top: 22, bottom: 2 }
             },
             scales: {
                 x: {
-                    grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                    stacked: true,
+                    grid: { display: false },
                     ticks: {
                         color: '#94a3b8',
                         font: { size: 10, weight: '700', family: 'JetBrains Mono' }
                     }
                 },
                 y: {
+                    stacked: true,
                     beginAtZero: true,
+                    suggestedMax: Math.ceil(maxShiftTotal * 1.22) + 1,
                     grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     ticks: {
                         color: '#64748b',
@@ -14858,13 +14960,21 @@ function renderTvHourlyChart(teams, serverCurve) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return ` ${context.raw} equipes alocadas neste turno`;
+                            const lbl = context.dataset.label || '';
+                            const val = context.raw || 0;
+                            return ` ${lbl}: ${val} equipes`;
+                        },
+                        afterBody: function(contexts) {
+                            if (!contexts || contexts.length === 0) return '';
+                            const idx = contexts[0].dataIndex;
+                            const tot = totalsPerShift[idx] || 0;
+                            return `Total no Turno: ${tot} equipes`;
                         }
                     }
                 }
             }
         },
-        plugins: [tvBarLabelsPlugin]
+        plugins: [tvStackedBarLabelsPlugin]
     });
 }
 
