@@ -200,8 +200,8 @@
                             <span>Gerenciamento</span>
                         </button>
 
-                        <!-- Botão para Painel TV CCO (Visível quando desbloqueado) -->
-                        <button class="btn btn-cyan btn-sm" id="btnHubTvPanel" onclick="navigateToView('tv')" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(0, 242, 254, 0.35); background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(14, 165, 233, 0.25)); border: 1px solid rgba(0, 242, 254, 0.5); color: #00f2fe;">
+                        <!-- Botão para Painel TV CCO -->
+                        <button class="btn btn-cyan btn-sm" id="btnHubTvPanel" onclick="navigateToView('tv')" style="display: inline-flex; align-items: center; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(0, 242, 254, 0.35); background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(14, 165, 233, 0.25)); border: 1px solid rgba(0, 242, 254, 0.5); color: #00f2fe;">
                             <i data-lucide="tv" style="width: 15px; height: 15px; vertical-align: middle; margin-right: 4px;"></i>
                             <span>Painel TV CCO</span>
                         </button>
@@ -519,7 +519,7 @@
                     </div>
 
                     <!-- CARD MÓDULO 4: PAINEL TV CCO (MONITORAMENTO PANORÂMICO TV / VIDEO WALL) -->
-                    <div class="module-card glass-card card-tv-panel" id="cardHubTvPanel" onclick="navigateToView('tv')" style="display: none;">
+                    <div class="module-card glass-card card-tv-panel" id="cardHubTvPanel" onclick="navigateToView('tv')" style="display: flex;">
                         <div class="module-card-glow"></div>
                         <div class="module-card-header">
                             <div class="module-icon-wrap icon-tv-glow">
@@ -4554,9 +4554,9 @@
                         <div>
                             <div class="tv-live-pill">
                                 <span class="tv-pulse-dot"></span>
-                                <span>TRANSMISSÃO AO VIVO CCO</span>
+                                <span>TRANSMISSÃO AO VIVO</span>
                             </div>
-                            <h2 class="tv-brand-title">PAINEL OPERACIONAL CCO • VIDEO WALL</h2>
+                            <h2 class="tv-brand-title">PAINEL OPERACIONAL</h2>
                         </div>
                     </div>
                 </div>
@@ -4626,11 +4626,14 @@
                         </div>
                     </div>
 
-                    <!-- MINI CARDS DE FROTA (6 CARDS HORIZONTAIS) -->
+                    <!-- MINI CARDS DE FROTA (6 CARDS HORIZONTAIS COM ALINHAMENTO PERFEITO) -->
                     <div class="tv-fleet-kpis-grid">
                         <!-- Card 1: TOTAL ATIVAS -->
                         <div class="tv-kpi-card tv-kpi-primary">
-                            <span class="tv-kpi-label">TOTAL ATIVAS</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">TOTAL ATIVAS</span>
+                                <span class="tv-kpi-tag-tipo badge-tag-cyan">GLOBAL</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-cyan font-mono" id="tvKpiTotalAtivas">--</span>
                                 <span class="tv-kpi-sub-target" id="tvKpiTargetAtivas">Meta: --</span>
@@ -4639,64 +4642,86 @@
 
                         <!-- Card 2: CESTO AÉREO -->
                         <div class="tv-kpi-card">
-                            <span class="tv-kpi-label">CESTO AÉREO</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">CESTO AÉREO</span>
+                                <span class="tv-kpi-tag-tipo">PESADO</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-blue font-mono" id="tvKpiCestoAereo">--</span>
+                                <span class="tv-kpi-sub-target" id="tvKpiCestoSub">--%</span>
                             </div>
                         </div>
 
                         <!-- Card 3: VEÍCULO LEVE -->
                         <div class="tv-kpi-card">
-                            <span class="tv-kpi-label">VEÍCULO LEVE</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">VEÍCULO LEVE</span>
+                                <span class="tv-kpi-tag-tipo">LEVE</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-emerald font-mono" id="tvKpiVeiculoLeve">--</span>
+                                <span class="tv-kpi-sub-target" id="tvKpiLeveSub">--%</span>
                             </div>
                         </div>
 
                         <!-- Card 4: MOTO -->
                         <div class="tv-kpi-card">
-                            <span class="tv-kpi-label">MOTO (08:00)</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">MOTO</span>
+                                <span class="tv-kpi-tag-turno">08:00</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-amber font-mono" id="tvKpiMoto">--</span>
+                                <span class="tv-kpi-sub-target" id="tvKpiMotoSub">--%</span>
                             </div>
                         </div>
 
                         <!-- Card 5: LINHA VIVA + MUNK -->
                         <div class="tv-kpi-card">
-                            <span class="tv-kpi-label">LINHA VIVA + MUNK</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">LINHA VIVA + MUNK</span>
+                                <span class="tv-kpi-tag-tipo">PESADO</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-purple font-mono" id="tvKpiLinhaVivaMunk">--</span>
+                                <span class="tv-kpi-sub-target" id="tvKpiMunkSub">--%</span>
                             </div>
                         </div>
 
                         <!-- Card 6: PROJETO RAMAL -->
                         <div class="tv-kpi-card tv-kpi-ramal">
-                            <span class="tv-kpi-label">PROJETO RAMAL (08:00)</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">PROJETO RAMAL</span>
+                                <span class="tv-kpi-tag-turno">08:00</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-lime font-mono" id="tvKpiProjetoRamal">--</span>
+                                <span class="tv-kpi-sub-target" id="tvKpiRamalSub">--%</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- SUB-GRID DE GRÁFICOS: COMPOSIÇÃO DA FROTA + CURVA HORÁRIA -->
-                    <div class="tv-charts-subgrid">
-                        <div class="tv-chart-box">
-                            <div class="tv-chart-header">
-                                <i data-lucide="pie-chart" class="mini-icon text-cyan"></i>
-                                <span>COMPOSIÇÃO DA FROTA</span>
-                            </div>
-                            <div class="tv-chart-canvas-wrap">
-                                <canvas id="tvDeliveryFleetChart"></canvas>
-                            </div>
-                        </div>
-
-                        <div class="tv-chart-box">
+                    <!-- SUB-GRID DE GRÁFICOS: 1º DISTRIBUIÇÃO HORÁRIO/TURNO (TOPO) + 2º COMPOSIÇÃO DA FROTA EM BARRAS (ABAIXO) -->
+                    <div class="tv-charts-subgrid tv-delivery-charts-stack">
+                        <!-- Gráfico 1 (Primeiro / Topo): DISTRIBUIÇÃO DE EQUIPES POR HORÁRIO & TURNO -->
+                        <div class="tv-chart-box tv-chart-hourly-box">
                             <div class="tv-chart-header">
                                 <i data-lucide="trending-up" class="mini-icon text-cyan"></i>
-                                <span>CURVA DE ENTREGA POR HORÁRIO</span>
+                                <span>DISTRIBUIÇÃO DE EQUIPES POR HORÁRIO & TURNO</span>
                             </div>
                             <div class="tv-chart-canvas-wrap">
                                 <canvas id="tvDeliveryHourlyChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Gráfico 2 (Abaixo): COMPOSIÇÃO DA FROTA EM CAMPO (EM BARRAS) -->
+                        <div class="tv-chart-box tv-chart-fleet-bar-box">
+                            <div class="tv-chart-header">
+                                <i data-lucide="bar-chart-2" class="mini-icon text-cyan"></i>
+                                <span>COMPOSIÇÃO DA FROTA EM CAMPO</span>
+                            </div>
+                            <div class="tv-chart-canvas-wrap">
+                                <canvas id="tvDeliveryFleetChart"></canvas>
                             </div>
                         </div>
                     </div>
@@ -4727,33 +4752,49 @@
                     <div class="tv-prio-kpis-grid">
                         <!-- Card 1: TOTAL OS EM ABERTO -->
                         <div class="tv-kpi-card tv-kpi-prio-open">
-                            <span class="tv-kpi-label">TOTAL OS EM ABERTO</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">TOTAL OS ABERTO</span>
+                                <span class="tv-kpi-tag-tipo badge-tag-cyan">FILA</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-cyan font-mono" id="tvKpiPrioTotalOs">--</span>
+                                <span class="tv-kpi-sub-target">Pendentes</span>
                             </div>
                         </div>
 
                         <!-- Card 2: CLIENTES INTERROMPIDOS (CI) -->
                         <div class="tv-kpi-card tv-kpi-prio-ci">
-                            <span class="tv-kpi-label">CLIENTES INTERROMPIDOS (CI)</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">CLIENTES (CI)</span>
+                                <span class="tv-kpi-tag-tipo badge-tag-amber">AFETADOS</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-amber font-mono" id="tvKpiPrioTotalCi">--</span>
+                                <span class="tv-kpi-sub-target">Sem Energia</span>
                             </div>
                         </div>
 
                         <!-- Card 3: ALTA PRIORIDADE (P1/P2/CRÍTICA) -->
                         <div class="tv-kpi-card tv-kpi-prio-high">
-                            <span class="tv-kpi-label">ALTA PRIORIDADE (P1/P2)</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">ALTA PRIORIDADE</span>
+                                <span class="tv-kpi-tag-tipo badge-tag-rose">P1 / P2</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-rose font-mono" id="tvKpiPrioAltaPrioridade">--</span>
+                                <span class="tv-kpi-sub-target">Críticas</span>
                             </div>
                         </div>
 
                         <!-- Card 4: AGUARDANDO DESPACHO -->
                         <div class="tv-kpi-card tv-kpi-prio-aguard">
-                            <span class="tv-kpi-label">AGUARD. DESPACHO</span>
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">AGUARD. DESPACHO</span>
+                                <span class="tv-kpi-tag-tipo badge-tag-purple">SEM EQUIPE</span>
+                            </div>
                             <div class="tv-kpi-val-row">
                                 <span class="tv-kpi-value text-purple font-mono" id="tvKpiPrioAguardDesp">--</span>
+                                <span class="tv-kpi-sub-target">Sem Alocação</span>
                             </div>
                         </div>
                     </div>
@@ -4785,7 +4826,7 @@
                                 </div>
                                 <div class="tv-stat-row">
                                     <div class="tv-stat-info">
-                                        <span class="tv-stat-title">Sem Atendimento</span>
+                                        <span class="tv-stat-title">Aguardando Despacho</span>
                                         <small class="tv-stat-desc">Ordens pendentes sem alocação</small>
                                     </div>
                                     <span class="tv-stat-num text-rose font-mono" id="tvStatSemAtendimento">--</span>
@@ -4796,6 +4837,13 @@
                                         <small class="tv-stat-desc">Equipes a caminho do local</small>
                                     </div>
                                     <span class="tv-stat-num text-cyan font-mono" id="tvStatEmDeslocamento">--</span>
+                                </div>
+                                <div class="tv-stat-row">
+                                    <div class="tv-stat-info">
+                                        <span class="tv-stat-title">Despachadas >= 10 min</span>
+                                        <small class="tv-stat-desc">Aguardando aceite da equipe</small>
+                                    </div>
+                                    <span class="tv-stat-num text-amber font-mono" id="tvStatDesp10">--</span>
                                 </div>
                             </div>
                         </div>
@@ -4810,25 +4858,26 @@
             <section class="tv-top5-strip-container glass-card">
                 <div class="tv-top5-header">
                     <div class="tv-top5-title-wrap">
-                        <div class="tv-top5-icon-wrap pulse-flame">
+                        <div class="tv-top5-icon-wrap pulse-flame" id="tvTop5IconWrap">
                             <i data-lucide="flame"></i>
                         </div>
                         <div>
-                            <h3 class="tv-top5-title">TOP 5 ORDENS CRÍTICAS EM ABERTO PENDENTES DE TRATAMENTO</h3>
-                            <p class="tv-top5-subtitle">Ordens prioritárias com maior volume de clientes interrompidos (CI) ou maior tempo em fila de atendimento</p>
+                            <h3 class="tv-top5-title" id="tvTop5MainTitle">TOP 5 ORDENS CRÍTICAS EM ABERTO PENDENTES DE TRATAMENTO</h3>
+                            <p class="tv-top5-subtitle" id="tvTop5SubTitle">Priorização operacional por criticidade, clientes sem energia (CI) e tempo de abertura</p>
                         </div>
                     </div>
                     <div class="tv-top5-legend">
-                        <span class="tv-legend-pill pill-p1"><span class="pill-dot"></span> P1 / Emergência</span>
-                        <span class="tv-legend-pill pill-ci"><span class="pill-dot"></span> Alto CI</span>
-                        <span class="tv-legend-pill pill-aging"><span class="pill-dot"></span> Aging Crítico</span>
+                        <span class="tv-legend-pill pill-p1"><span class="pill-dot"></span> Crítica / P1</span>
+                        <span class="tv-legend-pill pill-ci"><span class="pill-dot"></span> Clientes (CI)</span>
+                        <span class="tv-legend-pill pill-aging"><span class="pill-dot"></span> Tempo Aberto</span>
+                        <span class="tv-legend-pill pill-team"><span class="pill-dot"></span> Alocação de Equipe</span>
                     </div>
                 </div>
 
-                <!-- CARDS GRID DAS 5 OS CRÍTICAS -->
+                <!-- CARDS GRID DAS 5 OS -->
                 <div class="tv-top5-cards-grid" id="tvTop5CardsGrid">
                     <!-- Cards dinâmicos inseridos via JavaScript -->
-                    <div class="tv-top5-empty">Carregando TOP 5 Ordens Críticas...</div>
+                    <div class="tv-top5-empty">Carregando TOP 5 Ordens...</div>
                 </div>
             </section>
 

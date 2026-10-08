@@ -15003,93 +15003,128 @@ body.theme-light .delivery-hub-today-wrap:hover {
 /* ==========================================================================
    PAINEL TV CCO - MONITORAMENTO PANORÂMICO VIDEO WALL (MATERIAL 3 & APPLE LIQUID GLASS)
    ========================================================================== */
-.tv-dashboard-view-container {
-    width: 100%;
-    max-width: 100% !important;
-    padding: 12px 18px 24px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    box-sizing: border-box;
+
+/* Isolamento de Viewport e Ocultação de Headers/Footers Padrão para Modo TV */
+body.route-tv .app-header {
+    display: none !important;
 }
 
-/* Header Panorâmico TV */
+body.route-tv .main-footer {
+    display: none !important;
+}
+
+body.route-tv .ambient-glow {
+    opacity: 0.12 !important;
+}
+
+body.route-tv,
+body.route-tv .app-wrapper,
+body.route-tv .main-content-layout {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.tv-dashboard-view-container {
+    width: 100vw;
+    max-width: 100vw !important;
+    height: 100vh;
+    max-height: 100vh;
+    box-sizing: border-box;
+    padding: 10px 14px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+}
+
+/* Header Panorâmico TV (Compacto & Monumental) */
 .tv-panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 14px 24px;
-    border-radius: 20px;
-    background: rgba(15, 23, 42, 0.75);
+    padding: 8px 18px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.8);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.45);
-    flex-wrap: wrap;
-    gap: 16px;
+    box-shadow: 0 10px 25px -6px rgba(0, 0, 0, 0.45);
+    flex-shrink: 0;
+    min-height: 52px;
+    box-sizing: border-box;
+    gap: 14px;
 }
 
 .tv-header-left {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
 }
 
 .tv-brand-block {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
 }
 
 .tv-brand-icon-wrap {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
     background: linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(14, 165, 233, 0.35));
     border: 1px solid rgba(0, 242, 254, 0.6);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #00f2fe;
-    box-shadow: 0 0 20px rgba(0, 242, 254, 0.35);
+    box-shadow: 0 0 16px rgba(0, 242, 254, 0.35);
+    flex-shrink: 0;
 }
 
 .tv-brand-icon-wrap i {
-    width: 26px;
-    height: 26px;
+    width: 20px;
+    height: 20px;
 }
 
 .tv-live-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
+    gap: 5px;
+    padding: 2px 8px;
     border-radius: 9999px;
     background: rgba(239, 68, 68, 0.16);
     border: 1px solid rgba(239, 68, 68, 0.4);
     color: #ef4444;
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     font-weight: 800;
     letter-spacing: 0.08em;
     margin-bottom: 2px;
 }
 
 .tv-pulse-dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: #ef4444;
-    box-shadow: 0 0 8px #ef4444;
+    box-shadow: 0 0 6px #ef4444;
     animation: pulse 1.5s infinite;
 }
 
 .tv-brand-title {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 1.25rem;
+    font-size: 1.05rem;
     font-weight: 800;
     color: var(--text-primary);
     margin: 0;
     letter-spacing: -0.01em;
+    line-height: 1.1;
 }
 
 /* Seletor Geográfico Estilo Liquid Glass */
@@ -15101,8 +15136,8 @@ body.theme-light .delivery-hub-today-wrap:hover {
 .tv-geo-switcher {
     display: flex;
     background: rgba(255, 255, 255, 0.04);
-    padding: 5px;
-    border-radius: 16px;
+    padding: 4px;
+    border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.3);
     gap: 4px;
@@ -15111,21 +15146,21 @@ body.theme-light .delivery-hub-today-wrap:hover {
 .tv-geo-btn {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 18px;
-    border-radius: 12px;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 9px;
     background: transparent;
     border: none;
     color: var(--text-secondary);
-    font-size: 0.82rem;
+    font-size: 0.76rem;
     font-weight: 800;
     cursor: pointer;
     transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .tv-geo-btn i {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
 }
 
 .tv-geo-btn:hover {
@@ -15137,14 +15172,14 @@ body.theme-light .delivery-hub-today-wrap:hover {
     background: linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(14, 165, 233, 0.35));
     border: 1px solid rgba(0, 242, 254, 0.6);
     color: #00f2fe;
-    box-shadow: 0 4px 16px rgba(0, 242, 254, 0.3);
+    box-shadow: 0 2px 12px rgba(0, 242, 254, 0.3);
 }
 
 /* Lado Direito: Relógio Digital Monumental & Countdown */
 .tv-header-right {
     display: flex;
     align-items: center;
-    gap: 18px;
+    gap: 14px;
 }
 
 .tv-clock-box {
@@ -15153,31 +15188,32 @@ body.theme-light .delivery-hub-today-wrap:hover {
 
 .tv-clock-digits {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1.7rem;
+    font-size: 1.45rem;
     font-weight: 800;
     line-height: 1;
     color: #00f2fe;
-    text-shadow: 0 0 16px rgba(0, 242, 254, 0.45);
+    text-shadow: 0 0 14px rgba(0, 242, 254, 0.45);
     letter-spacing: -0.02em;
 }
 
 .tv-date-digits {
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     font-weight: 700;
     color: var(--text-secondary);
-    margin-top: 3px;
-    letter-spacing: 0.05em;
+    margin-top: 2px;
+    letter-spacing: 0.04em;
 }
 
 .tv-refresh-indicator {
     position: relative;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     transition: transform 0.2s ease;
+    flex-shrink: 0;
 }
 
 .tv-refresh-indicator:hover {
@@ -15207,15 +15243,15 @@ body.theme-light .delivery-hub-today-wrap:hover {
 .tv-countdown-text {
     position: absolute;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     font-weight: 800;
     color: #00f2fe;
 }
 
 .btn-tv-fullscreen {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.12);
     color: var(--text-primary);
@@ -15224,39 +15260,47 @@ body.theme-light .delivery-hub-today-wrap:hover {
     justify-content: center;
     cursor: pointer;
     transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 .btn-tv-fullscreen:hover {
     background: rgba(255, 255, 255, 0.12);
     border-color: #00f2fe;
     color: #00f2fe;
-    box-shadow: 0 0 14px rgba(0, 242, 254, 0.3);
+    box-shadow: 0 0 12px rgba(0, 242, 254, 0.3);
 }
 
 .btn-tv-fullscreen i {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
 }
 
-/* Split Grid Principal (50% / 50%) */
+/* Split Grid Principal (50% / 50% Flexível para caber na Viewport) */
 .tv-main-split-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
     align-items: stretch;
+    box-sizing: border-box;
 }
 
 .tv-card-section {
-    padding: 18px;
-    border-radius: 20px;
+    padding: 12px 14px;
+    border-radius: 16px;
     background: rgba(15, 23, 42, 0.72);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 10px 25px -6px rgba(0, 0, 0, 0.35);
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 8px;
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 /* Headers de Seção */
@@ -15264,23 +15308,25 @@ body.theme-light .delivery-hub-today-wrap:hover {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 12px;
+    padding-bottom: 6px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
 }
 
 .tv-section-title-wrap {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .tv-section-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .tv-section-icon.icon-cyan {
@@ -15296,13 +15342,13 @@ body.theme-light .delivery-hub-today-wrap:hover {
 }
 
 .tv-section-icon i {
-    width: 20px;
-    height: 20px;
+    width: 17px;
+    height: 17px;
 }
 
 .tv-section-title {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 1.08rem;
+    font-size: 0.96rem;
     font-weight: 800;
     color: var(--text-primary);
     margin: 0;
@@ -15310,18 +15356,18 @@ body.theme-light .delivery-hub-today-wrap:hover {
 }
 
 .tv-section-subtitle {
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     color: var(--text-secondary);
-    margin: 2px 0 0 0;
+    margin: 1px 0 0 0;
 }
 
 .tv-metric-badge {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 8px;
-    font-size: 0.72rem;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.68rem;
     font-weight: 700;
 }
 
@@ -15338,89 +15384,151 @@ body.theme-light .delivery-hub-today-wrap:hover {
 }
 
 .tv-metric-badge i {
-    width: 13px;
-    height: 13px;
+    width: 12px;
+    height: 12px;
 }
 
-/* Grid de KPIs de Frotas (6 Cards) */
+/* Grid de KPIs de Frotas (6 Cards Alinhados) */
 .tv-fleet-kpis-grid {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
-    gap: 10px;
+    gap: 7px;
+    flex-shrink: 0;
 }
 
 /* Grid de KPIs do Priorizador (4 Cards) */
 .tv-prio-kpis-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
+    gap: 7px;
+    flex-shrink: 0;
 }
 
-/* Estilo do Card KPI Individual */
+/* Estilo dos Cards de KPI Individual */
 .tv-kpi-card {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 14px;
-    padding: 10px 12px;
+    border-radius: 11px;
+    padding: 7px 9px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     transition: all 0.2s ease;
+    box-sizing: border-box;
+    min-height: 56px;
 }
 
 .tv-kpi-card:hover {
     background: rgba(255, 255, 255, 0.06);
     border-color: rgba(255, 255, 255, 0.15);
-    transform: translateY(-2px);
+}
+
+.tv-kpi-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 4px;
 }
 
 .tv-kpi-label {
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     font-weight: 800;
     color: var(--text-secondary);
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
+.tv-kpi-tag-turno {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(245, 158, 11, 0.16);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #f59e0b;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.tv-kpi-tag-tipo {
+    font-size: 0.55rem;
+    font-weight: 800;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.badge-tag-cyan {
+    background: rgba(0, 242, 254, 0.14) !important;
+    border-color: rgba(0, 242, 254, 0.35) !important;
+    color: #00f2fe !important;
+}
+
+.badge-tag-amber {
+    background: rgba(245, 158, 11, 0.14) !important;
+    border-color: rgba(245, 158, 11, 0.35) !important;
+    color: #f59e0b !important;
+}
+
+.badge-tag-rose {
+    background: rgba(239, 68, 68, 0.14) !important;
+    border-color: rgba(239, 68, 68, 0.35) !important;
+    color: #ef4444 !important;
+}
+
+.badge-tag-purple {
+    background: rgba(168, 85, 247, 0.14) !important;
+    border-color: rgba(168, 85, 247, 0.35) !important;
+    color: #c084fc !important;
+}
+
 .tv-kpi-val-row {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    margin-top: 4px;
-    gap: 6px;
+    margin-top: 3px;
+    gap: 4px;
+    width: 100%;
 }
 
 .tv-kpi-value {
-    font-size: 1.55rem;
+    font-size: 1.45rem;
     font-weight: 800;
     line-height: 1;
     letter-spacing: -0.02em;
 }
 
 .tv-kpi-sub-target {
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     font-weight: 700;
     color: var(--text-secondary);
     opacity: 0.85;
+    white-space: nowrap;
 }
 
-/* Destaque nos cards específicos */
+/* Destaques em cards específicos */
 .tv-kpi-primary {
     background: linear-gradient(135deg, rgba(0, 242, 254, 0.08), rgba(14, 165, 233, 0.04));
     border-color: rgba(0, 242, 254, 0.3);
 }
 
 .tv-kpi-ramal {
-    background: linear-gradient(135deg, rgba(163, 230, 53, 0.08), rgba(132, 204, 22, 0.04));
+    background: linear-gradient(135deg, rgba(163, 230, 53, 0.09), rgba(132, 204, 22, 0.04));
     border-color: rgba(163, 230, 53, 0.35);
 }
 
 .tv-kpi-ramal .text-lime {
     color: #a3e635;
-    text-shadow: 0 0 12px rgba(163, 230, 53, 0.35);
+    text-shadow: 0 0 10px rgba(163, 230, 53, 0.35);
 }
 
 .tv-kpi-prio-open {
@@ -15446,55 +15554,78 @@ body.theme-light .delivery-hub-today-wrap:hover {
 /* Sub-Grids de Gráficos (Dentro de cada coluna) */
 .tv-charts-subgrid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Stack de Gráficos de Entrega: 1º Horário/Turno (Topo) + 2º Composição Frota em Barras (Abaixo) */
+.tv-delivery-charts-stack {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr 1fr !important;
+    gap: 8px !important;
+    flex: 1;
+    min-height: 0;
+}
+
+.tv-delivery-charts-stack .tv-chart-box {
+    padding: 7px 11px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .tv-chart-box {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 14px;
-    padding: 12px 14px;
+    border-radius: 12px;
+    padding: 9px 11px;
     display: flex;
     flex-direction: column;
-    min-height: 240px;
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .tv-chart-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.75rem;
+    gap: 6px;
+    font-size: 0.7rem;
     font-weight: 800;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     color: var(--text-secondary);
     text-transform: uppercase;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
+    flex-shrink: 0;
 }
 
 .tv-chart-canvas-wrap {
     position: relative;
     flex: 1;
+    min-height: 0;
     width: 100%;
-    min-height: 190px;
 }
 
-/* Bloco de Controle de Despacho & SLA */
+/* Bloco de Controle de Despacho & SLA (4 Linhas Compactas) */
 .tv-dispatch-stats-container {
     display: flex;
     flex-direction: column;
-    justify-content: space-around;
+    justify-content: space-between;
     flex: 1;
-    gap: 10px;
-    padding: 8px 0;
+    min-height: 0;
+    gap: 5px;
 }
 
 .tv-stat-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 14px;
-    border-radius: 10px;
+    padding: 6px 10px;
+    border-radius: 9px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -15505,63 +15636,81 @@ body.theme-light .delivery-hub-today-wrap:hover {
 }
 
 .tv-stat-title {
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     font-weight: 800;
     color: var(--text-primary);
+    line-height: 1.1;
 }
 
 .tv-stat-desc {
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     color: var(--text-secondary);
+    margin-top: 1px;
 }
 
 .tv-stat-num {
-    font-size: 1.4rem;
+    font-size: 1.25rem;
     font-weight: 800;
 }
 
 /* ==========================================================================
-   FAIXA INFERIOR PANORÂMICA: TOP 5 OS EM ABERTO
+   FAIXA INFERIOR PANORÂMICA: TOP 5 OS EM ABERTO / CRÍTICAS
    ========================================================================== */
 .tv-top5-strip-container {
-    padding: 16px 20px;
-    border-radius: 20px;
-    background: rgba(15, 23, 42, 0.8);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    padding: 8px 14px 9px 14px;
+    border-radius: 16px;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 10px 25px -6px rgba(0, 0, 0, 0.4);
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 7px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    height: 198px;
 }
 
 .tv-top5-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 10px;
+    padding-bottom: 5px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    flex-wrap: wrap;
-    gap: 10px;
+    flex-shrink: 0;
+    gap: 8px;
 }
 
 .tv-top5-title-wrap {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .tv-top5-icon-wrap {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
     background: rgba(239, 68, 68, 0.16);
     border: 1px solid rgba(239, 68, 68, 0.4);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ef4444;
+    flex-shrink: 0;
+}
+
+.tv-top5-icon-wrap.pulse-amber {
+    background: rgba(245, 158, 11, 0.16);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    color: #f59e0b;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
+}
+
+.tv-top5-icon-wrap i {
+    width: 15px;
+    height: 15px;
 }
 
 .pulse-flame {
@@ -15569,13 +15718,13 @@ body.theme-light .delivery-hub-today-wrap:hover {
 }
 
 @keyframes flamePulse {
-    0%, 100% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.3); }
-    50% { box-shadow: 0 0 22px rgba(239, 68, 68, 0.7); }
+    0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.3); }
+    50% { box-shadow: 0 0 18px rgba(239, 68, 68, 0.7); }
 }
 
 .tv-top5-title {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    font-size: 1.05rem;
+    font-size: 0.92rem;
     font-weight: 800;
     color: var(--text-primary);
     margin: 0;
@@ -15583,24 +15732,24 @@ body.theme-light .delivery-hub-today-wrap:hover {
 }
 
 .tv-top5-subtitle {
-    font-size: 0.73rem;
+    font-size: 0.65rem;
     color: var(--text-secondary);
-    margin: 2px 0 0 0;
+    margin: 1px 0 0 0;
 }
 
 .tv-top5-legend {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .tv-legend-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
+    gap: 5px;
+    padding: 2px 7px;
     border-radius: 9999px;
-    font-size: 0.7rem;
+    font-size: 0.64rem;
     font-weight: 700;
 }
 
@@ -15617,9 +15766,15 @@ body.theme-light .delivery-hub-today-wrap:hover {
 }
 
 .pill-aging {
-    background: rgba(168, 85, 247, 0.12);
-    border: 1px solid rgba(168, 85, 247, 0.3);
-    color: #c084fc;
+    background: rgba(0, 242, 254, 0.12);
+    border: 1px solid rgba(0, 242, 254, 0.3);
+    color: #00f2fe;
+}
+
+.pill-team {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #10b981;
 }
 
 .pill-dot {
@@ -15629,30 +15784,37 @@ body.theme-light .delivery-hub-today-wrap:hover {
     background: currentColor;
 }
 
-/* Grid das 5 OS */
+/* Grid Panorâmica dos Cards de OS */
 .tv-top5-cards-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 12px;
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+    box-sizing: border-box;
 }
 
+/* Card Individual de Ordem de Serviço */
 .tv-top5-card {
-    background: rgba(255, 255, 255, 0.03);
+    background: linear-gradient(160deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    padding: 12px;
+    border-radius: 12px;
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    justify-content: space-between;
     position: relative;
     overflow: hidden;
-    transition: all 0.2s ease;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 .tv-top5-card:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: linear-gradient(160deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.95) 100%);
     border-color: rgba(255, 255, 255, 0.18);
     transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
 }
 
 .tv-top5-card::before {
@@ -15662,94 +15824,266 @@ body.theme-light .delivery-hub-today-wrap:hover {
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #ef4444, #f59e0b);
+    background: linear-gradient(90deg, #00f2fe, #3b82f6);
 }
 
+.tv-top5-card.is-critica::before {
+    background: linear-gradient(90deg, #ef4444, #f97316);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+}
+
+.tv-top5-card.is-aberta::before {
+    background: linear-gradient(90deg, #00f2fe, #3b82f6);
+    box-shadow: 0 0 8px rgba(0, 242, 254, 0.4);
+}
+
+/* Topo do Card */
 .tv-top5-card-top {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.tv-top5-num-wrap {
+    display: flex;
     align-items: center;
 }
 
 .tv-top5-num {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.95rem;
+    font-size: 0.88rem;
     font-weight: 800;
-    color: #00f2fe;
+    color: #ffffff;
+    letter-spacing: -0.01em;
 }
 
 .tv-top5-prio-tag {
-    padding: 2px 7px;
-    border-radius: 6px;
-    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.6rem;
     font-weight: 800;
-    letter-spacing: 0.04em;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.35);
-    color: #ef4444;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
 }
 
-.tv-top5-base-row {
+.tv-top5-prio-tag.prio-critica {
+    background: rgba(239, 68, 68, 0.18);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #f87171;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.25);
+}
+
+.tv-top5-prio-tag.prio-aberta {
+    background: rgba(0, 242, 254, 0.12);
+    border: 1px solid rgba(0, 242, 254, 0.35);
+    color: #38bdf8;
+}
+
+/* Linha de Chips: Equipamento & Equipe */
+.tv-top5-chips-row {
     display: flex;
+    gap: 5px;
     align-items: center;
-    gap: 6px;
-    font-size: 0.74rem;
-    font-weight: 700;
-    color: var(--text-primary);
+    width: 100%;
 }
 
-.tv-top5-base-row i {
-    width: 13px;
-    height: 13px;
+.tv-card-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    border-radius: 6px;
+    font-size: 0.64rem;
+    font-weight: 700;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+.tv-card-chip i {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+
+.tv-card-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Cores dos Chips de Equipamento */
+.chip-eq-bf {
+    background: rgba(239, 68, 68, 0.16);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #f87171;
+}
+
+.chip-eq-et {
+    background: rgba(0, 242, 254, 0.14);
+    border: 1px solid rgba(0, 242, 254, 0.38);
+    color: #38bdf8;
+}
+
+.chip-eq-ep {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #34d399;
+}
+
+.chip-eq-ff {
+    background: rgba(245, 158, 11, 0.16);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    color: #fbbf24;
+}
+
+.chip-eq-generic {
+    background: rgba(168, 85, 247, 0.15);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    color: #c084fc;
+}
+
+/* Cores dos Chips de Equipe */
+.chip-team-assigned {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.45);
+    color: #10b981;
+}
+
+.chip-team-none {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.45);
     color: #f59e0b;
 }
 
+/* Linha de Métricas: Clientes Interrompidos (CI) e Tempo de Abertura */
 .tv-top5-metrics-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    padding: 6px 8px;
+    gap: 6px;
+    padding: 4px 8px;
     border-radius: 8px;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .tv-top5-metric-item {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .tv-top5-metric-lbl {
-    font-size: 0.62rem;
-    font-weight: 700;
-    color: var(--text-secondary);
+    font-size: 0.54rem;
+    font-weight: 800;
+    color: #94a3b8;
     text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.tv-top5-metric-val-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 1px;
+}
+
+.mini-metric-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
 }
 
 .tv-top5-metric-val {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     font-weight: 800;
     line-height: 1.1;
-    margin-top: 2px;
 }
 
+/* Rodapé: Base e Status Despacho */
 .tv-top5-status-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.68rem;
+    font-size: 0.63rem;
     border-top: 1px solid rgba(255, 255, 255, 0.05);
-    padding-top: 6px;
-    margin-top: 2px;
+    padding-top: 4px;
+    gap: 4px;
 }
 
-.tv-top5-status-text {
+.tv-top5-base-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     color: var(--text-secondary);
-    font-weight: 600;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 58%;
+}
+
+.tv-top5-base-badge i {
+    width: 11px;
+    height: 11px;
+    color: #00f2fe;
+    flex-shrink: 0;
+}
+
+.tv-top5-base-badge span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.tv-top5-desp-tag {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.desp-caminho {
+    background: rgba(0, 242, 254, 0.12);
+    color: #00f2fe;
+    border: 1px solid rgba(0, 242, 254, 0.3);
+}
+
+.desp-alert {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.desp-local {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.35);
+}
+
+.desp-local-ok {
+    background: rgba(16, 185, 129, 0.12);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.desp-aguard {
+    background: rgba(245, 158, 11, 0.14);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.desp-default {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .tv-top5-empty {
@@ -15757,7 +16091,7 @@ body.theme-light .delivery-hub-today-wrap:hover {
     text-align: center;
     padding: 24px;
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: 0.82rem;
 }
 
 /* Light Theme Adaptations */
@@ -15766,7 +16100,7 @@ body.theme-light .tv-card-section,
 body.theme-light .tv-top5-strip-container {
     background: #ffffff !important;
     border-color: #e2e8f0 !important;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.07) !important;
+    box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.07) !important;
 }
 
 body.theme-light .tv-geo-switcher {
@@ -15787,7 +16121,8 @@ body.theme-light .tv-geo-btn.active {
 body.theme-light .tv-kpi-card,
 body.theme-light .tv-chart-box,
 body.theme-light .tv-top5-card,
-body.theme-light .tv-stat-row {
+body.theme-light .tv-stat-row,
+body.theme-light .tv-fleet-legend-item {
     background: #f8fafc !important;
     border-color: #e2e8f0 !important;
 }
@@ -15797,14 +16132,24 @@ body.theme-light .tv-top5-metrics-row {
     border-color: #e2e8f0 !important;
 }
 
-/* Fullscreen Mode Optimization */
-:fullscreen .tv-dashboard-view-container {
-    padding: 16px 24px;
-    height: 100vh;
-    overflow: hidden;
+/* Telas menores que 850px de altura (ex: Laptops em desenvolvimento) */
+@media (max-height: 850px) {
+    body.route-tv,
+    body.route-tv .app-wrapper,
+    body.route-tv .main-content-layout,
+    .tv-dashboard-view-container {
+        height: auto !important;
+        overflow-y: auto !important;
+    }
+    .tv-card-section {
+        min-height: 380px;
+    }
+    .tv-top5-strip-container {
+        min-height: 190px;
+    }
 }
 
-/* Responsividade TV / 4K / Ultrawide */
+/* Responsividade Ultrawide / 4K / Mobile */
 @media (max-width: 1400px) {
     .tv-fleet-kpis-grid {
         grid-template-columns: repeat(3, 1fr);
@@ -15822,4 +16167,5 @@ body.theme-light .tv-top5-metrics-row {
         grid-template-columns: 1fr;
     }
 }
+
 

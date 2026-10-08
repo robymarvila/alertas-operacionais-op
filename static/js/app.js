@@ -35,6 +35,18 @@ function cleanNodeLabel(lbl, fallback = '') {
     return s;
 }
 
+// Função Utilitária Global para Escape Seguro de Strings em HTML
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+window.escapeHtml = escapeHtml;
+
 function normalizeBidStatus(rawSt) {
     if (!rawSt || rawSt === '--' || rawSt === 'None' || rawSt === 'null') {
         return 'Não Encontrada';
@@ -145,6 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
         navigateToView('priorizador');
     } else if (hash === 'admin') {
         navigateToView('admin');
+    } else if (hash === 'tv') {
+        navigateToView('tv');
     } else {
         navigateToView('hub');
     }
@@ -159,6 +173,8 @@ document.addEventListener('DOMContentLoaded', () => {
             navigateToView('priorizador');
         } else if (currentHash === 'admin') {
             navigateToView('admin');
+        } else if (currentHash === 'tv') {
+            navigateToView('tv');
         } else {
             navigateToView('hub');
         }
@@ -341,7 +357,7 @@ function applyTheme(theme) {
 // NAVEGAÇÃO ENTRE PORTAL HUB E MÓDULO OPERACIONAL
 // ==========================================================================
 function navigateToView(viewName) {
-    if (viewName === 'admin' || viewName === 'tv') {
+    if (viewName === 'admin') {
         if (!authState.isAuthenticated) {
             showToast('Acesso Restrito: Autentique-se com sua matrícula e senha para acessar esta funcionalidade.', 'warning');
             openAuthModal();
@@ -14468,35 +14484,47 @@ async function loadTvDashboardData(isManual = false) {
 
     try {
         const [delRes, prioRes] = await Promise.all([
-            fetch('/api/delivery/data?_=' + Date.now()).then(r => r.json()).catch(err => {
-                console.warn('Erro ao carregar /api/delivery/data:', err);
-                return null;
-            }),
-            fetch('/api/priorizador/data?_=' + Date.now()).then(r => r.json()).catch(err => {
-                console.warn('Erro ao carregar /api/priorizador/data:', err);
-                return null;
-            })
+            fetch('/api/delivery/data?_=' + Date.now())
+                .then(r => r.ok ? r.json() : null)
+                .catch(err => {
+                    console.warn('Erro ao carregar /api/delivery/data:', err);
+                    return null;
+                }),
+            fetch('/api/priorizador/data?_=' + Date.now())
+                .then(r => r.ok ? r.json() : null)
+                .catch(err => {
+                    console.warn('Erro ao carregar /api/priorizador/data:', err);
+                    return null;
+                })
         ]);
 
-        if (delRes && delRes.status === 'success') {
+        let hasDelSuccess = false;
+        let hasPrioSuccess = false;
+
+        if (delRes && (delRes.status === 'success' || Array.isArray(delRes.active_teams) || Array.isArray(delRes.teams))) {
             tvDashboardState.deliveryData = delRes;
+            hasDelSuccess = true;
+            if (delBadge) delBadge.innerHTML = '<i data-lucide="activity"></i> Sincronizado';
+        } else {
+            if (delBadge) delBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
         }
-        if (prioRes && prioRes.status === 'success') {
+
+        if (prioRes && (prioRes.status === 'success' || Array.isArray(prioRes.active_orders) || Array.isArray(prioRes.orders))) {
             tvDashboardState.priorizadorData = prioRes;
+            hasPrioSuccess = true;
+            if (prioBadge) prioBadge.innerHTML = '<i data-lucide="shield-alert"></i> CCO Ativo';
+        } else {
+            if (prioBadge) prioBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
         }
 
         renderTvDashboard();
 
-        if (delBadge) delBadge.innerHTML = '<i data-lucide="activity"></i> Sincronizado';
-        if (prioBadge) prioBadge.innerHTML = '<i data-lucide="shield-alert"></i> CCO Ativo';
         if (isManual) {
             tvDashboardState.countdown = 30;
             updateTvCountdownDisplay();
         }
     } catch (err) {
         console.error('Falha geral no loadTvDashboardData:', err);
-        if (delBadge) delBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
-        if (prioBadge) prioBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
     } finally {
         tvDashboardState.isLoading = false;
         initIcons();
@@ -14505,9 +14533,23 @@ async function loadTvDashboardData(isManual = false) {
 window.loadTvDashboardData = loadTvDashboardData;
 
 function renderTvDashboard() {
-    renderTvDeliverySection();
-    renderTvPriorizadorSection();
-    renderTvTop5Orders();
+    try {
+        renderTvDeliverySection();
+    } catch (e) {
+        console.error('Erro ao renderizar Entrega de Equipes TV:', e);
+    }
+
+    try {
+        renderTvPriorizadorSection();
+    } catch (e) {
+        console.error('Erro ao renderizar Priorizador TV:', e);
+    }
+
+    try {
+        renderTvTop5Orders();
+    } catch (e) {
+        console.error('Erro ao renderizar Top 5 OS TV:', e);
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -14554,7 +14596,7 @@ function renderTvDeliverySection() {
             moto += 1;
         } else if (tipo.includes('CESTO') || tipo.includes('AEREO') || tipo.includes('AÉREO')) {
             cesto += 1;
-        } else if (tipo.includes('LINHA VIVA') || tipo.includes('MUNK') || tipo.includes('GUINDASTE')) {
+        } else if (tipo.includes('LINHA VIVA') || tipo.includes('MUNK') || tipo.includes('MUNCK') || tipo.includes('GUINDASTE')) {
             linhaVivaMunk += 1;
         } else {
             leve += 1;
@@ -14565,32 +14607,50 @@ function renderTvDeliverySection() {
 
     // Atualiza KPIs no DOM
     const elTot = document.getElementById('tvKpiTotalAtivas');
-    const elCesto = document.getElementById('tvKpiCestoAereo');
-    const elLeve = document.getElementById('tvKpiVeiculoLeve');
-    const elMoto = document.getElementById('tvKpiMoto');
-    const elMunk = document.getElementById('tvKpiLinhaVivaMunk');
-    const elRamal = document.getElementById('tvKpiProjetoRamal');
     const elTarget = document.getElementById('tvKpiTargetAtivas');
+    const elCesto = document.getElementById('tvKpiCestoAereo');
+    const elCestoSub = document.getElementById('tvKpiCestoSub');
+    const elLeve = document.getElementById('tvKpiVeiculoLeve');
+    const elLeveSub = document.getElementById('tvKpiLeveSub');
+    const elMoto = document.getElementById('tvKpiMoto');
+    const elMotoSub = document.getElementById('tvKpiMotoSub');
+    const elMunk = document.getElementById('tvKpiLinhaVivaMunk');
+    const elMunkSub = document.getElementById('tvKpiMunkSub');
+    const elRamal = document.getElementById('tvKpiProjetoRamal');
+    const elRamalSub = document.getElementById('tvKpiRamalSub');
+
+    const pct = val => totalAtivas > 0 ? `${Math.round((val / totalAtivas) * 100)}%` : '0%';
 
     if (elTot) elTot.textContent = totalAtivas.toLocaleString('pt-BR');
     if (elCesto) elCesto.textContent = cesto.toLocaleString('pt-BR');
+    if (elCestoSub) elCestoSub.textContent = pct(cesto);
     if (elLeve) elLeve.textContent = leve.toLocaleString('pt-BR');
+    if (elLeveSub) elLeveSub.textContent = pct(leve);
     if (elMoto) elMoto.textContent = moto.toLocaleString('pt-BR');
+    if (elMotoSub) elMotoSub.textContent = pct(moto);
     if (elMunk) elMunk.textContent = linhaVivaMunk.toLocaleString('pt-BR');
+    if (elMunkSub) elMunkSub.textContent = pct(linhaVivaMunk);
     if (elRamal) elRamal.textContent = ramal.toLocaleString('pt-BR');
+    if (elRamalSub) elRamalSub.textContent = pct(ramal);
 
     // Meta se disponível no backend
     const meta = data.target_teams || (scope === 'NORTE' ? 70 : scope === 'LESTE' ? 95 : 165);
     if (elTarget) elTarget.textContent = `Meta: ${meta}`;
 
-    // Renderiza Gráfico 1: Composição da Frota (Doughnut)
-    renderTvFleetChart([cesto, leve, moto, linhaVivaMunk, ramal]);
-
-    // Renderiza Gráfico 2: Curva de Entrega por Horário
+    // 1º Gráfico (Topo): Distribuição de Equipes por Horário e Turno
     renderTvHourlyChart(teams, data.intraday_curve);
+
+    // 2º Gráfico (Abaixo): Composição da Frota em Campo (Em Barras)
+    renderTvFleetChart([
+        { label: 'Cesto Aéreo', value: cesto, color: '#00f2fe' },
+        { label: 'Veículo Leve', value: leve, color: '#10b981' },
+        { label: 'Linha Viva + Munk', value: linhaVivaMunk, color: '#a855f7' },
+        { label: 'Projeto Ramal', value: ramal, color: '#a3e635' },
+        { label: 'Moto', value: moto, color: '#f59e0b' }
+    ], totalAtivas);
 }
 
-function renderTvFleetChart(values) {
+function renderTvFleetChart(items, totalAtivas) {
     const ctx = document.getElementById('tvDeliveryFleetChart');
     if (!ctx) return;
 
@@ -14599,62 +14659,87 @@ function renderTvFleetChart(values) {
         tvDashboardState.charts.fleetChart = null;
     }
 
-    const labels = [
-        ['Cesto', 'Aéreo'],
-        ['Veículo', 'Leve'],
-        ['Moto', '(08:00)'],
-        ['Linha Viva', '+ Munk'],
-        ['Projeto', 'Ramal']
-    ];
+    const labels = items.map(i => i.label);
+    const values = items.map(i => i.value);
+    const bgColors = items.map(i => i.color + '44');
+    const borderColors = items.map(i => i.color);
 
-    const bgColors = [
-        '#00f2fe', // Cesto Aéreo (Cyan Neon)
-        '#10b981', // Veículo Leve (Emerald)
-        '#f59e0b', // Moto (Âmbar)
-        '#a855f7', // Linha Viva + Munk (Roxo)
-        '#a3e635'  // Projeto Ramal (Lima Neon)
-    ];
+    // Plugin para desenhar a quantidade exata e porcentagem no final de cada barra horizontal
+    const tvFleetBarLabelsPlugin = {
+        id: 'tvFleetBarLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx: c } = chart;
+            chart.data.datasets.forEach((dataset, i) => {
+                const meta = chart.getDatasetMeta(i);
+                meta.data.forEach((bar, index) => {
+                    const val = dataset.data[index];
+                    const pct = totalAtivas > 0 ? Math.round((val / totalAtivas) * 100) : 0;
+                    c.save();
+                    c.fillStyle = borderColors[index] || '#cbd5e1';
+                    c.font = 'bold 11px "JetBrains Mono", monospace';
+                    c.textAlign = 'left';
+                    c.textBaseline = 'middle';
+                    c.fillText(` ${val} equipes (${pct}%)`, bar.x + 5, bar.y);
+                    c.restore();
+                });
+            });
+        }
+    };
 
     tvDashboardState.charts.fleetChart = new Chart(ctx, {
-        type: 'doughnut',
+        type: 'bar',
         data: {
             labels: labels,
             datasets: [{
+                label: 'Equipes',
                 data: values,
                 backgroundColor: bgColors,
-                borderColor: 'rgba(15, 23, 42, 0.85)',
-                borderWidth: 2,
-                hoverOffset: 6
+                borderColor: borderColors,
+                borderWidth: 1.5,
+                borderRadius: 5,
+                maxBarThickness: 17
             }]
         },
         options: {
+            indexAxis: 'y', // Barra horizontal para excelente leitura e proporcionalidade
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '62%',
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        color: '#94a3b8',
-                        font: { size: 10, weight: '700', family: 'Plus Jakarta Sans' },
-                        boxWidth: 10,
-                        boxHeight: 10,
-                        padding: 8
+            layout: {
+                padding: { right: 115 }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                    ticks: {
+                        color: '#64748b',
+                        font: { size: 9, family: 'JetBrains Mono' },
+                        precision: 0
                     }
                 },
+                y: {
+                    grid: { display: false },
+                    ticks: {
+                        color: '#cbd5e1',
+                        font: { size: 10, weight: '700', family: 'Plus Jakarta Sans' }
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            const lbl = Array.isArray(context.label) ? context.label.join(' ') : context.label;
+                            const lbl = context.label || '';
                             const val = context.raw || 0;
-                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            const pct = total > 0 ? Math.round((val / total) * 100) : 0;
-                            return ` ${lbl}: ${val} equipes (${pct}%)`;
+                            const pctVal = totalAtivas > 0 ? Math.round((val / totalAtivas) * 100) : 0;
+                            return ` ${lbl}: ${val} equipes (${pctVal}%)`;
                         }
                     }
                 }
             }
-        }
+        },
+        plugins: [tvFleetBarLabelsPlugin]
     });
 }
 
@@ -14667,20 +14752,14 @@ function renderTvHourlyChart(teams, serverCurve) {
         tvDashboardState.charts.hourlyChart = null;
     }
 
-    // Horários das 06:00 às 22:00
-    const hours = [];
-    for (let h = 6; h <= 22; h++) {
-        hours.push(String(h).padStart(2, '0') + ':00');
-    }
+    // Horários / Turnos operacionais com foco nas janelas de entrega
+    const shiftSlots = ['06:00', '08:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
+    const counts = shiftSlots.map(() => 0);
 
-    const counts = hours.map(() => 0);
-
-    // Se temos equipes ativas filtradas para a tela, calcula a distribuição horária exata
-    // garantindo as regras: Moto = 08:00, Projeto Ramal = 08:00
     teams.forEach(t => {
         const id = String(t.team_code || t.team_id || t.equipe || '').trim().toUpperCase();
         const tipo = String(t.vehicle_type || t.unified_group || t.tipo || '').trim().toUpperCase();
-        
+
         let hora = '08:00';
         if (isTvRamalTeam(id) || tipo.includes('RAMAL') || tipo.includes('MOTO') || id.replace(/\D/g, '').startsWith('7')) {
             hora = '08:00';
@@ -14692,55 +14771,76 @@ function renderTvHourlyChart(teams, serverCurve) {
             }
         }
 
-        const idx = hours.indexOf(hora);
-        if (idx >= 0) {
-            counts[idx] += 1;
-        } else {
-            // Se for antes das 06:00, agrupa em 06:00; se após 22:00, agrupa em 22:00
-            const hNum = parseInt(hora, 10);
-            if (hNum < 6) counts[0] += 1;
-            else counts[counts.length - 1] += 1;
-        }
+        // Encontra o slot mais próximo
+        const hNum = parseInt(hora, 10);
+        let bestIdx = 1; // Default 08:00
+        if (hNum <= 6) bestIdx = 0;
+        else if (hNum <= 8) bestIdx = 1;
+        else if (hNum <= 12) bestIdx = 2;
+        else if (hNum <= 14) bestIdx = 3;
+        else if (hNum <= 16) bestIdx = 4;
+        else if (hNum <= 18) bestIdx = 5;
+        else if (hNum <= 20) bestIdx = 6;
+        else bestIdx = 7;
+
+        counts[bestIdx] += 1;
     });
 
-    // Se não há equipes filtradas e serverCurve existe, usa serverCurve como fallback
+    // Se counts estiver vazio e serverCurve existir, mescla
     const hasData = counts.some(c => c > 0);
     let finalCounts = counts;
     if (!hasData && serverCurve && typeof serverCurve === 'object') {
-        finalCounts = hours.map(h => Number(serverCurve[h] || 0));
+        finalCounts = shiftSlots.map(s => Number(serverCurve[s] || 0));
     }
 
+    // Plugin customizado para desenhar os números no topo de cada barra para leitura em TV
+    const tvBarLabelsPlugin = {
+        id: 'tvBarLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx: c } = chart;
+            chart.data.datasets.forEach((dataset, i) => {
+                const meta = chart.getDatasetMeta(i);
+                meta.data.forEach((bar, index) => {
+                    const val = dataset.data[index];
+                    if (val > 0) {
+                        c.save();
+                        c.fillStyle = '#00f2fe';
+                        c.font = 'bold 11px "JetBrains Mono", monospace';
+                        c.textAlign = 'center';
+                        c.fillText(String(val), bar.x, bar.y - 5);
+                        c.restore();
+                    }
+                });
+            });
+        }
+    };
+
     tvDashboardState.charts.hourlyChart = new Chart(ctx, {
-        type: 'line',
+        type: 'bar',
         data: {
-            labels: hours,
+            labels: shiftSlots,
             datasets: [{
                 label: 'Equipes Entregues',
                 data: finalCounts,
+                backgroundColor: 'rgba(0, 242, 254, 0.45)',
                 borderColor: '#00f2fe',
-                backgroundColor: 'rgba(0, 242, 254, 0.12)',
-                borderWidth: 2.5,
-                fill: true,
-                tension: 0.35,
-                pointRadius: 3,
-                pointBackgroundColor: '#00f2fe',
-                pointBorderColor: '#0f172a',
-                pointBorderWidth: 1.5,
-                pointHoverRadius: 6
+                borderWidth: 1.5,
+                borderRadius: 6,
+                maxBarThickness: 36
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: { top: 18 }
+            },
             scales: {
                 x: {
                     grid: { color: 'rgba(255, 255, 255, 0.04)' },
                     ticks: {
-                        color: '#64748b',
-                        font: { size: 9, family: 'JetBrains Mono' },
-                        maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: 9
+                        color: '#94a3b8',
+                        font: { size: 10, weight: '700', family: 'JetBrains Mono' }
                     }
                 },
                 y: {
@@ -14757,16 +14857,14 @@ function renderTvHourlyChart(teams, serverCurve) {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        title: function(items) {
-                            return `Horário: ${items[0].label}`;
-                        },
                         label: function(context) {
-                            return ` ${context.raw} equipes alocadas`;
+                            return ` ${context.raw} equipes alocadas neste turno`;
                         }
                     }
                 }
             }
-        }
+        },
+        plugins: [tvBarLabelsPlugin]
     });
 }
 
@@ -14791,7 +14889,7 @@ function renderTvPriorizadorSection() {
         orders = orders.filter(o => {
             const r = String(o.regiao || o.regional || '').toUpperCase();
             const b = String(o.base_op || o.base || '').toUpperCase();
-            return r.includes('LESTE') || b.includes('PENHA') || b.includes('ITAQUERA') || b.includes('SAO MIGUEL') || b.includes('ARICANDUVA');
+            return r.includes('LESTE') || b.includes('PENHA') || b.includes('ITAQUERA') || b.includes('SAO MIGUEL') || b.includes('ARICANDUVA') || b.includes('CATUMBI') || b.includes('MONTE SANTO') || b.includes('SANTO ANDRÉ');
         });
     }
 
@@ -14803,6 +14901,7 @@ function renderTvPriorizadorSection() {
     let local80 = 0;
     let semAtend = 0;
     let deslocamento = 0;
+    let desp10 = 0;
 
     const baseCountMap = {};
 
@@ -14817,16 +14916,19 @@ function renderTvPriorizadorSection() {
         }
 
         const desp = String(o.control_desp || o.status_despacho || o.status || '').toUpperCase();
+        const dur = Number(o.dur_min || 0);
+
+        if (desp.includes('>=80') || desp.includes('MAIOR_80') || (desp.includes('LOCAL') && dur >= 80)) {
+            local80 += 1;
+        }
+        
         if (desp.includes('AGUARD') || desp.includes('PEND') || desp.includes('SEM ATEND')) {
             aguardDesp += 1;
             semAtend += 1;
-        } else if (desp.includes('DESLOC') || desp.includes('A CAMINHO') || desp.includes('CAMI')) {
+        } else if (desp.includes('DESLOC') || desp.includes('CAMI') || desp.includes('A CAMINHO')) {
             deslocamento += 1;
-        } else if (desp.includes('LOCAL')) {
-            const tempoLocal = Number(o.dur_min || o.tempo_local_min || o.aging_min || 0);
-            if (tempoLocal >= 80) {
-                local80 += 1;
-            }
+        } else if (desp.includes('DESP_>=10') || desp.includes('DESP_MAIOR_10') || desp.includes('DESPACH')) {
+            desp10 += 1;
         }
 
         const base = String(o.base_op || o.base || 'OUTRAS').trim().toUpperCase();
@@ -14841,15 +14943,22 @@ function renderTvPriorizadorSection() {
         altaPrioridade = Number(k.total_grupo_prioritario || k.total_prio1_elevada || altaPrioridade);
         aguardDesp = Number(k.total_aguard_desp || aguardDesp);
         local80 = Number(k.total_local_80min || local80);
-    } else if (scope === 'NORTE' && data.kpis) {
-        totalOs = Number(data.kpis.total_norte || totalOs);
-    } else if (scope === 'LESTE' && data.kpis) {
-        totalOs = Number(data.kpis.total_leste || totalOs);
-    }
 
-    // Se distributions.by_base existir no backend e scope === ALL, podemos mesclar
-    if (scope === 'ALL' && data.distributions && data.distributions.by_base) {
-        Object.assign(baseCountMap, data.distributions.by_base);
+        if (data.distributions && data.distributions.by_control_desp) {
+            const cd = data.distributions.by_control_desp;
+            semAtend = Number(cd.AGUARD_DESP || semAtend);
+            local80 = Number(cd['LOCAL_>=80min'] || local80);
+            deslocamento = Number(cd['CAMI_<40min'] || 0) + Number(cd['CAMI_>=40min'] || 0);
+            desp10 = Number(cd['DESP_>=10min'] || desp10);
+        }
+
+        // Mapeia distribuição de bases com extração numérica segura (objeto {chi, ci, count} ou num)
+        if (data.distributions && data.distributions.by_base) {
+            Object.entries(data.distributions.by_base).forEach(([base, val]) => {
+                const count = (typeof val === 'object' && val !== null) ? Number(val.count || 0) : Number(val || 0);
+                baseCountMap[base] = count;
+            });
+        }
     }
 
     // Atualiza KPIs do Priorizador no DOM
@@ -14861,6 +14970,7 @@ function renderTvPriorizadorSection() {
     const elLoc80 = document.getElementById('tvStatLocal80');
     const elSemAtend = document.getElementById('tvStatSemAtendimento');
     const elDesloc = document.getElementById('tvStatEmDeslocamento');
+    const elDesp10 = document.getElementById('tvStatDesp10');
 
     if (elOs) elOs.textContent = totalOs.toLocaleString('pt-BR');
     if (elCi) elCi.textContent = totalCi.toLocaleString('pt-BR');
@@ -14870,6 +14980,7 @@ function renderTvPriorizadorSection() {
     if (elLoc80) elLoc80.textContent = local80.toLocaleString('pt-BR');
     if (elSemAtend) elSemAtend.textContent = semAtend.toLocaleString('pt-BR');
     if (elDesloc) elDesloc.textContent = deslocamento.toLocaleString('pt-BR');
+    if (elDesp10) elDesp10.textContent = desp10.toLocaleString('pt-BR');
 
     // Gráfico de Distribuição de OS por Base
     renderTvBaseChart(baseCountMap);
@@ -14884,18 +14995,47 @@ function renderTvBaseChart(baseCountMap) {
         tvDashboardState.charts.baseChart = null;
     }
 
-    // Ordena as bases por volume de OS decrescente
+    // Normaliza nomes das bases e converte valores com garantia numérica estrita
     const sorted = Object.entries(baseCountMap)
+        .map(([name, val]) => {
+            const cleanName = String(name).replace(/^BASE\s+/i, '').trim();
+            const count = (typeof val === 'object' && val !== null) ? Number(val.count || 0) : Number(val || 0);
+            return [cleanName, count];
+        })
+        .filter(([_, count]) => count > 0)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 6);
 
-    const labels = sorted.map(item => item[0]);
-    const values = sorted.map(item => item[1]);
+    let labels = sorted.map(item => item[0]);
+    let values = sorted.map(item => item[1]);
 
     if (labels.length === 0) {
-        labels.push('Sem Ordens');
-        values.push(0);
+        labels = ['Sem Ordens'];
+        values = [0];
     }
+
+    // Plugin para desenhar a quantidade exata ao final de cada barra horizontal
+    const tvHBarLabelsPlugin = {
+        id: 'tvHBarLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx: c } = chart;
+            chart.data.datasets.forEach((dataset, i) => {
+                const meta = chart.getDatasetMeta(i);
+                meta.data.forEach((bar, index) => {
+                    const val = dataset.data[index];
+                    if (val > 0) {
+                        c.save();
+                        c.fillStyle = '#f59e0b';
+                        c.font = 'bold 11px "JetBrains Mono", monospace';
+                        c.textAlign = 'left';
+                        c.textBaseline = 'middle';
+                        c.fillText(` ${val} OS`, bar.x + 4, bar.y);
+                        c.restore();
+                    }
+                });
+            });
+        }
+    };
 
     tvDashboardState.charts.baseChart = new Chart(ctx, {
         type: 'bar',
@@ -14907,13 +15047,17 @@ function renderTvBaseChart(baseCountMap) {
                 backgroundColor: 'rgba(245, 158, 11, 0.45)',
                 borderColor: '#f59e0b',
                 borderWidth: 1.5,
-                borderRadius: 6
+                borderRadius: 6,
+                maxBarThickness: 22
             }]
         },
         options: {
             indexAxis: 'y', // Barra horizontal para leitura rápida em TV
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: { right: 48 }
+            },
             scales: {
                 x: {
                     beginAtZero: true,
@@ -14942,21 +15086,49 @@ function renderTvBaseChart(baseCountMap) {
                     }
                 }
             }
-        }
+        },
+        plugins: [tvHBarLabelsPlugin]
     });
 }
 
 // --------------------------------------------------------------------------
-// SEÇÃO 3: TOP 5 OS EM ABERTO PENDENTES DE TRATAMENTO
+// SEÇÃO 3: TOP 5 OS EM ABERTO / CRÍTICAS PENDENTES DE TRATAMENTO
 // --------------------------------------------------------------------------
 function renderTvTop5Orders() {
     const grid = document.getElementById('tvTop5CardsGrid');
     if (!grid) return;
 
+    // Helper local infalível para escape de HTML
+    const safe = (val) => {
+        if (val === null || val === undefined) return '';
+        return String(val)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    };
+
     const data = tvDashboardState.priorizadorData;
-    const rawOrders = (data && (data.active_orders || data.orders)) ? (data.active_orders || data.orders) : [];
+    if (!data) {
+        if (tvDashboardState.isLoading) {
+            grid.innerHTML = '<div class="tv-top5-empty"><i data-lucide="loader-2" class="spin-icon" style="width:20px;height:20px;margin-bottom:6px;display:inline-block;color:#00f2fe;"></i><br>Sincronizando Ordens do Priorizador...</div>';
+            initIcons();
+        } else {
+            grid.innerHTML = '<div class="tv-top5-empty"><i data-lucide="alert-triangle" style="width:20px;height:20px;margin-bottom:6px;display:inline-block;color:#f59e0b;"></i><br>Aguardando dados da fila de ordens...</div>';
+            initIcons();
+        }
+        return;
+    }
+
+    const rawOrders = (data.active_orders || data.orders || []);
     if (!Array.isArray(rawOrders) || rawOrders.length === 0) {
-        grid.innerHTML = '<div class="tv-top5-empty">Nenhuma ordem prioritária pendente de tratamento no momento.</div>';
+        grid.innerHTML = '<div class="tv-top5-empty"><i data-lucide="check-circle" style="width:20px;height:20px;color:#10b981;margin-bottom:4px;display:inline-block;"></i><br>Nenhuma ordem pendente de tratamento no momento. Fila zerada!</div>';
+        const titleEl = document.getElementById('tvTop5MainTitle');
+        const subEl = document.getElementById('tvTop5SubTitle');
+        if (titleEl) titleEl.textContent = 'TOP 5 ORDENS EM ABERTO PENDENTES DE TRATAMENTO';
+        if (subEl) subEl.textContent = 'Todas as ordens tratadas com sucesso ou em atendimento concluído';
+        initIcons();
         return;
     }
 
@@ -14974,23 +15146,28 @@ function renderTvTop5Orders() {
         orders = orders.filter(o => {
             const r = String(o.regiao || o.regional || '').toUpperCase();
             const b = String(o.base_op || o.base || '').toUpperCase();
-            return r.includes('LESTE') || b.includes('PENHA') || b.includes('ITAQUERA') || b.includes('SAO MIGUEL') || b.includes('ARICANDUVA');
+            return r.includes('LESTE') || b.includes('PENHA') || b.includes('ITAQUERA') || b.includes('SAO MIGUEL') || b.includes('ARICANDUVA') || b.includes('CATUMBI') || b.includes('MONTE SANTO') || b.includes('SANTO ANDRÉ');
         });
     }
 
-    // Filtra ordens pendentes (não concluídas / canceladas)
-    orders = orders.filter(o => {
-        const s = String(o.status || o.control_desp || '').toUpperCase();
-        return !s.includes('CONCLU') && !s.includes('FINAL') && !s.includes('CANC');
-    });
+    // Regra de criticidade operacional
+    function isCriticaOrder(o) {
+        const rank = Number(o.prioridade_rank || 99);
+        const eq = String(o.eq || '').toUpperCase().trim();
+        const lbl = String(o.criticidade_label || '').toUpperCase();
+        return (rank <= 2) || eq === 'BF' || Boolean(o.is_urgencia_critica) || lbl.includes('ELEVADA') || lbl.includes('CRÍTICA');
+    }
 
-    // Ordenação de criticidade estrita:
-    // 1. Prioridade (P1 > P2 > P3 / rank numérico menor)
+    const criticas = orders.filter(isCriticaOrder);
+    const abertas = orders.filter(o => !isCriticaOrder(o));
+
+    // Ordenação estrita das ordens críticas:
+    // 1. Prioridade (menor rank: Rank 1 > Rank 2)
     // 2. Clientes Interrompidos (CI) decrescente
-    // 3. Aging (tempo de espera) decrescente
-    orders.sort((a, b) => {
-        const rankA = Number(a.prioridade_rank || (String(a.criticidade_label || a.prioridade).includes('P1') ? 1 : 5));
-        const rankB = Number(b.prioridade_rank || (String(b.criticidade_label || b.prioridade).includes('P1') ? 1 : 5));
+    // 3. Tempo de abertura na fila (dur_min) decrescente
+    criticas.sort((a, b) => {
+        const rankA = Number(a.prioridade_rank || 99);
+        const rankB = Number(b.prioridade_rank || 99);
         if (rankA !== rankB) return rankA - rankB;
 
         const ciA = Number(a.ci || 0);
@@ -15002,55 +15179,164 @@ function renderTvTop5Orders() {
         return agingB - agingA;
     });
 
-    const top5 = orders.slice(0, 5);
+    // Ordenação das ordens em aberto convencionais:
+    // 1. Clientes Interrompidos (CI) decrescente
+    // 2. Tempo de abertura na fila (dur_min) decrescente
+    abertas.sort((a, b) => {
+        const ciA = Number(a.ci || 0);
+        const ciB = Number(b.ci || 0);
+        if (ciB !== ciA) return ciB - ciA;
+
+        const agingA = Number(a.dur_min || a.aging_min || 0);
+        const agingB = Number(b.dur_min || b.aging_min || 0);
+        return agingB - agingA;
+    });
+
+    // TOP 5: Se houver críticas, elas lideram a lista. Se houver menos de 5 críticas
+    // (ou zero críticas), as vagas são preenchidas pelas ordens em aberto de maior impacto.
+    const top5 = [...criticas, ...abertas].slice(0, 5);
+
+    // Ajusta dinamicamente títulos e indicadores conforme a composição
+    const titleEl = document.getElementById('tvTop5MainTitle');
+    const subEl = document.getElementById('tvTop5SubTitle');
+    const iconWrapEl = document.getElementById('tvTop5IconWrap');
+
+    if (criticas.length === 0) {
+        if (titleEl) titleEl.textContent = 'TOP 5 ORDENS EM ABERTO PENDENTES DE TRATAMENTO';
+        if (subEl) subEl.textContent = 'Sem ordens com status crítico registradas • Exibindo ocorrências em aberto com maior impacto (CI e Tempo)';
+        if (iconWrapEl) {
+            iconWrapEl.className = 'tv-top5-icon-wrap pulse-amber';
+            iconWrapEl.innerHTML = '<i data-lucide="alert-circle"></i>';
+        }
+    } else {
+        if (titleEl) titleEl.textContent = 'TOP 5 ORDENS CRÍTICAS EM ABERTO PENDENTES DE TRATAMENTO';
+        if (subEl) subEl.textContent = `Priorização operacional • ${criticas.length} ordem(ns) crítica(s) em fila prioritária`;
+        if (iconWrapEl) {
+            iconWrapEl.className = 'tv-top5-icon-wrap pulse-flame';
+            iconWrapEl.innerHTML = '<i data-lucide="flame"></i>';
+        }
+    }
 
     if (top5.length === 0) {
-        grid.innerHTML = '<div class="tv-top5-empty">Todas as ordens críticas estão tratadas ou em atendimento finalizado!</div>';
+        grid.innerHTML = '<div class="tv-top5-empty">Nenhuma ordem encontrada para o filtro selecionado.</div>';
+        initIcons();
         return;
     }
 
     grid.innerHTML = top5.map((os, idx) => {
-        const osNum = os.ordem || os.numero_os || os.os || `#ORD-${idx + 1}`;
-        const prioTag = os.criticidade_label || os.prioridade || 'P1 CRÍTICA';
-        const baseName = os.base_op || os.base || 'BASE NÃO INFORMADA';
-        const regiao = os.regiao || (scope === 'ALL' ? 'ENEL SP' : scope);
+        const osNum = os.ordem || os.numero_os || os.os || `ORD-${idx + 1}`;
+        const isCrit = isCriticaOrder(os);
+        const prioTag = isCrit 
+            ? (os.criticidade_label ? String(os.criticidade_label).replace(/^[⚡🔴\s]+/g, '') : (Number(os.prioridade_rank) === 1 ? 'P1 ELEVADA' : 'REDE: BF'))
+            : 'EM ABERTO';
+        const prioClass = isCrit ? 'prio-critica' : 'prio-aberta';
+        const cardStateClass = isCrit ? 'is-critica' : 'is-aberta';
+
+        const baseName = String(os.base_op || os.base || 'SÃO PAULO').replace(/^BASE\s+/i, '');
+        const regiao = String(os.regiao || '').trim() || (scope === 'ALL' ? 'ENEL SP' : scope);
         const ciVal = Number(os.ci || 0).toLocaleString('pt-BR');
-        
-        // Aging formatado
+
+        // Tempo de abertura (Aging) formatado em horas e minutos
         const agingMin = Number(os.dur_min || os.aging_min || 0);
         const hours = Math.floor(agingMin / 60);
         const mins = agingMin % 60;
         const agingStr = `${String(hours).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m`;
-        const agingColor = agingMin >= 120 ? '#ef4444' : agingMin >= 60 ? '#f59e0b' : '#00f2fe';
+        const agingColor = agingMin >= 120 ? '#ef4444' : (agingMin >= 60 ? '#f59e0b' : '#00f2fe');
 
-        const despStatus = os.control_desp || os.status_despacho || 'AGUARDANDO DESPACHO';
-        const endereco = os.alimentador ? `Alim: ${os.alimentador}` : (os.eq ? `Eq: ${os.eq}` : 'São Paulo - SP');
+        // Equipamento (ET, BF, EP, FF, etc.)
+        const eqCode = String(os.eq || 'N/D').trim().toUpperCase();
+        let eqClass = 'chip-eq-generic';
+        let eqIcon = 'wrench';
+        if (eqCode === 'BF') {
+            eqClass = 'chip-eq-bf';
+            eqIcon = 'zap';
+        } else if (eqCode === 'ET') {
+            eqClass = 'chip-eq-et';
+            eqIcon = 'cpu';
+        } else if (eqCode === 'EP') {
+            eqClass = 'chip-eq-ep';
+            eqIcon = 'activity';
+        } else if (eqCode === 'FF') {
+            eqClass = 'chip-eq-ff';
+            eqIcon = 'alert-triangle';
+        }
+
+        // Equipe vinculada
+        const rawEquipe = os.equipe_codigo ? String(os.equipe_codigo).trim() : '';
+        const hasTeam = rawEquipe && rawEquipe.toUpperCase() !== 'NONE' && rawEquipe.toUpperCase() !== 'NULL' && rawEquipe !== '';
+        const teamHtml = hasTeam
+            ? `<span class="tv-card-chip chip-team-assigned" title="Equipe Alocada: ${safe(rawEquipe)}"><i data-lucide="radio"></i> <span>EQP: <strong>${safe(rawEquipe)}</strong></span></span>`
+            : `<span class="tv-card-chip chip-team-none" title="Sem equipe despachada"><i data-lucide="user-x"></i> <span><strong>SEM EQUIPE</strong></span></span>`;
+
+        // Status de Despacho (SLA)
+        const rawDesp = String(os.control_desp || os.status_despacho || 'AGUARD_DESP').toUpperCase();
+        let despShort = rawDesp.replace(/_/g, ' ');
+        let despClass = 'desp-default';
+        if (rawDesp.includes('CAMI_<40')) {
+            despShort = 'A CAMINHO (<40m)';
+            despClass = 'desp-caminho';
+        } else if (rawDesp.includes('CAMI_>=40')) {
+            despShort = 'A CAMINHO (>=40m)';
+            despClass = 'desp-alert';
+        } else if (rawDesp.includes('LOCAL_>=80')) {
+            despShort = 'NO LOCAL (>=80m)';
+            despClass = 'desp-local';
+        } else if (rawDesp.includes('LOCAL_<80')) {
+            despShort = 'NO LOCAL (<80m)';
+            despClass = 'desp-local-ok';
+        } else if (rawDesp.includes('DESP_>=10')) {
+            despShort = 'DESPACHADA (>=10m)';
+            despClass = 'desp-alert';
+        } else if (rawDesp.includes('AGUARD_DESP')) {
+            despShort = 'AGUARD. DESPACHO';
+            despClass = 'desp-aguard';
+        }
 
         return `
-            <div class="tv-top5-card">
+            <div class="tv-top5-card ${cardStateClass}" title="OS #${safe(osNum)} • ${safe(baseName)}">
                 <div class="tv-top5-card-top">
-                    <span class="tv-top5-num">${escapeHtml(osNum)}</span>
-                    <span class="tv-top5-prio-tag">${escapeHtml(prioTag)}</span>
+                    <div class="tv-top5-num-wrap">
+                        <span class="tv-top5-num">#${safe(osNum)}</span>
+                    </div>
+                    <span class="tv-top5-prio-tag ${prioClass}">${safe(prioTag)}</span>
                 </div>
-                <div class="tv-top5-base-row">
-                    <i data-lucide="map-pin"></i>
-                    <span>${escapeHtml(baseName)} • ${escapeHtml(regiao)}</span>
+
+                <!-- LINHA DE CHIPS OPERACIONAIS: EQUIPAMENTO & EQUIPE -->
+                <div class="tv-top5-chips-row">
+                    <span class="tv-card-chip ${eqClass}" title="Equipamento: ${safe(eqCode)}">
+                        <i data-lucide="${eqIcon}"></i>
+                        <span>EQ: <strong>${safe(eqCode)}</strong></span>
+                    </span>
+                    ${teamHtml}
                 </div>
+
+                <!-- MÉTRICAS: CLIENTES INTERROMPIDOS (CI) & TEMPO DE ABERTURA -->
                 <div class="tv-top5-metrics-row">
                     <div class="tv-top5-metric-item">
                         <span class="tv-top5-metric-lbl">CLIENTES (CI)</span>
-                        <strong class="tv-top5-metric-val text-amber">${ciVal}</strong>
+                        <div class="tv-top5-metric-val-wrap">
+                            <i data-lucide="users" class="mini-metric-icon text-amber"></i>
+                            <strong class="tv-top5-metric-val text-amber font-mono">${ciVal}</strong>
+                        </div>
                     </div>
                     <div class="tv-top5-metric-item">
-                        <span class="tv-top5-metric-lbl">TEMPO DE FILA</span>
-                        <strong class="tv-top5-metric-val" style="color: ${agingColor};">${agingStr}</strong>
+                        <span class="tv-top5-metric-lbl">TEMPO ABERTO</span>
+                        <div class="tv-top5-metric-val-wrap">
+                            <i data-lucide="clock" class="mini-metric-icon" style="color: ${agingColor};"></i>
+                            <strong class="tv-top5-metric-val font-mono" style="color: ${agingColor};">${agingStr}</strong>
+                        </div>
                     </div>
                 </div>
+
+                <!-- RODAPÉ: BASE OPERACIONAL & STATUS DESPACHO -->
                 <div class="tv-top5-status-footer">
-                    <span class="tv-top5-status-text" title="${escapeHtml(despStatus)} • ${escapeHtml(endereco)}">
-                        ${escapeHtml(despStatus)}
+                    <div class="tv-top5-base-badge" title="${safe(baseName)} • ${safe(regiao)}">
+                        <i data-lucide="map-pin"></i>
+                        <span>${safe(baseName)}</span>
+                    </div>
+                    <span class="tv-top5-desp-tag ${despClass}" title="${safe(rawDesp)}">
+                        ${safe(despShort)}
                     </span>
-                    <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: var(--text-secondary); opacity: 0.7;"></i>
                 </div>
             </div>
         `;
