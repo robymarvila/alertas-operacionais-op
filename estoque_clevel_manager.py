@@ -21,6 +21,37 @@ class EstoqueCLevelManager:
         self._load_data()
 
     @staticmethod
+    def _normalize_group(g: str) -> str:
+        g_clean = str(g or '').strip()
+        g_upper = g_clean.upper()
+        if 'MANUTEN' in g_upper and 'VEIC' in g_upper:
+            return 'MANUTENÇÃO DE VEÍCULOS'
+        if 'ESCRIT' in g_upper:
+            return 'MATERIAL DE ESCRITÓRIO'
+        if 'COPA' in g_upper or 'LIMPEZA' in g_upper:
+            return 'MATERIAL COPA/LIMPEZA'
+        if 'CONSUMO' in g_upper:
+            return 'MATERIAL DE CONSUMO'
+        if 'FERRAMENT' in g_upper:
+            return 'FERRAMENTAL'
+        if g_upper == 'EPI':
+            return 'EPI'
+        if g_upper == 'EPC':
+            return 'EPC'
+        if not g_clean or g_upper in ['NAN', 'NONE', 'NÃO INFORMADO', '']:
+            return 'OUTROS'
+        return g_upper
+
+    @staticmethod
+    def _normalize_role(f: str) -> str:
+        f_clean = str(f or '').strip()
+        if 'Ve' in f_clean and 'culo' in f_clean:
+            return 'Veículo / Frota'
+        if not f_clean or f_clean.lower() in ['sem dados', 'nan', 'none', '']:
+            return 'Não Informado / Operação'
+        return f_clean
+
+    @staticmethod
     def _normalize_segment(s: str) -> str:
         s_clean = str(s or '').strip()
         if not s_clean or s_clean.upper() in ['NÃO INFORMADO', 'NAO INFORMADO', 'NO INFORMADO', 'NAN', '']:
@@ -50,6 +81,8 @@ class EstoqueCLevelManager:
                     self.records = json.load(f)
                 for r in self.records:
                     r['segmento_normalizado'] = self._normalize_segment(r.get('setor'))
+                    r['grupo_normalizado'] = self._normalize_group(r.get('grupo'))
+                    r['funcao_normalizada'] = self._normalize_role(r.get('funcao'))
                 print(f"[ESTOQUE C-LEVEL] Cache carregado: {len(self.records):,} registros ativos.", flush=True)
             except Exception as e:
                 print(f"[ESTOQUE C-LEVEL ERROR] Falha ao carregar cache local: {e}", flush=True)
@@ -66,6 +99,7 @@ class EstoqueCLevelManager:
         self,
         bases: Optional[List[str]] = None,
         segmentos: Optional[List[str]] = None,
+        grupos: Optional[List[str]] = None,
         season: Optional[str] = "ALL"
     ) -> List[Dict[str, Any]]:
         """Filtra os registros com base nos parâmetros multi-seleção."""
@@ -88,6 +122,15 @@ class EstoqueCLevelManager:
                     if r.get('segmento_normalizado') in segs_clean or any(s.upper() in str(r.get('setor', '')).upper() for s in segs_clean)
                 ]
 
+        # Filtro de grupos: só filtra se for um subconjunto estrito dos 7 grupos
+        if grupos:
+            grupos_clean = [self._normalize_group(g) for g in grupos if g]
+            if 0 < len(grupos_clean) < 7:
+                res = [
+                    r for r in res
+                    if r.get('grupo_normalizado') in grupos_clean or self._normalize_group(r.get('grupo')) in grupos_clean
+                ]
+
         if season == "RAIN":
             res = [r for r in res if r.get('is_rain_season', False)]
         elif season == "DRY":
@@ -95,9 +138,9 @@ class EstoqueCLevelManager:
 
         return res
 
-    def get_kpis(self, bases=None, segmentos=None, season="ALL") -> Dict[str, Any]:
+    def get_kpis(self, bases=None, segmentos=None, grupos=None, season="ALL") -> Dict[str, Any]:
         """Calcula os 4 KPIs Executivos do topo da tela."""
-        data = self.filter_records(bases, segmentos, season)
+        data = self.filter_records(bases, segmentos, grupos, season)
         if not data:
             return {
                 "total_itens": 0,
@@ -181,9 +224,9 @@ class EstoqueCLevelManager:
             "periodo_fim": max_date
         }
 
-    def get_pareto(self, bases=None, segmentos=None, season="ALL") -> Dict[str, Any]:
+    def get_pareto(self, bases=None, segmentos=None, grupos=None, season="ALL") -> Dict[str, Any]:
         """Gera dados para a Curva ABC de Pareto e distribuição por categorias."""
-        data = self.filter_records(bases, segmentos, season)
+        data = self.filter_records(bases, segmentos, grupos, season)
         if not data:
             return {"top_items": [], "categories": {}, "top5_most": [], "top5_least": []}
 
@@ -225,9 +268,9 @@ class EstoqueCLevelManager:
             ]
         }
 
-    def get_rain_analysis(self, bases=None, segmentos=None) -> Dict[str, Any]:
+    def get_rain_analysis(self, bases=None, segmentos=None, grupos=None) -> Dict[str, Any]:
         """Gera a linha do tempo temporal vs índice de chuvas reais (Open-Meteo SP) e materiais sensíveis."""
-        data = self.filter_records(bases, segmentos, "ALL")
+        data = self.filter_records(bases, segmentos, grupos, "ALL")
         if not data:
             return {"timeline": [], "rain_sensitive_items": []}
 
@@ -313,9 +356,9 @@ class EstoqueCLevelManager:
             "rain_sensitive_items": sensitive_list[:10]
         }
 
-    def get_ofensores(self, bases=None, segmentos=None) -> Dict[str, Any]:
+    def get_ofensores(self, bases=None, segmentos=None, grupos=None, season="ALL") -> Dict[str, Any]:
         """Calcula a matriz de auditoria de ofensores com Z-Score estatístico (+1.8σ), separando colaboradores nominais."""
-        data = self.filter_records(bases, segmentos, "ALL")
+        data = self.filter_records(bases, segmentos, grupos, season)
         if not data:
             return {"top_offenders": [], "scatter": [], "table": []}
 
@@ -378,10 +421,113 @@ class EstoqueCLevelManager:
             "table": nominal_sorted[:50]
         }
 
+    def get_cargos_ofensores(self, bases=None, segmentos=None, grupos=None, season="ALL") -> Dict[str, Any]:
+        """Calcula o ranking analítico de cargos/funções mais ofensores em retiradas de materiais."""
+        data = self.filter_records(bases, segmentos, grupos, season)
+        if not data:
+            return {"top_cargos_volume": [], "top_cargos_custo": [], "tabela": [], "kpis_cargos": {}}
+
+        total_volume = sum(r.get("qtde", 0) for r in data)
+        total_custo = sum(r.get("valor_total", 0.0) for r in data)
+
+        role_agg = {}
+        for r in data:
+            f = r.get("funcao_normalizada") or self._normalize_role(r.get("funcao"))
+            qtd = r.get("qtde", 0)
+            val = r.get("valor_total", 0.0)
+            u = r.get("responsavel_saida", "").strip()
+            mat = r.get("descricao", "N/A")
+
+            if f not in role_agg:
+                role_agg[f] = {
+                    "funcao": f,
+                    "volume": 0,
+                    "valor_total": 0.0,
+                    "transacoes": 0,
+                    "colaboradores": set(),
+                    "materiais_map": defaultdict(int)
+                }
+
+            role_agg[f]["volume"] += qtd
+            role_agg[f]["valor_total"] += val
+            role_agg[f]["transacoes"] += 1
+            if u and u.lower() != 'sem dados':
+                role_agg[f]["colaboradores"].add(u)
+            role_agg[f]["materiais_map"][mat] += qtd
+
+        processed = []
+        for f, stats in role_agg.items():
+            qtd_pessoas = len(stats["colaboradores"])
+            vol = int(stats["volume"])
+            val = round(float(stats["valor_total"]), 2)
+            media_pessoa = round(vol / max(1, qtd_pessoas), 1)
+            pct_vol = round((vol / total_volume * 100), 1) if total_volume > 0 else 0.0
+            pct_val = round((val / total_custo * 100), 1) if total_custo > 0 else 0.0
+
+            top_mats = sorted(stats["materiais_map"].items(), key=lambda x: x[1], reverse=True)[:3]
+            top_mats_list = [{"material": m[0], "volume": int(m[1])} for m in top_mats]
+
+            if vol >= 5000 or val >= 300000:
+                risco = "Ofensor Crítico"
+                badge_class = "critical"
+            elif vol >= 2000 or val >= 100000:
+                risco = "Alto Volume"
+                badge_class = "warning"
+            else:
+                risco = "Monitoramento Regular"
+                badge_class = "normal"
+
+            processed.append({
+                "funcao": f,
+                "volume": vol,
+                "valor_total": val,
+                "transacoes": stats["transacoes"],
+                "colaboradores_ativos": qtd_pessoas,
+                "media_por_colaborador": media_pessoa,
+                "pct_volume": pct_vol,
+                "pct_custo": pct_val,
+                "top_materiais": top_mats_list,
+                "risco": risco,
+                "badge_class": badge_class
+            })
+
+        sorted_by_vol = sorted(processed, key=lambda x: x["volume"], reverse=True)
+        sorted_by_cost = sorted(processed, key=lambda x: x["valor_total"], reverse=True)
+
+        top1 = sorted_by_vol[0] if sorted_by_vol else None
+        top3_vol_sum = sum(x["volume"] for x in sorted_by_vol[:3])
+        top3_pct = round((top3_vol_sum / total_volume * 100), 1) if total_volume > 0 else 0.0
+
+        return {
+            "top_cargos_volume": sorted_by_vol[:10],
+            "top_cargos_custo": sorted_by_cost[:10],
+            "tabela": sorted_by_vol,
+            "kpis_cargos": {
+                "top1_funcao": top1["funcao"] if top1 else "N/A",
+                "top1_volume": top1["volume"] if top1 else 0,
+                "top1_pct": top1["pct_volume"] if top1 else 0.0,
+                "top3_concentracao_pct": top3_pct,
+                "total_funcoes_ativas": len(processed),
+                "total_volume_geral": int(total_volume),
+                "total_custo_geral": round(float(total_custo), 2)
+            }
+        }
+
     def get_itens_do_ofensor(self, nome: str) -> Dict[str, Any]:
         """Drilldown executivo detalhando todos os materiais retirados por um colaborador."""
-        nome_clean = nome.strip().lower()
+        nome_clean = (nome or "").strip().lower()
+        if not nome_clean:
+            return {"nome": "N/A", "total_itens": 0, "total_custo": 0.0, "ocorrencias": 0, "materiais": []}
+
+        # 1. Match exato insensível a maiúsculas/minúsculas
         user_records = [r for r in self.records if r.get("responsavel_saida", "").strip().lower() == nome_clean]
+        
+        # 2. Se não encontrou exato, tenta por contenção
+        if not user_records:
+            user_records = [
+                r for r in self.records 
+                if nome_clean in r.get("responsavel_saida", "").strip().lower() or r.get("responsavel_saida", "").strip().lower() in nome_clean
+            ]
 
         if not user_records:
             return {"nome": nome, "total_itens": 0, "total_custo": 0.0, "ocorrencias": 0, "materiais": []}
@@ -391,11 +537,14 @@ class EstoqueCLevelManager:
         ocorrencias = len(user_records)
         base = user_records[0].get("base", "BASE IPIRANGA")
         setor = user_records[0].get("setor", "OPERAÇÃO")
+        funcao = user_records[0].get("funcao_normalizada") or user_records[0].get("funcao", "Operacional")
+        matricula = user_records[0].get("matricula", "--")
 
         mat_summary = {}
         for r in user_records:
             mat = r.get("descricao", "N/A")
             cat = r.get("categoria_analitica", "Geral")
+            grp = r.get("grupo_normalizado") or self._normalize_group(r.get("grupo"))
             qtd = r.get("qtde", 0)
             val = r.get("valor_total", 0)
             data_saida = r.get("data_saida", "")
@@ -405,6 +554,7 @@ class EstoqueCLevelManager:
                 mat_summary[mat] = {
                     "name": mat,
                     "categoria": cat,
+                    "grupo": grp,
                     "quantidade": 0,
                     "valor_total": 0.0,
                     "frequencia": 0,
@@ -428,6 +578,8 @@ class EstoqueCLevelManager:
             "nome": user_records[0].get("responsavel_saida", nome),
             "base": base,
             "setor": setor,
+            "funcao": funcao,
+            "matricula": matricula,
             "total_itens": int(total_itens),
             "total_custo": round(float(total_custo), 2),
             "ocorrencias": ocorrencias,
@@ -519,9 +671,9 @@ class EstoqueCLevelManager:
 
         return sorted(results, key=lambda x: (x["mtbr_days"], -x["reincidentes"]))
 
-    def get_mtbr_analysis(self, bases=None, segmentos=None) -> Dict[str, Any]:
+    def get_mtbr_analysis(self, bases=None, segmentos=None, grupos=None, season="ALL") -> Dict[str, Any]:
         """Gera os dados de auditoria de desgaste precoce e MTBR sem zeros."""
-        data = self.filter_records(bases, segmentos, "ALL")
+        data = self.filter_records(bases, segmentos, grupos, season)
         if not data:
             return {"mtbr_lowest": [], "mtbr_highest": [], "table": []}
 
@@ -556,9 +708,9 @@ class EstoqueCLevelManager:
             "table": table_rows
         }
 
-    def get_bases_segmentos(self) -> Dict[str, Any]:
+    def get_bases_segmentos(self, bases=None, segmentos=None, grupos=None, season="ALL") -> Dict[str, Any]:
         """Benchmark entre Base Ipiranga e Base Itaquera e intensidade por segmento com rótulos limpos."""
-        data = self.records
+        data = self.filter_records(bases, segmentos, grupos, season)
         if not data:
             return {"bases_comparison": [], "segment_radar": {}, "benchmarks": []}
 
@@ -607,9 +759,9 @@ class EstoqueCLevelManager:
             "benchmarks": benchmarks
         }
 
-    def get_slow_moving(self, mode="bottom20") -> Dict[str, Any]:
+    def get_slow_moving(self, bases=None, segmentos=None, grupos=None, season="ALL", mode="bottom20") -> Dict[str, Any]:
         """Itens com menor giro (Slow Moving) e capital de giro imobilizado."""
-        data = self.records
+        data = self.filter_records(bases, segmentos, grupos, season)
         if not data:
             return {"capital_imobilizado": 0.0, "items": []}
 

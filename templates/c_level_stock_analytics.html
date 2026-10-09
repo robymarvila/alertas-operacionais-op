@@ -322,6 +322,27 @@
           </div>
         </div>
 
+        <!-- Group Multi-Select Dropdown (EPI, FERRAMENTAL, EPC, etc.) -->
+        <div class="relative" id="multiselect-group-container">
+          <button type="button" onclick="window.dashboardApp.toggleDropdown('group')" class="bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs hover:border-indigo-400 transition-all shadow-sm">
+            <i class="fa-solid fa-layer-group text-purple-600 dark:text-purple-400 text-[10px]"></i>
+            <span id="label-filter-group">Grupos: Todos (7)</span>
+            <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 ml-1"></i>
+          </button>
+          <div id="dropdown-menu-group" class="hidden absolute top-full left-0 mt-2 w-72 rounded-2xl bg-white/95 dark:bg-[#0c1220]/95 border border-slate-200 dark:border-white/20 p-3 shadow-2xl shadow-slate-300/60 dark:shadow-black/70 z-50 space-y-2.5 backdrop-blur-2xl">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-white/10 text-[11px]">
+              <span class="font-bold text-slate-900 dark:text-slate-200">Grupos de Itens</span>
+              <div class="flex gap-2">
+                <button type="button" onclick="window.dashboardApp.selectAllGroups(true)" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold">Todos</button>
+                <button type="button" onclick="window.dashboardApp.selectAllGroups(false)" class="text-slate-500 dark:text-slate-400 hover:underline">Limpar</button>
+              </div>
+            </div>
+            <div id="options-group-list" class="max-h-52 overflow-y-auto space-y-1 text-xs">
+              <!-- Dynamically populated checkboxes -->
+            </div>
+          </div>
+        </div>
+
         <!-- Seasonal Range Filter -->
         <select id="filter-season" onchange="window.dashboardApp.applyFilters()" class="bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500 shadow-sm">
           <option value="ALL">Todo Período Climático</option>
@@ -381,7 +402,10 @@
             </span>
           </div>
           <div class="flex items-baseline gap-2">
-            <h3 id="kpi-top-offender-name" class="text-base font-bold truncate tracking-tight text-rose-700 dark:text-rose-200">Calculando...</h3>
+            <h3 id="kpi-top-offender-name" onclick="window.dashboardApp.openTopOffenderDrilldown()" class="text-base font-bold truncate tracking-tight text-rose-700 dark:text-rose-200 hover:underline cursor-pointer group flex items-center gap-1.5" title="Clique para auditar detalhadamente todos os itens deste colaborador">
+              Calculando...
+              <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-rose-400 opacity-60 group-hover:opacity-100 transition-opacity"></i>
+            </h3>
           </div>
           <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 flex items-center justify-between">
             <span>Concentração no Top 1:</span>
@@ -450,6 +474,10 @@
         <button onclick="window.dashboardApp.switchTab('offenders')" id="tab-btn-offenders" class="tab-button px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5">
           <i class="fa-solid fa-triangle-exclamation text-rose-600 dark:text-rose-400"></i>
           <span>Responsáveis Ofensores</span>
+        </button>
+        <button onclick="window.dashboardApp.switchTab('roles')" id="tab-btn-roles" class="tab-button px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5">
+          <i class="fa-solid fa-id-badge text-orange-500 dark:text-orange-400"></i>
+          <span>Cargos Ofensores</span>
         </button>
         <button onclick="window.dashboardApp.switchTab('mtbr')" id="tab-btn-mtbr" class="tab-button px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5">
           <i class="fa-solid fa-hourglass-half text-amber-600 dark:text-amber-400"></i>
@@ -656,6 +684,9 @@
             </p>
           </div>
           <div class="flex items-center gap-2">
+            <button onclick="window.dashboardApp.switchTab('roles')" class="px-3 py-2 rounded-xl bg-orange-600/15 dark:bg-orange-600/30 hover:bg-orange-600/25 dark:hover:bg-orange-600/50 text-orange-700 dark:text-orange-200 border border-orange-400/30 text-xs font-semibold flex items-center gap-2 transition-all shadow-sm">
+              <i class="fa-solid fa-id-badge"></i> Ver Análise de Cargos
+            </button>
             <button onclick="window.dashboardApp.exportOffendersAudit()" class="px-3.5 py-2 rounded-xl bg-rose-600/15 dark:bg-rose-600/30 hover:bg-rose-600/25 dark:hover:bg-rose-600/50 text-rose-700 dark:text-rose-200 border border-rose-400/30 text-xs font-semibold flex items-center gap-2 transition-all shadow-sm">
               <i class="fa-solid fa-file-shield"></i> Gerar Dossiê de Auditoria
             </button>
@@ -725,6 +756,163 @@
                 </tr>
               </thead>
               <tbody id="table-offenders-body" class="divide-y divide-slate-200/80 dark:divide-white/5">
+                <!-- Dynamically injected -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB: CARGOS E FUNÇÕES OFENSORAS           -->
+      <!-- ========================================== -->
+      <div id="tab-content-roles" class="tab-pane hidden space-y-6">
+        
+        <!-- Header Info -->
+        <div class="liquid-glass p-5 rounded-3xl border border-orange-300 dark:border-orange-500/20 bg-gradient-to-r from-orange-50/90 via-slate-50/80 to-white/80 dark:from-orange-950/20 dark:to-transparent flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse"></span>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-id-badge text-orange-600 dark:text-orange-400"></i>
+                Matriz de Funções: Cargos Ofensores em Retirada de Material
+              </h3>
+            </div>
+            <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">
+              Diagnóstico executivo identificando quais funções da operação (Eletricistas TMA, Frotas, Cortes, Supervisões) concentram os maiores volumes e custos de retiradas no estoque.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="window.dashboardApp.exportOffendersAudit()" class="px-3.5 py-2 rounded-xl bg-orange-600/15 dark:bg-orange-600/30 hover:bg-orange-600/25 dark:hover:bg-orange-600/50 text-orange-700 dark:text-orange-200 border border-orange-400/30 text-xs font-semibold flex items-center gap-2 transition-all shadow-sm">
+              <i class="fa-solid fa-print"></i> Exportar Painel de Cargos
+            </button>
+          </div>
+        </div>
+
+        <!-- KPI Cards das Funções Ofensoras -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          <div class="liquid-glass p-4 rounded-3xl border border-orange-200 dark:border-white/10">
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+              <span class="font-semibold uppercase tracking-wider text-[10px]">Função Mais Ofensora</span>
+              <span class="w-7 h-7 rounded-xl bg-orange-500/15 text-orange-600 dark:text-orange-400 flex items-center justify-center">
+                <i class="fa-solid fa-trophy text-xs"></i>
+              </span>
+            </div>
+            <h4 id="stat-roles-top1-name" class="text-base font-bold text-slate-900 dark:text-white truncate">Carregando...</h4>
+            <p id="stat-roles-top1-vol" class="text-xs font-mono text-orange-600 dark:text-orange-400 font-bold mt-1">0 un (0%)</p>
+          </div>
+
+          <div class="liquid-glass p-4 rounded-3xl border border-orange-200 dark:border-white/10">
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+              <span class="font-semibold uppercase tracking-wider text-[10px]">Concentração Top 3 Cargos</span>
+              <span class="w-7 h-7 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                <i class="fa-solid fa-chart-pie text-xs"></i>
+              </span>
+            </div>
+            <h4 id="stat-roles-top3-pct" class="text-xl font-bold font-mono text-rose-600 dark:text-rose-400">0%</h4>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">do consumo total da empresa</p>
+          </div>
+
+          <div class="liquid-glass p-4 rounded-3xl border border-orange-200 dark:border-white/10">
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+              <span class="font-semibold uppercase tracking-wider text-[10px]">Custo Total Mapeado</span>
+              <span class="w-7 h-7 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                <i class="fa-solid fa-hand-holding-dollar text-xs"></i>
+              </span>
+            </div>
+            <h4 id="stat-roles-total-cost" class="text-xl font-bold font-mono text-indigo-600 dark:text-indigo-400">R$ 0,00</h4>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">valor financeiro sob análise</p>
+          </div>
+
+          <div class="liquid-glass p-4 rounded-3xl border border-orange-200 dark:border-white/10">
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+              <span class="font-semibold uppercase tracking-wider text-[10px]">Cargos Operacionais</span>
+              <span class="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <i class="fa-solid fa-users-gear text-xs"></i>
+              </span>
+            </div>
+            <h4 id="stat-roles-total-count" class="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">0</h4>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">funções distintas ativas</p>
+          </div>
+
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Chart: Ranking de Cargos por Volume -->
+          <div class="lg:col-span-7 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+            <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                  <i class="fa-solid fa-chart-column text-orange-600 dark:text-orange-400"></i>
+                  Top 10 Cargos mais Ofensores em Volume Físico
+                </h4>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Quantidade agregada de peças/materiais retirados por cada categoria funcional
+                </p>
+              </div>
+              <span class="text-[10px] px-2.5 py-1 rounded-full liquid-badge text-orange-700 dark:text-orange-300 font-mono font-semibold">Volume (Unidades)</span>
+            </div>
+            <div class="h-72 w-full relative">
+              <canvas id="chart-roles-volume"></canvas>
+            </div>
+          </div>
+
+          <!-- Chart: Impacto Financeiro por Cargo (R$) -->
+          <div class="lg:col-span-5 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+            <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                  <i class="fa-solid fa-sack-dollar text-indigo-600 dark:text-indigo-400"></i>
+                  Top 10 Cargos por Custo Financeiro (R$)
+                </h4>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Valores financeiros despendidos em materiais retirados
+                </p>
+              </div>
+              <span class="text-[10px] px-2.5 py-1 rounded-full liquid-badge text-indigo-700 dark:text-indigo-300 font-mono font-semibold">Custo (R$)</span>
+            </div>
+            <div class="h-72 w-full relative">
+              <canvas id="chart-roles-cost"></canvas>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Tabela Detalhada de Cargos Ofensores -->
+        <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300">
+                Auditoria Comparativa de Cargos e Funções
+              </h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Métricas unitárias, intensidade per capita e principais itens retirados por função
+              </p>
+            </div>
+            <div class="relative">
+              <input type="text" id="search-roles-input" onkeyup="window.dashboardApp.filterRolesTable()" placeholder="Buscar por cargo/função..." class="bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500 shadow-sm">
+              <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
+                <tr>
+                  <th class="pb-3 font-semibold">Função / Cargo</th>
+                  <th class="pb-3 font-semibold text-center">Volume Total</th>
+                  <th class="pb-3 font-semibold text-right">Custo Total (R$)</th>
+                  <th class="pb-3 font-semibold text-center">Colaboradores</th>
+                  <th class="pb-3 font-semibold text-center">Média un/Pessoa</th>
+                  <th class="pb-3 font-semibold text-center">% Consumo</th>
+                  <th class="pb-3 font-semibold">Principais Materiais Retirados</th>
+                  <th class="pb-3 font-semibold text-right">Classificação</th>
+                </tr>
+              </thead>
+              <tbody id="table-roles-body" class="divide-y divide-slate-200/80 dark:divide-white/5">
                 <!-- Dynamically injected -->
               </tbody>
             </table>
@@ -1037,11 +1225,11 @@
     </main>
 
     <!-- Drilldown Executive Modal -->
-    <div id="executive-modal" class="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/70 backdrop-blur-md hidden flex items-center justify-center p-4">
-      <div class="liquid-glass max-w-4xl w-full rounded-3xl p-6 border border-slate-200 dark:border-white/20 shadow-2xl relative max-h-[88vh] flex flex-col">
-        <div class="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-white/10">
+    <div id="executive-modal" class="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md hidden items-center justify-center p-3 sm:p-5">
+      <div class="liquid-glass max-w-5xl w-full rounded-3xl p-6 border border-slate-200 dark:border-white/20 shadow-2xl relative max-h-[92vh] flex flex-col min-h-0">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-white/10 flex-shrink-0">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-lg">
+            <div class="w-10 h-10 rounded-xl bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-lg flex-shrink-0">
               <i id="modal-icon" class="fa-solid fa-circle-info"></i>
             </div>
             <div>
@@ -1053,11 +1241,11 @@
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
-        <div id="modal-body" class="py-4 overflow-y-auto space-y-3 flex-1 text-xs text-slate-700 dark:text-slate-300">
+        <div id="modal-body" class="py-4 overflow-y-auto flex-1 min-h-0 text-xs text-slate-700 dark:text-slate-300 space-y-4 pr-1">
           <!-- Dynamically populated -->
         </div>
-        <div class="pt-4 border-t border-slate-200 dark:border-white/10 flex items-center justify-between">
-          <div id="modal-footer-stats" class="text-[11px] text-slate-500 dark:text-slate-400"></div>
+        <div class="pt-3 border-t border-slate-200 dark:border-white/10 flex items-center justify-between flex-shrink-0">
+          <div id="modal-footer-stats" class="text-[11px] text-slate-500 dark:text-slate-400 font-mono"></div>
           <button onclick="window.dashboardApp.closeModal()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md shadow-indigo-500/25">
             Fechar Visualização
           </button>
@@ -1159,8 +1347,20 @@
         this.activeTab = 'overview';
         this.selectedBases = new Set(['BASE IPIRANGA', 'BASE ITAQUERA']);
         this.selectedSegments = new Set();
+        this.allGroupsList = [
+          'EPI',
+          'FERRAMENTAL',
+          'EPC',
+          'MATERIAL DE CONSUMO',
+          'MANUTENÇÃO DE VEÍCULOS',
+          'MATERIAL COPA/LIMPEZA',
+          'MATERIAL DE ESCRITÓRIO'
+        ];
+        this.selectedGroups = new Set(this.allGroupsList);
         this.currentSeason = 'ALL';
         this.currentSlowFilter = 'bottom20';
+        this.currentTopOffenderName = '';
+        this.currentOffenderData = null;
 
         // Explorer State
         this.explorerPage = 1;
@@ -1176,6 +1376,7 @@
         }
         this.unlockDashboard();
         this.renderBaseOptions();
+        this.renderGroupOptions();
         await this.loadSegmentsOptions();
         this.setupDropdownClickListeners();
         await this.refreshAllDashboardData();
@@ -1241,6 +1442,7 @@
             this.unlockDashboard();
             this.showToast(`Bem-vindo, ${res.user?.nome || 'Executivo'}! Acesso C-Level liberado.`, 'success');
             this.renderBaseOptions();
+            this.renderGroupOptions();
             await this.loadSegmentsOptions();
             this.setupDropdownClickListeners();
             await this.refreshAllDashboardData();
@@ -1275,6 +1477,7 @@
         document.addEventListener('click', (e) => {
           const baseContainer = document.getElementById('multiselect-base-container');
           const segContainer = document.getElementById('multiselect-segment-container');
+          const grpContainer = document.getElementById('multiselect-group-container');
           
           if (baseContainer && !baseContainer.contains(e.target)) {
             document.getElementById('dropdown-menu-base')?.classList.add('hidden');
@@ -1282,18 +1485,29 @@
           if (segContainer && !segContainer.contains(e.target)) {
             document.getElementById('dropdown-menu-segment')?.classList.add('hidden');
           }
+          if (grpContainer && !grpContainer.contains(e.target)) {
+            document.getElementById('dropdown-menu-group')?.classList.add('hidden');
+          }
         });
       }
 
       toggleDropdown(type) {
+        const baseMenu = document.getElementById('dropdown-menu-base');
+        const segMenu = document.getElementById('dropdown-menu-segment');
+        const grpMenu = document.getElementById('dropdown-menu-group');
+        
         if (type === 'base') {
-          const menu = document.getElementById('dropdown-menu-base');
-          menu.classList.toggle('hidden');
-          document.getElementById('dropdown-menu-segment')?.classList.add('hidden');
+          baseMenu?.classList.toggle('hidden');
+          segMenu?.classList.add('hidden');
+          grpMenu?.classList.add('hidden');
         } else if (type === 'segment') {
-          const menu = document.getElementById('dropdown-menu-segment');
-          menu.classList.toggle('hidden');
-          document.getElementById('dropdown-menu-base')?.classList.add('hidden');
+          segMenu?.classList.toggle('hidden');
+          baseMenu?.classList.add('hidden');
+          grpMenu?.classList.add('hidden');
+        } else if (type === 'group') {
+          grpMenu?.classList.toggle('hidden');
+          baseMenu?.classList.add('hidden');
+          segMenu?.classList.add('hidden');
         }
       }
 
@@ -1311,6 +1525,22 @@
           `;
         });
         this.updateBaseLabel();
+      }
+
+      renderGroupOptions() {
+        const groupContainer = document.getElementById('options-group-list');
+        if (!groupContainer) return;
+        groupContainer.innerHTML = '';
+        this.allGroupsList.forEach(g => {
+          const checked = this.selectedGroups.has(g) ? 'checked' : '';
+          groupContainer.innerHTML += `
+            <label class="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 cursor-pointer select-none">
+              <input type="checkbox" value="${g}" ${checked} onchange="window.dashboardApp.onGroupCheckboxChange(this)" class="rounded border-slate-300 dark:border-white/20 text-purple-600 focus:ring-0">
+              <span class="text-slate-800 dark:text-slate-200">${g}</span>
+            </label>
+          `;
+        });
+        this.updateGroupLabel();
       }
 
       async loadSegmentsOptions() {
@@ -1342,6 +1572,7 @@
       updateBaseLabel() {
         const count = this.selectedBases.size;
         const label = document.getElementById('label-filter-base');
+        if (!label) return;
         if (count === 2) {
           label.textContent = `Bases: Todas (2)`;
         } else if (count === 0) {
@@ -1354,10 +1585,24 @@
       updateSegmentLabel() {
         const count = this.selectedSegments.size;
         const label = document.getElementById('label-filter-segment');
+        if (!label) return;
         if (count === 0) {
           label.textContent = `Segmentos: Nenhum`;
         } else {
           label.textContent = `Segmentos: ${count} sel.`;
+        }
+      }
+
+      updateGroupLabel() {
+        const count = this.selectedGroups.size;
+        const label = document.getElementById('label-filter-group');
+        if (!label) return;
+        if (count === this.allGroupsList.length) {
+          label.textContent = `Grupos: Todos (${count})`;
+        } else if (count === 0) {
+          label.textContent = `Grupos: Nenhum`;
+        } else {
+          label.textContent = `Grupos: ${count} sel.`;
         }
       }
 
@@ -1381,6 +1626,16 @@
         this.applyFilters();
       }
 
+      onGroupCheckboxChange(checkbox) {
+        if (checkbox.checked) {
+          this.selectedGroups.add(checkbox.value);
+        } else {
+          this.selectedGroups.delete(checkbox.value);
+        }
+        this.updateGroupLabel();
+        this.applyFilters();
+      }
+
       selectAllBases(selectAll) {
         const bases = ['BASE IPIRANGA', 'BASE ITAQUERA'];
         this.selectedBases = selectAll ? new Set(bases) : new Set();
@@ -1399,6 +1654,12 @@
         this.applyFilters();
       }
 
+      selectAllGroups(selectAll) {
+        this.selectedGroups = selectAll ? new Set(this.allGroupsList) : new Set();
+        this.renderGroupOptions();
+        this.applyFilters();
+      }
+
       buildFilterQueryParams() {
         const params = new URLSearchParams();
         // Apenas filtra base se o usuário tiver selecionado especificamente 1 base
@@ -1409,6 +1670,10 @@
         const totalSegs = (this.allSegmentsList && this.allSegmentsList.length) ? this.allSegmentsList.length : 10;
         if (this.selectedSegments.size > 0 && this.selectedSegments.size < totalSegs) {
           this.selectedSegments.forEach(s => params.append('segmentos', s));
+        }
+        // Apenas filtra grupo se o usuário tiver desselecionado algum grupo
+        if (this.selectedGroups.size > 0 && this.selectedGroups.size < this.allGroupsList.length) {
+          this.selectedGroups.forEach(g => params.append('grupos', g));
         }
         if (this.currentSeason && this.currentSeason !== 'ALL') {
           params.append('season', this.currentSeason);
@@ -1424,9 +1689,11 @@
 
       resetFilters() {
         this.selectedBases = new Set(['BASE IPIRANGA', 'BASE ITAQUERA']);
+        this.selectedGroups = new Set(this.allGroupsList);
         document.getElementById('filter-season').value = 'ALL';
         this.currentSeason = 'ALL';
         this.renderBaseOptions();
+        this.renderGroupOptions();
         this.selectAllSegments(true);
         this.showToast('Filtros restaurados com sucesso.', 'info');
       }
@@ -1438,9 +1705,10 @@
           this.loadPareto(q),
           this.loadRain(q),
           this.loadOffenders(q),
+          this.loadRoles(q),
           this.loadMtbr(q),
           this.loadBases(q),
-          this.loadSlowMoving()
+          this.loadSlowMoving(q)
         ]);
       }
 
@@ -1843,6 +2111,155 @@
         }
       }
 
+      async loadRoles(queryString) {
+        try {
+          const resp = await fetch(`/api/c-level/cargos-ofensores?${queryString}`);
+          const data = await resp.json();
+
+          const isDark = document.documentElement.classList.contains('dark');
+          const textColor = isDark ? '#94a3b8' : '#475569';
+          const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+
+          const kpis = data.kpis_cargos || {};
+          const top1El = document.getElementById('stat-roles-top1-name');
+          if (top1El) top1El.textContent = kpis.top1_funcao || 'N/A';
+
+          const top1VolEl = document.getElementById('stat-roles-top1-vol');
+          if (top1VolEl) top1VolEl.textContent = `${Number(kpis.top1_volume || 0).toLocaleString('pt-BR')} un (${kpis.top1_pct || 0}%)`;
+
+          const top3PctEl = document.getElementById('stat-roles-top3-pct');
+          if (top3PctEl) top3PctEl.textContent = `${kpis.top3_concentracao_pct || 0}%`;
+
+          const totalCostEl = document.getElementById('stat-roles-total-cost');
+          if (totalCostEl) totalCostEl.textContent = Number(kpis.total_custo_geral || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          const totalCountEl = document.getElementById('stat-roles-total-count');
+          if (totalCountEl) totalCountEl.textContent = Number(kpis.total_funcoes_ativas || 0);
+
+          // 1. Chart: Ranking de Cargos por Volume (Horizontal Bar)
+          const topVol = data.top_cargos_volume || [];
+          this.renderChart('chart-roles-volume', {
+            type: 'bar',
+            data: {
+              labels: topVol.map(c => c.funcao),
+              datasets: [{
+                label: 'Unidades Retiradas',
+                data: topVol.map(c => c.volume),
+                backgroundColor: isDark ? 'rgba(249, 115, 22, 0.8)' : 'rgba(234, 88, 12, 0.85)',
+                borderColor: '#ea580c',
+                borderWidth: 1,
+                borderRadius: 8
+              }]
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => `Volume Retirado: ${Number(ctx.raw).toLocaleString('pt-BR')} unidades`
+                  }
+                }
+              },
+              scales: {
+                x: { ticks: { color: textColor }, grid: { color: gridColor } },
+                y: { ticks: { color: textColor, font: { size: 10, weight: 'bold' } }, grid: { display: false } }
+              }
+            }
+          });
+
+          // 2. Chart: Top Cargos por Custo Financeiro (Barra)
+          const topCost = data.top_cargos_custo || [];
+          this.renderChart('chart-roles-cost', {
+            type: 'bar',
+            data: {
+              labels: topCost.map(c => c.funcao),
+              datasets: [{
+                label: 'Custo Financeiro (R$)',
+                data: topCost.map(c => c.valor_total),
+                backgroundColor: isDark ? 'rgba(99, 102, 241, 0.8)' : 'rgba(79, 70, 229, 0.85)',
+                borderColor: '#6366f1',
+                borderWidth: 1,
+                borderRadius: 8
+              }]
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => `Custo Total: ${Number(ctx.raw).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+                  }
+                }
+              },
+              scales: {
+                x: { ticks: { color: textColor }, grid: { color: gridColor } },
+                y: { ticks: { color: textColor, font: { size: 10, weight: 'bold' } }, grid: { display: false } }
+              }
+            }
+          });
+
+          // 3. Tabela Detalhada de Cargos
+          const tbody = document.getElementById('table-roles-body');
+          if (tbody) {
+            tbody.innerHTML = (data.tabela || []).map(r => {
+              const isCrit = r.badge_class === 'critical';
+              const isWarn = r.badge_class === 'warning';
+              const topMatsStr = (r.top_materiais || []).map(m => `<span class="inline-block bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded text-[10px] mr-1 mb-1 font-mono">${m.material.substring(0, 22)} (${m.volume})</span>`).join('') || '--';
+              return `
+                <tr class="hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors role-row" data-name="${r.funcao.toLowerCase()}">
+                  <td class="py-3 font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full ${isCrit ? 'bg-rose-500' : isWarn ? 'bg-amber-500' : 'bg-emerald-500'}"></span>
+                    <span>${r.funcao}</span>
+                  </td>
+                  <td class="py-3 text-center font-mono font-bold ${isCrit ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-200'}">
+                    ${r.volume.toLocaleString('pt-BR')}
+                  </td>
+                  <td class="py-3 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                    ${r.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </td>
+                  <td class="py-3 text-center font-mono text-slate-600 dark:text-slate-400">
+                    ${r.colaboradores_ativos}
+                  </td>
+                  <td class="py-3 text-center font-mono text-slate-700 dark:text-slate-300">
+                    ${r.media_por_colaborador.toLocaleString('pt-BR')} un
+                  </td>
+                  <td class="py-3 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
+                    ${r.pct_volume}%
+                  </td>
+                  <td class="py-3 text-slate-600 dark:text-slate-400">
+                    ${topMatsStr}
+                  </td>
+                  <td class="py-3 text-right">
+                    <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${isCrit ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30' : isWarn ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}">
+                      ${r.risco}
+                    </span>
+                  </td>
+                </tr>
+              `;
+            }).join('');
+          }
+
+        } catch (e) {
+          console.error('[C-LEVEL] Erro Cargos Ofensores:', e);
+        }
+      }
+
+      filterRolesTable() {
+        const query = (document.getElementById('search-roles-input')?.value || '').toLowerCase().trim();
+        const rows = document.querySelectorAll('.role-row');
+        rows.forEach(r => {
+          const name = r.getAttribute('data-name') || '';
+          if (name.includes(query)) r.style.display = '';
+          else r.style.display = 'none';
+        });
+      }
+
       async loadMtbr(queryString) {
         try {
           const resp = await fetch(`/api/c-level/mtbr?${queryString}`);
@@ -2050,26 +2467,29 @@
         }
       }
 
-      async loadSlowMoving() {
+      async loadSlowMoving(queryString = '') {
         try {
-          const resp = await fetch(`/api/c-level/slow-moving?mode=${this.currentSlowFilter}`);
+          const resp = await fetch(`/api/c-level/slow-moving?mode=${this.currentSlowFilter}${queryString ? '&' + queryString : ''}`);
           const data = await resp.json();
 
-          document.getElementById('stat-locked-capital').textContent = Number(data.capital_imobilizado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          const capEl = document.getElementById('stat-locked-capital');
+          if (capEl) capEl.textContent = Number(data.capital_imobilizado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
           const tbody = document.getElementById('table-slow-items-body');
-          tbody.innerHTML = (data.items || []).map(i => `
-            <tr class="hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors slow-row">
-              <td class="py-3 font-semibold text-slate-900 dark:text-slate-200">${i.material}</td>
-              <td class="py-3 text-slate-500 dark:text-slate-400">${i.categoria}</td>
-              <td class="py-3 text-center font-mono font-bold text-purple-700 dark:text-purple-400">${i.quantidade} un</td>
-              <td class="py-3 text-center font-mono text-slate-700 dark:text-slate-300">${i.frequencia} saída(s)</td>
-              <td class="py-3 text-center text-slate-600 dark:text-slate-300 text-[11px]">${i.bases.join(', ')}</td>
-              <td class="py-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
-                ${i.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </td>
-            </tr>
-          `).join('');
+          if (tbody) {
+            tbody.innerHTML = (data.items || []).map(i => `
+              <tr class="hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors slow-row">
+                <td class="py-3 font-semibold text-slate-900 dark:text-slate-200">${i.material}</td>
+                <td class="py-3 text-slate-500 dark:text-slate-400">${i.categoria}</td>
+                <td class="py-3 text-center font-mono font-bold text-purple-700 dark:text-purple-400">${i.quantidade} un</td>
+                <td class="py-3 text-center font-mono text-slate-700 dark:text-slate-300">${i.frequencia} saída(s)</td>
+                <td class="py-3 text-center text-slate-600 dark:text-slate-300 text-[11px]">${i.bases.join(', ')}</td>
+                <td class="py-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                  ${i.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </td>
+              </tr>
+            `).join('');
+          }
 
         } catch (e) {
           console.error('[C-LEVEL] Erro Slow Moving:', e);
@@ -2095,7 +2515,13 @@
           btnAll.className = 'px-2.5 py-1 rounded-xl bg-indigo-600/15 dark:bg-indigo-600/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold transition-all border border-indigo-400/50 shadow-sm';
         }
 
-        this.loadSlowMoving();
+        this.loadSlowMoving(this.buildFilterQueryParams());
+      }
+
+      openTopOffenderDrilldown() {
+        if (this.currentTopOffenderName && this.currentTopOffenderName !== 'N/A' && this.currentTopOffenderName !== 'Calculando...') {
+          this.openOffenderDrilldown(this.currentTopOffenderName);
+        }
       }
 
       async openOffenderDrilldown(userName) {
@@ -2106,74 +2532,174 @@
         const footerStats = document.getElementById('modal-footer-stats');
         const modalIcon = document.getElementById('modal-icon');
 
+        if (!modal) return;
+
         modalIcon.className = 'fa-solid fa-user-shield text-rose-600 dark:text-rose-400';
         title.textContent = `Auditoria Completa de Consumo: ${userName}`;
         subtitle.textContent = `Carregando dossiê de itens...`;
+        
         modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        body.innerHTML = `
+          <div class="py-12 flex flex-col items-center justify-center space-y-3">
+            <i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-600 dark:text-indigo-400"></i>
+            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">Carregando itens de estoque retirados por ${userName}...</p>
+          </div>
+        `;
 
         try {
-          const resp = await fetch(`/api/c-level/ofensor/${encodeURIComponent(userName)}/itens`);
+          let resp = await fetch(`/api/c-level/ofensor-itens?nome=${encodeURIComponent(userName)}`);
+          if (!resp.ok) {
+            resp = await fetch(`/api/c-level/ofensor/${encodeURIComponent(userName)}/itens`);
+          }
           const data = await resp.json();
+          this.currentOffenderData = data;
 
-          subtitle.textContent = `Listagem analítica e volumétrica de todos os materiais retirados por este colaborador`;
+          subtitle.textContent = `Dossiê analítico: todos os materiais e insumos retirados por este colaborador`;
 
           const mats = data.materiais || [];
-          const cardsHtml = mats.map(m => `
-            <div class="flex items-center justify-between p-3 rounded-2xl bg-slate-100/70 dark:bg-white/5 border border-slate-200/60 dark:border-white/5 hover:border-indigo-400/40 transition-all">
-              <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-xl bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center font-mono text-xs">
-                  ${m.quantidade}
-                </div>
-                <div>
-                  <div class="font-bold text-xs text-slate-900 dark:text-white">${m.name}</div>
-                  <div class="text-[10px] text-slate-500 dark:text-slate-400">
-                    ${m.categoria} • ${m.frequencia} saída(s) • Base(s): <span class="text-cyan-700 dark:text-cyan-300 font-semibold">${m.bases.join(', ')}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="text-right">
-                <div class="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
-                  ${m.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </div>
-                <div class="text-[10px] text-slate-500 dark:text-slate-400">Última: ${m.ultima_data}</div>
-              </div>
-            </div>
-          `).join('');
 
           body.innerHTML = `
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-500/20">
+            <!-- Top Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 p-3.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-500/20 flex-shrink-0">
               <div>
-                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Total de Itens Retirados</span>
-                <div class="text-lg font-bold font-mono text-rose-600 dark:text-rose-300">${data.total_itens.toLocaleString('pt-BR')} unidades</div>
+                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Total de Unidades</span>
+                <div class="text-base font-bold font-mono text-rose-600 dark:text-rose-400">${Number(data.total_itens || 0).toLocaleString('pt-BR')} un</div>
               </div>
               <div>
-                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Valor Financeiro Acumulado</span>
-                <div class="text-lg font-bold font-mono text-slate-900 dark:text-slate-200">${data.total_custo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Custo Financeiro</span>
+                <div class="text-base font-bold font-mono text-slate-900 dark:text-slate-100">${Number(data.total_custo || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
               </div>
               <div>
-                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Transações / Saídas</span>
-                <div class="text-lg font-bold font-mono text-cyan-700 dark:text-cyan-300">${data.ocorrencias} ocorrências</div>
+                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Ocorrências / Saídas</span>
+                <div class="text-base font-bold font-mono text-cyan-700 dark:text-cyan-300">${data.ocorrencias || 0} saídas</div>
+              </div>
+              <div>
+                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Função / Cargo</span>
+                <div class="text-xs font-bold text-slate-800 dark:text-slate-200 truncate mt-1">
+                  <span class="px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-mono text-[11px]">${data.funcao || 'Operação'}</span>
+                </div>
               </div>
             </div>
 
-            <div class="pt-2">
-              <div class="flex items-center justify-between mb-2">
+            <!-- Controls and Material Table -->
+            <div class="space-y-3 flex-1 flex flex-col min-h-0">
+              <div class="flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
                 <h5 class="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
                   <i class="fa-solid fa-boxes-stacked text-indigo-600 dark:text-indigo-400"></i>
                   Consolidado por Material (${mats.length} SKUs Distintos)
                 </h5>
-                <span class="text-[10px] text-slate-500 dark:text-slate-400">Ordenado por Maior Quantidade</span>
+                <div class="relative">
+                  <input type="text" id="modal-item-search" onkeyup="window.dashboardApp.filterModalItems(this.value)" placeholder="Buscar material ou grupo..." class="bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-lg pl-8 pr-3 py-1 text-xs focus:outline-none focus:border-indigo-500 shadow-sm w-64">
+                  <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-xs"></i>
+                </div>
               </div>
-              <div class="space-y-2 max-h-72 overflow-y-auto pr-1">
-                ${cardsHtml || '<p class="text-slate-400 italic">Nenhum item registrado.</p>'}
+
+              <!-- Table container with smooth scroll -->
+              <div class="overflow-y-auto max-h-[46vh] rounded-2xl border border-slate-200/80 dark:border-white/10 flex-1">
+                <table class="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                  <thead class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10 sticky top-0 bg-slate-100/95 dark:bg-[#090d16]/95 backdrop-blur-md z-10">
+                    <tr>
+                      <th class="py-2.5 px-3 font-semibold">Material / Equipamento</th>
+                      <th class="py-2.5 px-3 font-semibold">Grupo</th>
+                      <th class="py-2.5 px-3 font-semibold text-center">Quantidade</th>
+                      <th class="py-2.5 px-3 font-semibold text-center">Saídas</th>
+                      <th class="py-2.5 px-3 font-semibold text-right">Valor Total (R$)</th>
+                      <th class="py-2.5 px-3 font-semibold text-center">Última Retirada</th>
+                      <th class="py-2.5 px-3 font-semibold">Base(s)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="modal-items-table-body" class="divide-y divide-slate-200/70 dark:divide-white/5">
+                    <!-- Dynamic rows -->
+                  </tbody>
+                </table>
               </div>
             </div>
           `;
 
-          footerStats.textContent = `Colaborador lotado em ${data.setor || 'Operação'} • Base ${data.base || 'BASE IPIRANGA'}`;
+          this.renderOffenderModalItems(mats);
+          footerStats.textContent = `Colaborador: ${data.nome} • Função: ${data.funcao || 'N/A'} • Setor: ${data.setor || 'Operação'} • Base Principal: ${data.base || 'BASE IPIRANGA'}`;
         } catch (e) {
-          body.innerHTML = `<p class="text-rose-500">Erro ao consultar itens do colaborador.</p>`;
+          console.error('[C-LEVEL] Erro ao carregar itens do colaborador:', e);
+          body.innerHTML = `
+            <div class="p-6 text-center space-y-2">
+              <i class="fa-solid fa-circle-exclamation text-rose-500 text-2xl"></i>
+              <p class="text-rose-500 font-semibold text-xs">Falha ao obter detalhamento dos materiais deste colaborador.</p>
+              <button onclick="window.dashboardApp.openOffenderDrilldown('${userName}')" class="px-3 py-1 rounded-lg bg-slate-200 dark:bg-white/10 text-xs font-medium hover:bg-slate-300">Tentar novamente</button>
+            </div>
+          `;
         }
+      }
+
+      renderOffenderModalItems(items) {
+        const tbody = document.getElementById('modal-items-table-body');
+        if (!tbody) return;
+
+        if (!items || items.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="7" class="py-8 text-center text-slate-400 italic">
+                Nenhum material localizado com este termo de busca.
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        const getBadgeStyle = (grp) => {
+          const g = (grp || '').toUpperCase();
+          if (g.includes('EPI')) return 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/25';
+          if (g.includes('FERRAMENT')) return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25';
+          if (g.includes('EPC')) return 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/25';
+          if (g.includes('CONSUMO')) return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/25';
+          if (g.includes('VEIC')) return 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/25';
+          return 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/25';
+        };
+
+        tbody.innerHTML = items.map(m => `
+          <tr class="hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors">
+            <td class="py-2.5 px-3 font-semibold text-slate-900 dark:text-slate-100 max-w-[280px]">
+              <div class="truncate" title="${m.name}">${m.name}</div>
+              <div class="text-[10px] text-slate-400 font-normal">${m.categoria || 'Geral'}</div>
+            </td>
+            <td class="py-2.5 px-3">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${getBadgeStyle(m.grupo || m.categoria)}">
+                ${m.grupo || m.categoria || 'Geral'}
+              </span>
+            </td>
+            <td class="py-2.5 px-3 text-center font-mono font-bold text-rose-600 dark:text-rose-400 text-xs">
+              ${Number(m.quantidade || 0).toLocaleString('pt-BR')}
+            </td>
+            <td class="py-2.5 px-3 text-center font-mono text-slate-600 dark:text-slate-400 text-xs">
+              ${m.frequencia || 1}
+            </td>
+            <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-200 text-xs">
+              ${Number(m.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </td>
+            <td class="py-2.5 px-3 text-center font-mono text-slate-500 dark:text-slate-400 text-[11px]">
+              ${m.ultima_data || '--'}
+            </td>
+            <td class="py-2.5 px-3 text-slate-600 dark:text-slate-400 text-[11px] truncate max-w-[140px]" title="${(m.bases || []).join(', ')}">
+              ${(m.bases || []).join(', ') || 'BASE IPIRANGA'}
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      filterModalItems(searchTerm) {
+        if (!this.currentOffenderData || !this.currentOffenderData.materiais) return;
+        const q = (searchTerm || '').toLowerCase().trim();
+        if (!q) {
+          this.renderOffenderModalItems(this.currentOffenderData.materiais);
+          return;
+        }
+        const filtered = this.currentOffenderData.materiais.filter(m => 
+          (m.name || '').toLowerCase().includes(q) ||
+          (m.categoria || '').toLowerCase().includes(q) ||
+          (m.grupo || '').toLowerCase().includes(q)
+        );
+        this.renderOffenderModalItems(filtered);
       }
 
       openDrilldown(type) {
@@ -2184,7 +2710,11 @@
       }
 
       closeModal() {
-        document.getElementById('executive-modal').classList.add('hidden');
+        const modal = document.getElementById('executive-modal');
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        }
       }
 
       filterOffenderTable() {

@@ -3267,6 +3267,13 @@ def start_background_jobs(force_restart=False):
 
 from estoque_clevel_manager import estoque_clevel_manager
 
+def _extract_clevel_filters():
+    bases = request.args.getlist('bases')
+    segmentos = request.args.getlist('segmentos')
+    grupos = request.args.getlist('grupos')
+    season = request.args.get('season', 'ALL')
+    return bases, segmentos, grupos, season
+
 @app.route('/c-level')
 @app.route('/executivo-estoque')
 @app.route('/nexusops')
@@ -3276,32 +3283,32 @@ def c_level_dashboard_view():
 
 @app.route('/api/c-level/kpis', methods=['GET'])
 def api_c_level_kpis():
-    bases = request.args.getlist('bases')
-    segmentos = request.args.getlist('segmentos')
-    season = request.args.get('season', 'ALL')
-    data = estoque_clevel_manager.get_kpis(bases=bases, segmentos=segmentos, season=season)
+    bases, segmentos, grupos, season = _extract_clevel_filters()
+    data = estoque_clevel_manager.get_kpis(bases=bases, segmentos=segmentos, grupos=grupos, season=season)
     return jsonify(data)
 
 @app.route('/api/c-level/pareto', methods=['GET'])
 def api_c_level_pareto():
-    bases = request.args.getlist('bases')
-    segmentos = request.args.getlist('segmentos')
-    season = request.args.get('season', 'ALL')
-    data = estoque_clevel_manager.get_pareto(bases=bases, segmentos=segmentos, season=season)
+    bases, segmentos, grupos, season = _extract_clevel_filters()
+    data = estoque_clevel_manager.get_pareto(bases=bases, segmentos=segmentos, grupos=grupos, season=season)
     return jsonify(data)
 
 @app.route('/api/c-level/rain-analysis', methods=['GET'])
 def api_c_level_rain():
-    bases = request.args.getlist('bases')
-    segmentos = request.args.getlist('segmentos')
-    data = estoque_clevel_manager.get_rain_analysis(bases=bases, segmentos=segmentos)
+    bases, segmentos, grupos, season = _extract_clevel_filters()
+    data = estoque_clevel_manager.get_rain_analysis(bases=bases, segmentos=segmentos, grupos=grupos)
     return jsonify(data)
 
 @app.route('/api/c-level/ofensores', methods=['GET'])
 def api_c_level_ofensores():
-    bases = request.args.getlist('bases')
-    segmentos = request.args.getlist('segmentos')
-    data = estoque_clevel_manager.get_ofensores(bases=bases, segmentos=segmentos)
+    bases, segmentos, grupos, season = _extract_clevel_filters()
+    data = estoque_clevel_manager.get_ofensores(bases=bases, segmentos=segmentos, grupos=grupos, season=season)
+    return jsonify(data)
+
+@app.route('/api/c-level/cargos-ofensores', methods=['GET'])
+def api_c_level_cargos_ofensores():
+    bases, segmentos, grupos, season = _extract_clevel_filters()
+    data = estoque_clevel_manager.get_cargos_ofensores(bases=bases, segmentos=segmentos, grupos=grupos, season=season)
     return jsonify(data)
 
 @app.route('/api/c-level/ofensor/<path:nome>/itens', methods=['GET'])
@@ -3309,22 +3316,29 @@ def api_c_level_ofensor_itens(nome):
     data = estoque_clevel_manager.get_itens_do_ofensor(nome)
     return jsonify(data)
 
+@app.route('/api/c-level/ofensor-itens', methods=['GET'])
+def api_c_level_ofensor_itens_query():
+    nome = request.args.get('nome', '')
+    data = estoque_clevel_manager.get_itens_do_ofensor(nome)
+    return jsonify(data)
+
 @app.route('/api/c-level/mtbr', methods=['GET'])
 def api_c_level_mtbr():
-    bases = request.args.getlist('bases')
-    segmentos = request.args.getlist('segmentos')
-    data = estoque_clevel_manager.get_mtbr_analysis(bases=bases, segmentos=segmentos)
+    bases, segmentos, grupos, season = _extract_clevel_filters()
+    data = estoque_clevel_manager.get_mtbr_analysis(bases=bases, segmentos=segmentos, grupos=grupos, season=season)
     return jsonify(data)
 
 @app.route('/api/c-level/bases-segmentos', methods=['GET'])
 def api_c_level_bases_segmentos():
-    data = estoque_clevel_manager.get_bases_segmentos()
+    bases, segmentos, grupos, season = _extract_clevel_filters()
+    data = estoque_clevel_manager.get_bases_segmentos(bases=bases, segmentos=segmentos, grupos=grupos, season=season)
     return jsonify(data)
 
 @app.route('/api/c-level/slow-moving', methods=['GET'])
 def api_c_level_slow_moving():
+    bases, segmentos, grupos, season = _extract_clevel_filters()
     mode = request.args.get('mode', 'bottom20')
-    data = estoque_clevel_manager.get_slow_moving(mode=mode)
+    data = estoque_clevel_manager.get_slow_moving(bases=bases, segmentos=segmentos, grupos=grupos, season=season, mode=mode)
     return jsonify(data)
 
 @app.route('/api/c-level/explorer', methods=['GET'])
