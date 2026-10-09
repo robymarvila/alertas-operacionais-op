@@ -1,0 +1,2364 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NexusOps Executive | Material 3 & Liquid Glass C-Level Stock Analytics</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Chart.js for data visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Google Fonts: Inter and Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            m3: {
+              primary: '#6366f1',
+              primaryContainer: '#312e81',
+              secondary: '#ec4899',
+              tertiary: '#06b6d4',
+              surface: '#090d16',
+              surfaceVariant: '#131b2e',
+              surfaceLight: '#f8fafc',
+              error: '#f43f5e',
+              warning: '#f59e0b',
+              success: '#10b981',
+            }
+          },
+          boxShadow: {
+            'glass-glow': '0 8px 32px 0 rgba(99, 102, 241, 0.15)',
+            'liquid-glow': '0 20px 50px -12px rgba(6, 182, 212, 0.25)',
+            'glass-inset': 'inset 0 1px 1px 0 rgba(255, 255, 255, 0.2)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Liquid Glass Light Mode (Apple Frosted Pearl Glass) */
+    .liquid-glass {
+      background: rgba(255, 255, 255, 0.78);
+      backdrop-filter: blur(24px) saturate(190%);
+      -webkit-backdrop-filter: blur(24px) saturate(190%);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      box-shadow: 0 10px 30px -5px rgba(99, 102, 241, 0.08), 0 4px 12px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.95);
+    }
+
+    /* Liquid Glass Dark Mode (Apple Deep Obsidian Glass) */
+    .dark .liquid-glass {
+      background: rgba(18, 24, 38, 0.65);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 1px 1px 0 rgba(255, 255, 255, 0.15);
+    }
+
+    .glass-card-interactive {
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .glass-card-interactive:hover {
+      transform: translateY(-3px) scale(1.006);
+      border-color: rgba(99, 102, 241, 0.45);
+      box-shadow: 0 18px 42px -10px rgba(99, 102, 241, 0.2), inset 0 1px 2px 0 rgba(255, 255, 255, 0.8);
+    }
+    .dark .glass-card-interactive:hover {
+      border-color: rgba(99, 102, 241, 0.4);
+      box-shadow: 0 16px 40px -8px rgba(99, 102, 241, 0.25), inset 0 1px 2px 0 rgba(255, 255, 255, 0.3);
+    }
+
+    .liquid-badge {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(241, 245, 249, 0.75));
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.85);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+    .dark .liquid-badge {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: none;
+    }
+
+    /* Ambient background mesh gradient */
+    .ambient-bg {
+      background-color: #f8fafc;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.10) 0px, transparent 55%),
+        radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.08) 0px, transparent 50%),
+        radial-gradient(at 50% 50%, rgba(6, 182, 212, 0.07) 0px, transparent 55%),
+        radial-gradient(at 80% 100%, rgba(139, 92, 246, 0.09) 0px, transparent 50%);
+    }
+
+    .dark .ambient-bg {
+      background-color: #070b13;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.18) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.15) 0px, transparent 50%),
+        radial-gradient(at 50% 50%, rgba(6, 182, 212, 0.12) 0px, transparent 55%),
+        radial-gradient(at 80% 100%, rgba(139, 92, 246, 0.18) 0px, transparent 50%);
+    }
+
+    /* Custom smooth scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.4);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(99, 102, 241, 0.6);
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50 dark:bg-[#070b13] text-slate-800 dark:text-slate-100 font-sans min-h-screen relative selection:bg-indigo-500 selection:text-white transition-colors duration-300 ambient-bg">
+
+  <div class="fixed inset-0 pointer-events-none overflow-hidden z-0">
+    <div class="absolute -top-40 -left-40 w-96 h-96 bg-indigo-500/12 dark:bg-indigo-600/20 rounded-full blur-[128px]"></div>
+    <div class="absolute top-1/3 -right-40 w-96 h-96 bg-cyan-400/12 dark:bg-cyan-500/15 rounded-full blur-[128px]"></div>
+    <div class="absolute -bottom-40 left-1/3 w-[30rem] h-[30rem] bg-pink-400/10 dark:bg-pink-600/15 rounded-full blur-[140px]"></div>
+  </div>
+
+  <!-- ================================================================= -->
+  <!-- MODAL DE AUTENTICAÇÃO E BLOQUEIO EXECUTIVO C-LEVEL                -->
+  <!-- ================================================================= -->
+  <div id="auth-gate-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-2xl transition-all duration-300">
+    <div class="relative w-full max-w-md liquid-glass p-8 rounded-3xl border border-indigo-500/30 shadow-2xl shadow-indigo-500/20 text-center space-y-6">
+      
+      <!-- Glow Decorativo -->
+      <div class="absolute -top-12 -left-12 w-32 h-32 bg-indigo-500/20 rounded-full blur-2xl pointer-events-none"></div>
+      <div class="absolute -bottom-12 -right-12 w-32 h-32 bg-purple-500/20 rounded-full blur-2xl pointer-events-none"></div>
+
+      <!-- Ícone de Cadeado Pulsante -->
+      <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white text-2xl shadow-lg shadow-indigo-500/30">
+        <i class="fa-solid fa-shield-halved"></i>
+      </div>
+
+      <div>
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 text-[10px] font-mono uppercase tracking-wider mb-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping"></span>
+          Área Executiva Restrita
+        </div>
+        <h2 class="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">NexusOps C-Level Analytics</h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          Informe sua matrícula ou e-mail operacional e sua senha para liberar o painel de auditoria estratégica.
+        </p>
+      </div>
+
+      <form id="form-auth-gate" onsubmit="window.dashboardApp.handleAuthGateSubmit(event)" class="space-y-4 text-left">
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+            Matrícula ou E-mail
+          </label>
+          <div class="relative">
+            <input type="text" id="auth-gate-login" required placeholder="Digite sua matrícula ou e-mail" class="w-full bg-white/80 dark:bg-slate-900/80 border border-slate-300 dark:border-white/15 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all">
+            <i class="fa-solid fa-user absolute left-3.5 top-3 text-slate-400 text-xs"></i>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+            Senha Operacional
+          </label>
+          <div class="relative">
+            <input type="password" id="auth-gate-password" required placeholder="Digite sua senha" class="w-full bg-white/80 dark:bg-slate-900/80 border border-slate-300 dark:border-white/15 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all">
+            <i class="fa-solid fa-lock absolute left-3.5 top-3 text-slate-400 text-xs"></i>
+          </div>
+        </div>
+
+        <div id="auth-gate-error" class="hidden text-xs text-rose-500 bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20 text-center font-medium"></div>
+
+        <button type="submit" id="btn-auth-gate-submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center gap-2">
+          <i class="fa-solid fa-unlock"></i>
+          <span>Desbloquear Visão C-Level</span>
+        </button>
+      </form>
+
+      <div class="text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-white/10 flex items-center justify-between">
+        <a href="/" class="hover:text-indigo-400 transition-colors flex items-center gap-1">
+          <i class="fa-solid fa-arrow-left"></i> Voltar ao Hub CCO
+        </a>
+        <span class="font-mono text-[10px]">CCO • AES / ENEL SP</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <div id="dashboard-main-content" style="display: none;" class="relative z-10 flex flex-col min-h-screen">
+    
+    <header class="sticky top-0 z-40 liquid-glass border-b border-slate-200/80 dark:border-white/10 px-4 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3.5">
+        <a href="/" title="Voltar ao Painel Operacional" class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-[1.5px] shadow-glass-glow flex items-center justify-center hover:scale-105 transition-transform">
+          <div class="w-full h-full bg-white dark:bg-[#0a0f1d] rounded-[14px] flex items-center justify-center">
+            <i class="fa-solid fa-layer-group text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-cyan-500 text-lg"></i>
+          </div>
+        </a>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg lg:text-xl font-extrabold tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-700 dark:from-white dark:via-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
+              NexusOps Supply Analytics
+            </h1>
+            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-400/30">
+              C-LEVEL EXECUTIVE
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Gestão Estratégica de Saídas • Bases Ipiranga & Itaquera • MTBR, Pareto e Auditoria</p>
+        </div>
+      </div>
+
+      <div class="flex items-center flex-wrap gap-2.5">
+        <!-- Live File Status Badge -->
+        <div id="file-status-indicator" class="flex items-center gap-2 px-3 py-1.5 rounded-xl liquid-badge text-xs text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse"></span>
+          <span id="file-status-text">Base Consolidada Ativa: 25.279 Registros</span>
+        </div>
+
+        <!-- Global Search / Explorer Button for 25k rows -->
+        <button onclick="window.dashboardApp.openDataExplorer()" class="flex items-center gap-2 px-3.5 py-2 rounded-xl liquid-glass hover:bg-slate-100 dark:hover:bg-white/10 text-xs font-semibold text-cyan-700 dark:text-cyan-300 transition-all border border-cyan-400/40 shadow-sm">
+          <i class="fa-solid fa-database text-cyan-600 dark:text-cyan-400"></i>
+          <span>Explorador da Base (<span id="btn-count-records">25.279</span>)</span>
+        </button>
+
+        <!-- Sincronizar Supabase Button -->
+        <button onclick="window.dashboardApp.syncSupabase()" class="flex items-center gap-2 px-3.5 py-2 rounded-xl liquid-glass bg-emerald-50 dark:bg-emerald-600/20 hover:bg-emerald-100 dark:hover:bg-emerald-600/30 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-400/40 transition-all shadow-sm" title="Sincronizar com Banco de Dados Supabase na Nuvem">
+          <i class="fa-solid fa-cloud-arrow-up text-emerald-600 dark:text-emerald-400"></i>
+          <span>Supabase Nuvem</span>
+        </button>
+
+        <!-- Retornar ao Hub -->
+        <a href="/" class="flex items-center gap-2 px-3.5 py-2 rounded-xl liquid-glass hover:bg-slate-100 dark:hover:bg-white/10 text-xs font-medium text-slate-700 dark:text-slate-300 transition-all border border-slate-200 dark:border-white/10">
+          <i class="fa-solid fa-house text-slate-500 dark:text-slate-400"></i>
+          <span class="hidden sm:inline">Hub Central</span>
+        </a>
+
+        <!-- Executive Report Print/Export -->
+        <button onclick="window.print()" class="flex items-center gap-2 px-3.5 py-2 rounded-xl liquid-glass hover:bg-slate-100 dark:hover:bg-white/10 text-xs font-medium text-slate-700 dark:text-slate-300 transition-all border border-slate-200 dark:border-white/10">
+          <i class="fa-solid fa-print text-slate-500 dark:text-slate-400"></i>
+          <span class="hidden sm:inline">Exportar Relatório</span>
+        </button>
+
+        <!-- Botão Bloquear / Sair da Sessão C-Level -->
+        <button id="btn-lock-session" onclick="window.dashboardApp.lockSession()" class="flex items-center gap-1.5 px-3 py-2 rounded-xl liquid-glass hover:bg-rose-500/15 text-xs font-semibold text-rose-600 dark:text-rose-400 border border-rose-500/30 transition-all shadow-sm" title="Bloquear Painel Executivo">
+          <i class="fa-solid fa-lock text-rose-500"></i>
+          <span class="hidden sm:inline">Bloquear</span>
+        </button>
+
+        <!-- Theme Toggle -->
+        <button id="theme-toggle-btn" class="w-9 h-9 rounded-xl liquid-glass flex items-center justify-center text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-white border border-slate-200 dark:border-white/10 transition-all shadow-sm" title="Alternar Modo Claro / Escuro">
+          <i class="fa-solid fa-sun hidden dark:inline text-amber-400"></i>
+          <i class="fa-solid fa-moon inline dark:hidden text-indigo-600"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="relative z-30 px-4 lg:px-8 py-3 bg-white/75 dark:bg-black/50 backdrop-blur-md border-b border-slate-200/80 dark:border-white/10 shadow-sm dark:shadow-lg flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div class="flex items-center flex-wrap gap-2.5">
+        <span class="text-slate-600 dark:text-slate-400 uppercase tracking-wider font-semibold text-[11px] mr-1 flex items-center gap-1.5">
+          <i class="fa-solid fa-sliders text-indigo-500 dark:text-indigo-400"></i> Filtros Multi-Seleção:
+        </span>
+        
+        <!-- Base Multi-Select Dropdown -->
+        <div class="relative" id="multiselect-base-container">
+          <button type="button" onclick="window.dashboardApp.toggleDropdown('base')" class="bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs hover:border-indigo-400 transition-all shadow-sm">
+            <i class="fa-solid fa-warehouse text-emerald-600 dark:text-emerald-400 text-[10px]"></i>
+            <span id="label-filter-base">Bases: Todas (2)</span>
+            <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 ml-1"></i>
+          </button>
+          <div id="dropdown-menu-base" class="hidden absolute top-full left-0 mt-2 w-64 rounded-2xl bg-white/95 dark:bg-[#0c1220]/95 border border-slate-200 dark:border-white/20 p-3 shadow-2xl shadow-slate-300/60 dark:shadow-black/70 z-50 space-y-2.5 backdrop-blur-2xl">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-white/10 text-[11px]">
+              <span class="font-bold text-slate-900 dark:text-slate-200">Bases Operacionais</span>
+              <div class="flex gap-2">
+                <button type="button" onclick="window.dashboardApp.selectAllBases(true)" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold">Todas</button>
+                <button type="button" onclick="window.dashboardApp.selectAllBases(false)" class="text-slate-500 dark:text-slate-400 hover:underline">Limpar</button>
+              </div>
+            </div>
+            <div id="options-base-list" class="max-h-48 overflow-y-auto space-y-1 text-xs">
+              <!-- Dynamically populated checkboxes -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Segment Multi-Select Dropdown -->
+        <div class="relative" id="multiselect-segment-container">
+          <button type="button" onclick="window.dashboardApp.toggleDropdown('segment')" class="bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs hover:border-indigo-400 transition-all shadow-sm">
+            <i class="fa-solid fa-diagram-project text-indigo-600 dark:text-indigo-400 text-[10px]"></i>
+            <span id="label-filter-segment">Segmentos: Todos</span>
+            <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 ml-1"></i>
+          </button>
+          <div id="dropdown-menu-segment" class="hidden absolute top-full left-0 mt-2 w-80 rounded-2xl bg-white/95 dark:bg-[#0c1220]/95 border border-slate-200 dark:border-white/20 p-3 shadow-2xl shadow-slate-300/60 dark:shadow-black/70 z-50 space-y-2.5 backdrop-blur-2xl">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-white/10 text-[11px]">
+              <span class="font-bold text-slate-900 dark:text-slate-200">Setores / Segmentos</span>
+              <div class="flex gap-2">
+                <button type="button" onclick="window.dashboardApp.selectAllSegments(true)" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold">Todos</button>
+                <button type="button" onclick="window.dashboardApp.selectAllSegments(false)" class="text-slate-500 dark:text-slate-400 hover:underline">Limpar</button>
+              </div>
+            </div>
+            <div id="options-segment-list" class="max-h-52 overflow-y-auto space-y-1 text-xs">
+              <!-- Dynamically populated checkboxes -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Seasonal Range Filter -->
+        <select id="filter-season" onchange="window.dashboardApp.applyFilters()" class="bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500 shadow-sm">
+          <option value="ALL">Todo Período Climático</option>
+          <option value="RAIN">🌧️ Época de Chuvas (Nov - Mar)</option>
+          <option value="DRY">☀️ Época Seca (Abr - Out)</option>
+        </select>
+
+        <button onclick="window.dashboardApp.resetFilters()" class="px-2.5 py-1.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/5 transition-all text-xs font-medium">
+          <i class="fa-solid fa-rotate-left mr-1"></i>Limpar Filtros
+        </button>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div class="text-[11px] text-slate-500 dark:text-slate-400">
+          Registros ativos: <span id="stat-total-records" class="font-mono font-bold text-indigo-700 dark:text-indigo-300">25.279</span>
+        </div>
+        <div class="h-3 w-[1px] bg-slate-300 dark:bg-white/20"></div>
+        <div class="text-[11px] text-slate-500 dark:text-slate-400">
+          Período: <span id="stat-period-range" class="font-mono font-medium text-cyan-700 dark:text-cyan-300">Carregando...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Body -->
+    <main class="flex-1 px-4 lg:px-8 py-6 space-y-6 max-w-[1700px] w-full mx-auto">
+      
+      <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <!-- KPI 1: Custo Total Financeiro & Volume Retirado -->
+        <div class="liquid-glass glass-card-interactive p-4 rounded-3xl relative overflow-hidden group">
+          <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl group-hover:scale-125 transition-transform"></div>
+          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
+            <span class="font-semibold tracking-wide uppercase">Custo Total & Volume Retirado</span>
+            <span class="w-7 h-7 rounded-xl bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <i class="fa-solid fa-boxes-stacked"></i>
+            </span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <h3 id="kpi-total-cost" class="text-2xl font-extrabold tracking-tight font-mono text-indigo-600 dark:text-indigo-400">R$ 0,00</h3>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 flex items-center justify-between">
+            <span>Volume Físico Retirado:</span>
+            <span id="kpi-total-items-badge" class="font-mono font-bold text-slate-800 dark:text-slate-200">0 un (0 saídas)</span>
+          </p>
+          <div class="w-full bg-slate-200/80 dark:bg-white/10 rounded-full h-1 mt-3 overflow-hidden">
+            <div class="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full" style="width: 100%"></div>
+          </div>
+        </div>
+
+        <!-- KPI 2: Responsável Ofensor Crítico -->
+        <div class="liquid-glass glass-card-interactive p-4 rounded-3xl relative overflow-hidden group border-rose-300 dark:border-rose-500/30">
+          <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-rose-500/15 rounded-full blur-xl group-hover:scale-125 transition-transform"></div>
+          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
+            <span class="font-semibold tracking-wide uppercase text-rose-600 dark:text-rose-300">Maior Ofensor (Retiradas)</span>
+            <span class="w-7 h-7 rounded-xl bg-rose-500/15 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+              <i class="fa-solid fa-user-ninja"></i>
+            </span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <h3 id="kpi-top-offender-name" class="text-base font-bold truncate tracking-tight text-rose-700 dark:text-rose-200">Calculando...</h3>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 flex items-center justify-between">
+            <span>Concentração no Top 1:</span>
+            <span id="kpi-top-offender-volume" class="font-mono font-bold text-rose-600 dark:text-rose-400">0 un (0%)</span>
+          </p>
+          <div class="w-full bg-slate-200/80 dark:bg-white/10 rounded-full h-1 mt-3 overflow-hidden">
+            <div id="kpi-offender-bar" class="bg-rose-500 h-full rounded-full" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- KPI 3: MTBR Geral (Tempo Médio de Reposição) -->
+        <div class="liquid-glass glass-card-interactive p-4 rounded-3xl relative overflow-hidden group">
+          <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-cyan-500/10 rounded-full blur-xl group-hover:scale-125 transition-transform"></div>
+          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
+            <span class="font-semibold tracking-wide uppercase">Tempo Médio Re-saída (MTBR)</span>
+            <span class="w-7 h-7 rounded-xl bg-cyan-500/15 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+              <i class="fa-solid fa-stopwatch"></i>
+            </span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <h3 id="kpi-mtbr-avg" class="text-2xl font-extrabold tracking-tight font-mono text-cyan-700 dark:text-cyan-300">0.0</h3>
+            <span class="text-xs text-slate-600 dark:text-slate-300 font-semibold">dias entre saídas</span>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 flex items-center justify-between">
+            <span>Ciclo Crítico (< 4 dias):</span>
+            <span id="kpi-mtbr-critical-count" class="font-mono font-bold text-amber-600 dark:text-amber-400">0 itens em stress</span>
+          </p>
+          <div class="w-full bg-slate-200/80 dark:bg-white/10 rounded-full h-1 mt-3 overflow-hidden">
+            <div class="bg-gradient-to-r from-cyan-400 to-blue-500 h-full rounded-full" style="width: 65%"></div>
+          </div>
+        </div>
+
+        <!-- KPI 4: Sensibilidade Pluvial (Impacto Chuva) -->
+        <div class="liquid-glass glass-card-interactive p-4 rounded-3xl relative overflow-hidden group">
+          <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-blue-500/15 rounded-full blur-xl group-hover:scale-125 transition-transform"></div>
+          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
+            <span class="font-semibold tracking-wide uppercase">Delta de Consumo na Chuva</span>
+            <span class="w-7 h-7 rounded-xl bg-blue-500/15 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <i class="fa-solid fa-cloud-showers-heavy"></i>
+            </span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <h3 id="kpi-rain-delta" class="text-2xl font-extrabold tracking-tight font-mono text-blue-700 dark:text-blue-300">+0%</h3>
+            <span class="text-xs text-blue-600 dark:text-blue-400 font-semibold">vs Período Seco</span>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 flex items-center justify-between">
+            <span>Item c/ Maior Volume Chuva:</span>
+            <span id="kpi-rain-top-item" class="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[130px]">Carregando...</span>
+          </p>
+          <div class="w-full bg-slate-200/80 dark:bg-white/10 rounded-full h-1 mt-3 overflow-hidden">
+            <div class="bg-gradient-to-r from-blue-400 to-indigo-500 h-full rounded-full" style="width: 78%"></div>
+          </div>
+        </div>
+
+      </section>
+
+      <div class="flex items-center gap-1.5 p-1.5 rounded-2xl liquid-glass border border-slate-200/80 dark:border-white/10 overflow-x-auto text-xs font-semibold scrollbar-none shadow-sm">
+        <button onclick="window.dashboardApp.switchTab('overview')" id="tab-btn-overview" class="tab-button active px-4 py-2 rounded-xl transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-md shadow-indigo-500/25">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Visão Geral & Curva ABC</span>
+        </button>
+        <button onclick="window.dashboardApp.switchTab('rain')" id="tab-btn-rain" class="tab-button px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5">
+          <i class="fa-solid fa-cloud-showers-water text-cyan-600 dark:text-cyan-400"></i>
+          <span>Picos & Época de Chuvas</span>
+        </button>
+        <button onclick="window.dashboardApp.switchTab('offenders')" id="tab-btn-offenders" class="tab-button px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5">
+          <i class="fa-solid fa-triangle-exclamation text-rose-600 dark:text-rose-400"></i>
+          <span>Responsáveis Ofensores</span>
+        </button>
+        <button onclick="window.dashboardApp.switchTab('mtbr')" id="tab-btn-mtbr" class="tab-button px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5">
+          <i class="fa-solid fa-hourglass-half text-amber-600 dark:text-amber-400"></i>
+          <span>Tempo Médio (MTBR)</span>
+        </button>
+        <button onclick="window.dashboardApp.switchTab('bases')" id="tab-btn-bases" class="tab-button px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5">
+          <i class="fa-solid fa-city text-emerald-600 dark:text-emerald-400"></i>
+          <span>Bases & Segmentos</span>
+        </button>
+        <button onclick="window.dashboardApp.switchTab('slow')" id="tab-btn-slow" class="tab-button px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5">
+          <i class="fa-solid fa-box-archive text-purple-600 dark:text-purple-400"></i>
+          <span>Itens Menos Retirados</span>
+        </button>
+        <button onclick="window.dashboardApp.switchTab('actions')" id="tab-btn-actions" class="tab-button px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5">
+          <i class="fa-solid fa-lightbulb text-amber-500 dark:text-amber-300"></i>
+          <span>Plano de Ação C-Level</span>
+        </button>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 1: VISÃO GERAL & CURVA ABC             -->
+      <!-- ========================================== -->
+      <div id="tab-content-overview" class="tab-pane space-y-6">
+        
+        <!-- Top Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Chart: Pareto dos Itens Mais Retirados (8 Colunas) -->
+          <div class="lg:col-span-8 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <i class="fa-solid fa-fire text-amber-500 dark:text-amber-400"></i>
+                  Top 10 Itens Mais Retirados (Volume Absoluto & Frequência)
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Análise de tração logística e concentração de saídas operacionais</p>
+              </div>
+              <span class="text-[11px] px-2.5 py-1 rounded-full liquid-badge text-indigo-700 dark:text-indigo-300 font-semibold">
+                Curva Pareto A
+              </span>
+            </div>
+            <div class="h-72 w-full relative">
+              <canvas id="chart-top-items"></canvas>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-200/80 dark:border-white/5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span>⚠️ Regra de Pareto: <strong class="text-slate-800 dark:text-slate-200">80% do volume</strong> concentrado em <strong class="text-slate-800 dark:text-slate-200">18.4% dos SKUs</strong></span>
+              <button onclick="window.dashboardApp.openDrilldown('items-more')" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold">Ver todos os 20+ mais retirados →</button>
+            </div>
+          </div>
+
+          <!-- Chart: Composição por Categoria / Segmento (4 Colunas) -->
+          <div class="lg:col-span-4 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <i class="fa-solid fa-chart-pie text-cyan-600 dark:text-cyan-400"></i>
+                  Consumo por Categoria
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">EPIs, Ferramentas, Veículos e Insumos</p>
+              </div>
+            </div>
+            <div class="h-64 w-full relative flex items-center justify-center">
+              <canvas id="chart-category-donut"></canvas>
+            </div>
+            <div id="category-legend-stats" class="mt-2 space-y-1 text-xs text-slate-500 dark:text-slate-400">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Comparative Split: Top 5 Mais Retirados vs Top 5 Menos Retirados -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <!-- Box: Itens Mais Retirados -->
+          <div class="liquid-glass p-5 rounded-3xl border border-emerald-300 dark:border-emerald-500/20">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-xs font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                <i class="fa-solid fa-arrow-trend-up"></i> Top 5 Itens de Alto Giro (Maior Demanda)
+              </h4>
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold">Risco de Ruptura</span>
+            </div>
+            <div id="list-top-most-items" class="space-y-3">
+              <!-- Dynamically injected -->
+            </div>
+          </div>
+
+          <!-- Box: Itens Menos Retirados -->
+          <div class="liquid-glass p-5 rounded-3xl border border-purple-300 dark:border-purple-500/20">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-xs font-extrabold uppercase tracking-wider text-purple-700 dark:text-purple-400 flex items-center gap-2">
+                <i class="fa-solid fa-arrow-trend-down"></i> Top 5 Itens de Baixíssimo Giro (Slow Moving)
+              </h4>
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-semibold">Capital Imobilizado</span>
+            </div>
+            <div id="list-top-least-items" class="space-y-3">
+              <!-- Dynamically injected -->
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 2: PICOS & ÉPOCA DE CHUVAS             -->
+      <!-- ========================================== -->
+      <div id="tab-content-rain" class="tab-pane hidden space-y-6">
+        
+        <!-- Meteorological Insights Banner -->
+        <div class="liquid-glass p-5 rounded-3xl border border-cyan-300 dark:border-cyan-500/30 bg-gradient-to-r from-cyan-50/90 via-indigo-50/70 to-white/80 dark:from-cyan-950/40 dark:via-indigo-950/30 dark:to-transparent">
+          <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-2xl bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 flex items-center justify-center text-2xl shadow-sm">
+                <i class="fa-solid fa-cloud-bolt"></i>
+              </div>
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white">
+                  Correlação Climatológica Real (Open-Meteo SP) vs Retiradas de Estoque
+                </h3>
+                <p class="text-xs text-slate-600 dark:text-slate-300 max-w-2xl mt-0.5">
+                  Comprovação estatística: no pico de tempestades (Setembro/26 com 237.8 mm), as retiradas de materiais atingiram 25.478 unidades (R$ 2,08 Milhões), uma explosão de +1.175% em relação à estiagem severa de Julho/26 (26.3 mm / 1.998 unidades).
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-right">
+                <span class="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400">Sensibilidade Pluviométrica</span>
+                <div class="text-sm font-mono font-bold text-cyan-700 dark:text-cyan-300" id="rain-banner-delta">+73.8% em Itens Críticos</div>
+              </div>
+              <div class="px-3 py-1.5 rounded-xl bg-cyan-500/15 dark:bg-cyan-500/20 border border-cyan-400/40 text-cyan-700 dark:text-cyan-300 text-xs font-semibold">
+                Alerta de Safra Ativo
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Chart: Timeline com Chuvas -->
+        <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-chart-line text-cyan-600 dark:text-cyan-400"></i>
+                Evolução Temporal: Volume de Retiradas vs. Índice Pluviométrico (mm)
+              </h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Destaque sombreado para o período de tempestades sazonais</p>
+            </div>
+            <div class="flex items-center gap-3 text-xs">
+              <span class="flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300 font-medium">
+                <span class="w-3 h-3 rounded-full bg-indigo-500"></span> Retiradas Estoque
+              </span>
+              <span class="flex items-center gap-1.5 text-cyan-700 dark:text-cyan-300 font-medium">
+                <span class="w-3 h-3 rounded-full bg-cyan-400"></span> Chuva Média (mm)
+              </span>
+            </div>
+          </div>
+          <div class="h-80 w-full relative">
+            <canvas id="chart-rain-correlation"></canvas>
+          </div>
+        </div>
+
+        <!-- Breakdown de Materiais Sensíveis a Chuva -->
+        <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+          <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-umbrella text-blue-600 dark:text-blue-400"></i> Materiais Mais Impactados pelo Período Chuvoso
+          </h4>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
+                <tr>
+                  <th class="pb-3 font-semibold">Material / Equipamento</th>
+                  <th class="pb-3 font-semibold text-center">Consumo Época Seca</th>
+                  <th class="pb-3 font-semibold text-center">Consumo Época Chuvas</th>
+                  <th class="pb-3 font-semibold text-center">Variação (%)</th>
+                  <th class="pb-3 font-semibold text-right">Impacto Financeiro Adicional</th>
+                  <th class="pb-3 font-semibold text-right">Ação Recomendada</th>
+                </tr>
+              </thead>
+              <tbody id="table-rain-items-body" class="divide-y divide-slate-200/80 dark:divide-white/5">
+                <!-- Dynamically injected -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 3: RESPONSÁVEIS OFENSORES              -->
+      <!-- ========================================== -->
+      <div id="tab-content-offenders" class="tab-pane hidden space-y-6">
+        
+        <!-- Header Info -->
+        <div class="liquid-glass p-5 rounded-3xl border border-rose-300 dark:border-rose-500/20 bg-gradient-to-r from-rose-50/90 via-slate-50/80 to-white/80 dark:from-rose-950/20 dark:to-transparent flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white">
+                Matriz de Auditoria: Ofensores de Retirada & Desvio Padrão
+              </h3>
+            </div>
+            <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">
+              Colaboradores com volume e frequência de retiradas que superam a barreira estatística de <strong>+1.8σ (Desvios Padrão)</strong> em relação à média do respectivo segmento.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="window.dashboardApp.exportOffendersAudit()" class="px-3.5 py-2 rounded-xl bg-rose-600/15 dark:bg-rose-600/30 hover:bg-rose-600/25 dark:hover:bg-rose-600/50 text-rose-700 dark:text-rose-200 border border-rose-400/30 text-xs font-semibold flex items-center gap-2 transition-all shadow-sm">
+              <i class="fa-solid fa-file-shield"></i> Gerar Dossiê de Auditoria
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Chart: Top 10 Colaboradores com Mais Retiradas -->
+          <div class="lg:col-span-7 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+            <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                  <i class="fa-solid fa-user-ninja text-rose-600 dark:text-rose-400"></i> Ranking dos Maiores Solicitantes de Materiais
+                </h4>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  💡 <span class="text-indigo-600 dark:text-indigo-300 font-semibold underline decoration-dotted">Clique na barra de qualquer colaborador</span> para abrir a lista completa de itens consumidos.
+                </p>
+              </div>
+              <span class="text-[10px] px-2.5 py-1 rounded-full liquid-badge text-rose-700 dark:text-rose-300 font-mono font-semibold">Interativo / Drilldown</span>
+            </div>
+            <div class="h-72 w-full relative">
+              <canvas id="chart-top-offenders"></canvas>
+            </div>
+          </div>
+
+          <!-- Scatter / Risk Distribution: Frequência vs Volume -->
+          <div class="lg:col-span-5 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300">
+                Dispersão: Frequência vs Volume por Colaborador
+              </h4>
+            </div>
+            <div class="h-64 w-full relative">
+              <canvas id="chart-offender-scatter"></canvas>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+              Quadrante Superior Direito indica <strong>Alta Reincidência + Alto Volume</strong> (Risco de Extravio ou Falha de Procedimento).
+            </p>
+          </div>
+
+        </div>
+
+        <!-- Detailed Offender Audit Table -->
+        <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300">
+              Detalhamento de Colaboradores com Alertas Ativos
+            </h4>
+            <div class="relative">
+              <input type="text" id="search-offender-input" onkeyup="window.dashboardApp.filterOffenderTable()" placeholder="Buscar colaborador..." class="bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500 shadow-sm">
+              <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
+                <tr>
+                  <th class="pb-3 font-semibold">Responsável / Colaborador</th>
+                  <th class="pb-3 font-semibold">Segmento</th>
+                  <th class="pb-3 font-semibold">Base</th>
+                  <th class="pb-3 font-semibold text-center">Total Retiradas</th>
+                  <th class="pb-3 font-semibold text-center">Itens Distintos</th>
+                  <th class="pb-3 font-semibold text-center">Índice Desvio (Z-Score)</th>
+                  <th class="pb-3 font-semibold text-right">Classificação de Risco</th>
+                  <th class="pb-3 font-semibold text-right">Ação C-Level</th>
+                </tr>
+              </thead>
+              <tbody id="table-offenders-body" class="divide-y divide-slate-200/80 dark:divide-white/5">
+                <!-- Dynamically injected -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 4: TEMPO MÉDIO (MTBR) & DESGASTE PRECOCE -->
+      <!-- ========================================== -->
+      <div id="tab-content-mtbr" class="tab-pane hidden space-y-6">
+        
+        <div class="liquid-glass p-5 rounded-3xl border border-amber-300 dark:border-amber-500/20 bg-gradient-to-r from-amber-50/90 via-slate-50/80 to-white/80 dark:from-amber-950/20 dark:to-transparent">
+          <div class="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-stopwatch-20 text-amber-600 dark:text-amber-400"></i>
+                Tempo Médio Entre Retiradas (MTBR - Mean Time Between Reorders)
+              </h3>
+              <p class="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-3xl">
+                Mede o intervalo médio em dias em que o <strong>mesmo item</strong> é retirado repetidamente pelo mesmo setor ou usuário. Itens com ciclo muito curto (< 5 dias) sinalizam desgaste acelerado, má qualidade do fornecedor ou extravio silencioso.
+              </p>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400">Meta C-Level MTBR EPIs</span>
+              <div class="text-sm font-mono font-bold text-emerald-700 dark:text-emerald-400">≥ 45 dias úteis</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Chart MTBR Distribution -->
+          <div class="lg:col-span-6 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 mb-3">
+              Itens com Reposição Mais Acelerada (MTBR Crítico)
+            </h4>
+            <div class="h-72 w-full relative">
+              <canvas id="chart-mtbr-lowest"></canvas>
+            </div>
+          </div>
+
+          <!-- Chart MTBR High Lifecycle -->
+          <div class="lg:col-span-6 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 mb-3">
+              Itens de Longo Ciclo / Alta Durabilidade (MTBR Estável)
+            </h4>
+            <div class="h-72 w-full relative">
+              <canvas id="chart-mtbr-highest"></canvas>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- MTBR Matrix Table -->
+        <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+          <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 mb-4">
+            Auditoria de Vida Útil Real vs Vida Útil Esperada (Fabricante)
+          </h4>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
+                <tr>
+                  <th class="pb-3 font-semibold">Item / Ferramental / EPI</th>
+                  <th class="pb-3 font-semibold text-center">MTBR Real (Dias)</th>
+                  <th class="pb-3 font-semibold text-center">Vida Útil Teórica</th>
+                  <th class="pb-3 font-semibold text-center">Degradação Prematura</th>
+                  <th class="pb-3 font-semibold text-center">Retiradas / Mês</th>
+                  <th class="pb-3 font-semibold text-right">Diagnóstico C-Level</th>
+                </tr>
+              </thead>
+              <tbody id="table-mtbr-body" class="divide-y divide-slate-200/80 dark:divide-white/5">
+                <!-- Dynamically injected -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 5: BASES & SEGMENTOS                   -->
+      <!-- ========================================== -->
+      <div id="tab-content-bases" class="tab-pane hidden space-y-6">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Bar Chart: Consumo por Base -->
+          <div class="lg:col-span-7 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                <i class="fa-solid fa-warehouse text-emerald-600 dark:text-emerald-400"></i> Volume de Saídas por Base Operacional
+              </h4>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Ranking Geográfico</span>
+            </div>
+            <div class="h-72 w-full relative">
+              <canvas id="chart-base-consumption"></canvas>
+            </div>
+          </div>
+
+          <!-- Radar / Polar Chart: Segmentos -->
+          <div class="lg:col-span-5 liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                <i class="fa-solid fa-diagram-project text-indigo-600 dark:text-indigo-400"></i> Intensidade por Segmento
+              </h4>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Linha Viva, Obras, Frota</span>
+            </div>
+            <div class="h-72 w-full relative flex items-center justify-center">
+              <canvas id="chart-segment-radar"></canvas>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Base Performance Comparison Cards -->
+        <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+          <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 mb-4">
+            Benchmark de Eficiência por Base Operacional
+          </h4>
+          <div id="grid-base-benchmarks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Dynamically injected -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 6: ITENS MENOS RETIRADOS (SLOW MOVING) -->
+      <!-- ========================================== -->
+      <div id="tab-content-slow" class="tab-pane hidden space-y-6">
+        
+        <div class="liquid-glass p-5 rounded-3xl border border-purple-300 dark:border-purple-500/20 bg-gradient-to-r from-purple-50/90 via-slate-50/80 to-white/80 dark:from-purple-950/20 dark:to-transparent">
+          <div class="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-boxes-packing text-purple-600 dark:text-purple-400"></i>
+                Gestão de Estoque Ocioso: Itens Menos Retirados & Slow Moving
+              </h3>
+              <p class="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-3xl">
+                Materiais e ferramentais identificados no rodapé da curva de consumo (menor tração histórica nas bases Ipiranga e Itaquera). Representam capital de giro imobilizado e oportunidade imediata de desmobilização ou redistribuição.
+              </p>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400">Capital Imobilizado Estimado</span>
+              <div id="stat-locked-capital" class="text-base font-mono font-bold text-purple-700 dark:text-purple-300">R$ 0,00</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10">
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <div>
+              <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300">
+                Inventário de Itens de Baixa Rotatividade
+              </h4>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Exibição dos itens com as menores frequências de saída registradas.</p>
+            </div>
+            <div class="flex items-center flex-wrap gap-2">
+              <span class="text-xs text-slate-500 dark:text-slate-400">Filtro de Corte:</span>
+              <button id="slow-filter-bottom20" onclick="window.dashboardApp.filterSlowItems('bottom20')" class="px-2.5 py-1 rounded-xl bg-indigo-600/15 dark:bg-indigo-600/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold transition-all border border-indigo-400/50 shadow-sm">
+                Menor Giro (Bottom 25 SKUs)
+              </button>
+              <button id="slow-filter-zero" onclick="window.dashboardApp.filterSlowItems('zero')" class="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200/70 dark:hover:bg-white/10 text-xs text-slate-700 dark:text-slate-300 transition-all border border-transparent">
+                ≤ 2 Retiradas
+              </button>
+              <button id="slow-filter-all" onclick="window.dashboardApp.filterSlowItems('all')" class="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200/70 dark:hover:bg-white/10 text-xs text-slate-700 dark:text-slate-300 transition-all border border-transparent">
+                ≤ 5 Retiradas
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+              <thead class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
+                <tr>
+                  <th class="pb-3 font-semibold">Código / Descrição do Material</th>
+                  <th class="pb-3 font-semibold">Categoria</th>
+                  <th class="pb-3 font-semibold text-center">Total Retirado</th>
+                  <th class="pb-3 font-semibold text-center">Frequência</th>
+                  <th class="pb-3 font-semibold text-center">Bases c/ Movimento</th>
+                  <th class="pb-3 font-semibold text-right">Valor Total Imobilizado</th>
+                </tr>
+              </thead>
+              <tbody id="table-slow-items-body" class="divide-y divide-slate-200/80 dark:divide-white/5">
+                <!-- Dynamically injected -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 7: PLANO DE AÇÃO C-LEVEL               -->
+      <!-- ========================================== -->
+      <div id="tab-content-actions" class="tab-pane hidden space-y-6">
+        
+        <div class="liquid-glass p-6 rounded-3xl border border-indigo-300 dark:border-indigo-500/30 bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-white/80 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-transparent">
+          <h3 class="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <i class="fa-solid fa-chess-knight text-indigo-600 dark:text-indigo-400"></i>
+            Plano Diretor C-Level: Otimização de Cadeia de Suprimentos & Redução de OPEX
+          </h3>
+          <p class="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-3xl">
+            Iniciativas executivas com cálculo de ROI e metas de economia baseadas nos ofensores, picos sazonais de chuvas e taxas de degradação acelerada de materiais.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          
+          <!-- Ação 1: Trava Biométrica / Matrícula para EPIs de Alto Desgaste -->
+          <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between text-xs mb-2">
+                <span class="px-2 py-0.5 rounded-full bg-rose-500/15 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 font-semibold text-[10px]">OFENSOR DE CONDUTA</span>
+                <span class="text-emerald-700 dark:text-emerald-400 font-mono font-bold">-22% OPEX EPI</span>
+              </div>
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">Parametrização de Re-saída Mínima (Lock-in)</h4>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                Bloquear sistemicamente retiradas de luvas e botinas com intervalo inferior ao MTBR de 30 dias sem justificativa formal do supervisor de base.
+              </p>
+            </div>
+            <div class="pt-3 border-t border-slate-200/80 dark:border-white/10 flex items-center justify-between text-xs">
+              <span class="text-slate-500 dark:text-slate-400">Economia Anual Estimada:</span>
+              <strong class="text-emerald-700 dark:text-emerald-400 font-mono">R$ 135.000</strong>
+            </div>
+          </div>
+
+          <!-- Ação 2: Contratos Futuros com Hedge para Época de Chuvas -->
+          <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between text-xs mb-2">
+                <span class="px-2 py-0.5 rounded-full bg-cyan-500/15 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 font-semibold text-[10px]">SAZONALIDADE PLUVIAL</span>
+                <span class="text-emerald-700 dark:text-emerald-400 font-mono font-bold">-18% CUSTO UNIT.</span>
+              </div>
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">Antecipação de Compras Pluviais em Setembro</h4>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                Contratar lotes de capas de chuva, limpadores de para-brisa e botas impermeáveis no mês de Setembro antes do aumento de demanda e frete de emergência.
+              </p>
+            </div>
+            <div class="pt-3 border-t border-slate-200/80 dark:border-white/10 flex items-center justify-between text-xs">
+              <span class="text-slate-500 dark:text-slate-400">Economia Anual Estimada:</span>
+              <strong class="text-emerald-700 dark:text-emerald-400 font-mono">R$ 88.000</strong>
+            </div>
+          </div>
+
+          <!-- Ação 3: Troca de Fornecedor por Falha de MTBR -->
+          <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between text-xs mb-2">
+                <span class="px-2 py-0.5 rounded-full bg-amber-500/15 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold text-[10px]">QUALIDADE FORNECEDOR</span>
+                <span class="text-indigo-600 dark:text-indigo-400 font-mono font-bold">+140% VIDA ÚTIL</span>
+              </div>
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">Homologação de Ferramentas de Alta Durabilidade</h4>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                Discos de corte e alicates universais apresentam MTBR 62% abaixo do esperado. Reabrir concorrência técnica para fornecedores industriais classe A.
+              </p>
+            </div>
+            <div class="pt-3 border-t border-slate-200/80 dark:border-white/10 flex items-center justify-between text-xs">
+              <span class="text-slate-500 dark:text-slate-400">Economia Anual Estimada:</span>
+              <strong class="text-emerald-700 dark:text-emerald-400 font-mono">R$ 64.000</strong>
+            </div>
+          </div>
+
+          <!-- Ação 4: Fidelização de Ferramental Veicular (Já em Andamento) -->
+          <div class="liquid-glass p-5 rounded-3xl border border-cyan-400 dark:border-cyan-500/30 bg-cyan-50/80 dark:bg-cyan-950/20 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between text-xs mb-2">
+                <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold text-[10px] flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  JÁ EM ANDAMENTO • FIDELIZAÇÃO
+                </span>
+                <span class="text-cyan-700 dark:text-cyan-300 font-mono font-bold text-[11px]">FROTA & VEÍCULOS</span>
+              </div>
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">Fidelização e Vinculação Rígida de Ferramental por Veículo</h4>
+              <p class="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                Iniciativa já em andamento: consolidação do programa de fidelização e cautela permanente do kit veicular e ferramentas por placa. Bloqueia duplicidades e solicitações redundantes entre trocas de turnos dos motoristas nas bases Ipiranga e Itaquera.
+              </p>
+            </div>
+            <div class="pt-3 border-t border-slate-200/80 dark:border-white/10 flex items-center justify-between text-xs">
+              <span class="text-slate-500 dark:text-slate-400">Status Operacional:</span>
+              <strong class="text-emerald-700 dark:text-emerald-400 font-mono flex items-center gap-1.5">
+                <i class="fa-solid fa-circle-check text-xs"></i> Programa de Fidelização Ativo
+              </strong>
+            </div>
+          </div>
+
+          <!-- Ação 5: Painel Executivo com Notificação em Tempo Real -->
+          <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between text-xs mb-2">
+                <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold text-[10px]">GOVERNANÇA</span>
+                <span class="text-emerald-700 dark:text-emerald-300 font-mono font-bold">ALERTA C-LEVEL</span>
+              </div>
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">Gatilho de Alerta Automático para Desvios > 2σ</h4>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                Envio automático de relatório confidencial aos diretores sempre que uma base ou colaborador exceder 2 desvios padrão de consumo no ciclo mensal.
+              </p>
+            </div>
+            <div class="pt-3 border-t border-slate-200/80 dark:border-white/10 flex items-center justify-between text-xs">
+              <span class="text-slate-500 dark:text-slate-400">Impacto:</span>
+              <strong class="text-indigo-600 dark:text-indigo-400 font-mono">Compliance 100%</strong>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- Drilldown Executive Modal -->
+    <div id="executive-modal" class="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/70 backdrop-blur-md hidden flex items-center justify-center p-4">
+      <div class="liquid-glass max-w-4xl w-full rounded-3xl p-6 border border-slate-200 dark:border-white/20 shadow-2xl relative max-h-[88vh] flex flex-col">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-white/10">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-lg">
+              <i id="modal-icon" class="fa-solid fa-circle-info"></i>
+            </div>
+            <div>
+              <h3 id="modal-title" class="text-base font-bold text-slate-900 dark:text-white">Detalhamento</h3>
+              <p id="modal-subtitle" class="text-xs text-slate-500 dark:text-slate-400">Análise analítica profunda</p>
+            </div>
+          </div>
+          <button onclick="window.dashboardApp.closeModal()" class="w-8 h-8 rounded-full bg-slate-200/60 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div id="modal-body" class="py-4 overflow-y-auto space-y-3 flex-1 text-xs text-slate-700 dark:text-slate-300">
+          <!-- Dynamically populated -->
+        </div>
+        <div class="pt-4 border-t border-slate-200 dark:border-white/10 flex items-center justify-between">
+          <div id="modal-footer-stats" class="text-[11px] text-slate-500 dark:text-slate-400"></div>
+          <button onclick="window.dashboardApp.closeModal()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md shadow-indigo-500/25">
+            Fechar Visualização
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full Database Explorer Modal (Allows querying all 25k records) -->
+    <div id="explorer-modal" class="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md hidden flex items-center justify-center p-3 sm:p-6">
+      <div class="liquid-glass max-w-6xl w-full h-[90vh] rounded-3xl p-6 border border-slate-200 dark:border-white/20 shadow-2xl relative flex flex-col">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-white/10 flex-wrap gap-2">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-cyan-500/15 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 flex items-center justify-center text-lg">
+              <i class="fa-solid fa-table-list"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-slate-900 dark:text-white">Explorador Completo da Base de Saídas</h3>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Consulta direta a todos os <span id="explorer-total-count" class="font-mono text-cyan-600 dark:text-cyan-300 font-bold">25.279</span> registros</p>
+            </div>
+          </div>
+          <button onclick="window.dashboardApp.closeExplorer()" class="w-8 h-8 rounded-full bg-slate-200/60 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <!-- Explorer Controls -->
+        <div class="py-3 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-slate-200/80 dark:border-white/5">
+          <div class="relative flex-1 min-w-[240px]">
+            <input type="text" id="explorer-search-input" onkeyup="window.dashboardApp.searchExplorerRecords()" placeholder="Buscar por material, responsável, base, setor ou matrícula..." class="w-full bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:border-indigo-500 shadow-sm">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400"></i>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-slate-500 dark:text-slate-400">Linhas encontradas: <strong id="explorer-match-count" class="text-cyan-600 dark:text-cyan-300 font-mono">0</strong></span>
+            <div class="flex items-center gap-1 ml-3">
+              <button onclick="window.dashboardApp.explorerPrevPage()" class="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 text-xs font-semibold">
+                <i class="fa-solid fa-chevron-left"></i>
+              </button>
+              <span id="explorer-page-label" class="font-mono text-slate-700 dark:text-slate-300 px-2">1 / 1</span>
+              <button onclick="window.dashboardApp.explorerNextPage()" class="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 text-xs font-semibold">
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Explorer Table -->
+        <div class="flex-1 overflow-y-auto py-2">
+          <table class="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+            <thead class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10 sticky top-0 bg-slate-100/90 dark:bg-[#090d16]/90 backdrop-blur-md">
+              <tr>
+                <th class="pb-2.5 font-semibold">ID</th>
+                <th class="pb-2.5 font-semibold">Data</th>
+                <th class="pb-2.5 font-semibold">Material / Item</th>
+                <th class="pb-2.5 font-semibold">Grupo</th>
+                <th class="pb-2.5 font-semibold text-center">Qtd</th>
+                <th class="pb-2.5 font-semibold">Responsável</th>
+                <th class="pb-2.5 font-semibold">Base</th>
+                <th class="pb-2.5 font-semibold">Setor</th>
+                <th class="pb-2.5 font-semibold text-right">Valor Total</th>
+              </tr>
+            </thead>
+            <tbody id="explorer-table-body" class="divide-y divide-slate-200/80 dark:divide-white/5 font-mono text-[11px]">
+              <!-- Dynamically populated page -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pt-3 border-t border-slate-200 dark:border-white/10 flex items-center justify-between text-xs">
+          <span class="text-slate-500 dark:text-slate-400">Exibindo 50 linhas por página com renderização de alta performance.</span>
+          <button onclick="window.dashboardApp.closeExplorer()" class="px-4 py-1.5 rounded-xl bg-slate-200/70 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 text-slate-700 dark:text-slate-300 font-medium">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Footer -->
+    <footer class="liquid-glass border-t border-slate-200/80 dark:border-white/10 py-3.5 px-6 text-center text-xs text-slate-500 dark:text-slate-400">
+      <div class="max-w-[1700px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+        <p>© 2026 NexusOps Strategic Logistics — Google Material 3 Expressive & Apple Liquid Glass Engine.</p>
+        <p class="font-mono text-[11px] text-slate-500 dark:text-slate-500">Desenvolvido para Tomada de Decisão em Nível Diretoria e Presidência.</p>
+      </div>
+    </footer>
+
+  </div>
+
+  <script>
+    /*
+     * NexusOps Executive Analytics Frontend Controller
+     * Integração Reativa com os Endpoints Analíticos do Backend Flask / Supabase
+     */
+
+    class SupplyDashboardApp {
+      constructor() {
+        this.charts = {};
+        this.activeTab = 'overview';
+        this.selectedBases = new Set(['BASE IPIRANGA', 'BASE ITAQUERA']);
+        this.selectedSegments = new Set();
+        this.currentSeason = 'ALL';
+        this.currentSlowFilter = 'bottom20';
+
+        // Explorer State
+        this.explorerPage = 1;
+        this.explorerPageSize = 50;
+        this.explorerQuery = '';
+      }
+
+      async init() {
+        const isAuth = await this.checkAuthSession();
+        if (!isAuth) {
+          this.showAuthGate();
+          return;
+        }
+        this.unlockDashboard();
+        this.renderBaseOptions();
+        await this.loadSegmentsOptions();
+        this.setupDropdownClickListeners();
+        await this.refreshAllDashboardData();
+        this.switchTab('overview');
+      }
+
+      async checkAuthSession() {
+        const token = sessionStorage.getItem('cco_auth_token');
+        if (!token) return false;
+        try {
+          const resp = await fetch('/api/auth/session', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await resp.json();
+          return data.status === 'success' && data.authenticated;
+        } catch {
+          return true; // Fallback se offline/local
+        }
+      }
+
+      showAuthGate() {
+        document.getElementById('auth-gate-modal')?.classList.remove('hidden');
+        const main = document.getElementById('dashboard-main-content');
+        if (main) main.style.display = 'none';
+      }
+
+      unlockDashboard() {
+        document.getElementById('auth-gate-modal')?.classList.add('hidden');
+        const main = document.getElementById('dashboard-main-content');
+        if (main) main.style.display = 'flex';
+      }
+
+      async handleAuthGateSubmit(e) {
+        e.preventDefault();
+        const loginEl = document.getElementById('auth-gate-login');
+        const passEl = document.getElementById('auth-gate-password');
+        const errEl = document.getElementById('auth-gate-error');
+        const btn = document.getElementById('btn-auth-gate-submit');
+
+        const login = (loginEl?.value || '').trim();
+        const password = passEl?.value || '';
+
+        if (!login || !password) {
+          if (errEl) { errEl.textContent = 'Informe a matrícula/e-mail e a senha.'; errEl.classList.remove('hidden'); }
+          return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Autenticando...`;
+
+        try {
+          const resp = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ login, password })
+          });
+          const res = await resp.json();
+
+          if (res.status === 'success') {
+            sessionStorage.setItem('cco_auth_token', res.token);
+            sessionStorage.setItem('cco_auth_user', JSON.stringify(res.user));
+            if (errEl) errEl.classList.add('hidden');
+            this.unlockDashboard();
+            this.showToast(`Bem-vindo, ${res.user?.nome || 'Executivo'}! Acesso C-Level liberado.`, 'success');
+            this.renderBaseOptions();
+            await this.loadSegmentsOptions();
+            this.setupDropdownClickListeners();
+            await this.refreshAllDashboardData();
+            this.switchTab('overview');
+          } else {
+            if (errEl) {
+              errEl.textContent = res.message || 'Credenciais inválidas. Verifique matrícula e senha.';
+              errEl.classList.remove('hidden');
+            }
+          }
+        } catch (err) {
+          if (errEl) {
+            errEl.textContent = 'Erro ao contactar servidor de autenticação.';
+            errEl.classList.remove('hidden');
+          }
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = `<i class="fa-solid fa-unlock"></i> Desbloquear Visão C-Level`;
+        }
+      }
+
+      lockSession() {
+        sessionStorage.removeItem('cco_auth_token');
+        sessionStorage.removeItem('cco_auth_user');
+        const passEl = document.getElementById('auth-gate-password');
+        if (passEl) passEl.value = '';
+        this.showAuthGate();
+        this.showToast('Sessão executiva C-Level bloqueada.', 'info');
+      }
+
+      setupDropdownClickListeners() {
+        document.addEventListener('click', (e) => {
+          const baseContainer = document.getElementById('multiselect-base-container');
+          const segContainer = document.getElementById('multiselect-segment-container');
+          
+          if (baseContainer && !baseContainer.contains(e.target)) {
+            document.getElementById('dropdown-menu-base')?.classList.add('hidden');
+          }
+          if (segContainer && !segContainer.contains(e.target)) {
+            document.getElementById('dropdown-menu-segment')?.classList.add('hidden');
+          }
+        });
+      }
+
+      toggleDropdown(type) {
+        if (type === 'base') {
+          const menu = document.getElementById('dropdown-menu-base');
+          menu.classList.toggle('hidden');
+          document.getElementById('dropdown-menu-segment')?.classList.add('hidden');
+        } else if (type === 'segment') {
+          const menu = document.getElementById('dropdown-menu-segment');
+          menu.classList.toggle('hidden');
+          document.getElementById('dropdown-menu-base')?.classList.add('hidden');
+        }
+      }
+
+      renderBaseOptions() {
+        const baseContainer = document.getElementById('options-base-list');
+        const bases = ['BASE IPIRANGA', 'BASE ITAQUERA'];
+        baseContainer.innerHTML = '';
+        bases.forEach(b => {
+          const checked = this.selectedBases.has(b) ? 'checked' : '';
+          baseContainer.innerHTML += `
+            <label class="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 cursor-pointer select-none">
+              <input type="checkbox" value="${b}" ${checked} onchange="window.dashboardApp.onBaseCheckboxChange(this)" class="rounded border-slate-300 dark:border-white/20 text-indigo-600 focus:ring-0">
+              <span class="text-slate-800 dark:text-slate-200">${b}</span>
+            </label>
+          `;
+        });
+        this.updateBaseLabel();
+      }
+
+      async loadSegmentsOptions() {
+        try {
+          const resp = await fetch('/api/c-level/bases-segmentos');
+          const data = await resp.json();
+          const segContainer = document.getElementById('options-segment-list');
+          segContainer.innerHTML = '';
+
+          const segs = Object.keys(data.segment_radar || {});
+          this.allSegmentsList = segs;
+          if (segs.length > 0) {
+            this.selectedSegments = new Set(segs);
+            segs.forEach(s => {
+              segContainer.innerHTML += `
+                <label class="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 cursor-pointer select-none">
+                  <input type="checkbox" value="${s}" checked onchange="window.dashboardApp.onSegmentCheckboxChange(this)" class="rounded border-slate-300 dark:border-white/20 text-indigo-600 focus:ring-0">
+                  <span class="text-slate-800 dark:text-slate-200 truncate" title="${s}">${s}</span>
+                </label>
+              `;
+            });
+          }
+          this.updateSegmentLabel();
+        } catch (e) {
+          console.error('[C-LEVEL] Erro ao carregar segmentos:', e);
+        }
+      }
+
+      updateBaseLabel() {
+        const count = this.selectedBases.size;
+        const label = document.getElementById('label-filter-base');
+        if (count === 2) {
+          label.textContent = `Bases: Todas (2)`;
+        } else if (count === 0) {
+          label.textContent = `Bases: Nenhuma`;
+        } else {
+          label.textContent = Array.from(this.selectedBases).join(', ').replace(/BASE /g, '');
+        }
+      }
+
+      updateSegmentLabel() {
+        const count = this.selectedSegments.size;
+        const label = document.getElementById('label-filter-segment');
+        if (count === 0) {
+          label.textContent = `Segmentos: Nenhum`;
+        } else {
+          label.textContent = `Segmentos: ${count} sel.`;
+        }
+      }
+
+      onBaseCheckboxChange(checkbox) {
+        if (checkbox.checked) {
+          this.selectedBases.add(checkbox.value);
+        } else {
+          this.selectedBases.delete(checkbox.value);
+        }
+        this.updateBaseLabel();
+        this.applyFilters();
+      }
+
+      onSegmentCheckboxChange(checkbox) {
+        if (checkbox.checked) {
+          this.selectedSegments.add(checkbox.value);
+        } else {
+          this.selectedSegments.delete(checkbox.value);
+        }
+        this.updateSegmentLabel();
+        this.applyFilters();
+      }
+
+      selectAllBases(selectAll) {
+        const bases = ['BASE IPIRANGA', 'BASE ITAQUERA'];
+        this.selectedBases = selectAll ? new Set(bases) : new Set();
+        this.renderBaseOptions();
+        this.applyFilters();
+      }
+
+      selectAllSegments(selectAll) {
+        const checkboxes = document.querySelectorAll('#options-segment-list input[type="checkbox"]');
+        this.selectedSegments.clear();
+        checkboxes.forEach(cb => {
+          cb.checked = selectAll;
+          if (selectAll) this.selectedSegments.add(cb.value);
+        });
+        this.updateSegmentLabel();
+        this.applyFilters();
+      }
+
+      buildFilterQueryParams() {
+        const params = new URLSearchParams();
+        // Apenas filtra base se o usuário tiver selecionado especificamente 1 base
+        if (this.selectedBases.size === 1) {
+          this.selectedBases.forEach(b => params.append('bases', b));
+        }
+        // Apenas filtra segmento se o usuário tiver desselecionado algum segmento
+        const totalSegs = (this.allSegmentsList && this.allSegmentsList.length) ? this.allSegmentsList.length : 10;
+        if (this.selectedSegments.size > 0 && this.selectedSegments.size < totalSegs) {
+          this.selectedSegments.forEach(s => params.append('segmentos', s));
+        }
+        if (this.currentSeason && this.currentSeason !== 'ALL') {
+          params.append('season', this.currentSeason);
+        }
+        return params.toString();
+      }
+
+      applyFilters() {
+        const seasonVal = document.getElementById('filter-season').value;
+        this.currentSeason = seasonVal;
+        this.refreshAllDashboardData();
+      }
+
+      resetFilters() {
+        this.selectedBases = new Set(['BASE IPIRANGA', 'BASE ITAQUERA']);
+        document.getElementById('filter-season').value = 'ALL';
+        this.currentSeason = 'ALL';
+        this.renderBaseOptions();
+        this.selectAllSegments(true);
+        this.showToast('Filtros restaurados com sucesso.', 'info');
+      }
+
+      async refreshAllDashboardData() {
+        const q = this.buildFilterQueryParams();
+        await Promise.all([
+          this.loadKpis(q),
+          this.loadPareto(q),
+          this.loadRain(q),
+          this.loadOffenders(q),
+          this.loadMtbr(q),
+          this.loadBases(q),
+          this.loadSlowMoving()
+        ]);
+      }
+
+      async loadKpis(queryString) {
+        try {
+          const resp = await fetch(`/api/c-level/kpis?${queryString}`);
+          const data = await resp.json();
+
+          const costEl = document.getElementById('kpi-total-cost');
+          if (costEl) costEl.textContent = Number(data.total_custo || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          const badgeEl = document.getElementById('kpi-total-items-badge');
+          if (badgeEl) badgeEl.textContent = `${Number(data.total_itens || 0).toLocaleString('pt-BR')} un (${Number(data.total_registros || 0).toLocaleString('pt-BR')} saídas)`;
+
+          const legacyItems = document.getElementById('kpi-total-items');
+          if (legacyItems) legacyItems.textContent = Number(data.total_itens || 0).toLocaleString('pt-BR');
+
+          document.getElementById('stat-total-records').textContent = Number(data.total_registros || 0).toLocaleString('pt-BR');
+          document.getElementById('btn-count-records').textContent = Number(data.total_registros || 0).toLocaleString('pt-BR');
+
+          const topOf = data.top_ofensor || {};
+          document.getElementById('kpi-top-offender-name').textContent = topOf.nome || 'N/A';
+          document.getElementById('kpi-top-offender-volume').textContent = `${Number(topOf.volume || 0).toLocaleString('pt-BR')} un (${topOf.percentual || 0}%)`;
+          document.getElementById('kpi-offender-bar').style.width = `${Math.min((topOf.percentual || 0) * 2.5, 100)}%`;
+
+          document.getElementById('kpi-mtbr-avg').textContent = Number(data.mtbr_avg || 0).toFixed(1);
+          document.getElementById('kpi-mtbr-critical-count').textContent = `${data.mtbr_critical_count || 0} itens em stress`;
+
+          const dRain = Number(data.delta_rain_percent || 0);
+          document.getElementById('kpi-rain-delta').textContent = `${dRain >= 0 ? '+' : ''}${dRain.toFixed(1)}%`;
+          document.getElementById('rain-banner-delta').textContent = `${dRain >= 0 ? '+' : ''}${dRain.toFixed(1)}% em Itens Críticos`;
+          document.getElementById('kpi-rain-top-item').textContent = data.top_rain_item || 'N/A';
+
+          document.getElementById('stat-period-range').textContent = `${data.periodo_inicio || '--'} até ${data.periodo_fim || '--'}`;
+        } catch (e) {
+          console.error('[C-LEVEL] Erro KPIs:', e);
+        }
+      }
+
+      async loadPareto(queryString) {
+        try {
+          const resp = await fetch(`/api/c-level/pareto?${queryString}`);
+          const data = await resp.json();
+
+          const isDark = document.documentElement.classList.contains('dark');
+          const textColor = isDark ? '#94a3b8' : '#475569';
+          const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+
+          // Chart 1: Top 10 Itens
+          const top10 = data.top_items || [];
+          this.renderChart('chart-top-items', {
+            type: 'bar',
+            data: {
+              labels: top10.map(i => i.material.length > 20 ? i.material.substring(0, 20) + '...' : i.material),
+              datasets: [{
+                label: 'Unidades Retiradas',
+                data: top10.map(i => i.volume),
+                backgroundColor: isDark ? 'rgba(99, 102, 241, 0.75)' : 'rgba(79, 70, 229, 0.85)',
+                borderColor: '#6366f1',
+                borderWidth: 1,
+                borderRadius: 8
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
+                y: { ticks: { color: textColor }, grid: { color: gridColor } }
+              }
+            }
+          });
+
+          // Chart 2: Categorias
+          const catMap = data.categories || {};
+          const catLabels = Object.keys(catMap);
+          const catValues = Object.values(catMap);
+          const palette = ['#6366f1', '#06b6d4', '#ec4899', '#f59e0b', '#10b981', '#8b5cf6', '#3b82f6'];
+
+          this.renderChart('chart-category-donut', {
+            type: 'doughnut',
+            data: {
+              labels: catLabels,
+              datasets: [{
+                data: catValues,
+                backgroundColor: palette.slice(0, catLabels.length),
+                borderWidth: 2,
+                borderColor: isDark ? '#090d16' : '#ffffff',
+                hoverOffset: 8
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { position: 'bottom', labels: { color: textColor, boxWidth: 12, font: { size: 10 } } }
+              },
+              cutout: '72%'
+            }
+          });
+
+          // Listas Top 5 e Menos 5
+          const top5Container = document.getElementById('list-top-most-items');
+          top5Container.innerHTML = (data.top5_most || []).map((item, idx) => `
+            <div class="flex items-center justify-between p-2.5 rounded-2xl bg-slate-100/70 dark:bg-white/5 border border-slate-200/60 dark:border-white/5 hover:border-emerald-500/40 transition-all">
+              <div class="flex items-center gap-3">
+                <span class="w-6 h-6 rounded-lg bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-bold flex items-center justify-center font-mono">#${idx + 1}</span>
+                <div>
+                  <h5 class="font-bold text-xs text-slate-900 dark:text-white truncate max-w-[220px]">${item.material}</h5>
+                  <span class="text-[10px] text-slate-500 dark:text-slate-400">${item.categoria}</span>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="font-mono font-bold text-xs text-emerald-700 dark:text-emerald-400">${item.volume.toLocaleString('pt-BR')} un</span>
+                <div class="text-[10px] text-slate-500 dark:text-slate-400">${item.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              </div>
+            </div>
+          `).join('');
+
+          const least5Container = document.getElementById('list-top-least-items');
+          least5Container.innerHTML = (data.top5_least || []).map((item, idx) => `
+            <div class="flex items-center justify-between p-2.5 rounded-2xl bg-slate-100/70 dark:bg-white/5 border border-slate-200/60 dark:border-white/5 hover:border-purple-500/40 transition-all">
+              <div class="flex items-center gap-3">
+                <span class="w-6 h-6 rounded-lg bg-purple-500/15 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 text-xs font-bold flex items-center justify-center font-mono">#${idx + 1}</span>
+                <div>
+                  <h5 class="font-bold text-xs text-slate-900 dark:text-white truncate max-w-[220px]">${item.material}</h5>
+                  <span class="text-[10px] text-slate-500 dark:text-slate-400">${item.categoria}</span>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="font-mono font-bold text-xs text-purple-700 dark:text-purple-400">${item.volume.toLocaleString('pt-BR')} un</span>
+                <div class="text-[10px] text-slate-500 dark:text-slate-400">Capital: ${item.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              </div>
+            </div>
+          `).join('');
+
+        } catch (e) {
+          console.error('[C-LEVEL] Erro Pareto:', e);
+        }
+      }
+
+      async loadRain(queryString) {
+        try {
+          const resp = await fetch(`/api/c-level/rain-analysis?${queryString}`);
+          const data = await resp.json();
+
+          const isDark = document.documentElement.classList.contains('dark');
+          const textColor = isDark ? '#94a3b8' : '#475569';
+          const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+
+          const tl = data.timeline || [];
+          this.renderChart('chart-rain-correlation', {
+            type: 'line',
+            data: {
+              labels: tl.map(t => t.mes),
+              datasets: [
+                {
+                  label: 'Retiradas de Estoque (Volume)',
+                  data: tl.map(t => t.retiradas),
+                  borderColor: '#6366f1',
+                  backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.10)',
+                  yAxisID: 'y',
+                  tension: 0.4,
+                  fill: true,
+                  pointBackgroundColor: '#6366f1',
+                  pointRadius: 6,
+                  pointHoverRadius: 9
+                },
+                {
+                  label: 'Índice de Chuvas (mm Médio)',
+                  data: tl.map(t => t.chuva_mm),
+                  borderColor: '#06b6d4',
+                  backgroundColor: isDark ? 'rgba(6, 182, 212, 0.08)' : 'rgba(6, 182, 212, 0.05)',
+                  borderDash: [5, 5],
+                  yAxisID: 'y1',
+                  tension: 0.4,
+                  fill: true,
+                  pointBackgroundColor: '#06b6d4',
+                  pointRadius: 6,
+                  pointHoverRadius: 9
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: 'index', intersect: false },
+              scales: {
+                x: { ticks: { color: textColor }, grid: { display: false } },
+                y: {
+                  type: 'linear',
+                  position: 'left',
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                  title: { display: true, text: 'Volume de Retiradas (unidades)', color: textColor, font: { size: 10 } }
+                },
+                y1: {
+                  type: 'linear',
+                  position: 'right',
+                  grid: { drawOnChartArea: false },
+                  ticks: { color: isDark ? '#06b6d4' : '#0891b2' },
+                  title: { display: true, text: 'Precipitação Pluvial (mm)', color: isDark ? '#06b6d4' : '#0891b2', font: { size: 10 } }
+                }
+              },
+              plugins: {
+                tooltip: {
+                  mode: 'index',
+                  intersect: false,
+                  callbacks: {
+                    afterBody: (tooltipItems) => {
+                      const idx = tooltipItems[0]?.dataIndex;
+                      const monthData = tl[idx];
+                      if (monthData) {
+                        return [
+                          `Investimento Financeiro: ${Number(monthData.custo || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
+                          `Ocorrências: ${Number(monthData.transacoes || 0).toLocaleString('pt-BR')} saídas registradas`
+                        ];
+                      }
+                      return [];
+                    }
+                  }
+                },
+                legend: { labels: { color: textColor, font: { size: 11 } } }
+              }
+            }
+          });
+
+          // Tabela Chuvas
+          const tbody = document.getElementById('table-rain-items-body');
+          tbody.innerHTML = (data.rain_sensitive_items || []).map(item => `
+            <tr class="hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors">
+              <td class="py-3 font-semibold text-slate-900 dark:text-slate-200">${item.material}</td>
+              <td class="py-3 text-center font-mono text-slate-500 dark:text-slate-400">${item.dry_total} un</td>
+              <td class="py-3 text-center font-mono font-bold text-cyan-700 dark:text-cyan-300">${item.rain_total} un</td>
+              <td class="py-3 text-center font-mono font-bold ${item.delta_pct > 50 ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}">
+                +${item.delta_pct}%
+              </td>
+              <td class="py-3 text-right font-mono text-slate-800 dark:text-slate-200">
+                ${item.added_cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </td>
+              <td class="py-3 text-right">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${item.delta_pct > 80 ? 'bg-rose-500/15 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300' : 'bg-cyan-500/15 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300'}">
+                  ${item.action}
+                </span>
+              </td>
+            </tr>
+          `).join('');
+
+        } catch (e) {
+          console.error('[C-LEVEL] Erro Rain:', e);
+        }
+      }
+
+      async loadOffenders(queryString) {
+        try {
+          const resp = await fetch(`/api/c-level/ofensores?${queryString}`);
+          const data = await resp.json();
+
+          const isDark = document.documentElement.classList.contains('dark');
+          const textColor = isDark ? '#94a3b8' : '#475569';
+          const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+
+          const topOf = data.top_offenders || [];
+          this.renderChart('chart-top-offenders', {
+            type: 'bar',
+            data: {
+              labels: topOf.map(o => o.nome),
+              datasets: [{
+                label: 'Itens Retirados',
+                data: topOf.map(o => o.volume),
+                backgroundColor: isDark ? 'rgba(244, 63, 94, 0.75)' : 'rgba(225, 29, 72, 0.85)',
+                borderColor: '#f43f5e',
+                borderWidth: 1,
+                borderRadius: 8
+              }]
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              onClick: (event, elements, chart) => {
+                if (elements && elements.length > 0) {
+                  const idx = elements[0].index;
+                  const name = chart.data.labels[idx];
+                  if (name) this.openOffenderDrilldown(name);
+                }
+              },
+              onHover: (event, chartElement) => {
+                event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+              },
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { ticks: { color: textColor }, grid: { color: gridColor } },
+                y: { ticks: { color: textColor, font: { size: 10, weight: 'bold' } }, grid: { display: false } }
+              }
+            }
+          });
+
+          // Scatter Chart (Frequência vs Volume por Colaborador)
+          const rawScatter = data.scatter || [];
+          const scatterPoints = rawScatter.map(item => ({
+            x: Number(item.x || 0),
+            y: Number(item.y || 0),
+            name: item.name || 'Colaborador'
+          }));
+
+          this.renderChart('chart-offender-scatter', {
+            type: 'scatter',
+            data: {
+              datasets: [{
+                label: 'Colaboradores',
+                data: scatterPoints,
+                backgroundColor: isDark ? 'rgba(244, 63, 94, 0.75)' : 'rgba(225, 29, 72, 0.85)',
+                borderColor: '#f43f5e',
+                borderWidth: 1.5,
+                pointRadius: 6,
+                pointHoverRadius: 9
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              onClick: (event, elements) => {
+                if (elements && elements.length > 0) {
+                  const pIdx = elements[0].index;
+                  const uName = scatterPoints[pIdx]?.name;
+                  if (uName) this.openOffenderDrilldown(uName);
+                }
+              },
+              onHover: (event, chartElement) => {
+                event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+              },
+              plugins: {
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => `${ctx.raw.name}: ${ctx.raw.x} saídas | ${ctx.raw.y.toLocaleString('pt-BR')} un (Clique para auditar)`
+                  }
+                },
+                legend: { display: false }
+              },
+              scales: {
+                x: {
+                  type: 'linear',
+                  position: 'bottom',
+                  title: { display: true, text: 'Frequência de Saídas (Ocorrências)', color: textColor, font: { size: 11, weight: 'bold' } },
+                  ticks: { color: textColor },
+                  grid: { color: gridColor }
+                },
+                y: {
+                  type: 'linear',
+                  position: 'left',
+                  title: { display: true, text: 'Volume Total Retirado (Unidades)', color: textColor, font: { size: 11, weight: 'bold' } },
+                  ticks: { color: textColor },
+                  grid: { color: gridColor }
+                }
+              }
+            }
+          });
+
+          // Tabela Ofensores
+          const tbody = document.getElementById('table-offenders-body');
+          tbody.innerHTML = (data.table || []).map(u => {
+            const isCritical = u.z_score >= 1.8;
+            const isWarning = u.z_score >= 1.0 && u.z_score < 1.8;
+            return `
+              <tr class="hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors offender-row" data-name="${u.name.toLowerCase()}">
+                <td class="py-3 font-semibold text-slate-900 dark:text-slate-200">
+                  <button onclick="window.dashboardApp.openOffenderDrilldown('${u.name}')" class="flex items-center gap-2 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-left group">
+                    ${isCritical ? '<span class="w-2 h-2 rounded-full bg-rose-500"></span>' : ''}
+                    <span class="group-hover:underline">${u.name}</span>
+                    <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                  </button>
+                </td>
+                <td class="py-3 text-slate-600 dark:text-slate-400 truncate max-w-[180px]">${u.segmento}</td>
+                <td class="py-3 text-slate-600 dark:text-slate-400">${u.base}</td>
+                <td class="py-3 text-center font-mono font-bold ${isCritical ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-200'}">
+                  ${u.volume.toLocaleString('pt-BR')}
+                </td>
+                <td class="py-3 text-center font-mono text-slate-600 dark:text-slate-400">${u.itens_distintos}</td>
+                <td class="py-3 text-center font-mono font-bold ${isCritical ? 'text-rose-600 dark:text-rose-400' : isWarning ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}">
+                  +${u.z_score}σ
+                </td>
+                <td class="py-3 text-right">
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isCritical ? 'bg-rose-500/15 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30' : isWarning ? 'bg-amber-500/15 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'}">
+                    ${isCritical ? 'Alto Desvio (+2σ)' : isWarning ? 'Atenção Operacional' : 'Dentro do Padrão'}
+                  </span>
+                </td>
+                <td class="py-3 text-right">
+                  <button onclick="window.dashboardApp.openOffenderDrilldown('${u.name}')" class="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-600/20 hover:bg-indigo-100 dark:hover:bg-indigo-600/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold transition-all shadow-sm">
+                    Ver Itens →
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join('');
+
+        } catch (e) {
+          console.error('[C-LEVEL] Erro Ofensores:', e);
+        }
+      }
+
+      async loadMtbr(queryString) {
+        try {
+          const resp = await fetch(`/api/c-level/mtbr?${queryString}`);
+          const data = await resp.json();
+
+          const isDark = document.documentElement.classList.contains('dark');
+          const textColor = isDark ? '#94a3b8' : '#475569';
+          const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+
+          const lowest = data.mtbr_lowest || [];
+          this.renderChart('chart-mtbr-lowest', {
+            type: 'bar',
+            data: {
+              labels: lowest.map(m => m.material.length > 20 ? m.material.substring(0, 20) + '...' : m.material),
+              datasets: [{
+                label: 'Dias entre Retiradas',
+                data: lowest.map(m => m.mtbr_days),
+                backgroundColor: isDark ? 'rgba(245, 158, 11, 0.75)' : 'rgba(217, 119, 6, 0.85)',
+                borderColor: '#f59e0b',
+                borderWidth: 1,
+                borderRadius: 8
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
+                y: { ticks: { color: textColor }, grid: { color: gridColor } }
+              }
+            }
+          });
+
+          const highest = data.mtbr_highest || [];
+          this.renderChart('chart-mtbr-highest', {
+            type: 'bar',
+            data: {
+              labels: highest.map(m => m.material.length > 20 ? m.material.substring(0, 20) + '...' : m.material),
+              datasets: [{
+                label: 'Dias entre Retiradas',
+                data: highest.map(m => m.mtbr_days),
+                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.75)' : 'rgba(5, 150, 105, 0.85)',
+                borderColor: '#10b981',
+                borderWidth: 1,
+                borderRadius: 8
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
+                y: { ticks: { color: textColor }, grid: { color: gridColor } }
+              }
+            }
+          });
+
+          // Tabela MTBR
+          const tbody = document.getElementById('table-mtbr-body');
+          tbody.innerHTML = (data.table || []).map(item => `
+            <tr class="hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors">
+              <td class="py-3 font-semibold text-slate-900 dark:text-slate-200">${item.material}</td>
+              <td class="py-3 text-center font-mono font-bold ${item.mtbr_real < 10 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-200'}">
+                ${item.mtbr_real} dias
+              </td>
+              <td class="py-3 text-center font-mono text-slate-500 dark:text-slate-400">${item.vida_util_teorica} dias</td>
+              <td class="py-3 text-center font-mono font-bold ${item.degradacao_pct > 40 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}">
+                ${item.degradacao_pct > 0 ? `-${item.degradacao_pct}%` : '+100%'}
+              </td>
+              <td class="py-3 text-center font-mono text-slate-700 dark:text-slate-300">${item.retiradas_mes} /mês</td>
+              <td class="py-3 text-right">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${item.mtbr_real < 10 ? 'bg-rose-500/15 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300' : 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'}">
+                  ${item.diagnostico}
+                </span>
+              </td>
+            </tr>
+          `).join('');
+
+        } catch (e) {
+          console.error('[C-LEVEL] Erro MTBR:', e);
+        }
+      }
+
+      async loadBases() {
+        try {
+          const resp = await fetch('/api/c-level/bases-segmentos');
+          const data = await resp.json();
+
+          const isDark = document.documentElement.classList.contains('dark');
+          const textColor = isDark ? '#94a3b8' : '#475569';
+          const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+
+          const comp = data.bases_comparison || [];
+          this.renderChart('chart-base-consumption', {
+            type: 'bar',
+            data: {
+              labels: comp.map(c => c.base),
+              datasets: [{
+                label: 'Volume de Saídas por Base',
+                data: comp.map(c => c.volume),
+                backgroundColor: [
+                  isDark ? 'rgba(16, 185, 129, 0.8)' : 'rgba(16, 185, 129, 0.85)', 
+                  isDark ? 'rgba(6, 182, 212, 0.8)' : 'rgba(6, 182, 212, 0.85)'
+                ],
+                borderColor: ['#10b981', '#06b6d4'],
+                borderWidth: 1,
+                borderRadius: 12
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { ticks: { color: textColor, font: { size: 12, weight: 'bold' } }, grid: { display: false } },
+                y: { ticks: { color: textColor }, grid: { color: gridColor } }
+              }
+            }
+          });
+
+          // Intensidade por Segmento (Barras Horizontais com Alta Visibilidade)
+          const segRadar = data.segment_radar || {};
+          const segLabels = Object.keys(segRadar);
+          const segValues = Object.values(segRadar).map(v => Number(v));
+          const segColors = [
+            'rgba(99, 102, 241, 0.85)',
+            'rgba(6, 182, 212, 0.85)',
+            'rgba(236, 72, 153, 0.85)',
+            'rgba(245, 158, 11, 0.85)',
+            'rgba(16, 185, 129, 0.85)',
+            'rgba(139, 92, 246, 0.85)',
+            'rgba(59, 130, 246, 0.85)',
+            'rgba(244, 63, 94, 0.85)'
+          ];
+
+          this.renderChart('chart-segment-radar', {
+            type: 'bar',
+            data: {
+              labels: segLabels,
+              datasets: [{
+                label: 'Volume de Itens',
+                data: segValues,
+                backgroundColor: segColors.slice(0, segLabels.length),
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
+                borderWidth: 1,
+                borderRadius: 8
+              }]
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => `Volume Retirado: ${Number(ctx.raw).toLocaleString('pt-BR')} unidades`
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                  title: { display: true, text: 'Unidades Retiradas', color: textColor, font: { size: 10 } }
+                },
+                y: {
+                  ticks: { color: textColor, font: { size: 10, weight: 'bold' } },
+                  grid: { display: false }
+                }
+              }
+            }
+          });
+
+          // Benchmarks Cards
+          const grid = document.getElementById('grid-base-benchmarks');
+          grid.innerHTML = (data.benchmarks || []).map(b => `
+            <div class="liquid-glass p-5 rounded-3xl border border-slate-200/80 dark:border-white/10 space-y-3">
+              <div class="flex items-center justify-between text-xs">
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded-full ${b.base.includes('IPIRANGA') ? 'bg-emerald-500' : 'bg-cyan-500'}"></span>
+                  <span class="font-extrabold text-sm text-slate-900 dark:text-white">${b.base}</span>
+                </div>
+                <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[10px] font-mono">${b.colaboradores} Solicitantes</span>
+              </div>
+              <div class="flex items-baseline justify-between pt-1">
+                <span class="text-xs text-slate-500 dark:text-slate-400">Gasto per capita:</span>
+                <span class="font-mono font-bold text-sm text-cyan-700 dark:text-cyan-300">${b.gasto_per_capita.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+              </div>
+              <div class="flex items-baseline justify-between">
+                <span class="text-xs text-slate-500 dark:text-slate-400">Total de Unidades:</span>
+                <span class="font-mono font-bold text-sm text-slate-800 dark:text-slate-200">${b.volume_total.toLocaleString('pt-BR')} un</span>
+              </div>
+              <div class="flex items-baseline justify-between border-t border-slate-200/80 dark:border-white/5 pt-2">
+                <span class="text-[11px] text-slate-500 dark:text-slate-400">Investimento Total:</span>
+                <span class="font-mono font-semibold text-xs text-emerald-700 dark:text-emerald-400">${b.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+              </div>
+            </div>
+          `).join('');
+
+        } catch (e) {
+          console.error('[C-LEVEL] Erro Bases:', e);
+        }
+      }
+
+      async loadSlowMoving() {
+        try {
+          const resp = await fetch(`/api/c-level/slow-moving?mode=${this.currentSlowFilter}`);
+          const data = await resp.json();
+
+          document.getElementById('stat-locked-capital').textContent = Number(data.capital_imobilizado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+          const tbody = document.getElementById('table-slow-items-body');
+          tbody.innerHTML = (data.items || []).map(i => `
+            <tr class="hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors slow-row">
+              <td class="py-3 font-semibold text-slate-900 dark:text-slate-200">${i.material}</td>
+              <td class="py-3 text-slate-500 dark:text-slate-400">${i.categoria}</td>
+              <td class="py-3 text-center font-mono font-bold text-purple-700 dark:text-purple-400">${i.quantidade} un</td>
+              <td class="py-3 text-center font-mono text-slate-700 dark:text-slate-300">${i.frequencia} saída(s)</td>
+              <td class="py-3 text-center text-slate-600 dark:text-slate-300 text-[11px]">${i.bases.join(', ')}</td>
+              <td class="py-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                ${i.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </td>
+            </tr>
+          `).join('');
+
+        } catch (e) {
+          console.error('[C-LEVEL] Erro Slow Moving:', e);
+        }
+      }
+
+      filterSlowItems(mode) {
+        this.currentSlowFilter = mode;
+        const btnB20 = document.getElementById('slow-filter-bottom20');
+        const btnZero = document.getElementById('slow-filter-zero');
+        const btnAll = document.getElementById('slow-filter-all');
+
+        [btnB20, btnZero, btnAll].forEach(btn => {
+          if (!btn) return;
+          btn.className = 'px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200/70 dark:hover:bg-white/10 text-xs text-slate-700 dark:text-slate-300 transition-all border border-transparent';
+        });
+
+        if (mode === 'bottom20' && btnB20) {
+          btnB20.className = 'px-2.5 py-1 rounded-xl bg-indigo-600/15 dark:bg-indigo-600/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold transition-all border border-indigo-400/50 shadow-sm';
+        } else if (mode === 'zero' && btnZero) {
+          btnZero.className = 'px-2.5 py-1 rounded-xl bg-indigo-600/15 dark:bg-indigo-600/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold transition-all border border-indigo-400/50 shadow-sm';
+        } else if (mode === 'all' && btnAll) {
+          btnAll.className = 'px-2.5 py-1 rounded-xl bg-indigo-600/15 dark:bg-indigo-600/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold transition-all border border-indigo-400/50 shadow-sm';
+        }
+
+        this.loadSlowMoving();
+      }
+
+      async openOffenderDrilldown(userName) {
+        const modal = document.getElementById('executive-modal');
+        const title = document.getElementById('modal-title');
+        const subtitle = document.getElementById('modal-subtitle');
+        const body = document.getElementById('modal-body');
+        const footerStats = document.getElementById('modal-footer-stats');
+        const modalIcon = document.getElementById('modal-icon');
+
+        modalIcon.className = 'fa-solid fa-user-shield text-rose-600 dark:text-rose-400';
+        title.textContent = `Auditoria Completa de Consumo: ${userName}`;
+        subtitle.textContent = `Carregando dossiê de itens...`;
+        modal.classList.remove('hidden');
+
+        try {
+          const resp = await fetch(`/api/c-level/ofensor/${encodeURIComponent(userName)}/itens`);
+          const data = await resp.json();
+
+          subtitle.textContent = `Listagem analítica e volumétrica de todos os materiais retirados por este colaborador`;
+
+          const mats = data.materiais || [];
+          const cardsHtml = mats.map(m => `
+            <div class="flex items-center justify-between p-3 rounded-2xl bg-slate-100/70 dark:bg-white/5 border border-slate-200/60 dark:border-white/5 hover:border-indigo-400/40 transition-all">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center font-mono text-xs">
+                  ${m.quantidade}
+                </div>
+                <div>
+                  <div class="font-bold text-xs text-slate-900 dark:text-white">${m.name}</div>
+                  <div class="text-[10px] text-slate-500 dark:text-slate-400">
+                    ${m.categoria} • ${m.frequencia} saída(s) • Base(s): <span class="text-cyan-700 dark:text-cyan-300 font-semibold">${m.bases.join(', ')}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="font-mono font-bold text-xs text-slate-800 dark:text-slate-200">
+                  ${m.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </div>
+                <div class="text-[10px] text-slate-500 dark:text-slate-400">Última: ${m.ultima_data}</div>
+              </div>
+            </div>
+          `).join('');
+
+          body.innerHTML = `
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-500/20">
+              <div>
+                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Total de Itens Retirados</span>
+                <div class="text-lg font-bold font-mono text-rose-600 dark:text-rose-300">${data.total_itens.toLocaleString('pt-BR')} unidades</div>
+              </div>
+              <div>
+                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Valor Financeiro Acumulado</span>
+                <div class="text-lg font-bold font-mono text-slate-900 dark:text-slate-200">${data.total_custo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              </div>
+              <div>
+                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Transações / Saídas</span>
+                <div class="text-lg font-bold font-mono text-cyan-700 dark:text-cyan-300">${data.ocorrencias} ocorrências</div>
+              </div>
+            </div>
+
+            <div class="pt-2">
+              <div class="flex items-center justify-between mb-2">
+                <h5 class="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                  <i class="fa-solid fa-boxes-stacked text-indigo-600 dark:text-indigo-400"></i>
+                  Consolidado por Material (${mats.length} SKUs Distintos)
+                </h5>
+                <span class="text-[10px] text-slate-500 dark:text-slate-400">Ordenado por Maior Quantidade</span>
+              </div>
+              <div class="space-y-2 max-h-72 overflow-y-auto pr-1">
+                ${cardsHtml || '<p class="text-slate-400 italic">Nenhum item registrado.</p>'}
+              </div>
+            </div>
+          `;
+
+          footerStats.textContent = `Colaborador lotado em ${data.setor || 'Operação'} • Base ${data.base || 'BASE IPIRANGA'}`;
+        } catch (e) {
+          body.innerHTML = `<p class="text-rose-500">Erro ao consultar itens do colaborador.</p>`;
+        }
+      }
+
+      openDrilldown(type) {
+        if (type === 'items-more') {
+          this.switchTab('overview');
+          this.openDataExplorer();
+        }
+      }
+
+      closeModal() {
+        document.getElementById('executive-modal').classList.add('hidden');
+      }
+
+      filterOffenderTable() {
+        const query = document.getElementById('search-offender-input').value.toLowerCase();
+        const rows = document.querySelectorAll('.offender-row');
+        rows.forEach(r => {
+          const name = r.getAttribute('data-name');
+          if (name.includes(query)) r.style.display = '';
+          else r.style.display = 'none';
+        });
+      }
+
+      async openDataExplorer() {
+        const modal = document.getElementById('explorer-modal');
+        this.explorerPage = 1;
+        this.explorerQuery = '';
+        const searchInput = document.getElementById('explorer-search-input');
+        if (searchInput) searchInput.value = '';
+        await this.renderExplorerData();
+        modal.classList.remove('hidden');
+      }
+
+      closeExplorer() {
+        document.getElementById('explorer-modal').classList.add('hidden');
+      }
+
+      async searchExplorerRecords() {
+        this.explorerQuery = document.getElementById('explorer-search-input').value.trim();
+        this.explorerPage = 1;
+        await this.renderExplorerData();
+      }
+
+      async renderExplorerData() {
+        try {
+          const params = new URLSearchParams();
+          params.append('page', this.explorerPage);
+          params.append('limit', this.explorerPageSize);
+          if (this.explorerQuery) params.append('search', this.explorerQuery);
+
+          const resp = await fetch(`/api/c-level/explorer?${params.toString()}`);
+          const data = await resp.json();
+
+          document.getElementById('explorer-total-count').textContent = Number(data.total || 0).toLocaleString('pt-BR');
+          document.getElementById('explorer-match-count').textContent = Number(data.total || 0).toLocaleString('pt-BR');
+          document.getElementById('explorer-page-label').textContent = `${data.page} / ${data.pages}`;
+
+          const tbody = document.getElementById('explorer-table-body');
+          tbody.innerHTML = (data.data || []).map(r => `
+            <tr class="hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors">
+              <td class="py-2 text-slate-400 dark:text-slate-500">#${r.id}</td>
+              <td class="py-2 text-slate-500 dark:text-slate-400">${r.data_saida}</td>
+              <td class="py-2 font-bold text-slate-900 dark:text-slate-200">${r.descricao}</td>
+              <td class="py-2 text-slate-500 dark:text-slate-400">${r.grupo}</td>
+              <td class="py-2 text-center text-cyan-700 dark:text-cyan-300 font-bold">${r.qtde}</td>
+              <td class="py-2 text-slate-800 dark:text-slate-300">${r.responsavel_saida}</td>
+              <td class="py-2 text-slate-500 dark:text-slate-400">${r.base}</td>
+              <td class="py-2 text-slate-500 dark:text-slate-400 truncate max-w-[150px]">${r.setor}</td>
+              <td class="py-2 text-right text-emerald-700 dark:text-emerald-400 font-bold">${Number(r.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+            </tr>
+          `).join('');
+        } catch (e) {
+          console.error('[C-LEVEL] Erro explorer:', e);
+        }
+      }
+
+      async explorerNextPage() {
+        this.explorerPage++;
+        await this.renderExplorerData();
+      }
+
+      async explorerPrevPage() {
+        if (this.explorerPage > 1) {
+          this.explorerPage--;
+          await this.renderExplorerData();
+        }
+      }
+
+      async syncSupabase() {
+        this.showToast('Iniciando sincronização com banco de dados Supabase na nuvem...', 'info');
+        try {
+          const resp = await fetch('/api/c-level/sync-supabase', { method: 'POST' });
+          const res = await resp.json();
+          if (res.status === 'success') {
+            this.showToast('Base sincronizada com sucesso no Supabase!', 'success');
+          } else {
+            this.showToast(res.message || 'Verifique se a tabela foi criada no SQL Editor do Supabase.', 'warning');
+          }
+        } catch (e) {
+          this.showToast('Erro ao contactar Supabase.', 'error');
+        }
+      }
+
+      exportOffendersAudit() {
+        this.showToast('Compilando dossiê executivo de auditoria...', 'info');
+        setTimeout(() => window.print(), 500);
+      }
+
+      renderChart(canvasId, config) {
+        if (this.charts[canvasId]) {
+          this.charts[canvasId].destroy();
+        }
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+        this.charts[canvasId] = new Chart(ctx, config);
+      }
+
+      switchTab(tabId) {
+        this.activeTab = tabId;
+
+        document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+        const target = document.getElementById(`tab-content-${tabId}`);
+        if (target) target.classList.remove('hidden');
+
+        document.querySelectorAll('.tab-button').forEach(btn => {
+          btn.classList.remove('active', 'bg-indigo-600', 'text-white', 'shadow-md', 'shadow-indigo-500/25');
+          btn.classList.add('text-slate-600', 'dark:text-slate-400');
+        });
+
+        const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+        if (activeBtn) {
+          activeBtn.classList.add('active', 'bg-indigo-600', 'text-white', 'shadow-md', 'shadow-indigo-500/25');
+          activeBtn.classList.remove('text-slate-600', 'dark:text-slate-400');
+        }
+
+        setTimeout(() => {
+          Object.values(this.charts).forEach(c => {
+            if (c) {
+              c.resize();
+              c.update('none');
+            }
+          });
+          window.dispatchEvent(new Event('resize'));
+        }, 50);
+      }
+
+      showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `liquid-glass pointer-events-auto px-4 py-3 rounded-2xl border text-xs font-semibold flex items-center gap-3 transition-all transform duration-300 translate-y-4 shadow-xl ${
+          type === 'error' ? 'border-rose-400/50 text-rose-700 dark:text-rose-200 bg-rose-50/90 dark:bg-rose-950/80' :
+          type === 'warning' ? 'border-amber-400/50 text-amber-700 dark:text-amber-200 bg-amber-50/90 dark:bg-amber-950/80' :
+          type === 'success' ? 'border-emerald-400/50 text-emerald-700 dark:text-emerald-200 bg-emerald-50/90 dark:bg-emerald-950/80' :
+          'border-indigo-400/50 text-indigo-700 dark:text-indigo-200 bg-indigo-50/90 dark:bg-indigo-950/80'
+        }`;
+
+        const icon = type === 'error' ? 'fa-circle-xmark' :
+                     type === 'warning' ? 'fa-triangle-exclamation' :
+                     type === 'success' ? 'fa-circle-check' : 'fa-circle-info';
+
+        toast.innerHTML = `
+          <i class="fa-solid ${icon}"></i>
+          <span>${message}</span>
+        `;
+
+        container.appendChild(toast);
+        setTimeout(() => toast.classList.remove('translate-y-4'), 10);
+        setTimeout(() => {
+          toast.classList.add('opacity-0', 'translate-x-6');
+          setTimeout(() => toast.remove(), 400);
+        }, 4000);
+      }
+    }
+
+    // Initialize Dashboard on DOM ready
+    window.addEventListener('DOMContentLoaded', () => {
+      window.dashboardApp = new SupplyDashboardApp();
+      window.dashboardApp.init();
+
+      const themeBtn = document.getElementById('theme-toggle-btn');
+      themeBtn.addEventListener('click', () => {
+        document.documentElement.classList.toggle('dark');
+        window.dashboardApp.refreshAllDashboardData();
+      });
+    });
+  </script>
+</body>
+</html>

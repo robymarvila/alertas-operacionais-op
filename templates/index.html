@@ -206,6 +206,12 @@
                             <span>Painel TV CCO</span>
                         </button>
 
+                        <!-- Botão para Painel C-Level Executivo (Estoque - Protegido por Senha) -->
+                        <a href="/c-level" target="_blank" class="btn btn-purple btn-sm" id="btnHubCLevelPanel" style="display: none; align-items: center; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(168, 85, 247, 0.35); background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(126, 34, 206, 0.25)); border: 1px solid rgba(168, 85, 247, 0.5); color: #c084fc; text-decoration: none;">
+                            <i data-lucide="layers" style="width: 15px; height: 15px; vertical-align: middle; margin-right: 4px;"></i>
+                            <span>C-Level Estoque</span>
+                        </a>
+
                         <!-- Relógio CCO -->
                         <div class="header-clock-pill">
                             <i data-lucide="clock" class="mini-icon text-cyan"></i>
@@ -552,6 +558,45 @@
                         <div class="module-card-footer">
                             <span class="module-access-btn btn-access-tv">
                                 <span>Abrir PAINEL TV CCO</span>
+                                <i data-lucide="arrow-right"></i>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- CARD MÓDULO 5: NEXUSOPS EXECUTIVE | C-LEVEL STOCK ANALYTICS (PROTEGIDO POR SENHA) -->
+                    <div class="module-card glass-card card-clevel-panel" id="cardHubCLevelPanel" onclick="window.open('/c-level', '_blank')" style="display: none; border-color: rgba(99, 102, 241, 0.4); cursor: pointer;">
+                        <div class="module-card-glow" style="background: radial-gradient(circle at 80% 20%, rgba(99, 102, 241, 0.15), transparent 70%);"></div>
+                        <div class="module-card-header">
+                            <div class="module-icon-wrap" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8;">
+                                <i data-lucide="boxes"></i>
+                            </div>
+                            <div class="module-title-box">
+                                <div class="module-badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4);">REUNIÃO EXECUTIVA C-LEVEL</div>
+                                <h3 class="module-title">NEXUSOPS EXECUTIVE ANALYTICS</h3>
+                                <p class="module-subtitle">Gestão Estratégica de Estoque: 25.279 saídas, Curva ABC/Pareto 80/20, Análise Pluvial e Auditoria Forense MTBR.</p>
+                            </div>
+                        </div>
+
+                        <div class="module-card-body">
+                            <div class="module-mini-kpis">
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Volume Financeiro</span>
+                                    <strong class="mini-kpi-val text-emerald font-mono">R$ 5,15M</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Bases Auditadas</span>
+                                    <strong class="mini-kpi-val text-cyan font-mono">Ipiranga / Itaquera</strong>
+                                </div>
+                                <div class="mini-kpi-col">
+                                    <span class="mini-kpi-lbl">Tecnologia</span>
+                                    <strong class="mini-kpi-val font-mono" style="color: #818cf8;">Liquid Glass</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="module-card-footer">
+                            <span class="module-access-btn" style="color: #818cf8;">
+                                <span>Abrir NEXUSOPS C-LEVEL</span>
                                 <i data-lucide="arrow-right"></i>
                             </span>
                         </div>
@@ -3236,6 +3281,10 @@
                                     <span class="eq-crit-tag">RM</span>
                                     <strong class="eq-crit-num" id="prioEqCritCountRM">0</strong>
                                 </button>
+                                <button type="button" class="eq-crit-pill" data-eq="RF" onclick="togglePriorizadorEqPill('RF')" title="Filtrar Regulador / Ramal Fusível (RF)">
+                                    <span class="eq-crit-tag">RF</span>
+                                    <strong class="eq-crit-num" id="prioEqCritCountRF">0</strong>
+                                </button>
                             </div>
                         </div>
                         <div class="card-accent-bar bar-blue"></div>
@@ -3509,6 +3558,10 @@
                                         <span>RM - Religador Manual</span>
                                     </label>
                                     <label class="popover-item-label">
+                                        <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="RF" checked>
+                                        <span>RF - Regulador / Ramal Fusível</span>
+                                    </label>
+                                    <label class="popover-item-label">
                                         <input type="checkbox" class="popover-checkbox" data-prio-filter="eq" value="OUTROS" checked>
                                         <span>Demais Equipamentos</span>
                                     </label>
@@ -3564,19 +3617,19 @@
                                 <div class="popover-items-list" id="prioFilterPrioList">
                                     <label class="popover-item-label">
                                         <input type="checkbox" class="popover-checkbox" data-prio-filter="prio" value="1" checked>
-                                        <span>⚡ Rank 1: Elevada (Crítico + CI &gt; 200)</span>
+                                        <span>⚡ Rank 1: Crítica Altíssima (DJ, RA ou CI &gt; 200)</span>
                                     </label>
                                     <label class="popover-item-label">
                                         <input type="checkbox" class="popover-checkbox" data-prio-filter="prio" value="2" checked>
-                                        <span>🔴 Rank 2: Rede Crítica (DJ, RA, CF...)</span>
+                                        <span>🔴 Rank 2: Crítica Alta (BF, CF... ou ET &gt; 2h)</span>
                                     </label>
                                     <label class="popover-item-label">
                                         <input type="checkbox" class="popover-checkbox" data-prio-filter="prio" value="3" checked>
-                                        <span>🟠 Rank 3: Grande Volume (CI &ge; 200)</span>
+                                        <span>🟠 Rank 3: Prioridade (ET CI&gt;200, EP &gt; 4h)</span>
                                     </label>
                                     <label class="popover-item-label">
                                         <input type="checkbox" class="popover-checkbox" data-prio-filter="prio" value="4" checked>
-                                        <span>⚪ Rank 4: Convencional (CI &lt; 200)</span>
+                                        <span>⚪ Rank 4: Convencional (ET &le; 2h, EP &le; 4h)</span>
                                     </label>
                                 </div>
                             </div>
@@ -3671,7 +3724,7 @@
                                 PAINEL OPERACIONAL DE GRANDES INTERRUPÇÕES • VISÃO 1: PRIORIDADE PURA
                             </h4>
                             <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="prioTableSubtitle">
-                                Priorização estrita por Equipamento Crítico (DJ, RA, CF, CA, BF, CH, RM) e Clientes Interrompidos (CI).
+                                Priorização por Equipamentos de Grande Impacto (DJ, RA, BF, CF, CA, CH, RM, RF), Rede ET (>2h), EP (>4h) e Clientes Interrompidos.
                             </p>
                         </div>
                         <div style="display: flex; gap: 10px; align-items: center;">

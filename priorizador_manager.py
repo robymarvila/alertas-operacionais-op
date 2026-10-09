@@ -22,9 +22,12 @@ BR_TZ = timezone(timedelta(hours=-3))
 WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_FILE = os.path.join(WORKSPACE_DIR, "priorizador_daily_cache.json")
 
-# Equipamentos Críticos e Prioritários de Alta Complexidade da Rede Elétrica Enel SP
-# Conforme diretriz estrita: DJ, RA, CF, CA, BF, CH e RM
-EQUIPAMENTOS_CRITICOS = {'DJ', 'RA', 'CF', 'CA', 'BF', 'CH', 'RM'}
+# Equipamentos de Grande Impacto da Rede Elétrica Enel SP
+# Altíssima Complexidade: DJ e RA (Disjuntor e Religador Automático)
+# Alta Complexidade: BF, CF, CA, CH, RM, RF
+EQUIPAMENTOS_ALTISSIMA = {'DJ', 'RA'}
+EQUIPAMENTOS_ALTA = {'BF', 'CF', 'CA', 'CH', 'RM', 'RF'}
+EQUIPAMENTOS_CRITICOS = EQUIPAMENTOS_ALTISSIMA | EQUIPAMENTOS_ALTA
 
 # Mapeamento Oficial das 7 Bases Permitidas (Regiões Norte e Leste)
 # Conforme diretriz: "No PAINEL OPERACIONAL DE GRANDES INTERRUPÇÕES precisa ter somente os equipamentos das bases:
@@ -134,6 +137,39 @@ def extract_radical_order(raw_order: str) -> str:
     return digits
 
 
+def calcular_duracao_minutos(dur_min_val, data_desligamento_str=""):
+    """Retorna a duração em minutos com fallback para cálculo via data_desligamento."""
+    try:
+        val = int(float(str(dur_min_val or 0).replace(',', '')))
+        if val > 0:
+            return val
+    except Exception:
+        pass
+    if data_desligamento_str and isinstance(data_desligamento_str, str):
+        s = data_desligamento_str.strip()
+        m = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
+        if m:
+            try:
+                d = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)),
+                             int(m.group(4) or 0), int(m.group(5) or 0), int(m.group(6) or 0), tzinfo=BR_TZ)
+                diff = (datetime.now(BR_TZ) - d).total_seconds()
+                if diff > 0:
+                    return int(diff / 60)
+            except Exception:
+                pass
+        m_iso = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?', s)
+        if m_iso:
+            try:
+                d = datetime(int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3)),
+                             int(m_iso.group(4) or 0), int(m_iso.group(5) or 0), int(m_iso.group(6) or 0), tzinfo=BR_TZ)
+                diff = (datetime.now(BR_TZ) - d).total_seconds()
+                if diff > 0:
+                    return int(diff / 60)
+            except Exception:
+                pass
+    return 0
+
+
 class PriorizadorManager:
     """Singleton gerenciador do painel Priorizador - Ordens Críticas."""
 
@@ -157,7 +193,8 @@ class PriorizadorManager:
                     raw_orders = data.get("active_orders", {})
                     # Reclassifica todas as ordens carregadas com as regras estritas
                     for o in raw_orders.values():
-                        crit = self.classificar_criticidade(o.get("eq", ""), o.get("ci", 0), o.get("control_desp", ""))
+                        dur_val = calcular_duracao_minutos(o.get("dur_min", 0), o.get("data_desligamento", ""))
+                        crit = self.classificar_criticidade(o.get("eq", ""), o.get("ci", 0), o.get("control_desp", ""), dur_val)
                         o["nivel_criticidade"] = crit["nivel"]
                         o["prioridade_rank"] = crit["prioridade_rank"]
                         o["prioridade_codigo"] = crit["prioridade_codigo"]
@@ -193,19 +230,31 @@ class PriorizadorManager:
         except Exception as e:
             print(f"[PRIORIZADOR CACHE ERROR] Falha ao salvar cache local: {e}", flush=True)
 
-    def classificar_criticidade(self, eq: str, ci: int, control_desp: str = "") -> Dict[str, Any]:
+    def classificar_criticidade(self, eq: str, ci: int, control_desp: str = "", dur_min: int = 0) -> Dict[str, Any]:
         """
-        Aplica a Regra Estrita de Prioridade Operacional (Independente do status da coluna CONTROL_DESP):
+        Aplica a Regra Estrita de Prioridade Operacional conforme diretrizes de negócio:
         
-        SEQUÊNCIA ESTRITA DE PRIORIDADES:
-        1. PRIORIDADE ELEVADA: Equipamentos Críticos (DJ, RA, CF, CA, BF, CH, RM) com CI > 200 clientes.
-           Exemplo: BF com 500 clientes desligados. Prioridade máxima absoluta de impacto.
-        2. REDE CRÍTICA (EQ CRÍTICO): Equipamentos Críticos (DJ, RA, CF, CA, BF, CH, RM) por si sós são prioridade (CI <= 200).
-        3. GRANDE CI (DEMAIS EQUIPAMENTOS): Qualquer outro equipamento fora da lista crítica com CI >= 200 clientes.
-        4. CONVENCIONAL: Demais ocorrências (equipamentos convencionais com CI < 200).
-
-        * Essa classificação de prioridade independe do status CONTROL_DESP.
-        * O cruzamento com CONTROL_DESP é gerado em campos adicionais para alimentar a Visão Operacional.
+        1. EQUIPAMENTOS DE GRANDE IMPACTO (DJ, RA, BF, CF, CA, CH, RM, RF):
+           - Se CI > 200: Todos se tornam PRIORIDADE CRÍTICA ALTÍSSIMA (Rank 1), independente do tempo.
+           - Se CI <= 200:
+             * DJ e RA: PRIORIDADE CRÍTICA ALTÍSSIMA (Rank 1).
+             * BF, CF, CA, CH, RM, RF: PRIORIDADE CRÍTICA ALTA (Rank 2).
+        
+        2. CASO ET (Estação Transformadora - Tipo de Rede Convencional):
+           - Se tempo > 2h (dur_min > 120) e CI > 200: PRIORIDADE CRÍTICA ALTÍSSIMA (Rank 1).
+           - Se tempo > 2h (dur_min > 120): PRIORIDADE CRÍTICA ALTA (Rank 2).
+           - Se CI > 200: PRIORIDADE (Rank 3).
+           - Demais casos (≤ 2h e CI ≤ 200): CONVENCIONAL (Rank 4).
+        
+        3. CASO EP (Entrada Primária):
+           - Não é crítico nem prioritário, mas se tempo > 4h (dur_min > 240): se torna PRIORIDADE (Rank 3).
+           - Demais casos (≤ 4h): CONVENCIONAL (Rank 4).
+        
+        4. DEMAIS CASOS CONVENCIONAIS:
+           - Se CI >= 200: PRIORIDADE (Rank 3).
+           - Se CI < 200: CONVENCIONAL (Rank 4).
+        
+        * O tempo de abertura piora progressivamente a gravidade de atendimento.
         """
         eq_clean = (eq or "").strip().upper()
         cd_clean = (control_desp or "").strip().upper()
@@ -213,42 +262,112 @@ class PriorizadorManager:
             ci_num = int(float(str(ci).replace(',', ''))) if ci is not None else 0
         except Exception:
             ci_num = 0
-
-        is_eq_critico = eq_clean in EQUIPAMENTOS_CRITICOS
+        try:
+            dur_num = int(float(str(dur_min or 0).replace(',', '')))
+        except Exception:
+            dur_num = 0
 
         # 1. HIERARQUIA ESTRITA DE PRIORIDADE INTRÍNSECA (Visão 1: Pura)
-        if is_eq_critico and ci_num > 200:
-            nivel = "CRITICO_MAXIMO"
-            prioridade_rank = 1
-            prioridade_codigo = "PRIO_1_ELEVADA"
-            label = f"⚡ ELEVADA ({eq_clean} • {ci_num:,} CI)"
-            badge_class = "badge-critico-maximo"
-            is_urgencia = True
-            descricao = f"Equipamento Crítico ({eq_clean}) com CI elevado (>200 clientes)"
-        elif is_eq_critico:
-            nivel = "EQ_CRITICO"
-            prioridade_rank = 2
-            prioridade_codigo = "PRIO_2_EQ_CRITICO"
-            label = f"🔴 REDE: {eq_clean}"
-            badge_class = "badge-eq-critico"
-            is_urgencia = False
-            descricao = f"Equipamento Crítico de Rede ({eq_clean})"
-        elif ci_num >= 200:
-            nivel = "CI_ALTO"
-            prioridade_rank = 3
-            prioridade_codigo = "PRIO_3_CI_ALTO"
-            label = f"🟠 CI ELEVADO ({ci_num:,})"
-            badge_class = "badge-ci-alto"
-            is_urgencia = False
-            descricao = "Demais Equipamentos com CI ≥ 200 clientes"
+
+        # Regra 1: Equipamentos de Grande Impacto (DJ, RA, BF, CF, CA, CH, RM, RF)
+        if eq_clean in EQUIPAMENTOS_CRITICOS:
+            if ci_num > 200:
+                nivel = "CRITICO_ALTISSIMO"
+                prioridade_rank = 1
+                prioridade_codigo = "PRIO_1_CRITICA_ALTISSIMA"
+                label = "⚡ CRÍTICA ALTÍSSIMA"
+                badge_class = "badge-critico-maximo"
+                is_urgencia = True
+                descricao = f"Equipamento de Grande Impacto ({eq_clean}) com CI elevado ({ci_num:,} clientes)"
+            elif eq_clean in EQUIPAMENTOS_ALTISSIMA:
+                nivel = "CRITICO_ALTISSIMO"
+                prioridade_rank = 1
+                prioridade_codigo = "PRIO_1_CRITICA_ALTISSIMA"
+                label = "⚡ CRÍTICA ALTÍSSIMA"
+                badge_class = "badge-critico-maximo"
+                is_urgencia = True
+                descricao = f"Equipamento de Altíssimo Impacto na Rede ({eq_clean})"
+            else:
+                nivel = "CRITICO_ALTO"
+                prioridade_rank = 2
+                prioridade_codigo = "PRIO_2_CRITICA_ALTA"
+                label = "🔴 CRÍTICA ALTA"
+                badge_class = "badge-eq-critico"
+                is_urgencia = False
+                descricao = f"Equipamento de Alto Impacto na Rede ({eq_clean})"
+
+        # Regra 2: Caso ET (Estação Transformadora - Tipo de Rede)
+        elif eq_clean == 'ET':
+            if dur_num > 120 and ci_num > 200:
+                nivel = "CRITICO_ALTISSIMO"
+                prioridade_rank = 1
+                prioridade_codigo = "PRIO_1_CRITICA_ALTISSIMA"
+                label = "⚡ CRÍTICA ALTÍSSIMA"
+                badge_class = "badge-critico-maximo"
+                is_urgencia = True
+                descricao = f"ET com mais de 2h aberta ({dur_num}m) e CI elevado ({ci_num:,} clientes)"
+            elif dur_num > 120:
+                nivel = "CRITICO_ALTO"
+                prioridade_rank = 2
+                prioridade_codigo = "PRIO_2_CRITICA_ALTA"
+                label = "🔴 CRÍTICA ALTA"
+                badge_class = "badge-eq-critico"
+                is_urgencia = False
+                descricao = f"ET com tempo de abertura superior a 2 horas ({dur_num}m)"
+            elif ci_num > 200:
+                nivel = "PRIORITARIO"
+                prioridade_rank = 3
+                prioridade_codigo = "PRIO_3_PRIORIDADE"
+                label = "🟠 PRIORIDADE"
+                badge_class = "badge-ci-alto"
+                is_urgencia = False
+                descricao = f"ET com CI elevado (>200 clientes): {ci_num:,} clientes"
+            else:
+                nivel = "CONVENCIONAL"
+                prioridade_rank = 4
+                prioridade_codigo = "PRIO_4_CONVENCIONAL"
+                label = "CONVENCIONAL"
+                badge_class = "badge-convencional"
+                is_urgencia = False
+                descricao = f"ET convencional dentro do tempo (≤2h) e CI ≤ 200"
+
+        # Regra 3: Caso EP (Entrada Primária)
+        elif eq_clean == 'EP':
+            if dur_num > 240:
+                nivel = "PRIORITARIO"
+                prioridade_rank = 3
+                prioridade_codigo = "PRIO_3_PRIORIDADE"
+                label = "🟠 PRIORIDADE"
+                badge_class = "badge-ci-alto"
+                is_urgencia = False
+                descricao = f"EP com tempo de abertura superior a 4 horas ({dur_num}m)"
+            else:
+                nivel = "CONVENCIONAL"
+                prioridade_rank = 4
+                prioridade_codigo = "PRIO_4_CONVENCIONAL"
+                label = "CONVENCIONAL"
+                badge_class = "badge-convencional"
+                is_urgencia = False
+                descricao = f"EP convencional dentro do limite de 4 horas ({dur_num}m)"
+
+        # Regra 4: Demais Equipamentos Convencionais
         else:
-            nivel = "CONVENCIONAL"
-            prioridade_rank = 4
-            prioridade_codigo = "PRIO_4_CONVENCIONAL"
-            label = "CONVENCIONAL"
-            badge_class = "badge-convencional"
-            is_urgencia = False
-            descricao = "Equipamento convencional com CI < 200 clientes"
+            if ci_num >= 200:
+                nivel = "PRIORITARIO"
+                prioridade_rank = 3
+                prioridade_codigo = "PRIO_3_PRIORIDADE"
+                label = "🟠 PRIORIDADE"
+                badge_class = "badge-ci-alto"
+                is_urgencia = False
+                descricao = f"Equipamento convencional ({eq_clean}) com CI ≥ 200 clientes"
+            else:
+                nivel = "CONVENCIONAL"
+                prioridade_rank = 4
+                prioridade_codigo = "PRIO_4_CONVENCIONAL"
+                label = "CONVENCIONAL"
+                badge_class = "badge-convencional"
+                is_urgencia = False
+                descricao = f"Equipamento convencional ({eq_clean}) com CI < 200 clientes"
 
         # 2. ANÁLISE OPERACIONAL ATRELADA AO STATUS CONTROL_DESP (Visão 2: Operacional)
         status_desp_tipo = "OUTROS"
@@ -445,7 +564,8 @@ class PriorizadorManager:
                 tp_2e = to_str(get_val(row, 'TP_2E', 'TP2E'), "--")
 
                 # 1. Classificação de Criticidade Operacional
-                crit = self.classificar_criticidade(eq, ci, control_desp)
+                dur_val = calcular_duracao_minutos(dur_min, data_desligamento)
+                crit = self.classificar_criticidade(eq, ci, control_desp, dur_val)
 
                 # 2. Cruzamento com Entrega de Equipes
                 equipe_info = self.cruzar_com_entrega_equipes(ordem)

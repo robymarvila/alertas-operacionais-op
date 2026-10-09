@@ -1875,10 +1875,12 @@ def fetch_priorizador_active_orders() -> list:
             try:
                 from priorizador_manager import priorizador_manager
                 for o in raw_orders:
+                    dur_val = o.get("dur_min", 0)
                     crit = priorizador_manager.classificar_criticidade(
                         o.get("eq", ""),
                         o.get("ci", 0),
-                        o.get("control_desp", "")
+                        o.get("control_desp", ""),
+                        dur_val
                     )
                     o["criticidade_label"] = crit.get("label")
                     o["criticidade_badge_class"] = crit.get("badge_class")

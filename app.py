@@ -2781,6 +2781,26 @@ def reload_priorizador_module():
 
         if old_orders:
             priorizador_manager.active_orders = old_orders
+        else:
+            priorizador_manager._load_cache()
+
+        # Reclassifica todas as ordens ativas com as regras atualizadas
+        for o in priorizador_manager.active_orders.values():
+            dur_val = pm_mod.calcular_duracao_minutos(o.get("dur_min", 0), o.get("data_desligamento", ""))
+            crit = priorizador_manager.classificar_criticidade(o.get("eq", ""), o.get("ci", 0), o.get("control_desp", ""), dur_val)
+            o["nivel_criticidade"] = crit["nivel"]
+            o["prioridade_rank"] = crit["prioridade_rank"]
+            o["prioridade_codigo"] = crit["prioridade_codigo"]
+            o["criticidade_label"] = crit["label"]
+            o["criticidade_badge_class"] = crit["badge_class"]
+            o["is_urgencia_critica"] = crit["is_urgencia_critica"]
+            o["regra_descricao"] = crit["regra_descricao"]
+            o["status_desp_tipo"] = crit["status_desp_tipo"]
+            o["cruzamento_label"] = crit["cruzamento_label"]
+            o["cruzamento_class"] = crit["cruzamento_class"]
+
+        priorizador_manager._save_cache()
+
         if old_mutations:
             priorizador_manager.mutation_history = old_mutations
         if old_sessions:
@@ -2790,7 +2810,7 @@ def reload_priorizador_module():
 
         return jsonify({
             "status": "success",
-            "message": "Módulos recarregados com sucesso!",
+            "message": "Módulos recarregados e ordens reclassificadas com sucesso!",
             "kpis": priorizador_manager.get_dashboard_data()["kpis"]
         })
     except Exception as e:
@@ -3240,6 +3260,95 @@ def start_background_jobs(force_restart=False):
             bg_pull = threading.Thread(target=cloud_pull_sync_worker, args=(25,), daemon=True)
             bg_pull.start()
             ENGINE_THREADS["cloud_pull_sync"] = bg_pull
+
+# ==============================================================================
+# MÓDULO EXECUTIVO: NEXUSOPS STOCK ANALYTICS C-LEVEL (BASES IPIRANGA & ITAQUERA)
+# ==============================================================================
+
+from estoque_clevel_manager import estoque_clevel_manager
+
+@app.route('/c-level')
+@app.route('/executivo-estoque')
+@app.route('/nexusops')
+def c_level_dashboard_view():
+    """Renderiza o Painel Executivo C-Level de Gestão Estratégica de Estoque."""
+    return render_template('c_level_stock_analytics.html')
+
+@app.route('/api/c-level/kpis', methods=['GET'])
+def api_c_level_kpis():
+    bases = request.args.getlist('bases')
+    segmentos = request.args.getlist('segmentos')
+    season = request.args.get('season', 'ALL')
+    data = estoque_clevel_manager.get_kpis(bases=bases, segmentos=segmentos, season=season)
+    return jsonify(data)
+
+@app.route('/api/c-level/pareto', methods=['GET'])
+def api_c_level_pareto():
+    bases = request.args.getlist('bases')
+    segmentos = request.args.getlist('segmentos')
+    season = request.args.get('season', 'ALL')
+    data = estoque_clevel_manager.get_pareto(bases=bases, segmentos=segmentos, season=season)
+    return jsonify(data)
+
+@app.route('/api/c-level/rain-analysis', methods=['GET'])
+def api_c_level_rain():
+    bases = request.args.getlist('bases')
+    segmentos = request.args.getlist('segmentos')
+    data = estoque_clevel_manager.get_rain_analysis(bases=bases, segmentos=segmentos)
+    return jsonify(data)
+
+@app.route('/api/c-level/ofensores', methods=['GET'])
+def api_c_level_ofensores():
+    bases = request.args.getlist('bases')
+    segmentos = request.args.getlist('segmentos')
+    data = estoque_clevel_manager.get_ofensores(bases=bases, segmentos=segmentos)
+    return jsonify(data)
+
+@app.route('/api/c-level/ofensor/<path:nome>/itens', methods=['GET'])
+def api_c_level_ofensor_itens(nome):
+    data = estoque_clevel_manager.get_itens_do_ofensor(nome)
+    return jsonify(data)
+
+@app.route('/api/c-level/mtbr', methods=['GET'])
+def api_c_level_mtbr():
+    bases = request.args.getlist('bases')
+    segmentos = request.args.getlist('segmentos')
+    data = estoque_clevel_manager.get_mtbr_analysis(bases=bases, segmentos=segmentos)
+    return jsonify(data)
+
+@app.route('/api/c-level/bases-segmentos', methods=['GET'])
+def api_c_level_bases_segmentos():
+    data = estoque_clevel_manager.get_bases_segmentos()
+    return jsonify(data)
+
+@app.route('/api/c-level/slow-moving', methods=['GET'])
+def api_c_level_slow_moving():
+    mode = request.args.get('mode', 'bottom20')
+    data = estoque_clevel_manager.get_slow_moving(mode=mode)
+    return jsonify(data)
+
+@app.route('/api/c-level/explorer', methods=['GET'])
+def api_c_level_explorer():
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 50))
+    search = request.args.get('search', '')
+    data = estoque_clevel_manager.get_explorer_data(page=page, page_size=limit, search=search)
+    return jsonify(data)
+
+@app.route('/api/c-level/sync-supabase', methods=['POST'])
+def api_c_level_sync_supabase():
+    try:
+        from etl_estoque_clevel import sincronizar_com_supabase
+        sucesso = sincronizar_com_supabase()
+        if sucesso:
+            return jsonify({"status": "success", "message": "Dados sincronizados com o Supabase com sucesso!"})
+        else:
+            return jsonify({
+                "status": "warning", 
+                "message": "A tabela 'saidas_estoque_consolidado' ainda não existe no Supabase. Execute o script 'schema_saidas_estoque_c_level.sql' no SQL Editor do Supabase."
+            })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     import sys
