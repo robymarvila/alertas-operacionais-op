@@ -1,5 +1,5 @@
 {
-  "last_sync_time": "09/10/2026 08:53:03",
+  "last_sync_time": "09/10/2026 09:00:19",
   "total": 383,
   "vehicles": [
     {
@@ -2747,7 +2747,7 @@
       "tipoOp": "Linha Viva",
       "marca": "VOLKS",
       "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [

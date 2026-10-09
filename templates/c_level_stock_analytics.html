@@ -2549,14 +2549,21 @@
         `;
 
         try {
-          let resp = await fetch(`/api/c-level/ofensor-itens?nome=${encodeURIComponent(userName)}`);
+          const filterQuery = this.buildFilterQueryParams();
+          let resp = await fetch(`/api/c-level/ofensor-itens?nome=${encodeURIComponent(userName)}${filterQuery ? '&' + filterQuery : ''}`);
           if (!resp.ok) {
-            resp = await fetch(`/api/c-level/ofensor/${encodeURIComponent(userName)}/itens`);
+            resp = await fetch(`/api/c-level/ofensor/${encodeURIComponent(userName)}/itens?${filterQuery}`);
           }
           const data = await resp.json();
           this.currentOffenderData = data;
 
-          subtitle.textContent = `Dossiê analítico: todos os materiais e insumos retirados por este colaborador`;
+          const appliedGroups = (data.filtros_aplicados?.grupos || []);
+          const isGroupFiltered = appliedGroups.length > 0;
+          const groupFilterBadge = isGroupFiltered ? `<span class="px-2.5 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-300 font-mono text-[10px] font-bold"><i class="fa-solid fa-filter mr-1"></i>Grupo: ${appliedGroups.join(', ')}</span>` : '';
+
+          subtitle.innerHTML = isGroupFiltered
+            ? `Dossiê analítico filtrado exclusivamente para os grupos selecionados: <strong class="text-purple-600 dark:text-purple-400">${appliedGroups.join(', ')}</strong>`
+            : `Dossiê analítico: todos os materiais e insumos retirados por este colaborador`;
 
           const mats = data.materiais || [];
 
@@ -2564,22 +2571,29 @@
             <!-- Top Summary Cards -->
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 p-3.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-500/20 flex-shrink-0">
               <div>
-                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Total de Unidades</span>
-                <div class="text-base font-bold font-mono text-rose-600 dark:text-rose-400">${Number(data.total_itens || 0).toLocaleString('pt-BR')} un</div>
+                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold flex items-center justify-between">
+                  <span>Volume ${isGroupFiltered ? 'Filtrado' : 'Total'}</span>
+                  ${groupFilterBadge}
+                </span>
+                <div class="text-base font-bold font-mono text-rose-600 dark:text-rose-400 mt-0.5">${Number(data.total_itens || 0).toLocaleString('pt-BR')} un</div>
+                ${isGroupFiltered && data.total_geral_sem_filtro ? `<div class="text-[10px] text-slate-400 font-normal">de ${Number(data.total_geral_sem_filtro).toLocaleString('pt-BR')} un no estoque geral</div>` : ''}
               </div>
               <div>
-                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Custo Financeiro</span>
-                <div class="text-base font-bold font-mono text-slate-900 dark:text-slate-100">${Number(data.total_custo || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Custo Financeiro ${isGroupFiltered ? '(Filtrado)' : ''}</span>
+                <div class="text-base font-bold font-mono text-slate-900 dark:text-slate-100 mt-0.5">${Number(data.total_custo || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                ${isGroupFiltered && data.custo_geral_sem_filtro ? `<div class="text-[10px] text-slate-400 font-normal">de ${Number(data.custo_geral_sem_filtro).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} geral</div>` : ''}
               </div>
               <div>
                 <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Ocorrências / Saídas</span>
-                <div class="text-base font-bold font-mono text-cyan-700 dark:text-cyan-300">${data.ocorrencias || 0} saídas</div>
+                <div class="text-base font-bold font-mono text-cyan-700 dark:text-cyan-300 mt-0.5">${data.ocorrencias || 0} saídas</div>
+                <div class="text-[10px] text-slate-400 font-normal">Base: ${data.base || 'BASE IPIRANGA'}</div>
               </div>
               <div>
                 <span class="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold">Função / Cargo</span>
                 <div class="text-xs font-bold text-slate-800 dark:text-slate-200 truncate mt-1">
                   <span class="px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-mono text-[11px]">${data.funcao || 'Operação'}</span>
                 </div>
+                <div class="text-[10px] text-slate-400 font-normal mt-0.5">Matrícula: ${data.matricula || '--'}</div>
               </div>
             </div>
 
@@ -2588,7 +2602,7 @@
               <div class="flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
                 <h5 class="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
                   <i class="fa-solid fa-boxes-stacked text-indigo-600 dark:text-indigo-400"></i>
-                  Consolidado por Material (${mats.length} SKUs Distintos)
+                  <span>Consolidado por Material (${mats.length} SKUs ${isGroupFiltered ? 'no Grupo' : 'Distintos'})</span>
                 </h5>
                 <div class="relative">
                   <input type="text" id="modal-item-search" onkeyup="window.dashboardApp.filterModalItems(this.value)" placeholder="Buscar material ou grupo..." class="bg-white dark:bg-[#121929] border border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-200 rounded-lg pl-8 pr-3 py-1 text-xs focus:outline-none focus:border-indigo-500 shadow-sm w-64">
@@ -2619,7 +2633,7 @@
           `;
 
           this.renderOffenderModalItems(mats);
-          footerStats.textContent = `Colaborador: ${data.nome} • Função: ${data.funcao || 'N/A'} • Setor: ${data.setor || 'Operação'} • Base Principal: ${data.base || 'BASE IPIRANGA'}`;
+          footerStats.textContent = `Colaborador: ${data.nome} • Função: ${data.funcao || 'N/A'} • Setor: ${data.setor || 'Operação'} • Base: ${data.base || 'BASE IPIRANGA'}${isGroupFiltered ? ` • Filtro: ${appliedGroups.join(', ')}` : ''}`;
         } catch (e) {
           console.error('[C-LEVEL] Erro ao carregar itens do colaborador:', e);
           body.innerHTML = `

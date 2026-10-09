@@ -3313,13 +3313,15 @@ def api_c_level_cargos_ofensores():
 
 @app.route('/api/c-level/ofensor/<path:nome>/itens', methods=['GET'])
 def api_c_level_ofensor_itens(nome):
-    data = estoque_clevel_manager.get_itens_do_ofensor(nome)
+    bases, segmentos, grupos, season = _extract_clevel_filters()
+    data = estoque_clevel_manager.get_itens_do_ofensor(nome, bases=bases, segmentos=segmentos, grupos=grupos, season=season)
     return jsonify(data)
 
 @app.route('/api/c-level/ofensor-itens', methods=['GET'])
 def api_c_level_ofensor_itens_query():
     nome = request.args.get('nome', '')
-    data = estoque_clevel_manager.get_itens_do_ofensor(nome)
+    bases, segmentos, grupos, season = _extract_clevel_filters()
+    data = estoque_clevel_manager.get_itens_do_ofensor(nome, bases=bases, segmentos=segmentos, grupos=grupos, season=season)
     return jsonify(data)
 
 @app.route('/api/c-level/mtbr', methods=['GET'])

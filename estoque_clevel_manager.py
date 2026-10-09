@@ -513,32 +513,51 @@ class EstoqueCLevelManager:
             }
         }
 
-    def get_itens_do_ofensor(self, nome: str) -> Dict[str, Any]:
-        """Drilldown executivo detalhando todos os materiais retirados por um colaborador."""
+    def get_itens_do_ofensor(
+        self,
+        nome: str,
+        bases: Optional[List[str]] = None,
+        segmentos: Optional[List[str]] = None,
+        grupos: Optional[List[str]] = None,
+        season: Optional[str] = "ALL"
+    ) -> Dict[str, Any]:
+        """Drilldown executivo detalhando todos os materiais retirados por um colaborador, respeitando os filtros ativos."""
         nome_clean = (nome or "").strip().lower()
         if not nome_clean:
             return {"nome": "N/A", "total_itens": 0, "total_custo": 0.0, "ocorrencias": 0, "materiais": []}
 
-        # 1. Match exato insensível a maiúsculas/minúsculas
-        user_records = [r for r in self.records if r.get("responsavel_saida", "").strip().lower() == nome_clean]
-        
-        # 2. Se não encontrou exato, tenta por contenção
-        if not user_records:
-            user_records = [
+        # 1. Localiza os registros globais do colaborador para capturar dados cadastrais estáveis
+        all_user_records = [r for r in self.records if r.get("responsavel_saida", "").strip().lower() == nome_clean]
+        if not all_user_records:
+            all_user_records = [
                 r for r in self.records 
                 if nome_clean in r.get("responsavel_saida", "").strip().lower() or r.get("responsavel_saida", "").strip().lower() in nome_clean
             ]
 
-        if not user_records:
+        if not all_user_records:
             return {"nome": nome, "total_itens": 0, "total_custo": 0.0, "ocorrencias": 0, "materiais": []}
+
+        nome_oficial = all_user_records[0].get("responsavel_saida", nome)
+        base = all_user_records[0].get("base", "BASE IPIRANGA")
+        setor = all_user_records[0].get("setor", "OPERAÇÃO")
+        funcao = all_user_records[0].get("funcao_normalizada") or all_user_records[0].get("funcao", "Operacional")
+        matricula = all_user_records[0].get("matricula", "--")
+        total_itens_global = sum(r.get("qtde", 0) for r in all_user_records)
+        total_custo_global = sum(r.get("valor_total", 0) for r in all_user_records)
+
+        # 2. Aplica os filtros ativos multi-seleção
+        filtered_dataset = self.filter_records(bases=bases, segmentos=segmentos, grupos=grupos, season=season)
+        
+        user_records = [r for r in filtered_dataset if r.get("responsavel_saida", "").strip().lower() == nome_clean]
+        if not user_records:
+            user_records = [
+                r for r in filtered_dataset 
+                if nome_clean in r.get("responsavel_saida", "").strip().lower() or r.get("responsavel_saida", "").strip().lower() in nome_clean
+            ]
 
         total_itens = sum(r.get("qtde", 0) for r in user_records)
         total_custo = sum(r.get("valor_total", 0) for r in user_records)
         ocorrencias = len(user_records)
-        base = user_records[0].get("base", "BASE IPIRANGA")
-        setor = user_records[0].get("setor", "OPERAÇÃO")
-        funcao = user_records[0].get("funcao_normalizada") or user_records[0].get("funcao", "Operacional")
-        matricula = user_records[0].get("matricula", "--")
 
         mat_summary = {}
         for r in user_records:
@@ -574,8 +593,10 @@ class EstoqueCLevelManager:
             m["valor_total"] = round(float(m["valor_total"]), 2)
             m["bases"] = list(m["bases"])
 
+        grupos_list = [self._normalize_group(g) for g in grupos] if grupos else []
+
         return {
-            "nome": user_records[0].get("responsavel_saida", nome),
+            "nome": nome_oficial,
             "base": base,
             "setor": setor,
             "funcao": funcao,
@@ -583,6 +604,14 @@ class EstoqueCLevelManager:
             "total_itens": int(total_itens),
             "total_custo": round(float(total_custo), 2),
             "ocorrencias": ocorrencias,
+            "total_geral_sem_filtro": int(total_itens_global),
+            "custo_geral_sem_filtro": round(float(total_custo_global), 2),
+            "filtros_aplicados": {
+                "grupos": grupos_list,
+                "bases": bases or [],
+                "segmentos": segmentos or [],
+                "season": season or "ALL"
+            },
             "materiais": sorted_mats
         }
 
