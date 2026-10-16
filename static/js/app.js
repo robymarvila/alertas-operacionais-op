@@ -10483,34 +10483,6 @@ const onlineBidState = {
     activeCardFilter: ''
 };
 
-function toggleBidCardFilter(filterType) {
-    const selStatus = document.getElementById('filterBidCrossStatus');
-    
-    // Toggle: se clicar no mesmo card já ativo, desativa o filtro
-    if (onlineBidState.activeCardFilter === filterType) {
-        onlineBidState.activeCardFilter = '';
-        if (selStatus) selStatus.value = '';
-    } else {
-        onlineBidState.activeCardFilter = filterType;
-        if (selStatus) {
-            if (filterType === 'TOTAL_EB') {
-                selStatus.value = ''; // Limpa filtro de status cruzado para mostrar todas logadas EB
-            } else {
-                selStatus.value = filterType;
-            }
-        }
-    }
-    
-    updateActiveKpiCardHighlight(onlineBidState.activeCardFilter);
-    filterOnlineBidTable();
-}
-
-function onSelectBidCrossStatus(val) {
-    onlineBidState.activeCardFilter = val || '';
-    updateActiveKpiCardHighlight(onlineBidState.activeCardFilter);
-    filterOnlineBidTable();
-}
-
 function updateActiveKpiCardHighlight(type) {
     const cardMap = {
         'CONFORME': 'kpiCardBidConforme',
@@ -10539,6 +10511,7 @@ function toggleBidCardFilter(cardType) {
         // Desmarca filtro ativo (toggle off)
         onlineBidState.activeCardFilter = '';
         updateActiveKpiCardHighlight('');
+
         // Restaura todos os status cruzados e status EB
         document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="cross-status"]').forEach(cb => {
             cb.checked = true;
@@ -10555,10 +10528,18 @@ function toggleBidCardFilter(cardType) {
             document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="eb-status"]').forEach(cb => {
                 cb.checked = (cb.value === 'Logada');
             });
+            // Restaura todos os status cruzados para listar todas as equipes logadas
+            document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="cross-status"]').forEach(cb => {
+                cb.checked = true;
+            });
         } else {
             // Seleciona apenas o status cruzado correspondente
             document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="cross-status"]').forEach(cb => {
                 cb.checked = (cb.value === cardType);
+            });
+            // Garante que o status EB inclua Logada
+            document.querySelectorAll('#deliveryScreenOnlineBid .popover-checkbox[data-bid-filter="eb-status"]').forEach(cb => {
+                cb.checked = true;
             });
         }
     }
@@ -10609,6 +10590,19 @@ function syncOnlineBidFiltersFromDOM() {
     onlineBidState.filters.bidStatuses = getSelected('bid-status');
     onlineBidState.filters.crossStatuses = getSelected('cross-status');
     onlineBidState.filters.turnos = getSelected('turno');
+
+    // Sincroniza o destaque do card ativo caso o usuário selecione status diretamente nos checkboxes do popover
+    const activeCards = ['CONFORME', 'ALERTA CRÍTICO', 'ALERTA GRAVE', 'ALERTA GRAVÍSSIMO', 'ALERTA IMPEDITIVO'];
+    if (onlineBidState.filters.crossStatuses.length === 1 && activeCards.includes(onlineBidState.filters.crossStatuses[0])) {
+        onlineBidState.activeCardFilter = onlineBidState.filters.crossStatuses[0];
+    } else if (onlineBidState.filters.ebStatuses.length === 1 && onlineBidState.filters.ebStatuses[0] === 'Logada' && onlineBidState.filters.crossStatuses.length >= 6) {
+        onlineBidState.activeCardFilter = 'TOTAL_EB';
+    } else if (onlineBidState.activeCardFilter && !activeCards.includes(onlineBidState.activeCardFilter) && onlineBidState.activeCardFilter !== 'TOTAL_EB') {
+        onlineBidState.activeCardFilter = '';
+    } else if (onlineBidState.activeCardFilter && onlineBidState.activeCardFilter !== 'TOTAL_EB' && !onlineBidState.filters.crossStatuses.includes(onlineBidState.activeCardFilter)) {
+        onlineBidState.activeCardFilter = '';
+    }
+    updateActiveKpiCardHighlight(onlineBidState.activeCardFilter);
 }
 
 function updateOnlineBidGroupCheckboxesState() {
@@ -10856,7 +10850,11 @@ function renderOnlineBidKpis(k) {
     const elTotalEb = document.getElementById('kpiBidTotalEb');
     const elTotalEmOperacaoSub = document.getElementById('kpiBidTotalEmOperacaoSub');
 
-    if (elRate) elRate.textContent = `${k.indice_conformidade || 0.0}%`;
+    const rateVal = (k.indice_conformidade != null && !isNaN(k.indice_conformidade))
+        ? Number(k.indice_conformidade).toFixed(1)
+        : '0.0';
+
+    if (elRate) elRate.textContent = `${rateVal}%`;
     if (elConforme) elConforme.textContent = k.conforme || 0;
     if (elCritico) elCritico.textContent = k.alerta_critico || 0;
     if (elGrave) elGrave.textContent = k.alerta_grave || 0;
@@ -10927,16 +10925,12 @@ function filterOnlineBidTable() {
 
     const search = (document.getElementById('filterBidSearch')?.value || '').trim().toLowerCase();
 
-    let list = onlineBidState.allRows || [];
+    const allRows = onlineBidState.allRows || [];
 
-    // Filtro ativado via Card "TOTAL LOGADAS (EB)"
-    if (onlineBidState.activeCardFilter === 'TOTAL_EB') {
-        list = list.filter(r => r.is_eb_active);
-    }
-
-    // Interseção com Multi-Filtros
-    list = list.filter(r => {
-        // 1. Região
+    // 1. Escopo de filtros para cálculo dinâmico dos 6 Cards Superiores (KPIs)
+    // Os cards calculam a distribuição das equipes no contexto de Região, Base, Turno, Busca e Status EB/BID
+    const kpiRows = allRows.filter(r => {
+        // Região
         if (totalReg > 0) {
             if (f.regions.length === 0) return false;
             if (f.regions.length < totalReg) {
@@ -10946,7 +10940,7 @@ function filterOnlineBidTable() {
             }
         }
 
-        // 2. Base / UT
+        // Base / UT
         if (totalBase > 0) {
             if (f.bases.length === 0) return false;
             if (f.bases.length < totalBase) {
@@ -10954,8 +10948,8 @@ function filterOnlineBidTable() {
             }
         }
 
-        // 3. Status EB (Logada vs Não Logada)
-        if (totalEb > 0) {
+        // Status EB (se não estiver em modo de card TOTAL_EB)
+        if (onlineBidState.activeCardFilter !== 'TOTAL_EB' && totalEb > 0) {
             if (f.ebStatuses.length === 0) return false;
             if (f.ebStatuses.length < totalEb) {
                 const ebVal = r.is_eb_active ? 'Logada' : 'Não Logada';
@@ -10963,7 +10957,7 @@ function filterOnlineBidTable() {
             }
         }
 
-        // 4. Status BID (Checklist BidTech)
+        // Status BID (Checklist BidTech)
         if (totalBid > 0) {
             if (f.bidStatuses.length === 0) return false;
             if (f.bidStatuses.length < totalBid) {
@@ -10972,15 +10966,7 @@ function filterOnlineBidTable() {
             }
         }
 
-        // 5. Status Cruzado
-        if (totalCross > 0) {
-            if (f.crossStatuses.length === 0) return false;
-            if (f.crossStatuses.length < totalCross) {
-                if (!f.crossStatuses.includes(r.cross_status)) return false;
-            }
-        }
-
-        // 6. Turno
+        // Turno
         if (totalTurno > 0) {
             if (f.turnos.length === 0) return false;
             if (f.turnos.length < totalTurno) {
@@ -10989,7 +10975,7 @@ function filterOnlineBidTable() {
             }
         }
 
-        // 7. Busca Textual
+        // Busca Textual
         if (search) {
             const team = (r.team_code || '').toLowerCase();
             const plate = (r.plate || '').toLowerCase();
@@ -11005,6 +10991,70 @@ function filterOnlineBidTable() {
                                 plateBid.includes(search) || driver.includes(search) || members.includes(search) ||
                                 os.includes(search) || baseDisp.includes(search);
             if (!matchSearch) return false;
+        }
+
+        return true;
+    });
+
+    // Recalcula KPIs dos Cards com base nos filtros operacionais ativos
+    const dynamicKpis = {
+        total_logadas_eb: 0,
+        total_em_operacao_bid: 0,
+        conforme: 0,
+        alerta_critico: 0,
+        alerta_grave: 0,
+        alerta_gravissimo: 0,
+        alerta_impeditivo: 0,
+        indice_conformidade: 0.0
+    };
+
+    kpiRows.forEach(r => {
+        if (r.is_eb_active) {
+            dynamicKpis.total_logadas_eb++;
+            if (r.cross_status === 'CONFORME') {
+                dynamicKpis.conforme++;
+            } else if (r.cross_status === 'ALERTA CRÍTICO') {
+                dynamicKpis.alerta_critico++;
+            } else if (r.cross_status === 'ALERTA GRAVE') {
+                dynamicKpis.alerta_grave++;
+            } else if (r.cross_status === 'ALERTA IMPEDITIVO') {
+                dynamicKpis.alerta_impeditivo++;
+            } else if (r.cross_status === 'ALERTA GRAVÍSSIMO') {
+                dynamicKpis.alerta_gravissimo++;
+            }
+        }
+        if (r.status_bid === 'Em Operação') {
+            dynamicKpis.total_em_operacao_bid++;
+        }
+    });
+
+    if (dynamicKpis.total_logadas_eb > 0) {
+        dynamicKpis.indice_conformidade = Math.round((dynamicKpis.conforme / dynamicKpis.total_logadas_eb) * 1000) / 10;
+    } else {
+        dynamicKpis.indice_conformidade = 0.0;
+    }
+
+    renderOnlineBidKpis(dynamicKpis);
+
+    // 2. Filtro Nominal Completo para a Tabela
+    let list = kpiRows.filter(r => {
+        // Status EB (se TOTAL_EB ativo ou selecionado no popover)
+        if (onlineBidState.activeCardFilter === 'TOTAL_EB') {
+            if (!r.is_eb_active) return false;
+        } else if (totalEb > 0) {
+            if (f.ebStatuses.length === 0) return false;
+            if (f.ebStatuses.length < totalEb) {
+                const ebVal = r.is_eb_active ? 'Logada' : 'Não Logada';
+                if (!f.ebStatuses.includes(ebVal)) return false;
+            }
+        }
+
+        // Status Cruzado
+        if (totalCross > 0) {
+            if (f.crossStatuses.length === 0) return false;
+            if (f.crossStatuses.length < totalCross) {
+                if (!f.crossStatuses.includes(r.cross_status)) return false;
+            }
         }
 
         return true;
