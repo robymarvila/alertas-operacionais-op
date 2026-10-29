@@ -7629,6 +7629,71 @@ body:not(.theme-light) .period-filter-select {
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
+/* Custom Styling for Online x BID Date Picker in Filter Bar */
+.online-bid-date-picker {
+    height: 38px;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    min-width: 150px;
+    transition: all 0.2s ease;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.online-bid-date-picker:hover {
+    border-color: #38bdf8;
+}
+
+.online-bid-date-picker:focus {
+    border-color: #38bdf8;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+}
+
+body.theme-dark .online-bid-date-picker,
+body:not(.theme-light) .online-bid-date-picker {
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #f8fafc;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+body.theme-dark .online-bid-date-picker:hover,
+body:not(.theme-light) .online-bid-date-picker:hover {
+    border-color: #38bdf8;
+    background: #24344d;
+}
+
+body.theme-dark .online-bid-date-picker:focus,
+body:not(.theme-light) .online-bid-date-picker:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+}
+
+.online-bid-date-picker::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.8;
+    padding: 2px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.online-bid-date-picker::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+body.theme-dark .online-bid-date-picker::-webkit-calendar-picker-indicator,
+body:not(.theme-light) .online-bid-date-picker::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.2) drop-shadow(0 0 2px rgba(56, 189, 248, 0.5));
+}
+
 .period-select-arrow {
     position: absolute;
     right: 10px;

@@ -661,8 +661,8 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
 def fetch_delivery_records_by_date(date_str: str) -> list:
     """Busca registros históricos de equipes entregues para uma data específica (YYYY-MM-DD)."""
     try:
-        endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&order=captured_at.desc&limit=2000"
-        resp = requests.get(endpoint, headers=get_headers(), timeout=12)
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&order=captured_at.desc&limit=4000"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=15)
         if resp.status_code == 200:
             raw = resp.json() or []
             # Deduplica por equipe preservando o snapshot mais recente/completo

@@ -1294,6 +1294,31 @@ class DeliveryManager:
                     eb_teams = {t["team_code"]: dict(t) for t in self.active_teams}
                 elif self.daily_accumulated_teams:
                     eb_teams = {t["team_code"]: dict(t) for t in self.daily_accumulated_teams.values() if not is_today or t.get("is_active", True)}
+
+                # Complementa/enriquece com registros analíticos do Scanner caso os registros de delivery do dia sejam escassos
+                if len(eb_teams) < 50:
+                    try:
+                        from supabase_client import BASE_REST_URL, get_headers
+                        import requests
+                        url_scan = f"{BASE_REST_URL}/team_scanner_records?data_referencia=eq.{date_str}&limit=2000"
+                        resp_s = requests.get(url_scan, headers=get_headers(), timeout=10)
+                        if resp_s.status_code == 200:
+                            for s in resp_s.json() or []:
+                                c = str(s.get("equipe_normalizada") or "").strip().upper()
+                                if c and c not in eb_teams and c[:3] in TARGET_PREFIXES:
+                                    log_raw = str(s.get("login") or s.get("login_corrigido") or "--")
+                                    eb_teams[c] = {
+                                        "team_code": c,
+                                        "date_ref": date_str,
+                                        "login_time": log_raw[-8:] if len(log_raw) >= 8 else log_raw,
+                                        "logoff_time": str(s.get("logoff") or s.get("logoff_corrigido") or "--")[-8:],
+                                        "shift_slot": "Turno 08:00",
+                                        "status": "Deslogada / Turno Concluído",
+                                        "base_display": f"Base {s.get('base') or ''}",
+                                        "is_active": True
+                                    }
+                    except Exception as e_scan:
+                        print(f"[ONLINE x BID SCANNER FALLBACK WARN] {e_scan}")
         except Exception as err:
             print(f"[ONLINE x BID ERROR] Falha ao consultar Supabase para EB {date_str}: {err}")
             if self.active_teams:
@@ -1373,7 +1398,11 @@ class DeliveryManager:
             eb = eb_teams.get(code)
             bid = bid_records_map.get(code)
 
-            is_eb_active = eb.get("is_active", True) if eb else False
+            if is_today:
+                is_eb_active = eb.get("is_active", True) if eb else False
+            else:
+                # Em datas passadas consolidadas, qualquer equipe presente nos registros de entrega trabalhou/logou no dia
+                is_eb_active = True if eb else False
             eb_status = eb.get("status", "Deslogada") if eb else "Não Logada"
             bid_status = normalize_bid_status(bid.get("status_bid") if bid else "Não Encontrada")
 
@@ -1433,6 +1462,12 @@ class DeliveryManager:
                     cross_severity = "info"
                     cross_badge = "badge-info"
                     cross_desc = "Em Checklist • Não Logada"
+                elif bid_status in ["Bloqueada", "Retornada"]:
+                    cross_status = "BID SEM LOGIN EB"
+                    cross_severity = "orange"
+                    cross_badge = "badge-alerta-orange"
+                    cross_desc = f"{bid_status} no Checklist • Não Logada no Despacho"
+                    kpis["bid_sem_login_eb"] += 1
                 else:
                     continue
 

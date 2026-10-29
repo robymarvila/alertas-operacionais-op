@@ -2144,6 +2144,7 @@
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delLesteTotalLeve">0</span></div>
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delLesteTotalMoto">0</span></div>
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delLesteTotalPesado">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delLesteTotalRamal">0</span></div>
                                 </div>
                             </div>
                             <!-- Grid das 4 Bases do Leste -->
@@ -2159,6 +2160,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseMonteSantoLeve">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseMonteSantoMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseMonteSantoPesado">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseMonteSantoRamal">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Aricanduva -->
@@ -2172,6 +2174,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseAricanduvaLeve">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseAricanduvaMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseAricanduvaPesado">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseAricanduvaRamal">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Catumbi -->
@@ -2185,6 +2188,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseCatumbiLeve">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseCatumbiMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseCatumbiPesado">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseCatumbiRamal">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Santo André -->
@@ -2198,6 +2202,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LEVE</span><span class="v-mini-num" style="color:#60a5fa;" id="delBaseSantoAndreLeve">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseSantoAndreMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseSantoAndrePesado">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseSantoAndreRamal">0</span></div>
                                     </div>
                                 </div>
                             </div>
@@ -2855,12 +2860,10 @@
                         </h2>
                     </div>
 
-                    <!-- Controles Rápidos -->
                     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                        <div class="audit-control-group" style="display: flex; align-items: center; gap: 8px;">
-                            <label for="onlineBidDateInput" style="font-family: var(--font-main); font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">DATA OPERACIONAL:</label>
-                            <input type="date" id="onlineBidDateInput" class="audit-date-input" onchange="loadOnlineXBidData()" style="font-family: var(--font-main);" />
-                        </div>
+                        <span class="badge" style="background: rgba(56, 189, 248, 0.1); color: #38bdf8; font-weight: 700; font-size: 0.75rem; padding: 6px 12px; border-radius: 9999px; border: 1px solid rgba(56, 189, 248, 0.25);">
+                            CONFRONTO EQUILIBRADO DESPACHO x CHECKLIST
+                        </span>
                     </div>
                 </div>
 
@@ -2927,6 +2930,16 @@
 
                     <!-- LINHA 2: CONTROLES MULTI-FILTRO -->
                     <div class="period-filters-controls" style="width: 100%; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px;">
+                        <!-- FILTRO 0: DATA OPERACIONAL DO CONFRONTO -->
+                        <div class="period-filter-group" style="min-width: 160px;">
+                            <span class="period-filter-label" style="display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="calendar" style="width: 12px; height: 12px; color: #38bdf8;"></i> DATA DO CONFRONTO
+                            </span>
+                            <div class="period-filter-select-wrap online-bid-date-wrap">
+                                <input type="date" id="onlineBidDateInput" class="period-filter-select online-bid-date-picker" onchange="loadOnlineXBidData()" title="Selecione a data para auditoria da reconciliação">
+                            </div>
+                        </div>
+
                         <!-- FILTRO 1: REGIÃO (MULTI-SELEÇÃO) -->
                         <div class="period-filter-group dropdown-popover-container">
                             <span class="period-filter-label">REGIÃO</span>

@@ -6125,12 +6125,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elLesteLeve = document.getElementById('delLesteTotalLeve');
     const elLesteMoto = document.getElementById('delLesteTotalMoto');
     const elLestePesado = document.getElementById('delLesteTotalPesado');
+    const elLesteRamal = document.getElementById('delLesteTotalRamal');
 
     if (elLesteNum) elLesteNum.textContent = lb.total || 0;
     if (elLesteCesto) elLesteCesto.textContent = lb.cesto || 0;
     if (elLesteLeve) elLesteLeve.textContent = lb.leve || 0;
     if (elLesteMoto) elLesteMoto.textContent = lb.moto || 0;
     if (elLestePesado) elLestePesado.textContent = lb.linhaviva_munck || 0;
+    if (elLesteRamal) elLesteRamal.textContent = lb.ramal || 0;
 
     // Bases do Leste
     const lbBases = regLeste.bases || {};
@@ -6140,11 +6142,13 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBMSLeve = document.getElementById('delBaseMonteSantoLeve');
     const elBMSMoto = document.getElementById('delBaseMonteSantoMoto');
     const elBMSPesado = document.getElementById('delBaseMonteSantoPesado');
+    const elBMSRamal = document.getElementById('delBaseMonteSantoRamal');
     if (elBMSTot) elBMSTot.textContent = bMS.total || 0;
     if (elBMSCesto) elBMSCesto.textContent = bMS.cesto || 0;
     if (elBMSLeve) elBMSLeve.textContent = bMS.leve || 0;
     if (elBMSMoto) elBMSMoto.textContent = bMS.moto || 0;
     if (elBMSPesado) elBMSPesado.textContent = bMS.linhaviva_munck || 0;
+    if (elBMSRamal) elBMSRamal.textContent = bMS.ramal || 0;
 
     const bAri = lbBases['Base Aricanduva'] || {};
     const elBAriTot = document.getElementById('delBaseAricanduvaTotal');
@@ -6152,11 +6156,13 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBAriLeve = document.getElementById('delBaseAricanduvaLeve');
     const elBAriMoto = document.getElementById('delBaseAricanduvaMoto');
     const elBAriPesado = document.getElementById('delBaseAricanduvaPesado');
+    const elBAriRamal = document.getElementById('delBaseAricanduvaRamal');
     if (elBAriTot) elBAriTot.textContent = bAri.total || 0;
     if (elBAriCesto) elBAriCesto.textContent = bAri.cesto || 0;
     if (elBAriLeve) elBAriLeve.textContent = bAri.leve || 0;
     if (elBAriMoto) elBAriMoto.textContent = bAri.moto || 0;
     if (elBAriPesado) elBAriPesado.textContent = bAri.linhaviva_munck || 0;
+    if (elBAriRamal) elBAriRamal.textContent = bAri.ramal || 0;
 
     const bCat = lbBases['Base Catumbi'] || {};
     const elBCatTot = document.getElementById('delBaseCatumbiTotal');
@@ -6164,11 +6170,13 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBCatLeve = document.getElementById('delBaseCatumbiLeve');
     const elBCatMoto = document.getElementById('delBaseCatumbiMoto');
     const elBCatPesado = document.getElementById('delBaseCatumbiPesado');
+    const elBCatRamal = document.getElementById('delBaseCatumbiRamal');
     if (elBCatTot) elBCatTot.textContent = bCat.total || 0;
     if (elBCatCesto) elBCatCesto.textContent = bCat.cesto || 0;
     if (elBCatLeve) elBCatLeve.textContent = bCat.leve || 0;
     if (elBCatMoto) elBCatMoto.textContent = bCat.moto || 0;
     if (elBCatPesado) elBCatPesado.textContent = bCat.linhaviva_munck || 0;
+    if (elBCatRamal) elBCatRamal.textContent = bCat.ramal || 0;
 
     const bSA = lbBases['Base Santo André'] || {};
     const elBSATot = document.getElementById('delBaseSantoAndreTotal');
@@ -6176,11 +6184,13 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBSALeve = document.getElementById('delBaseSantoAndreLeve');
     const elBSAMoto = document.getElementById('delBaseSantoAndreMoto');
     const elBSAPesado = document.getElementById('delBaseSantoAndrePesado');
+    const elBSARamal = document.getElementById('delBaseSantoAndreRamal');
     if (elBSATot) elBSATot.textContent = bSA.total || 0;
     if (elBSACesto) elBSACesto.textContent = bSA.cesto || 0;
     if (elBSALeve) elBSALeve.textContent = bSA.leve || 0;
     if (elBSAMoto) elBSAMoto.textContent = bSA.moto || 0;
     if (elBSAPesado) elBSAPesado.textContent = bSA.linhaviva_munck || 0;
+    if (elBSARamal) elBSARamal.textContent = bSA.ramal || 0;
 }
 
 // Garante que a tabela esteja expandida ao interagir com filtros
