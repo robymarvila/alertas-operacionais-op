@@ -120,14 +120,39 @@ PROJETO_RAMAL_CODES = {
     "EEL216", "EEL217", "EEL218", "EEL219", "EEL220"
 }
 
-def is_projeto_ramal(team_code: str = "", vehicle_type: str = "") -> bool:
-    """Verifica se a equipe pertence ao Projeto Ramal por código ou tipo."""
+# Equipes dos códigos 200 da Base Leste (a partir do mês 10/2026):
+# EML2, EVL2, EQL2, ESL2 (e correlatas próprias EMA2, EVA2, EQA2, ESA2)
+LESTE_RAMAL_PREFIXES = ("EML2", "EVL2", "EQL2", "ESL2", "EMA2", "EVA2", "EQA2", "ESA2")
+
+def is_projeto_ramal(team_code: str = "", vehicle_type: str = "", base: str = "", date_ref: str = "") -> bool:
+    """
+    Verifica se a equipe pertence ao Projeto Ramal por código, tipo ou regra operacional:
+    - Região Norte: Códigos específicos em PROJETO_RAMAL_CODES (ENL216-220, ECL216-220, EEL216-220)
+    - Região Leste (a partir de 10/2026): Todas as equipes dos códigos 200 (EML2, EVL2, EQL2, ESL2) que logarem na Base Leste
+    """
     code = str(team_code or "").strip().upper()
     vt = str(vehicle_type or "").strip()
     if vt == "Projeto Ramal" or "Ramal" in vt or "PROJETO RAMAL" in vt.upper():
         return True
     if code in PROJETO_RAMAL_CODES:
         return True
+
+    # Regra Exceção Base Leste: aplicável para o mês 10/2026 em diante
+    is_month_10_or_later = True
+    if date_ref and str(date_ref).strip() not in ["--", "None", "nan", ""]:
+        d_clean = str(date_ref).strip()[:7]
+        is_month_10_or_later = (d_clean >= "2026-10")
+
+    if is_month_10_or_later:
+        if any(code.startswith(pfx) for pfx in LESTE_RAMAL_PREFIXES):
+            # Validação defensiva de base: não aplica se a base for expressamente da Região Norte
+            if base and str(base).strip() not in ["--", "None", "nan", ""]:
+                b_up = str(base).upper()
+                norte_bases = ["FAGUNDES", "CAJATI", "VILA MEDEIROS"]
+                if any(nb in b_up for nb in norte_bases):
+                    return False
+            return True
+
     return False
 
 def is_moto(team_code: str = "", vehicle_type: str = "") -> bool:
@@ -141,21 +166,24 @@ def is_moto(team_code: str = "", vehicle_type: str = "") -> bool:
         return True
     return False
 
-def is_linha_viva_or_munck(team_code: str = "", vehicle_type: str = "") -> bool:
+def is_linha_viva_or_munck(team_code: str = "", vehicle_type: str = "", base: str = "", date_ref: str = "") -> bool:
     """
     Identifica com precisão se a equipe pertence ao grupo Linha Viva ou Munck:
-    - Munck: presente na lista estrita MUNCK_CODES ou vehicle_type 'Munck'
+    - Munck: presente na lista estrita MUNCK_CODES ou vehicle_type 'Munck' (exceto exceção Projeto Ramal Leste)
     - Linha Viva: primeiro dígito numérico após o prefixo é '2' ou vehicle_type 'Linha Viva'
     - Cobre equipes específicas citadas (ENL211, ECL211, EEL211, e códigos 200)
-    - Exclui expressamente equipes do Projeto Ramal (ENL216-220, ECL216-220, EEL216-220)
+    - Exclui expressamente equipes do Projeto Ramal (ENL216-220, ECL216-220, EEL216-220 e códigos 200 Leste)
     """
     code = str(team_code or "").strip().upper()
     vt = str(vehicle_type or "").strip()
-    if is_projeto_ramal(code, vt):
+    if is_projeto_ramal(code, vt, base=base, date_ref=date_ref):
         return False
     if vt in ["Linha Viva", "Munck"] or "Munk" in vt or "Linha Viva" in vt:
         return True
     if code in MUNCK_CODES:
+        # Se for código 200 da Base Leste no período do Projeto Ramal, é Ramal e não Munck
+        if is_projeto_ramal(code, base=base, date_ref=date_ref):
+            return False
         return True
     digits = "".join([c for c in code if c.isdigit()])
     if digits and digits.startswith("2"):
@@ -180,6 +208,8 @@ def classify_spotfire_shift_and_turno(sp_record: dict) -> dict:
 
     team_code = sp_record.get("equipe_normalizada") or sp_record.get("equipe") or sp_record.get("team_code") or ""
     veh_type = sp_record.get("veiculo") or sp_record.get("sub_tipo") or sp_record.get("tipo") or sp_record.get("vehicle_type") or ""
+    base_val = sp_record.get("base") or sp_record.get("base_responsavel") or sp_record.get("base_display") or ""
+    date_val = sp_record.get("data_referencia") or sp_record.get("data") or ""
 
     # 1. Determina Turno Macrocategoria preliminar: Manhã, Tarde, Noite
     turno = None
@@ -212,13 +242,13 @@ def classify_spotfire_shift_and_turno(sp_record: dict) -> dict:
             except Exception:
                 pass
 
-    if is_projeto_ramal(team_code, veh_type) or is_moto(team_code, veh_type):
+    if is_projeto_ramal(team_code, veh_type, base=base_val, date_ref=date_val) or is_moto(team_code, veh_type):
         # Macroregra Especial Projeto Ramal e Moto: Entrada sempre fixada no Turno 08:00 (Manhã)
         shift_slot = "Turno 08:00"
         shift_code = "08:00"
         shift_pill_class = "shift-08h"
         turno = "Manhã"
-    elif is_linha_viva_or_munck(team_code, veh_type):
+    elif is_linha_viva_or_munck(team_code, veh_type, base=base_val, date_ref=date_val):
         # Macroregra Especial Linha Viva e Munck
         if login_time_extracted:
             try:
@@ -501,18 +531,20 @@ class DeliveryManager:
         except Exception as e:
             print(f"[WARN] Falha ao salvar cache diário de entrega: {e}")
 
-    def classify_vehicle(self, team_code: str) -> dict:
+    def classify_vehicle(self, team_code: str, base_or_geo: str = "", date_ref: str = None) -> dict:
         """
         Classifica o tipo de veículo com base no código da equipe:
-        - Projeto Ramal: Códigos específicos do PROJETO_RAMAL_CODES
-        - Munck: Códigos específicos da lista MUNCK_CODES
+        - Projeto Ramal: Códigos específicos do PROJETO_RAMAL_CODES (Norte) ou códigos 200 da Base Leste (EML2, EVL2, EQL2, ESL2) a partir de 10/2026
+        - Munck: Códigos específicos da lista MUNCK_CODES (exceto códigos 200 Leste a partir de 10/2026)
         - Cesto Aéreo: Dígito 1 após a base
         - Veículo Leve: Dígito 3 após a base
         - Moto: Dígito 7 após a base
         - Linha Viva: Demais códigos começando com dígito 2
         """
         code = str(team_code).strip().upper()
-        if code in PROJETO_RAMAL_CODES or is_projeto_ramal(code):
+        d_ref = date_ref if date_ref is not None else self.current_date_str
+
+        if code in PROJETO_RAMAL_CODES or is_projeto_ramal(code, base=base_or_geo, date_ref=d_ref):
             return {
                 "type": "Projeto Ramal",
                 "unified_group": "Projeto Ramal",
@@ -628,13 +660,13 @@ class DeliveryManager:
         except Exception:
             pass
 
-        if is_projeto_ramal(team_code, vehicle_type) or is_moto(team_code, vehicle_type):
+        if is_projeto_ramal(team_code, vehicle_type, date_ref=self.current_date_str) or is_moto(team_code, vehicle_type):
             # Macroregra Especial Projeto Ramal e Moto: Entrada sempre fixada no Turno 08:00 (Manhã)
             shift_slot = "Turno 08:00"
             shift_code = "08:00"
             shift_pill_class = "shift-08h"
             turno = "Manhã"
-        elif is_linha_viva_or_munck(team_code, vehicle_type):
+        elif is_linha_viva_or_munck(team_code, vehicle_type, date_ref=self.current_date_str):
             if total_min is not None and total_min > 1020:  # Após 17:00 (17 * 60 = 1020)
                 shift_slot = "Turno 20:00"
                 shift_code = "20:00"
@@ -698,7 +730,8 @@ class DeliveryManager:
         - Atualiza a curva intraday e salva o cache
         """
         for code, t in self.daily_accumulated_teams.items():
-            veh_info = self.classify_vehicle(code)
+            base_hint = t.get("base_display") or t.get("geo") or t.get("base_raw")
+            veh_info = self.classify_vehicle(code, base_or_geo=base_hint, date_ref=self.current_date_str)
             t["vehicle_type"] = veh_info["type"]
             t["unified_group"] = veh_info["unified_group"]
             t["vehicle_category"] = veh_info["category"]
@@ -732,9 +765,9 @@ class DeliveryManager:
         leve = sum(1 for t in team_list if t.get("vehicle_type") == "Veículo Leve")
         moto = sum(1 for t in team_list if t.get("vehicle_type") == "Moto")
         munck = sum(1 for t in team_list if t.get("vehicle_type") == "Munck")
-        linhaviva = sum(1 for t in team_list if t.get("vehicle_type") == "Linha Viva" and not is_projeto_ramal(t.get("team_code", "")))
+        linhaviva = sum(1 for t in team_list if t.get("vehicle_type") == "Linha Viva" and not is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str))
         linhaviva_munck = linhaviva + munck
-        ramal = sum(1 for t in team_list if t.get("vehicle_type") == "Projeto Ramal" or t.get("unified_group") == "Projeto Ramal" or is_projeto_ramal(t.get("team_code", "")))
+        ramal = sum(1 for t in team_list if t.get("vehicle_type") == "Projeto Ramal" or t.get("unified_group") == "Projeto Ramal" or is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str))
 
         # Contagem por turno
         shifts = {"06:00": 0, "08:00": 0, "12:00": 0, "14:00": 0, "20:00": 0, "22:00": 0}
@@ -754,10 +787,10 @@ class DeliveryManager:
                 "cesto": sum(1 for t in sub_teams if t.get("vehicle_type") == "Cesto Aéreo"),
                 "leve": sum(1 for t in sub_teams if t.get("vehicle_type") == "Veículo Leve"),
                 "moto": sum(1 for t in sub_teams if t.get("vehicle_type") == "Moto"),
-                "linhaviva_munck": sum(1 for t in sub_teams if t.get("vehicle_type") in ["Linha Viva", "Munck"] and not is_projeto_ramal(t.get("team_code", ""))),
+                "linhaviva_munck": sum(1 for t in sub_teams if t.get("vehicle_type") in ["Linha Viva", "Munck"] and not is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str)),
                 "munck": sum(1 for t in sub_teams if t.get("vehicle_type") == "Munck"),
-                "linhaviva": sum(1 for t in sub_teams if t.get("vehicle_type") == "Linha Viva" and not is_projeto_ramal(t.get("team_code", ""))),
-                "ramal": sum(1 for t in sub_teams if t.get("vehicle_type") == "Projeto Ramal" or t.get("unified_group") == "Projeto Ramal" or is_projeto_ramal(t.get("team_code", "")))
+                "linhaviva": sum(1 for t in sub_teams if t.get("vehicle_type") == "Linha Viva" and not is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str)),
+                "ramal": sum(1 for t in sub_teams if t.get("vehicle_type") == "Projeto Ramal" or t.get("unified_group") == "Projeto Ramal" or is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str))
             }
 
         bases_norte = {
@@ -987,7 +1020,7 @@ class DeliveryManager:
                 base_display = base_name
                 is_official = False
 
-            veh_info = self.classify_vehicle(team_code)
+            veh_info = self.classify_vehicle(team_code, base_or_geo=base_display or geo or base_raw, date_ref=self.current_date_str)
             shift_info = self.parse_shift_window(shift_raw, team_code=team_code, vehicle_type=veh_info.get("type"), marcacao_time=hora_marc)
 
             # Enriquecimento com dados da Visão Operacional BidTech (Checklists)
@@ -1553,7 +1586,7 @@ class DeliveryManager:
                     for t_code, r in seen_eb.items():
                         prefix = t_code[:3]
                         b_info = self.official_bases.get(prefix)
-                        v_info = self.classify_vehicle(t_code)
+                        v_info = self.classify_vehicle(t_code, base_or_geo=b_info["name"] if b_info else r.get("base_name"), date_ref=date_str)
                         base_teams.append({
                             "team_code": t_code,
                             "base_code": prefix,
@@ -1644,7 +1677,7 @@ class DeliveryManager:
                 if prefix not in TARGET_PREFIXES:
                     continue
                 b_info = self.official_bases.get(prefix)
-                v_info = self.classify_vehicle(norm)
+                v_info = self.classify_vehicle(norm, base_or_geo=b_info["name"] if b_info else sp.get("base"), date_ref=date_str)
                 shift_info = classify_spotfire_shift_and_turno(sp)
                 login_c = str(sp.get("login_corrigido") or sp.get("login") or sp.get("primeiro_login_corrigido") or sp.get("primeiro_login") or sp.get("inicio_calibrado") or "").strip()
                 logoff_c = str(sp.get("logoff_corrigido") or sp.get("logoff") or sp.get("fim_calibrado") or "").strip()
@@ -1782,7 +1815,7 @@ class DeliveryManager:
                 login_val = r.get("login_corrigido") or r.get("login") or ""
                 if not str(login_val).strip() or str(login_val).strip().lower() in ["none", "nan", "-", "0", "0.0"]:
                     continue
-                v_info = self.classify_vehicle(code)
+                v_info = self.classify_vehicle(code, base_or_geo=r.get("base"), date_ref=d_str)
                 shift_info = classify_spotfire_shift_and_turno(r)
                 teams.append({
                     "team_code": code,
@@ -1819,14 +1852,21 @@ class DeliveryManager:
                 code = t.get("team_code", "").upper()
                 v_type = t.get("vehicle_type", "")
                 pfx = code[:3]
+                raw_rec = t.get("raw_record") if isinstance(t.get("raw_record"), dict) else {}
+                base_raw_val = raw_rec.get("base") or ""
+                is_ramal_team = (v_type == "Projeto Ramal" or is_projeto_ramal(code, v_type, base=base_raw_val, date_ref=d_str))
 
                 # Classificação em BASES
-                if v_type == "Munck" or code in self.munck_codes:
+                if is_ramal_team:
+                    b_name = prefix_to_base.get(pfx)
+                    if b_name and b_name in base_sum_counts:
+                        base_sum_counts[b_name] += 1
+                elif v_type == "Munck" or code in self.munck_codes:
                     if "Munk" in base_sum_counts:
                         base_sum_counts["Munk"] += 1
                     elif "Munck" in base_sum_counts:
                         base_sum_counts["Munck"] += 1
-                elif v_type == "Linha Viva" and not is_projeto_ramal(code, v_type):
+                elif v_type == "Linha Viva":
                     if "LV" in base_sum_counts:
                         base_sum_counts["LV"] += 1
                 else:
@@ -1842,7 +1882,7 @@ class DeliveryManager:
                     turno_sum_counts["Manhã"] += 1
 
                 # Classificação em TIPO VEÍCULO
-                if v_type == "Projeto Ramal" or is_projeto_ramal(code, v_type):
+                if is_ramal_team:
                     veh_sum_counts["Projeto Ramal"] = veh_sum_counts.get("Projeto Ramal", 0) + 1
                 elif v_type == "Munck" or code in self.munck_codes:
                     veh_sum_counts["Munk"] += 1
@@ -2152,14 +2192,14 @@ class DeliveryManager:
                 base_name = prefix_to_base.get(pfx, "Outros")
                 reg = prefix_to_region.get(pfx, "Outros")
                 
-                v_info = self.classify_vehicle(team_code)
+                dt_ref = str(row.get("data_referencia") or "")
+                
+                v_info = self.classify_vehicle(team_code, base_or_geo=base_name, date_ref=dt_ref)
                 v_type = v_info.get("type", "Outros")
                 
                 shift_info = classify_spotfire_shift_and_turno(row)
                 turno = shift_info.get("turno") or "Manhã"
                 shift_code = shift_info.get("shift_code") or "08:00"
-
-                dt_ref = str(row.get("data_referencia") or "")
 
                 rec = {
                     "date": dt_ref,
@@ -2195,8 +2235,8 @@ class DeliveryManager:
             cesto_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Cesto Aéreo")
             leve_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Veículo Leve")
             moto_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Moto")
-            linhaviva_munck_tot = sum(1 for r in norm_records if r.get("vehicle_type") in ["Linha Viva", "Munck"] and not is_projeto_ramal(r.get("team_code", "")))
-            ramal_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Projeto Ramal" or is_projeto_ramal(r.get("team_code", "")))
+            linhaviva_munck_tot = sum(1 for r in norm_records if r.get("vehicle_type") in ["Linha Viva", "Munck"] and not is_projeto_ramal(r.get("team_code", ""), r.get("vehicle_type", ""), base=r.get("base"), date_ref=r.get("date")))
+            ramal_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Projeto Ramal" or is_projeto_ramal(r.get("team_code", ""), r.get("vehicle_type", ""), base=r.get("base"), date_ref=r.get("date")))
 
             res = {
                 "status": "success",

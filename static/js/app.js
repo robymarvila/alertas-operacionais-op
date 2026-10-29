@@ -5592,10 +5592,12 @@ async function loadDeliveryData(forceRefresh = false) {
                 'ECL216', 'ECL217', 'ECL218', 'ECL219', 'ECL220',
                 'EEL216', 'EEL217', 'EEL218', 'EEL219', 'EEL220'
             ]);
+            const LESTE_RAMAL_PREFIXES = ['EML2', 'EVL2', 'EQL2', 'ESL2', 'EMA2', 'EVA2', 'EQA2', 'ESA2'];
             const sanitizeTeam = (t) => {
                 if (!t) return t;
                 const c = String(t.team_code || '').trim().toUpperCase();
-                const isRamal = RAMAL_CODES.has(c) || t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal';
+                const isLesteRamal = LESTE_RAMAL_PREFIXES.some(pfx => c.startsWith(pfx));
+                const isRamal = RAMAL_CODES.has(c) || isLesteRamal || t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal';
                 const isMoto = !isRamal && (t.vehicle_type === 'Moto' || t.unified_group === 'Moto' || (c.replace(/\D/g, '').startsWith('7')));
                 if (isRamal) {
                     t.vehicle_type = 'Projeto Ramal';
@@ -14578,7 +14580,11 @@ const TV_RAMAL_CODES = new Set([
 function isTvRamalTeam(teamId) {
     if (!teamId) return false;
     const cleanId = String(teamId).trim().toUpperCase();
-    return TV_RAMAL_CODES.has(cleanId);
+    if (TV_RAMAL_CODES.has(cleanId)) return true;
+    if (['EML2', 'EVL2', 'EQL2', 'ESL2', 'EMA2', 'EVA2', 'EQA2', 'ESA2'].some(pfx => cleanId.startsWith(pfx))) {
+        return true;
+    }
+    return false;
 }
 
 function initTvDashboard() {
