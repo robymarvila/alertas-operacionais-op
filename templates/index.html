@@ -1903,6 +1903,21 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Card 8: STC Leste -->
+                    <div class="fleet-liquid-card">
+                        <span class="fleet-liquid-title" style="color: #ec4899;">STC LESTE</span>
+                        <div class="fleet-liquid-vals">
+                            <div class="fleet-val-block">
+                                <span>ATIVAS</span>
+                                <strong style="color: #ec4899;" id="delFleetStcLesteActive">0</strong>
+                            </div>
+                            <div class="fleet-val-block" style="text-align: right;">
+                                <span>TOTAL DIA</span>
+                                <strong style="color: #94a3b8;" id="delFleetStcLesteTotal">0</strong>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ALTERNADOR MOBILE DE SEÇÕES (Apenas Telas <= 768px: Bases / Gráficos / Equipes) -->
@@ -1948,6 +1963,7 @@
                                 <button class="pill-chip" data-vehicle="Moto" onclick="setDeliveryVehicleFilter('Moto', this)">MOTO</button>
                                 <button class="pill-chip" data-vehicle="Linha Viva + Munk" onclick="setDeliveryVehicleFilter('Linha Viva + Munk', this)">LINHA VIVA + MUNK</button>
                                 <button class="pill-chip" data-vehicle="Projeto Ramal" onclick="setDeliveryVehicleFilter('Projeto Ramal', this)">PROJETO RAMAL</button>
+                                <button class="pill-chip" data-vehicle="STC Leste" onclick="setDeliveryVehicleFilter('STC Leste', this)">STC LESTE</button>
                             </div>
                         </div>
 
@@ -2063,6 +2079,7 @@
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delNorteTotalMoto">0</span></div>
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delNorteTotalPesado">0</span></div>
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delNorteTotalRamal">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">STC</span><span class="v-mini-num" style="color:#ec4899;" id="delNorteTotalStcLeste">0</span></div>
                                 </div>
                             </div>
                             <!-- Grid das 3 Bases do Norte -->
@@ -2079,6 +2096,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseFagundesMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseFagundesPesado">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseFagundesRamal">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">STC</span><span class="v-mini-num" style="color:#ec4899;" id="delBaseFagundesStcLeste">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Cajati -->
@@ -2093,6 +2111,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseCajatiMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseCajatiPesado">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseCajatiRamal">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">STC</span><span class="v-mini-num" style="color:#ec4899;" id="delBaseCajatiStcLeste">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Vila Medeiros -->
@@ -2107,6 +2126,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseVilaMedeirosMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseVilaMedeirosPesado">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseVilaMedeirosRamal">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">STC</span><span class="v-mini-num" style="color:#ec4899;" id="delBaseVilaMedeirosStcLeste">0</span></div>
                                     </div>
                                 </div>
                             </div>
@@ -2145,6 +2165,7 @@
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delLesteTotalMoto">0</span></div>
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delLesteTotalPesado">0</span></div>
                                     <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delLesteTotalRamal">0</span></div>
+                                    <div class="vehicle-mini-pill"><span class="v-mini-label">STC</span><span class="v-mini-num" style="color:#ec4899;" id="delLesteTotalStcLeste">0</span></div>
                                 </div>
                             </div>
                             <!-- Grid das 4 Bases do Leste -->
@@ -2161,6 +2182,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseMonteSantoMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseMonteSantoPesado">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseMonteSantoRamal">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">STC</span><span class="v-mini-num" style="color:#ec4899;" id="delBaseMonteSantoStcLeste">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Aricanduva -->
@@ -2175,6 +2197,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseAricanduvaMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseAricanduvaPesado">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseAricanduvaRamal">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">STC</span><span class="v-mini-num" style="color:#ec4899;" id="delBaseAricanduvaStcLeste">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Catumbi -->
@@ -2189,6 +2212,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseCatumbiMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseCatumbiPesado">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseCatumbiRamal">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">STC</span><span class="v-mini-num" style="color:#ec4899;" id="delBaseCatumbiStcLeste">0</span></div>
                                     </div>
                                 </div>
                                 <!-- Base Santo André -->
@@ -2203,6 +2227,7 @@
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">MOTO</span><span class="v-mini-num text-emerald" id="delBaseSantoAndreMoto">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">LV+MUNK</span><span class="v-mini-num" style="color:#c084fc;" id="delBaseSantoAndrePesado">0</span></div>
                                         <div class="vehicle-mini-pill"><span class="v-mini-label">RAMAL</span><span class="v-mini-num" style="color:#fb923c;" id="delBaseSantoAndreRamal">0</span></div>
+                                        <div class="vehicle-mini-pill"><span class="v-mini-label">STC</span><span class="v-mini-num" style="color:#ec4899;" id="delBaseSantoAndreStcLeste">0</span></div>
                                     </div>
                                 </div>
                             </div>
@@ -2785,6 +2810,7 @@
                                         <th>MOTO</th>
                                         <th>LINHA VIVA + MUNK</th>
                                         <th>PROJETO RAMAL</th>
+                                        <th>STC LESTE</th>
                                         <th>TURNO PRINCIPAL</th>
                                     </tr>
                                 </thead>
@@ -2826,6 +2852,10 @@
                         <div class="fleet-liquid-card">
                             <span class="fleet-liquid-title" style="color: #fb923c;">MÉDIA PROJETO RAMAL</span>
                             <strong class="hero-big-number" style="color: #fb923c; font-size: 1.5rem;" id="histMonthAvgRamal">0.0</strong>
+                        </div>
+                        <div class="fleet-liquid-card">
+                            <span class="fleet-liquid-title" style="color: #ec4899;">MÉDIA STC LESTE</span>
+                            <strong class="hero-big-number" style="color: #ec4899; font-size: 1.5rem;" id="histMonthAvgStcLeste">0.0</strong>
                         </div>
                     </div>
 
@@ -4765,6 +4795,18 @@
                                 <span class="tv-kpi-sub-target" id="tvKpiRamalSub">--%</span>
                             </div>
                         </div>
+
+                        <!-- Card 7: STC LESTE -->
+                        <div class="tv-kpi-card tv-kpi-stc-leste">
+                            <div class="tv-kpi-card-header">
+                                <span class="tv-kpi-label">STC LESTE</span>
+                                <span class="tv-kpi-tag-turno tag-stc-pink">08:00</span>
+                            </div>
+                            <div class="tv-kpi-val-row">
+                                <span class="tv-kpi-value font-mono" style="color: #ec4899;" id="tvKpiStcLeste">--</span>
+                                <span class="tv-kpi-sub-target" id="tvKpiStcLesteSub">--%</span>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- SUB-GRID DE GRÁFICOS: 1º DISTRIBUIÇÃO HORÁRIO/TURNO (TOPO) + 2º COMPOSIÇÃO DA FROTA EM BARRAS (ABAIXO) -->
@@ -4782,6 +4824,7 @@
                                     <span class="legend-chip"><span class="chip-color-dot" style="background:#10b981;"></span> Moto</span>
                                     <span class="legend-chip"><span class="chip-color-dot" style="background:#c084fc;"></span> L. Viva</span>
                                     <span class="legend-chip"><span class="chip-color-dot" style="background:#f97316;"></span> Ramal</span>
+                                    <span class="legend-chip"><span class="chip-color-dot" style="background:#ec4899;"></span> STC Leste</span>
                                 </div>
                             </div>
                             <div class="tv-chart-canvas-wrap">

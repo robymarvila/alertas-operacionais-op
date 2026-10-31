@@ -124,6 +124,44 @@ PROJETO_RAMAL_CODES = {
 # EML2, EVL2, EQL2, ESL2 (e correlatas próprias EMA2, EVA2, EQA2, ESA2)
 LESTE_RAMAL_PREFIXES = ("EML2", "EVL2", "EQL2", "ESL2", "EMA2", "EVA2", "EQA2", "ESA2")
 
+# Equipes de apoio STC Leste com códigos fixos:
+# Região Norte:
+# Base Cajati: ECL313 a ECL317
+# Base Vila Medeiros: EEL305 a EEL309
+# Base Fagundes Filho: ENL312 a ENL316
+# Região Leste:
+# Base Monte Santo: EML310 a EML314
+# Base Aricanduva: EQL303 a EQL307
+STC_LESTE_CODES = {
+    # Região Norte - Base Cajati
+    "ECL313", "ECL314", "ECL315", "ECL316", "ECL317",
+    # Região Norte - Base Vila Medeiros
+    "EEL305", "EEL306", "EEL307", "EEL308", "EEL309",
+    # Região Norte - Base Fagundes Filho
+    "ENL312", "ENL313", "ENL314", "ENL315", "ENL316",
+    # Região Leste - Base Monte Santo
+    "EML310", "EML311", "EML312", "EML313", "EML314",
+    # Região Leste - Base Aricanduva
+    "EQL303", "EQL304", "EQL305", "EQL306", "EQL307"
+}
+STC_LESTE_EQUIVALENTS = {c.replace("L", "A") for c in STC_LESTE_CODES}
+ALL_STC_LESTE_CODES = STC_LESTE_CODES | STC_LESTE_EQUIVALENTS
+
+def is_stc_leste(team_code: str = "", vehicle_type: str = "", base: str = "", date_ref: str = "") -> bool:
+    """
+    Verifica se a equipe pertence ao grupo STC Leste:
+    Equipes que atuam em apoio às demais áreas do TMA com códigos fixos por base:
+    - Norte: Cajati (ECL313-317), Vila Medeiros (EEL305-309), Fagundes Filho (ENL312-316)
+    - Leste: Monte Santo (EML310-314), Aricanduva (EQL303-307)
+    """
+    code = str(team_code or "").strip().upper()
+    vt = str(vehicle_type or "").strip()
+    if vt == "STC Leste" or "STC LESTE" in vt.upper() or "STC_LESTE" in vt.upper():
+        return True
+    if code in ALL_STC_LESTE_CODES:
+        return True
+    return False
+
 def is_projeto_ramal(team_code: str = "", vehicle_type: str = "", base: str = "", date_ref: str = "") -> bool:
     """
     Verifica se a equipe pertence ao Projeto Ramal por código, tipo ou regra operacional:
@@ -176,7 +214,7 @@ def is_linha_viva_or_munck(team_code: str = "", vehicle_type: str = "", base: st
     """
     code = str(team_code or "").strip().upper()
     vt = str(vehicle_type or "").strip()
-    if is_projeto_ramal(code, vt, base=base, date_ref=date_ref):
+    if is_projeto_ramal(code, vt, base=base, date_ref=date_ref) or is_stc_leste(code, vt, base=base, date_ref=date_ref):
         return False
     if vt in ["Linha Viva", "Munck"] or "Munk" in vt or "Linha Viva" in vt:
         return True
@@ -553,6 +591,15 @@ class DeliveryManager:
                 "category": "Projeto Ramal"
             }
 
+        if code in ALL_STC_LESTE_CODES or is_stc_leste(code, base=base_or_geo, date_ref=d_ref):
+            return {
+                "type": "STC Leste",
+                "unified_group": "STC Leste",
+                "badge_class": "badge-vehicle-stc-leste",
+                "pill_class": "pill-stc-leste",
+                "category": "STC Leste"
+            }
+
         if code in self.munck_codes:
             return {
                 "type": "Munck",
@@ -762,12 +809,13 @@ class DeliveryManager:
         """Gera contadores detalhados para uma lista arbitrária de equipes."""
         total = len(team_list)
         cesto = sum(1 for t in team_list if t.get("vehicle_type") == "Cesto Aéreo")
-        leve = sum(1 for t in team_list if t.get("vehicle_type") == "Veículo Leve")
+        leve = sum(1 for t in team_list if t.get("vehicle_type") == "Veículo Leve" and not is_stc_leste(t.get("team_code", ""), t.get("vehicle_type", "")))
         moto = sum(1 for t in team_list if t.get("vehicle_type") == "Moto")
         munck = sum(1 for t in team_list if t.get("vehicle_type") == "Munck")
         linhaviva = sum(1 for t in team_list if t.get("vehicle_type") == "Linha Viva" and not is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str))
         linhaviva_munck = linhaviva + munck
         ramal = sum(1 for t in team_list if t.get("vehicle_type") == "Projeto Ramal" or t.get("unified_group") == "Projeto Ramal" or is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str))
+        stc_leste = sum(1 for t in team_list if t.get("vehicle_type") == "STC Leste" or t.get("unified_group") == "STC Leste" or is_stc_leste(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str))
 
         # Contagem por turno
         shifts = {"06:00": 0, "08:00": 0, "12:00": 0, "14:00": 0, "20:00": 0, "22:00": 0}
@@ -785,12 +833,13 @@ class DeliveryManager:
             return {
                 "total": len(sub_teams),
                 "cesto": sum(1 for t in sub_teams if t.get("vehicle_type") == "Cesto Aéreo"),
-                "leve": sum(1 for t in sub_teams if t.get("vehicle_type") == "Veículo Leve"),
+                "leve": sum(1 for t in sub_teams if t.get("vehicle_type") == "Veículo Leve" and not is_stc_leste(t.get("team_code", ""), t.get("vehicle_type", ""))),
                 "moto": sum(1 for t in sub_teams if t.get("vehicle_type") == "Moto"),
                 "linhaviva_munck": sum(1 for t in sub_teams if t.get("vehicle_type") in ["Linha Viva", "Munck"] and not is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str)),
                 "munck": sum(1 for t in sub_teams if t.get("vehicle_type") == "Munck"),
                 "linhaviva": sum(1 for t in sub_teams if t.get("vehicle_type") == "Linha Viva" and not is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str)),
-                "ramal": sum(1 for t in sub_teams if t.get("vehicle_type") == "Projeto Ramal" or t.get("unified_group") == "Projeto Ramal" or is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str))
+                "ramal": sum(1 for t in sub_teams if t.get("vehicle_type") == "Projeto Ramal" or t.get("unified_group") == "Projeto Ramal" or is_projeto_ramal(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str)),
+                "stc_leste": sum(1 for t in sub_teams if t.get("vehicle_type") == "STC Leste" or t.get("unified_group") == "STC Leste" or is_stc_leste(t.get("team_code", ""), t.get("vehicle_type", ""), base=t.get("base_display") or t.get("geo"), date_ref=self.current_date_str))
             }
 
         bases_norte = {
@@ -815,6 +864,7 @@ class DeliveryManager:
             "linhaviva": linhaviva,
             "linhaviva_munck": linhaviva_munck,
             "ramal": ramal,
+            "stc_leste": stc_leste,
             "shifts": shifts,
             "regiao_norte": {
                 "total_block": _base_block(norte_teams),
@@ -1876,7 +1926,7 @@ class DeliveryManager:
         # 4. Contabilização Real por Categoria acumulada ao longo dos dias selecionados
         base_sum_counts = {b: 0 for b in plan_bases.keys()}
         turno_sum_counts = {"Manhã": 0, "Tarde": 0, "Noite": 0}
-        veh_sum_counts = {"Cesto Aéreo": 0, "Veículo Leve": 0, "Moto": 0, "LV": 0, "Munk": 0, "Projeto Ramal": 0}
+        veh_sum_counts = {"Cesto Aéreo": 0, "Veículo Leve": 0, "Moto": 0, "LV": 0, "Munk": 0, "Projeto Ramal": 0, "STC Leste": 0}
         total_teams_sum = 0
 
         for d_str in date_list:
@@ -1890,6 +1940,7 @@ class DeliveryManager:
                 raw_rec = t.get("raw_record") if isinstance(t.get("raw_record"), dict) else {}
                 base_raw_val = raw_rec.get("base") or ""
                 is_ramal_team = (v_type == "Projeto Ramal" or is_projeto_ramal(code, v_type, base=base_raw_val, date_ref=d_str))
+                is_stc_team = (v_type == "STC Leste" or is_stc_leste(code, v_type, base=base_raw_val, date_ref=d_str))
 
                 # Classificação em BASES
                 if is_ramal_team:
@@ -1919,6 +1970,8 @@ class DeliveryManager:
                 # Classificação em TIPO VEÍCULO
                 if is_ramal_team:
                     veh_sum_counts["Projeto Ramal"] = veh_sum_counts.get("Projeto Ramal", 0) + 1
+                elif is_stc_team:
+                    veh_sum_counts["STC Leste"] = veh_sum_counts.get("STC Leste", 0) + 1
                 elif v_type == "Munck" or code in self.munck_codes:
                     veh_sum_counts["Munk"] += 1
                 elif v_type == "Linha Viva":
@@ -2268,10 +2321,11 @@ class DeliveryManager:
             avg_tot = (sum(d["total_teams"] for d in days_list) / max(op_days, 1)) if op_days > 0 else 0
 
             cesto_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Cesto Aéreo")
-            leve_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Veículo Leve")
+            leve_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Veículo Leve" and not is_stc_leste(r.get("team_code", ""), r.get("vehicle_type", ""), base=r.get("base"), date_ref=r.get("date")))
             moto_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Moto")
             linhaviva_munck_tot = sum(1 for r in norm_records if r.get("vehicle_type") in ["Linha Viva", "Munck"] and not is_projeto_ramal(r.get("team_code", ""), r.get("vehicle_type", ""), base=r.get("base"), date_ref=r.get("date")))
             ramal_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "Projeto Ramal" or is_projeto_ramal(r.get("team_code", ""), r.get("vehicle_type", ""), base=r.get("base"), date_ref=r.get("date")))
+            stc_leste_tot = sum(1 for r in norm_records if r.get("vehicle_type") == "STC Leste" or is_stc_leste(r.get("team_code", ""), r.get("vehicle_type", ""), base=r.get("base"), date_ref=r.get("date")))
 
             res = {
                 "status": "success",
@@ -2285,6 +2339,7 @@ class DeliveryManager:
                 "avg_moto": round(moto_tot / max(op_days, 1), 1) if op_days > 0 else 0,
                 "avg_linhaviva_munck": round(linhaviva_munck_tot / max(op_days, 1), 1) if op_days > 0 else 0,
                 "avg_ramal": round(ramal_tot / max(op_days, 1), 1) if op_days > 0 else 0,
+                "avg_stc_leste": round(stc_leste_tot / max(op_days, 1), 1) if op_days > 0 else 0,
                 "days": days_list,
                 "unique_dimensions": {
                     "regions": sorted(list(regions_set)),

@@ -1605,13 +1605,14 @@ function matchFrota(team, selectedFrotas) {
 
     for (const f of selectedFrotas) {
         if ((f === 'RAMAL' || f === 'PROJETO_RAMAL' || f === 'PROJETO RAMAL') && vRaw.includes('ramal')) return true;
+        if ((f === 'STC_LESTE' || f === 'STC LESTE' || f === 'STC') && (vRaw.includes('stc') || vRaw.includes('stc leste'))) return true;
         if (f === 'CESTO' && vRaw.includes('cesto')) return true;
-        if (f === 'LEVE' && (vRaw.includes('leve') || vRaw.includes('veículo leve') || vRaw.includes('veiculo leve'))) return true;
+        if (f === 'LEVE' && (vRaw.includes('leve') || vRaw.includes('veículo leve') || vRaw.includes('veiculo leve')) && !vRaw.includes('stc')) return true;
         if (f === 'MOTO' && vRaw.includes('moto')) return true;
-        if (f === 'LINHA_VIVA' && vRaw.includes('linha viva') && !vRaw.includes('ramal')) return true;
-        if (f === 'MUNCK' && (vRaw.includes('munck') || vRaw.includes('munk')) && !vRaw.includes('ramal')) return true;
+        if (f === 'LINHA_VIVA' && vRaw.includes('linha viva') && !vRaw.includes('ramal') && !vRaw.includes('stc')) return true;
+        if (f === 'MUNCK' && (vRaw.includes('munck') || vRaw.includes('munk')) && !vRaw.includes('ramal') && !vRaw.includes('stc')) return true;
         if (f === 'OUTROS') {
-            const isKnown = vRaw.includes('ramal') || vRaw.includes('cesto') || vRaw.includes('leve') || vRaw.includes('moto') || vRaw.includes('linha viva') || vRaw.includes('munck') || vRaw.includes('munk');
+            const isKnown = vRaw.includes('ramal') || vRaw.includes('stc') || vRaw.includes('cesto') || vRaw.includes('leve') || vRaw.includes('moto') || vRaw.includes('linha viva') || vRaw.includes('munck') || vRaw.includes('munk');
             if (!isKnown) return true;
         }
     }
@@ -5593,12 +5594,20 @@ async function loadDeliveryData(forceRefresh = false) {
                 'EEL216', 'EEL217', 'EEL218', 'EEL219', 'EEL220'
             ]);
             const LESTE_RAMAL_PREFIXES = ['EML2', 'EVL2', 'EQL2', 'ESL2', 'EMA2', 'EVA2', 'EQA2', 'ESA2'];
+            const STC_LESTE_CODES = new Set([
+                'ECL313', 'ECL314', 'ECL315', 'ECL316', 'ECL317',
+                'EEL305', 'EEL306', 'EEL307', 'EEL308', 'EEL309',
+                'ENL312', 'ENL313', 'ENL314', 'ENL315', 'ENL316',
+                'EML310', 'EML311', 'EML312', 'EML313', 'EML314',
+                'EQL303', 'EQL304', 'EQL305', 'EQL306', 'EQL307'
+            ]);
             const sanitizeTeam = (t) => {
                 if (!t) return t;
                 const c = String(t.team_code || '').trim().toUpperCase();
                 const isLesteRamal = LESTE_RAMAL_PREFIXES.some(pfx => c.startsWith(pfx));
                 const isRamal = RAMAL_CODES.has(c) || isLesteRamal || t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal';
-                const isMoto = !isRamal && (t.vehicle_type === 'Moto' || t.unified_group === 'Moto' || (c.replace(/\D/g, '').startsWith('7')));
+                const isStcLeste = STC_LESTE_CODES.has(c) || STC_LESTE_CODES.has(c.replace('A', 'L')) || t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste';
+                const isMoto = !isRamal && !isStcLeste && (t.vehicle_type === 'Moto' || t.unified_group === 'Moto' || (c.replace(/\D/g, '').startsWith('7')));
                 if (isRamal) {
                     t.vehicle_type = 'Projeto Ramal';
                     t.unified_group = 'Projeto Ramal';
@@ -5607,6 +5616,10 @@ async function loadDeliveryData(forceRefresh = false) {
                     t.shift_code = '08:00';
                     t.shift_pill_class = 'shift-08h';
                     t.turno = 'Manhã';
+                } else if (isStcLeste) {
+                    t.vehicle_type = 'STC Leste';
+                    t.unified_group = 'STC Leste';
+                    t.vehicle_category = 'STC Leste';
                 } else if (isMoto) {
                     t.shift_slot = 'Turno 08:00';
                     t.shift_code = '08:00';
@@ -5780,15 +5793,20 @@ function checkTeamMatchesDeliveryFilters(t, filters, q) {
                     matchVehicle = true;
                     break;
                 }
+            } else if (vClean.includes('stc')) {
+                if (tTypeClean.includes('stc') || tGroupClean.includes('stc')) {
+                    matchVehicle = true;
+                    break;
+                }
             } else if (vClean.includes('munk') || vClean.includes('linha viva')) {
-                if ((tTypeClean.includes('linha viva') || tTypeClean.includes('munck') || tTypeClean.includes('munk') || tGroupClean.includes('munk') || tGroupClean.includes('linha viva')) && !tTypeClean.includes('ramal') && !tGroupClean.includes('ramal')) {
+                if ((tTypeClean.includes('linha viva') || tTypeClean.includes('munck') || tTypeClean.includes('munk') || tGroupClean.includes('munk') || tGroupClean.includes('linha viva')) && !tTypeClean.includes('ramal') && !tGroupClean.includes('ramal') && !tTypeClean.includes('stc') && !tGroupClean.includes('stc')) {
                     matchVehicle = true;
                     break;
                 }
             } else if (vClean.includes('cesto') && (tTypeClean.includes('cesto') || tGroupClean.includes('cesto'))) {
                 matchVehicle = true;
                 break;
-            } else if (vClean.includes('leve') && (tTypeClean.includes('leve') || tGroupClean.includes('leve'))) {
+            } else if (vClean.includes('leve') && (tTypeClean.includes('leve') || tGroupClean.includes('leve')) && !tTypeClean.includes('stc') && !tGroupClean.includes('stc')) {
                 matchVehicle = true;
                 break;
             } else if (vClean.includes('moto') && (tTypeClean.includes('moto') || tGroupClean.includes('moto'))) {
@@ -5924,10 +5942,11 @@ function renderDeliveryKPIs(filteredActive, filteredTotalDay) {
     const countFleet = (list) => {
         return {
             cesto: list.filter(t => t.vehicle_type === 'Cesto Aéreo').length,
-            leve: list.filter(t => t.vehicle_type === 'Veículo Leve').length,
+            leve: list.filter(t => t.vehicle_type === 'Veículo Leve' && t.vehicle_type !== 'STC Leste' && t.unified_group !== 'STC Leste').length,
             moto: list.filter(t => t.vehicle_type === 'Moto').length,
-            munck: list.filter(t => (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk') && t.vehicle_type !== 'Projeto Ramal' && t.unified_group !== 'Projeto Ramal').length,
-            ramal: list.filter(t => t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal').length
+            munck: list.filter(t => (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk') && t.vehicle_type !== 'Projeto Ramal' && t.unified_group !== 'Projeto Ramal' && t.vehicle_type !== 'STC Leste' && t.unified_group !== 'STC Leste').length,
+            ramal: list.filter(t => t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal').length,
+            stc_leste: list.filter(t => t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste').length
         };
     };
 
@@ -5958,6 +5977,11 @@ function renderDeliveryKPIs(filteredActive, filteredTotalDay) {
     const elRamalTot = document.getElementById('delFleetRamalTotal');
     if (elRamalAct) elRamalAct.textContent = cntActive.ramal;
     if (elRamalTot) elRamalTot.textContent = cntTotal.ramal;
+
+    const elStcLesteAct = document.getElementById('delFleetStcLesteActive');
+    const elStcLesteTot = document.getElementById('delFleetStcLesteTotal');
+    if (elStcLesteAct) elStcLesteAct.textContent = cntActive.stc_leste || 0;
+    if (elStcLesteTot) elStcLesteTot.textContent = cntTotal.stc_leste || 0;
 }
 
 // Cálculo Dinâmico e Reativo dos Cards de Regiões e Bases
@@ -5965,20 +5989,20 @@ function computeRegionalBreakdown(teamList) {
     const list = teamList || [];
     const breakdown = {
         regiao_norte: {
-            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
+            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0, stc_leste: 0 },
             bases: {
-                'Base Fagundes Filho': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
-                'Base Cajati': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
-                'Base Vila Medeiros': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 }
+                'Base Fagundes Filho': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0, stc_leste: 0 },
+                'Base Cajati': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0, stc_leste: 0 },
+                'Base Vila Medeiros': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0, stc_leste: 0 }
             }
         },
         regiao_leste: {
-            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
+            total_block: { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0, stc_leste: 0 },
             bases: {
-                'Base Monte Santo': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
-                'Base Aricanduva': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
-                'Base Catumbi': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 },
-                'Base Santo André': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0 }
+                'Base Monte Santo': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0, stc_leste: 0 },
+                'Base Aricanduva': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0, stc_leste: 0 },
+                'Base Catumbi': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0, stc_leste: 0 },
+                'Base Santo André': { total: 0, cesto: 0, leve: 0, moto: 0, linhaviva_munck: 0, ramal: 0, stc_leste: 0 }
             }
         }
     };
@@ -5998,9 +6022,10 @@ function computeRegionalBreakdown(teamList) {
 
     list.forEach(t => {
         const isRamal = t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal';
-        const isPesado = !isRamal && (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk');
+        const isStcLeste = t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste';
+        const isPesado = !isRamal && !isStcLeste && (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck' || t.unified_group === 'Linha Viva + Munk');
         const isCesto = t.vehicle_type === 'Cesto Aéreo';
-        const isLeve = t.vehicle_type === 'Veículo Leve';
+        const isLeve = !isStcLeste && t.vehicle_type === 'Veículo Leve';
         const isMoto = t.vehicle_type === 'Moto';
 
         const baseKey = normalizeBase(t.base_display || t.base_name, t.base_code || t.prefix);
@@ -6019,6 +6044,7 @@ function computeRegionalBreakdown(teamList) {
             if (isMoto) targetReg.total_block.moto++;
             if (isPesado) targetReg.total_block.linhaviva_munck++;
             if (isRamal) targetReg.total_block.ramal++;
+            if (isStcLeste) targetReg.total_block.stc_leste++;
 
             if (targetReg.bases[baseKey]) {
                 targetReg.bases[baseKey].total++;
@@ -6027,6 +6053,7 @@ function computeRegionalBreakdown(teamList) {
                 if (isMoto) targetReg.bases[baseKey].moto++;
                 if (isPesado) targetReg.bases[baseKey].linhaviva_munck++;
                 if (isRamal) targetReg.bases[baseKey].ramal++;
+                if (isStcLeste) targetReg.bases[baseKey].stc_leste++;
             }
         }
     });
@@ -6066,6 +6093,7 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elNorteMoto = document.getElementById('delNorteTotalMoto');
     const elNortePesado = document.getElementById('delNorteTotalPesado');
     const elNorteRamal = document.getElementById('delNorteTotalRamal');
+    const elNorteStcLeste = document.getElementById('delNorteTotalStcLeste');
 
     if (elNorteNum) elNorteNum.textContent = nb.total || 0;
     if (elNorteCesto) elNorteCesto.textContent = nb.cesto || 0;
@@ -6073,6 +6101,7 @@ function renderGroupedBasesMetrics(customTeamList) {
     if (elNorteMoto) elNorteMoto.textContent = nb.moto || 0;
     if (elNortePesado) elNortePesado.textContent = nb.linhaviva_munck || 0;
     if (elNorteRamal) elNorteRamal.textContent = nb.ramal || 0;
+    if (elNorteStcLeste) elNorteStcLeste.textContent = nb.stc_leste || 0;
 
     // Bases do Norte
     const nbBases = regNorte.bases || {};
@@ -6083,12 +6112,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBFagMoto = document.getElementById('delBaseFagundesMoto');
     const elBFagPesado = document.getElementById('delBaseFagundesPesado');
     const elBFagRamal = document.getElementById('delBaseFagundesRamal');
+    const elBFagStcLeste = document.getElementById('delBaseFagundesStcLeste');
     if (elBFagTot) elBFagTot.textContent = bFag.total || 0;
     if (elBFagCesto) elBFagCesto.textContent = bFag.cesto || 0;
     if (elBFagLeve) elBFagLeve.textContent = bFag.leve || 0;
     if (elBFagMoto) elBFagMoto.textContent = bFag.moto || 0;
     if (elBFagPesado) elBFagPesado.textContent = bFag.linhaviva_munck || 0;
     if (elBFagRamal) elBFagRamal.textContent = bFag.ramal || 0;
+    if (elBFagStcLeste) elBFagStcLeste.textContent = bFag.stc_leste || 0;
 
     const bCaj = nbBases['Base Cajati'] || {};
     const elBCajTot = document.getElementById('delBaseCajatiTotal');
@@ -6097,12 +6128,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBCajMoto = document.getElementById('delBaseCajatiMoto');
     const elBCajPesado = document.getElementById('delBaseCajatiPesado');
     const elBCajRamal = document.getElementById('delBaseCajatiRamal');
+    const elBCajStcLeste = document.getElementById('delBaseCajatiStcLeste');
     if (elBCajTot) elBCajTot.textContent = bCaj.total || 0;
     if (elBCajCesto) elBCajCesto.textContent = bCaj.cesto || 0;
     if (elBCajLeve) elBCajLeve.textContent = bCaj.leve || 0;
     if (elBCajMoto) elBCajMoto.textContent = bCaj.moto || 0;
     if (elBCajPesado) elBCajPesado.textContent = bCaj.linhaviva_munck || 0;
     if (elBCajRamal) elBCajRamal.textContent = bCaj.ramal || 0;
+    if (elBCajStcLeste) elBCajStcLeste.textContent = bCaj.stc_leste || 0;
 
     const bMed = nbBases['Base Vila Medeiros'] || {};
     const elBMedTot = document.getElementById('delBaseVilaMedeirosTotal');
@@ -6111,12 +6144,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBMedMoto = document.getElementById('delBaseVilaMedeirosMoto');
     const elBMedPesado = document.getElementById('delBaseVilaMedeirosPesado');
     const elBMedRamal = document.getElementById('delBaseVilaMedeirosRamal');
+    const elBMedStcLeste = document.getElementById('delBaseVilaMedeirosStcLeste');
     if (elBMedTot) elBMedTot.textContent = bMed.total || 0;
     if (elBMedCesto) elBMedCesto.textContent = bMed.cesto || 0;
     if (elBMedLeve) elBMedLeve.textContent = bMed.leve || 0;
     if (elBMedMoto) elBMedMoto.textContent = bMed.moto || 0;
     if (elBMedPesado) elBMedPesado.textContent = bMed.linhaviva_munck || 0;
     if (elBMedRamal) elBMedRamal.textContent = bMed.ramal || 0;
+    if (elBMedStcLeste) elBMedStcLeste.textContent = bMed.stc_leste || 0;
 
     // Totalizador Leste
     const lb = regLeste.total_block || {};
@@ -6126,6 +6161,7 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elLesteMoto = document.getElementById('delLesteTotalMoto');
     const elLestePesado = document.getElementById('delLesteTotalPesado');
     const elLesteRamal = document.getElementById('delLesteTotalRamal');
+    const elLesteStcLeste = document.getElementById('delLesteTotalStcLeste');
 
     if (elLesteNum) elLesteNum.textContent = lb.total || 0;
     if (elLesteCesto) elLesteCesto.textContent = lb.cesto || 0;
@@ -6133,6 +6169,7 @@ function renderGroupedBasesMetrics(customTeamList) {
     if (elLesteMoto) elLesteMoto.textContent = lb.moto || 0;
     if (elLestePesado) elLestePesado.textContent = lb.linhaviva_munck || 0;
     if (elLesteRamal) elLesteRamal.textContent = lb.ramal || 0;
+    if (elLesteStcLeste) elLesteStcLeste.textContent = lb.stc_leste || 0;
 
     // Bases do Leste
     const lbBases = regLeste.bases || {};
@@ -6143,12 +6180,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBMSMoto = document.getElementById('delBaseMonteSantoMoto');
     const elBMSPesado = document.getElementById('delBaseMonteSantoPesado');
     const elBMSRamal = document.getElementById('delBaseMonteSantoRamal');
+    const elBMSStcLeste = document.getElementById('delBaseMonteSantoStcLeste');
     if (elBMSTot) elBMSTot.textContent = bMS.total || 0;
     if (elBMSCesto) elBMSCesto.textContent = bMS.cesto || 0;
     if (elBMSLeve) elBMSLeve.textContent = bMS.leve || 0;
     if (elBMSMoto) elBMSMoto.textContent = bMS.moto || 0;
     if (elBMSPesado) elBMSPesado.textContent = bMS.linhaviva_munck || 0;
     if (elBMSRamal) elBMSRamal.textContent = bMS.ramal || 0;
+    if (elBMSStcLeste) elBMSStcLeste.textContent = bMS.stc_leste || 0;
 
     const bAri = lbBases['Base Aricanduva'] || {};
     const elBAriTot = document.getElementById('delBaseAricanduvaTotal');
@@ -6157,12 +6196,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBAriMoto = document.getElementById('delBaseAricanduvaMoto');
     const elBAriPesado = document.getElementById('delBaseAricanduvaPesado');
     const elBAriRamal = document.getElementById('delBaseAricanduvaRamal');
+    const elBAriStcLeste = document.getElementById('delBaseAricanduvaStcLeste');
     if (elBAriTot) elBAriTot.textContent = bAri.total || 0;
     if (elBAriCesto) elBAriCesto.textContent = bAri.cesto || 0;
     if (elBAriLeve) elBAriLeve.textContent = bAri.leve || 0;
     if (elBAriMoto) elBAriMoto.textContent = bAri.moto || 0;
     if (elBAriPesado) elBAriPesado.textContent = bAri.linhaviva_munck || 0;
     if (elBAriRamal) elBAriRamal.textContent = bAri.ramal || 0;
+    if (elBAriStcLeste) elBAriStcLeste.textContent = bAri.stc_leste || 0;
 
     const bCat = lbBases['Base Catumbi'] || {};
     const elBCatTot = document.getElementById('delBaseCatumbiTotal');
@@ -6171,12 +6212,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBCatMoto = document.getElementById('delBaseCatumbiMoto');
     const elBCatPesado = document.getElementById('delBaseCatumbiPesado');
     const elBCatRamal = document.getElementById('delBaseCatumbiRamal');
+    const elBCatStcLeste = document.getElementById('delBaseCatumbiStcLeste');
     if (elBCatTot) elBCatTot.textContent = bCat.total || 0;
     if (elBCatCesto) elBCatCesto.textContent = bCat.cesto || 0;
     if (elBCatLeve) elBCatLeve.textContent = bCat.leve || 0;
     if (elBCatMoto) elBCatMoto.textContent = bCat.moto || 0;
     if (elBCatPesado) elBCatPesado.textContent = bCat.linhaviva_munck || 0;
     if (elBCatRamal) elBCatRamal.textContent = bCat.ramal || 0;
+    if (elBCatStcLeste) elBCatStcLeste.textContent = bCat.stc_leste || 0;
 
     const bSA = lbBases['Base Santo André'] || {};
     const elBSATot = document.getElementById('delBaseSantoAndreTotal');
@@ -6185,12 +6228,14 @@ function renderGroupedBasesMetrics(customTeamList) {
     const elBSAMoto = document.getElementById('delBaseSantoAndreMoto');
     const elBSAPesado = document.getElementById('delBaseSantoAndrePesado');
     const elBSARamal = document.getElementById('delBaseSantoAndreRamal');
+    const elBSALesteStc = document.getElementById('delBaseSantoAndreStcLeste');
     if (elBSATot) elBSATot.textContent = bSA.total || 0;
     if (elBSACesto) elBSACesto.textContent = bSA.cesto || 0;
     if (elBSALeve) elBSALeve.textContent = bSA.leve || 0;
     if (elBSAMoto) elBSAMoto.textContent = bSA.moto || 0;
     if (elBSAPesado) elBSAPesado.textContent = bSA.linhaviva_munck || 0;
     if (elBSARamal) elBSARamal.textContent = bSA.ramal || 0;
+    if (elBSALesteStc) elBSALesteStc.textContent = bSA.stc_leste || 0;
 }
 
 // Garante que a tabela esteja expandida ao interagir com filtros
@@ -6382,11 +6427,12 @@ function renderDeliveryCharts() {
             const dataCesto = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Cesto Aéreo').length);
             const dataLeve = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Veículo Leve').length);
             const dataMoto = shifts.map(s => list.filter(t => t.shift_code === s && t.vehicle_type === 'Moto').length);
-            const dataPesado = shifts.map(s => list.filter(t => t.shift_code === s && (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck') && t.vehicle_type !== 'Projeto Ramal').length);
+            const dataPesado = shifts.map(s => list.filter(t => t.shift_code === s && (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck') && t.vehicle_type !== 'Projeto Ramal' && t.vehicle_type !== 'STC Leste').length);
             const dataRamal = shifts.map(s => list.filter(t => t.shift_code === s && (t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal')).length);
+            const dataStcLeste = shifts.map(s => list.filter(t => t.shift_code === s && (t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste')).length);
 
             // Calcula o maior total para dar folga no topo do eixo Y
-            const totalsPerShift = shifts.map((_, i) => dataCesto[i] + dataLeve[i] + dataMoto[i] + dataPesado[i] + dataRamal[i]);
+            const totalsPerShift = shifts.map((_, i) => dataCesto[i] + dataLeve[i] + dataMoto[i] + dataPesado[i] + dataRamal[i] + dataStcLeste[i]);
             const maxShiftTotal = Math.max(...totalsPerShift, 5);
 
             // Plugin para desenhar as quantidades no topo da coluna e dentro dos blocos
@@ -6445,7 +6491,8 @@ function renderDeliveryCharts() {
                         { label: 'Veículo Leve', data: dataLeve, backgroundColor: 'rgba(59, 130, 246, 0.85)', borderRadius: 6 },
                         { label: 'Moto', data: dataMoto, backgroundColor: 'rgba(16, 185, 129, 0.85)', borderRadius: 6 },
                         { label: 'Linha Viva / Munck', data: dataPesado, backgroundColor: 'rgba(192, 132, 252, 0.85)', borderRadius: 6 },
-                        { label: 'Projeto Ramal', data: dataRamal, backgroundColor: 'rgba(249, 115, 22, 0.85)', borderRadius: 6 }
+                        { label: 'Projeto Ramal', data: dataRamal, backgroundColor: 'rgba(249, 115, 22, 0.85)', borderRadius: 6 },
+                        { label: 'STC Leste', data: dataStcLeste, backgroundColor: 'rgba(236, 72, 153, 0.85)', borderRadius: 6 }
                     ]
                 },
                 options: {
@@ -6504,14 +6551,16 @@ function renderDeliveryCharts() {
                 ['Veículo', 'Leve'],
                 'Moto',
                 ['Linha Viva', '+ Munk'],
-                ['Projeto', 'Ramal']
+                ['Projeto', 'Ramal'],
+                ['STC', 'Leste']
             ];
             const fleetCounts = [
                 list.filter(t => t.vehicle_type === 'Cesto Aéreo').length,
-                list.filter(t => t.vehicle_type === 'Veículo Leve').length,
+                list.filter(t => t.vehicle_type === 'Veículo Leve' && t.vehicle_type !== 'STC Leste' && t.unified_group !== 'STC Leste').length,
                 list.filter(t => t.vehicle_type === 'Moto').length,
-                list.filter(t => (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck') && t.vehicle_type !== 'Projeto Ramal').length,
-                list.filter(t => t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal').length
+                list.filter(t => (t.vehicle_type === 'Linha Viva' || t.vehicle_type === 'Munck') && t.vehicle_type !== 'Projeto Ramal' && t.vehicle_type !== 'STC Leste').length,
+                list.filter(t => t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal').length,
+                list.filter(t => t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste').length
             ];
 
             const maxFleetCount = Math.max(...fleetCounts, 5);
@@ -6552,14 +6601,16 @@ function renderDeliveryCharts() {
                             'rgba(59, 130, 246, 0.85)',
                             'rgba(16, 185, 129, 0.85)',
                             'rgba(192, 132, 252, 0.85)',
-                            'rgba(249, 115, 22, 0.85)'
+                            'rgba(249, 115, 22, 0.85)',
+                            'rgba(236, 72, 153, 0.85)'
                         ],
                         borderColor: [
                             '#00f2fe',
                             '#3b82f6',
                             '#10b981',
                             '#c084fc',
-                            '#f97316'
+                            '#f97316',
+                            '#ec4899'
                         ],
                         borderWidth: 1.5,
                         borderRadius: 8
@@ -6790,6 +6841,8 @@ function renderDeliveryTable() {
                 <td>
                     ${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal') 
                         ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>` 
+                        : (t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste')
+                        ? `<span class="badge-vehicle-stc-leste" style="font-size: 0.72rem;">STC LESTE</span>`
                         : `<span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type || t.veiculo_portal || '--'}</span>`
                     }
                 </td>
@@ -7672,7 +7725,7 @@ function renderDailyAuditTable() {
                 <td><span class="team-badge" style="font-weight: 800;">${t.team_code}</span></td>
                 <td><strong style="color: var(--text-primary);">${t.base_display || t.base_name}</strong></td>
                 <td>${t.region} / <small style="font-weight: 800;">${t.company}</small></td>
-                <td>${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal') ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>` : `<strong>${t.vehicle_type || '--'}</strong>`}</td>
+                <td>${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal') ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>` : (t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste') ? `<span class="badge-vehicle-stc-leste" style="font-size: 0.72rem;">STC LESTE</span>` : `<strong>${t.vehicle_type || '--'}</strong>`}</td>
                 <td><span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">${t.login_time || '--:--'}</span></td>
                 <td><strong style="color:#38bdf8; font-family:'JetBrains Mono', monospace;">${t.login_real || '--:--'}</strong></td>
                 <td>${logoffHtml}</td>
@@ -7720,6 +7773,7 @@ async function loadComparisonAudit(dates) {
                 moto: summary.moto || 0,
                 linhaviva: summary.linhaviva_munck || 0,
                 ramal: summary.ramal || 0,
+                stc_leste: summary.stc_leste || 0,
                 shifts: summary.shifts || {},
                 teams: res.teams || []
             };
@@ -7743,6 +7797,7 @@ async function loadComparisonAudit(dates) {
                         <span>M: <strong>${r.moto}</strong></span>
                         <span>LV: <strong>${r.linhaviva}</strong></span>
                         <span>PR: <strong style="color: #fb923c;">${r.ramal || 0}</strong></span>
+                        <span>STC: <strong style="color: #ec4899;">${r.stc_leste || 0}</strong></span>
                     </div>
                 </div>
             `).join('');
@@ -7774,6 +7829,7 @@ async function loadComparisonAudit(dates) {
                         <td><strong style="color: #10b981; font-family: 'JetBrains Mono';">${r.moto}</strong></td>
                         <td><strong style="color: #c084fc; font-family: 'JetBrains Mono';">${r.linhaviva}</strong></td>
                         <td><strong style="color: #fb923c; font-family: 'JetBrains Mono';">${r.ramal || 0}</strong></td>
+                        <td><strong style="color: #ec4899; font-family: 'JetBrains Mono';">${r.stc_leste || 0}</strong></td>
                         <td><span class="shift-pill">${topShiftDisplay}</span></td>
                     </tr>
                 `;
@@ -7806,13 +7862,13 @@ function renderComparisonBarChart(results) {
         { bg: 'rgba(239, 68, 68, 0.85)', border: '#ef4444' }
     ];
 
-    const labels = ['Total Entregue', 'Cesto Aéreo', 'Veículo Leve', 'Moto', 'Linha Viva + Munk', 'Projeto Ramal'];
+    const labels = ['Total Entregue', 'Cesto Aéreo', 'Veículo Leve', 'Moto', 'Linha Viva + Munk', 'Projeto Ramal', 'STC Leste'];
 
     const datasets = results.map((r, idx) => {
         const color = dateColors[idx % dateColors.length];
         return {
             label: r.dateFormatted,
-            data: [r.total, r.cesto, r.leve, r.moto, r.linhaviva, r.ramal || 0],
+            data: [r.total, r.cesto, r.leve, r.moto, r.linhaviva, r.ramal || 0, r.stc_leste || 0],
             backgroundColor: color.bg,
             borderColor: color.border,
             borderWidth: 1.5,
@@ -7901,7 +7957,8 @@ function exportComparisonExcel() {
         "Veículo Leve": r.leve,
         "Moto": r.moto,
         "Linha Viva + Munk": r.linhaviva,
-        "Projeto Ramal": r.ramal || 0
+        "Projeto Ramal": r.ramal || 0,
+        "STC Leste": r.stc_leste || 0
     }));
     if (window.XLSX) {
         const ws = XLSX.utils.json_to_sheet(rows);
@@ -7930,6 +7987,7 @@ async function loadMonthlyHistoryAudit() {
         const elAvgMoto = document.getElementById('histMonthAvgMoto');
         const elAvgPesado = document.getElementById('histMonthAvgPesado');
         const elAvgRamal = document.getElementById('histMonthAvgRamal');
+        const elAvgStcLeste = document.getElementById('histMonthAvgStcLeste');
 
         if (elAvgTot) elAvgTot.textContent = (data.avg_total || 0).toFixed(1);
         if (elDays) elDays.textContent = `Calculado sobre ${data.operating_days || 0} dias com operação registrada`;
@@ -7938,6 +7996,7 @@ async function loadMonthlyHistoryAudit() {
         if (elAvgMoto) elAvgMoto.textContent = (data.avg_moto || 0).toFixed(1);
         if (elAvgPesado) elAvgPesado.textContent = (data.avg_linhaviva_munck || 0).toFixed(1);
         if (elAvgRamal) elAvgRamal.textContent = (data.avg_ramal || 0).toFixed(1);
+        if (elAvgStcLeste) elAvgStcLeste.textContent = (data.avg_stc_leste || 0).toFixed(1);
 
         // Gráfico Mensal de Barras Diárias com Linha de Média
         renderMonthlyBarChart(data);
@@ -8213,7 +8272,7 @@ function initPeriodFiltersControls(uniqueDimensions) {
     if (vehList) {
         const tmaVehicles = ['Cesto Aéreo', 'Veículo Leve', 'Moto'];
         const sotVehicles = ['Linha Viva', 'Munck'];
-        const projetoVehicles = ['Projeto Ramal'];
+        const projetoVehicles = ['Projeto Ramal', 'STC Leste'];
         const standardVehicles = new Set([...tmaVehicles, ...sotVehicles, ...projetoVehicles]);
         const otherVehicles = (uniqueDimensions.vehicles || []).filter(v => !standardVehicles.has(v));
 
@@ -14587,6 +14646,14 @@ const TV_RAMAL_CODES = new Set([
     'EEL216', 'EEL217', 'EEL218', 'EEL219', 'EEL220'
 ]);
 
+const TV_STC_LESTE_CODES = new Set([
+    'ECL313', 'ECL314', 'ECL315', 'ECL316', 'ECL317',
+    'EEL305', 'EEL306', 'EEL307', 'EEL308', 'EEL309',
+    'ENL312', 'ENL313', 'ENL314', 'ENL315', 'ENL316',
+    'EML310', 'EML311', 'EML312', 'EML313', 'EML314',
+    'EQL303', 'EQL304', 'EQL305', 'EQL306', 'EQL307'
+]);
+
 function isTvRamalTeam(teamId) {
     if (!teamId) return false;
     const cleanId = String(teamId).trim().toUpperCase();
@@ -14595,6 +14662,12 @@ function isTvRamalTeam(teamId) {
         return true;
     }
     return false;
+}
+
+function isTvStcLesteTeam(teamId) {
+    if (!teamId) return false;
+    const cleanId = String(teamId).trim().toUpperCase();
+    return TV_STC_LESTE_CODES.has(cleanId) || TV_STC_LESTE_CODES.has(cleanId.replace('A', 'L'));
 }
 
 function initTvDashboard() {
@@ -14796,6 +14869,7 @@ function renderTvDeliverySection() {
     let moto = 0;
     let linhaVivaMunk = 0;
     let ramal = 0;
+    let stcLeste = 0;
 
     teams.forEach(t => {
         const id = String(t.team_code || t.team_id || t.equipe || '').trim().toUpperCase();
@@ -14803,6 +14877,8 @@ function renderTvDeliverySection() {
 
         if (isTvRamalTeam(id) || tipo.includes('RAMAL')) {
             ramal += 1;
+        } else if (isTvStcLesteTeam(id) || tipo.includes('STC LESTE') || tipo.includes('STC')) {
+            stcLeste += 1;
         } else if (tipo.includes('MOTO') || id.replace(/\D/g, '').startsWith('7')) {
             moto += 1;
         } else if (tipo.includes('CESTO') || tipo.includes('AEREO') || tipo.includes('AÉREO')) {
@@ -14829,6 +14905,8 @@ function renderTvDeliverySection() {
     const elMunkSub = document.getElementById('tvKpiMunkSub');
     const elRamal = document.getElementById('tvKpiProjetoRamal');
     const elRamalSub = document.getElementById('tvKpiRamalSub');
+    const elStcLeste = document.getElementById('tvKpiStcLeste');
+    const elStcLesteSub = document.getElementById('tvKpiStcLesteSub');
 
     const pct = val => totalAtivas > 0 ? `${Math.round((val / totalAtivas) * 100)}%` : '0%';
 
@@ -14843,6 +14921,8 @@ function renderTvDeliverySection() {
     if (elMunkSub) elMunkSub.textContent = pct(linhaVivaMunk);
     if (elRamal) elRamal.textContent = ramal.toLocaleString('pt-BR');
     if (elRamalSub) elRamalSub.textContent = pct(ramal);
+    if (elStcLeste) elStcLeste.textContent = stcLeste.toLocaleString('pt-BR');
+    if (elStcLesteSub) elStcLesteSub.textContent = pct(stcLeste);
 
     // Meta se disponível no backend
     const meta = data.target_teams || (scope === 'NORTE' ? 70 : scope === 'LESTE' ? 95 : 165);
@@ -14857,7 +14937,8 @@ function renderTvDeliverySection() {
         { label: 'Veículo Leve', value: leve, color: '#3b82f6' },
         { label: 'Moto', value: moto, color: '#10b981' },
         { label: 'Linha Viva + Munk', value: linhaVivaMunk, color: '#c084fc' },
-        { label: 'Projeto Ramal', value: ramal, color: '#f97316' }
+        { label: 'Projeto Ramal', value: ramal, color: '#f97316' },
+        { label: 'STC Leste', value: stcLeste, color: '#ec4899' }
     ], totalAtivas);
 }
 
@@ -14974,6 +15055,7 @@ function renderTvHourlyChart(teams, serverCurve) {
         const tipo = String(t.vehicle_type || t.unified_group || t.tipo || '').trim().toUpperCase();
 
         if (isTvRamalTeam(id) || tipo.includes('RAMAL')) return 'ramal';
+        if (isTvStcLesteTeam(id) || tipo.includes('STC LESTE') || tipo.includes('STC')) return 'stc_leste';
         if (tipo.includes('MOTO') || id.replace(/\D/g, '').startsWith('7')) return 'moto';
         if (tipo.includes('CESTO') || tipo.includes('AEREO') || tipo.includes('AÉREO')) return 'cesto';
         if (tipo.includes('LINHA VIVA') || tipo.includes('MUNK') || tipo.includes('MUNCK') || tipo.includes('GUINDASTE')) return 'pesado';
@@ -15008,7 +15090,7 @@ function renderTvHourlyChart(teams, serverCurve) {
     // Matriz de dados empilhados: Turnos x Categorias
     const matrix = {};
     shiftSlots.forEach(s => {
-        matrix[s] = { cesto: 0, leve: 0, moto: 0, pesado: 0, ramal: 0, total: 0 };
+        matrix[s] = { cesto: 0, leve: 0, moto: 0, pesado: 0, ramal: 0, stc_leste: 0, total: 0 };
     });
 
     teams.forEach(t => {
@@ -15037,6 +15119,7 @@ function renderTvHourlyChart(teams, serverCurve) {
     const dataMoto = shiftSlots.map(s => matrix[s].moto);
     const dataPesado = shiftSlots.map(s => matrix[s].pesado);
     const dataRamal = shiftSlots.map(s => matrix[s].ramal);
+    const dataStcLeste = shiftSlots.map(s => matrix[s].stc_leste);
     const totalsPerShift = shiftSlots.map(s => matrix[s].total);
     const maxShiftTotal = Math.max(...totalsPerShift, 5);
 
@@ -15133,6 +15216,15 @@ function renderTvHourlyChart(teams, serverCurve) {
                     data: dataRamal,
                     backgroundColor: 'rgba(249, 115, 22, 0.85)',
                     borderColor: '#f97316',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    stack: 'shifts'
+                },
+                {
+                    label: 'STC Leste',
+                    data: dataStcLeste,
+                    backgroundColor: 'rgba(236, 72, 153, 0.85)',
+                    borderColor: '#ec4899',
                     borderWidth: 1,
                     borderRadius: 4,
                     stack: 'shifts'

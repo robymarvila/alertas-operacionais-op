@@ -5659,6 +5659,25 @@ body.theme-light .auth-tab-btn.active {
     border: 1px solid rgba(249, 115, 22, 0.35);
 }
 
+.badge-vehicle-stc-leste {
+    background: rgba(236, 72, 153, 0.18);
+    color: #f472b6;
+    border: 1px solid rgba(236, 72, 153, 0.35);
+}
+
+.pill-stc-leste {
+    background: rgba(236, 72, 153, 0.15);
+    color: #f472b6;
+    border: 1px solid rgba(236, 72, 153, 0.4);
+    box-shadow: 0 0 14px rgba(236, 72, 153, 0.28);
+}
+
+.tag-stc-pink {
+    background: rgba(236, 72, 153, 0.2);
+    color: #f472b6;
+    border: 1px solid rgba(236, 72, 153, 0.4);
+}
+
 .pill-outros {
     background: rgba(148, 163, 184, 0.12);
     color: #cbd5e1;
