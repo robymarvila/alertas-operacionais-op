@@ -5703,6 +5703,135 @@ body.theme-light .auth-tab-btn.active {
 .shift-20h { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.35); }
 .shift-22h { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.35); }
 
+/* Badges e Células de Término, Tempo Ativo e Turno x Login */
+.badge-termino {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(245, 158, 11, 0.16);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+}
+
+body.theme-light .badge-termino {
+    background: rgba(217, 119, 6, 0.12);
+    color: #b45309;
+    border-color: rgba(217, 119, 6, 0.35);
+}
+
+.badge-tempo-ativo {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 0.76rem;
+    white-space: nowrap;
+}
+
+.badge-tempo-ativo-active {
+    background: rgba(16, 185, 129, 0.14);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.38);
+}
+
+.badge-tempo-ativo-active .live-pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: pulseActive 1.6s infinite ease-in-out;
+}
+
+.badge-tempo-ativo-delayed {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.42);
+}
+
+.badge-tempo-ativo-delayed .live-pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #ef4444;
+    box-shadow: 0 0 8px #ef4444;
+    animation: pulseActive 1s infinite ease-in-out;
+}
+
+.badge-tempo-ativo-overtime {
+    background: rgba(249, 115, 22, 0.15);
+    color: #f97316;
+    border: 1px solid rgba(249, 115, 22, 0.38);
+}
+
+.badge-tempo-ativo-done {
+    background: rgba(148, 163, 184, 0.14);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.badge-turno-login-atraso {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(239, 68, 68, 0.16);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.badge-turno-login-pontual {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(16, 185, 129, 0.14);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.badge-turno-login-pendente {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(148, 163, 184, 0.12);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+@keyframes pulseActive {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.35);
+        opacity: 0.4;
+    }
+}
+
 /* Overrides para Modo Claro no Módulo de Entrega */
 body.theme-light .delivery-filter-bar,
 body.theme-light .kpi-card-liquid,
@@ -6256,6 +6385,283 @@ html.route-hub #portalHubView { display: flex !important; }
     pointer-events: none !important;
     overflow: hidden !important;
 }
+
+/* ========================================================================== */
+/* TABELA NOMINAL DE EQUIPES ENTREGUES - ULTRA-PREMIUM REDESIGN               */
+/* ========================================================================== */
+
+/* 1. Scroll Wrapper com Cabeçalho Fixo Congelado */
+.delivery-table-scroll-wrapper {
+    position: relative;
+    max-height: 68vh;
+    overflow-y: auto;
+    overflow-x: auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(11, 17, 32, 0.85);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.delivery-table-scroll-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.delivery-table-scroll-wrapper::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.8);
+    border-radius: 8px;
+}
+.delivery-table-scroll-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(56, 189, 248, 0.3);
+    border-radius: 8px;
+    border: 2px solid rgba(15, 23, 42, 0.8);
+}
+.delivery-table-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(56, 189, 248, 0.6);
+}
+
+/* 2. Tabela de Alta Densidade e Cabeçalhos Sticky Congelados */
+.delivery-enhanced-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    text-align: left;
+}
+
+.delivery-enhanced-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: #0d1527 !important;
+    background: linear-gradient(180deg, #162035 0%, #0d1527 100%) !important;
+    color: #94a3b8;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 12px 14px;
+    border-bottom: 2px solid rgba(56, 189, 248, 0.45);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.delivery-enhanced-table thead th:hover {
+    background: #1e293b !important;
+    color: #38bdf8;
+}
+
+.delivery-enhanced-table thead th.th-active-sort {
+    color: #38bdf8;
+    border-bottom: 2px solid #38bdf8;
+    background: linear-gradient(180deg, rgba(56, 189, 248, 0.15) 0%, #0d1527 100%) !important;
+}
+
+.th-sort-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.th-sort-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    transition: all 0.15s ease;
+}
+
+.th-sort-badge.active-asc {
+    background: rgba(56, 189, 248, 0.25);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.5);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+
+.th-sort-badge.active-desc {
+    background: rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.25);
+}
+
+/* 3. Linhas da Tabela (Design Refinado, Zebrado e Hover) */
+.delivery-enhanced-table tbody tr {
+    background: rgba(15, 23, 42, 0.45);
+    transition: all 0.15s ease;
+}
+
+.delivery-enhanced-table tbody tr:nth-child(even) {
+    background: rgba(30, 41, 59, 0.32);
+}
+
+.delivery-enhanced-table tbody tr:hover {
+    background: rgba(56, 189, 248, 0.08) !important;
+    box-shadow: inset 3px 0 0 #38bdf8;
+}
+
+.delivery-enhanced-table tbody td {
+    padding: 10px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.035);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+    vertical-align: middle;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+/* 4. Dropdown Menu de Seleção de Colunas Customizáveis */
+.delivery-col-dropdown-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.delivery-col-picker-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 1000;
+    width: 290px;
+    background: #0f172a;
+    background: linear-gradient(180deg, #131d35 0%, #0c1426 100%);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 16px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(56, 189, 248, 0.15);
+    padding: 14px;
+    backdrop-filter: blur(20px);
+    animation: fadeInDownCol 0.2s ease-out;
+}
+
+@keyframes fadeInDownCol {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.col-picker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.col-picker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.col-picker-list::-webkit-scrollbar {
+    width: 5px;
+}
+.col-picker-list::-webkit-scrollbar-thumb {
+    background: rgba(56, 189, 248, 0.3);
+    border-radius: 4px;
+}
+
+.col-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #e2e8f0;
+    transition: background 0.15s ease;
+    user-select: none;
+}
+
+.col-picker-item:hover {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+}
+
+.col-picker-item input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: #38bdf8;
+    cursor: pointer;
+}
+
+.col-picker-tag {
+    margin-left: auto;
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+}
+
+.btn-text-xs {
+    background: none;
+    border: none;
+    color: #38bdf8;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: background 0.15s ease;
+}
+.btn-text-xs:hover {
+    background: rgba(56, 189, 248, 0.15);
+    text-decoration: underline;
+}
+
+/* 5. Modo Tela Cheia (ONE PAGE) */
+.delivery-table-collapsible-wrapper.delivery-table-fullscreen,
+.delivery-table-card.delivery-table-fullscreen {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    z-index: 999999 !important;
+    background: #080d1a !important;
+    padding: 16px 24px !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+.delivery-table-collapsible-wrapper.delivery-table-fullscreen .delivery-table-body-container {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    margin-top: 12px !important;
+}
+
+.delivery-table-collapsible-wrapper.delivery-table-fullscreen .delivery-table-scroll-wrapper,
+.delivery-table-card.delivery-table-fullscreen .delivery-table-scroll-wrapper {
+    flex: 1 1 auto !important;
+    max-height: calc(100vh - 90px) !important;
+    height: 100% !important;
+}
+
+body.delivery-fullscreen-active {
+    overflow: hidden !important;
+}
+
 
 /* Tela 2: Auditoria & Histórico */
 .history-screen-wrapper {

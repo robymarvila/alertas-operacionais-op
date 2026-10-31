@@ -537,6 +537,9 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                     "plate_cadastrada": bool(t.get("plate_cadastrada", False)),
                     "situacao_veiculo_cadastrado": str(t.get("situacao_veiculo_cadastrado", "SEM PLACA INFORMADA")),
                     "status_veiculo_cadastrado": str(t.get("status_veiculo_cadastrado", "--")),
+                    "termino": str(t.get("termino", t.get("logoff_time", "--"))),
+                    "turno_x_login": str(t.get("turno_x_login", "--")),
+                    "turno_x_login_minutos": int(t.get("turno_x_login_minutos", 0)),
                     "is_active": is_act,
                     "sync_source": sync_source
                 })
@@ -548,7 +551,8 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                 "status_equipes_brasil", "data_inicio_descanso", "hora_inicio_descanso",
                 "ordem_servico", "marcacao", "desvio", "desvio_minutos", "order_history",
                 "plate_clean", "plate_cadastrada",
-                "situacao_veiculo_cadastrado", "status_veiculo_cadastrado"
+                "situacao_veiculo_cadastrado", "status_veiculo_cadastrado",
+                "termino", "turno_x_login", "turno_x_login_minutos"
             }
 
             for i in range(0, len(records_payload), 100):

@@ -228,6 +228,146 @@ def is_linha_viva_or_munck(team_code: str = "", vehicle_type: str = "", base: st
         return True
     return False
 
+def is_regiao_norte(team_code: str = "", base: str = "", region: str = "", geo: str = "") -> bool:
+    """Verifica se a equipe pertence à Região Norte."""
+    if region and "norte" in str(region).lower():
+        return True
+    if geo and "norte" in str(geo).lower():
+        return True
+    if base:
+        b_up = str(base).upper()
+        if any(nb in b_up for nb in ["FAGUNDES", "CAJATI", "VILA MEDEIROS", "NORTE"]):
+            return True
+        if any(lb in b_up for lb in ["MONTE SANTO", "ARICANDUVA", "CATUMBI", "SANTO ANDRÉ", "SANTO ANDRE", "LESTE"]):
+            return False
+    code = str(team_code or "").strip().upper()
+    prefix = code[:3]
+    if prefix in {"ENL", "ECL", "EEL", "ENA", "ECA", "EEA"}:
+        return True
+    return False
+
+def get_team_shift_duration_hours(team_code: str = "", vehicle_type: str = "", region: str = "", base: str = "", geo: str = "", date_ref: str = "") -> int:
+    """
+    Retorna a duração da jornada diária da equipe em horas (regra de tempo corrido sem intervalo):
+    - Linha Viva: Região Norte = 10h; Região Leste = 8h
+    - Munck: Região Norte = 10h; Região Leste = 8h
+    - Cesto Aéreo: 8h
+    - Veículo Leve: 8h
+    - Projeto Ramal (Norte ou Leste): 8h
+    - STC Leste: 8h
+    - Moto: 8h
+    - Demais: 8h
+    """
+    code = str(team_code or "").strip().upper()
+    vt = str(vehicle_type or "").strip()
+
+    # Projeto Ramal e STC Leste têm jornada de 8h fixas
+    if is_projeto_ramal(code, vt, base=base, date_ref=date_ref) or is_stc_leste(code, vt, base=base, date_ref=date_ref):
+        return 8
+
+    if is_linha_viva_or_munck(code, vt, base=base, date_ref=date_ref):
+        if is_regiao_norte(code, base=base, region=region, geo=geo):
+            return 10
+        else:
+            return 8
+
+    return 8
+
+def calculate_team_schedule(team_code: str = "", vehicle_type: str = "", region: str = "", base: str = "", geo: str = "",
+                            login_time: str = "--:--", marcacao: str = "--", shift_code: str = "08:00", date_ref: str = "") -> dict:
+    """
+    Calcula:
+    1. shift_hours: Duração da jornada (10h para Linha Viva/Munck Norte, 8h para as demais)
+    2. termino: Horário previsto de término/logoff calculado com base na Marcação (ou Turno Programado se sem marcação)
+    3. turno_x_login: Comparativo de pontualidade/atraso entre Marcação e Turno Programado
+    4. turno_x_login_minutos: Diferença em minutos (positivo = atraso, negativo = adiantado)
+    """
+    shift_hours = get_team_shift_duration_hours(team_code, vehicle_type, region=region, base=base, geo=geo, date_ref=date_ref)
+
+    marc_clean = str(marcacao or "").strip()
+    has_marcacao = bool(marc_clean and marc_clean not in ['--', '-', '', 'None', 'nan', '--:--'])
+
+    # Horário de referência para cálculo do término
+    ref_start = None
+    start_str = marc_clean if has_marcacao else str(shift_code or login_time or "08:00").strip()
+    if not start_str or start_str in ['--', '-', '', 'None', 'nan', '--:--']:
+        start_str = "08:00"
+
+    try:
+        parts = start_str.split(':')
+        if len(parts) >= 2:
+            sh = int(parts[0])
+            sm = int(parts[1])
+            ref_start = (sh, sm)
+    except Exception:
+        ref_start = None
+
+    if ref_start is not None:
+        end_h = (ref_start[0] + shift_hours) % 24
+        end_m = ref_start[1]
+        termino = f"{end_h:02d}:{end_m:02d}"
+    else:
+        termino = "--:--"
+
+    # Turno programado de referência para Turno x Login (prioriza turno oficial: 06:00, 08:00, 12:00, 14:00, 20:00, 22:00)
+    prog_start_str = str(shift_code or "").strip()
+    if not prog_start_str or prog_start_str in ['--', '-', '', 'None', 'nan', '--:--']:
+        prog_start_str = str(login_time or "").strip()
+    if not prog_start_str or prog_start_str in ['--', '-', '', 'None', 'nan', '--:--']:
+        prog_start_str = "08:00"
+
+    prog_min = None
+    try:
+        p_parts = prog_start_str.split(':')
+        if len(p_parts) >= 2:
+            prog_min = int(p_parts[0]) * 60 + int(p_parts[1])
+    except Exception:
+        prog_min = None
+
+    turno_x_login = "--"
+    turno_x_login_minutos = 0
+
+    if has_marcacao:
+        try:
+            m_parts = marc_clean.split(':')
+            if len(m_parts) >= 2 and prog_min is not None:
+                m_min = int(m_parts[0]) * 60 + int(m_parts[1])
+                diff_min = m_min - prog_min
+                if diff_min < -720:
+                    diff_min += 1440
+                elif diff_min > 720:
+                    diff_min -= 1440
+                turno_x_login_minutos = diff_min
+                if diff_min > 0:
+                    turno_x_login = f"+{diff_min} min"
+                elif diff_min < 0:
+                    turno_x_login = f"{diff_min} min"
+                else:
+                    turno_x_login = "Pontual"
+        except Exception:
+            turno_x_login = "--"
+            turno_x_login_minutos = 0
+    else:
+        # Se não tiver marcação: verifica se já passou do horário do turno (se for a data atual)
+        today_str = datetime.now(BR_TZ).strftime("%Y-%m-%d")
+        if (not date_ref or str(date_ref).strip()[:10] == today_str) and prog_min is not None:
+            now_br = datetime.now(BR_TZ)
+            now_min = now_br.hour * 60 + now_br.minute
+            diff_now = now_min - prog_min
+            if diff_now > 0:
+                turno_x_login_minutos = diff_now
+                turno_x_login = f"+{diff_now} min (Atraso)"
+            else:
+                turno_x_login = "--"
+                turno_x_login_minutos = 0
+
+    return {
+        "shift_hours": shift_hours,
+        "termino": termino,
+        "turno_x_login": turno_x_login,
+        "turno_x_login_minutos": turno_x_login_minutos
+    }
+
 def classify_spotfire_shift_and_turno(sp_record: dict) -> dict:
     """
     Extrai e classifica com precisão o Turno (Manhã, Tarde, Noite) e o Agrupamento de Horário
@@ -484,7 +624,16 @@ class DeliveryManager:
                             raw_shift = t.get("shift_raw") or f"{t.get('login_time', '')}-{t.get('logoff_time', '')}"
                             veh_info = self.classify_vehicle(code)
                             v_type = t.get("vehicle_type") or veh_info.get("type")
-                            s_info = self.parse_shift_window(raw_shift, team_code=code, vehicle_type=v_type)
+                            s_info = self.parse_shift_window(
+                                raw_shift,
+                                team_code=code,
+                                vehicle_type=v_type,
+                                marcacao_time=t.get("marcacao", "--"),
+                                base=t.get("base_display") or t.get("geo") or t.get("base_raw"),
+                                region=t.get("region", ""),
+                                geo=t.get("geo", ""),
+                                date_ref=cached_date
+                            )
                             t.update(s_info)
                             # Se for após as 04:30 da manhã e o turno for da noite anterior (20h/22h) já inativo, descarta
                             if (now.hour > 4 or (now.hour == 4 and now.minute >= 31)) and not t.get("is_active", True) and t.get("shift_code") in ["20:00", "22:00"]:
@@ -653,7 +802,8 @@ class DeliveryManager:
                 "category": "Apoio"
             }
 
-    def parse_shift_window(self, shift_str: str, team_code: str = "", vehicle_type: str = "", marcacao_time: str = "") -> dict:
+    def parse_shift_window(self, shift_str: str, team_code: str = "", vehicle_type: str = "", marcacao_time: str = "",
+                           base: str = "", region: str = "", geo: str = "", date_ref: str = "") -> dict:
         """
         Interpreta a escala da equipe e enquadra no turno oficial.
         
@@ -758,9 +908,26 @@ class DeliveryManager:
                     shift_pill_class = "shift-22h"
                     turno = "Noite"
 
+        sched = calculate_team_schedule(
+            team_code=team_code,
+            vehicle_type=vehicle_type,
+            region=region,
+            base=base,
+            geo=geo,
+            login_time=login_time,
+            marcacao=marcacao_time,
+            shift_code=shift_code,
+            date_ref=date_ref or getattr(self, "current_date_str", "")
+        )
+        termino_calc = sched["termino"]
+
         return {
             "login_time": login_time,
-            "logoff_time": logoff_time,
+            "logoff_time": termino_calc if termino_calc != "--:--" else logoff_time,
+            "termino": termino_calc,
+            "turno_x_login": sched["turno_x_login"],
+            "turno_x_login_minutos": sched["turno_x_login_minutos"],
+            "shift_hours": sched["shift_hours"],
             "shift_slot": shift_slot,
             "shift_code": shift_code,
             "shift_pill_class": shift_pill_class,
@@ -787,12 +954,26 @@ class DeliveryManager:
             v_type = veh_info["type"]
             raw_shift = t.get("raw_shift") or t.get("shift_raw") or f"{t.get('login_time', '')}-{t.get('logoff_time', '')}"
             marcacao = t.get("marcacao") or "--"
-            s_info = self.parse_shift_window(raw_shift, team_code=code, vehicle_type=v_type, marcacao_time=marcacao)
+            s_info = self.parse_shift_window(
+                raw_shift,
+                team_code=code,
+                vehicle_type=v_type,
+                marcacao_time=marcacao,
+                base=base_hint,
+                region=t.get("region", ""),
+                geo=t.get("geo", ""),
+                date_ref=self.current_date_str
+            )
             t["shift_slot"] = s_info["shift_slot"]
             t["shift_code"] = s_info["shift_code"]
             t["shift_pill_class"] = s_info["shift_pill_class"]
             t["turno"] = s_info.get("turno", "Manhã" if s_info["shift_code"] in ["06:00", "08:00"] else "Noite")
             t["status_login"] = s_info.get("status_login", "PROGRAMADA")
+            t["shift_hours"] = s_info.get("shift_hours", 8)
+            t["termino"] = s_info.get("termino", "--")
+            t["logoff_time"] = s_info.get("termino", t.get("logoff_time", "--"))
+            t["turno_x_login"] = s_info.get("turno_x_login", "--")
+            t["turno_x_login_minutos"] = s_info.get("turno_x_login_minutos", 0)
 
         # Atualiza equipes ativas espelhando as acumuladas
         self.active_teams = [t for t in self.daily_accumulated_teams.values() if t.get("is_active", True)]
@@ -904,6 +1085,10 @@ class DeliveryManager:
         active_processed = []
 
         for rec in raw_records:
+            gps_min_input = None
+            data_desc_input = None
+            hora_desc_input = None
+
             if isinstance(rec, dict):
                 team_code = str(rec.get("EQUIPE") or rec.get("equipe") or rec.get("code") or rec.get("team_code") or "").strip().upper()
                 shift_raw = rec.get("TURNO") or rec.get("turno") or rec.get("shift") or rec.get("login_time") or rec.get("shift_slot") or ""
@@ -915,8 +1100,11 @@ class DeliveryManager:
                 ut = rec.get("UT") or rec.get("ut") or "--"
                 base_raw = rec.get("BASE") or rec.get("base") or rec.get("base_name") or rec.get("base_code") or "--"
                 filial = rec.get("FILIAL") or rec.get("filial") or "--"
-                gps_raw = rec.get("GPS") or rec.get("gps") or "--"
-                descanso_raw = rec.get("INICIO_DESCANSO") or rec.get("INÍCIO DESCANSO") or rec.get("inicio_descanso") or rec.get("data_inicio_descanso") or "--"
+                gps_raw = rec.get("GPS") or rec.get("gps") or rec.get("gps_update_str") or "--"
+                gps_min_input = rec.get("gps_update_minutes")
+                descanso_raw = rec.get("INICIO_DESCANSO") or rec.get("INÍCIO DESCANSO") or rec.get("inicio_descanso") or "--"
+                data_desc_input = rec.get("data_inicio_descanso")
+                hora_desc_input = rec.get("hora_inicio_descanso")
                 ordem_raw = rec.get("ORDEM") or rec.get("ordem") or rec.get("ordem_servico") or "--"
                 marcacao_raw = rec.get("MARCACAO") or rec.get("marcacao") or rec.get("MARCAÇÃO") or rec.get("marcação") or rec.get("RAW_MARCACAO") or "--"
                 desvio_raw = rec.get("DESVIO") or rec.get("desvio") or "--"
@@ -990,37 +1178,55 @@ class DeliveryManager:
 
             # Tratamento de GPS (String original e Minutos inteiros)
             gps_str = str(gps_raw or "").strip()
-            gps_update_str = gps_str if gps_str and gps_str not in ['-', '--'] else "--"
+            gps_update_str = gps_str if gps_str and gps_str not in ['-', '--', 'None', 'nan'] else "--"
             gps_update_minutes = None
-            if gps_update_str != "--":
+
+            # 1. Se já veio gps_update_minutes válido (ex: vindo do banco Supabase ou processamento anterior)
+            if 'gps_min_input' in locals() and gps_min_input is not None and str(gps_min_input).strip() not in ['', 'None', 'nan', '--']:
+                try:
+                    gps_update_minutes = int(gps_min_input)
+                    if gps_update_str == "--":
+                        gps_update_str = f"{gps_update_minutes}min"
+                except Exception:
+                    gps_update_minutes = None
+
+            # 2. Se ainda não possui minutos inteiros, extrai de forma robusta da string do CDP
+            if gps_update_minutes is None and gps_update_str != "--":
                 try:
                     total_m = 0
+                    has_match = False
                     h_match = re.search(r'(\d+)\s*h', gps_update_str, re.IGNORECASE)
-                    m_match = re.search(r'(\d+)\s*min', gps_update_str, re.IGNORECASE)
+                    m_match = re.search(r'(\d+)\s*m', gps_update_str, re.IGNORECASE)
                     if h_match:
                         total_m += int(h_match.group(1)) * 60
+                        has_match = True
                     if m_match:
                         total_m += int(m_match.group(1))
+                        has_match = True
                     elif not h_match and re.search(r'^\d+$', gps_update_str):
                         total_m = int(gps_update_str)
-                    gps_update_minutes = total_m
+                        has_match = True
+                    if has_match:
+                        gps_update_minutes = total_m
                 except Exception:
                     gps_update_minutes = None
 
             # Tratamento de INÍCIO DESCANSO (Separar Data e Hora)
+            data_inicio_descanso = str(data_desc_input).strip() if ('data_desc_input' in locals() and data_desc_input and str(data_desc_input).strip() not in ['-', '--', 'None', 'nan']) else None
+            hora_inicio_descanso = str(hora_desc_input).strip() if ('hora_desc_input' in locals() and hora_desc_input and str(hora_desc_input).strip() not in ['-', '--', 'None', 'nan']) else None
+
             descanso_str = str(descanso_raw or "").strip()
-            data_inicio_descanso = None
-            hora_inicio_descanso = None
-            if descanso_str and descanso_str not in ['-', '--']:
-                parts = [p.strip() for p in re.split(r'[, ]+', descanso_str) if p.strip()]
-                if len(parts) >= 2:
-                    data_inicio_descanso = parts[0]
-                    hora_inicio_descanso = parts[1]
-                elif len(parts) == 1:
-                    if ":" in parts[0]:
-                        hora_inicio_descanso = parts[0]
-                    elif "/" in parts[0]:
-                        data_inicio_descanso = parts[0]
+            if descanso_str and descanso_str not in ['-', '--', 'None', 'nan']:
+                # Extração de hora no formato HH:MM
+                time_match = re.search(r'\b\d{1,2}:\d{2}\b', descanso_str)
+                if time_match and not hora_inicio_descanso:
+                    hora_inicio_descanso = time_match.group(0)
+                    if len(hora_inicio_descanso) == 4:
+                        hora_inicio_descanso = f"0{hora_inicio_descanso}"
+                # Extração de data no formato DD/MM
+                date_match = re.search(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b', descanso_str)
+                if date_match and not data_inicio_descanso:
+                    data_inicio_descanso = date_match.group(0)
 
             # Tratamento de ORDEM
             ordem_str = str(ordem_raw or "").strip()
@@ -1071,7 +1277,16 @@ class DeliveryManager:
                 is_official = False
 
             veh_info = self.classify_vehicle(team_code, base_or_geo=base_display or geo or base_raw, date_ref=self.current_date_str)
-            shift_info = self.parse_shift_window(shift_raw, team_code=team_code, vehicle_type=veh_info.get("type"), marcacao_time=hora_marc)
+            shift_info = self.parse_shift_window(
+                shift_raw,
+                team_code=team_code,
+                vehicle_type=veh_info.get("type"),
+                marcacao_time=hora_marc,
+                base=base_display or geo or base_raw,
+                region=region,
+                geo=geo,
+                date_ref=self.current_date_str
+            )
 
             # Enriquecimento com dados da Visão Operacional BidTech (Checklists)
             bid_entry = self.bid_cache.get(team_code)
@@ -1118,7 +1333,11 @@ class DeliveryManager:
                 "vehicle_badge_class": veh_info["badge_class"],
                 "vehicle_pill_class": veh_info["pill_class"],
                 "login_time": shift_info["login_time"],
-                "logoff_time": shift_info["logoff_time"],
+                "logoff_time": shift_info.get("termino", shift_info["logoff_time"]),
+                "termino": shift_info.get("termino", "--"),
+                "turno_x_login": shift_info.get("turno_x_login", "--"),
+                "turno_x_login_minutos": shift_info.get("turno_x_login_minutos", 0),
+                "shift_hours": shift_info.get("shift_hours", 8),
                 "shift_slot": shift_info["shift_slot"],
                 "shift_code": shift_info["shift_code"],
                 "shift_pill_class": shift_info["shift_pill_class"],
@@ -1551,6 +1770,28 @@ class DeliveryManager:
             plate_display = plate_eb or plate_bid or "--"
             vehicle_type = (eb.get("vehicle_type") if eb else None) or (bid.get("vehicle_type") if bid else "--")
 
+            termino_val = (eb.get("termino") or eb.get("logoff_time")) if eb else "--"
+            turno_x_login_val = eb.get("turno_x_login") if eb else "--"
+            turno_x_login_min_val = eb.get("turno_x_login_minutos", 0) if eb else 0
+            shift_hours_val = eb.get("shift_hours", 8) if eb else 8
+
+            if eb and (not termino_val or termino_val in ["--", "--:--"]):
+                calc = calculate_team_schedule(
+                    team_code=code,
+                    vehicle_type=vehicle_type,
+                    region=eb.get("region", ""),
+                    base=base_display,
+                    geo=geo,
+                    login_time=eb.get("login_time", "--:--"),
+                    marcacao=eb.get("marcacao", "--"),
+                    shift_code=eb.get("shift_code", "08:00"),
+                    date_ref=date_str
+                )
+                termino_val = calc["termino"]
+                turno_x_login_val = calc["turno_x_login"]
+                turno_x_login_min_val = calc["turno_x_login_minutos"]
+                shift_hours_val = calc["shift_hours"]
+
             row_item = {
                 "team_code": code,
                 "prefix": prefix,
@@ -1581,6 +1822,10 @@ class DeliveryManager:
                 "bid_timer_value": bid.get("timer_value") if bid else "--",
                 "login_time_eb": eb.get("login_time") if eb else "--",
                 "marcacao_eb": eb.get("marcacao") if eb else "--",
+                "termino": termino_val,
+                "turno_x_login": turno_x_login_val,
+                "turno_x_login_minutos": turno_x_login_min_val,
+                "shift_hours": shift_hours_val,
                 "ordem_servico": eb.get("ordem_servico") if eb else "--"
             }
             reconciled_rows.append(row_item)

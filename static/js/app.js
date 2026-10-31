@@ -6682,11 +6682,568 @@ function toggleDeliveryTableCollapse() {
 }
 
 // Renderização da Tabela Nominal de Equipes
+/**
+ * Determina o Término Previsto de Logoff da Equipe com base na Marcação (ou Turno Programado).
+ * Regras Operacionais Oficiais:
+ * - Cesto Aéreo, Veículo Leve, Projeto Ramal, STC Leste, Moto, Outros: +8h
+ * - Linha Viva e Munck da Região Norte: +10h
+ * - Linha Viva e Munck da Região Leste: +8h
+ */
+function computeTeamTermino(marcacao, loginTime, shiftSlot, vehicleType, region, base) {
+    const hasMarc = marcacao && !['--', '-', '', 'None', 'nan', '--:--'].includes(String(marcacao).trim());
+    let refTime = hasMarc ? String(marcacao).trim() : '';
+    if (!refTime && shiftSlot) {
+        const m = String(shiftSlot).match(/(\d{2}:\d{2})/);
+        if (m) refTime = m[1];
+    }
+    if (!refTime && loginTime && !['--', '--:--'].includes(loginTime)) {
+        refTime = loginTime;
+    }
+    if (!refTime) refTime = '08:00';
+
+    let hours = 8;
+    const vt = String(vehicleType || '').toLowerCase();
+    const isLVorMunck = vt.includes('linha viva') || vt.includes('munck') || vt.includes('munk');
+    const isRamalOrSTC = vt.includes('ramal') || vt.includes('stc');
+    const bUp = String(base || '').toUpperCase();
+    const regLow = String(region || '').toLowerCase();
+    const isNorte = regLow.includes('norte') || bUp.includes('FAGUNDES') || bUp.includes('CAJATI') || bUp.includes('VILA MEDEIROS');
+
+    if (isLVorMunck && !isRamalOrSTC && isNorte) {
+        hours = 10;
+    }
+
+    const parts = refTime.split(':');
+    if (parts.length >= 2) {
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(h) && !isNaN(m)) {
+            const endH = (h + hours) % 24;
+            return `${String(endH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+    }
+    return '--:--';
+}
+
+/**
+ * Gera a Célula de Tempo Ativo (Relógio ao Vivo).
+ * - Se logada: relógio conta tempo decorrido desde a marcação.
+ * - Se não tiver marcação: relógio parado (00h 00m) e, se o horário do turno programado já passou,
+ *   exibe contagem de atraso em vermelho!
+ */
+function computeTempoAtivoBadge(marcacao, shiftSlot, loginTime, isActive, statusEB, termino) {
+    const hasMarc = marcacao && !['--', '-', '', 'None', 'nan', '--:--'].includes(String(marcacao).trim());
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+    if (hasMarc) {
+        const mParts = String(marcacao).trim().split(':');
+        if (mParts.length >= 2) {
+            const mH = parseInt(mParts[0], 10);
+            const mM = parseInt(mParts[1], 10);
+            if (!isNaN(mH) && !isNaN(mM)) {
+                let marcMinutes = mH * 60 + mM;
+                let elapsedMinutes = nowMinutes - marcMinutes;
+                if (elapsedMinutes < 0) elapsedMinutes += 1440;
+
+                const elH = Math.floor(elapsedMinutes / 60);
+                const elM = elapsedMinutes % 60;
+                const timeStr = `${String(elH).padStart(2, '0')}h ${String(elM).padStart(2, '0')}m`;
+
+                const isConcluded = !isActive || (statusEB && String(statusEB).toLowerCase().includes('concluído'));
+                if (isConcluded) {
+                    return `<span class="badge-tempo-ativo badge-tempo-ativo-done" title="Turno Concluído">${timeStr}</span>`;
+                }
+
+                let isOvertime = false;
+                if (termino && termino !== '--' && termino !== '--:--') {
+                    const tParts = termino.split(':');
+                    if (tParts.length >= 2) {
+                        let termMinutes = parseInt(tParts[0], 10) * 60 + parseInt(tParts[1], 10);
+                        if (termMinutes < marcMinutes) termMinutes += 1440;
+                        let nowVirtual = nowMinutes;
+                        if (nowVirtual < marcMinutes) nowVirtual += 1440;
+                        if (nowVirtual > termMinutes) {
+                            isOvertime = true;
+                        }
+                    }
+                }
+
+                if (isOvertime) {
+                    return `<span class="badge-tempo-ativo badge-tempo-ativo-overtime" title="Equipe ativa além do horário previsto de término!"><span class="live-pulse-dot" style="background:#f97316;box-shadow:0 0 8px #f97316;"></span> ${timeStr} (Ext)</span>`;
+                }
+
+                return `<span class="badge-tempo-ativo badge-tempo-ativo-active" title="Tempo ativo em tempo real"><span class="live-pulse-dot"></span> ${timeStr}</span>`;
+            }
+        }
+    } else {
+        let progTime = '';
+        if (shiftSlot) {
+            const m = String(shiftSlot).match(/(\d{2}:\d{2})/);
+            if (m) progTime = m[1];
+        }
+        if (!progTime && loginTime && !['--', '--:--'].includes(loginTime)) {
+            progTime = loginTime;
+        }
+        if (!progTime) progTime = '08:00';
+
+        const pParts = progTime.split(':');
+        if (pParts.length >= 2) {
+            const pH = parseInt(pParts[0], 10);
+            const pM = parseInt(pParts[1], 10);
+            if (!isNaN(pH) && !isNaN(pM)) {
+                const progMinutes = pH * 60 + pM;
+                let delayMinutes = nowMinutes - progMinutes;
+                if (delayMinutes > 0 && delayMinutes < 900) {
+                    const delH = Math.floor(delayMinutes / 60);
+                    const delM = delayMinutes % 60;
+                    const delayStr = delH > 0 ? `${delH}h ${String(delM).padStart(2, '0')}m` : `${delM} min`;
+                    return `<span class="badge-tempo-ativo badge-tempo-ativo-delayed" title="Equipe sem login! Atraso de ${delayStr} em relação ao início do turno"><span class="live-pulse-dot"></span> Atraso ${delayStr}</span>`;
+                }
+            }
+        }
+        return `<span class="badge-tempo-ativo badge-tempo-ativo-done" style="color: var(--text-secondary); border-color: rgba(148, 163, 184, 0.2);" title="Relógio parado: aguardando marcação">00h 00m</span>`;
+    }
+
+    return `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
+}
+
+/**
+ * Gera a Célula de Turno x Login (confronto de pontualidade entre Marcação e Turno Programado).
+ */
+function computeTurnoXLoginBadge(marcacao, shiftSlot, loginTime, backendDeltaStr, backendDeltaMin) {
+    // Se o backend já calculou o delta canonicalmente, respeita-o como autoridade operacional primária
+    if (backendDeltaStr && backendDeltaStr !== '--' && backendDeltaMin !== undefined && backendDeltaMin !== null && !isNaN(Number(backendDeltaMin))) {
+        const diff = Number(backendDeltaMin);
+        if (diff > 0) {
+            return `<span class="badge-turno-login-atraso" title="Login com ${diff} min de atraso">+${diff} min</span>`;
+        } else if (diff === 0) {
+            return `<span class="badge-turno-login-pontual" title="Login pontual">Pontual</span>`;
+        } else {
+            return `<span class="badge-turno-login-pontual" style="background: rgba(14, 165, 233, 0.15); color: #0284c7; border-color: rgba(14, 165, 233, 0.4);" title="Login antecipado em ${Math.abs(diff)} min">${diff} min</span>`;
+        }
+    }
+
+    const hasMarc = marcacao && !['--', '-', '', 'None', 'nan', '--:--'].includes(String(marcacao).trim());
+
+    // 1. Identifica o Turno Programado Oficial (prioriza shiftSlot / shift_code, ex: "Turno 12:00" -> "12:00")
+    let progTime = '';
+    if (shiftSlot) {
+        const m = String(shiftSlot).match(/(\d{2}:\d{2})/);
+        if (m) progTime = m[1];
+    }
+    if (!progTime && loginTime && !['--', '--:--'].includes(loginTime)) {
+        progTime = loginTime;
+    }
+    if (!progTime) progTime = '08:00';
+
+    if (hasMarc) {
+        const mParts = String(marcacao).trim().split(':');
+        const pParts = progTime.split(':');
+        if (mParts.length >= 2 && pParts.length >= 2) {
+            const mMin = parseInt(mParts[0], 10) * 60 + parseInt(mParts[1], 10);
+            const pMin = parseInt(pParts[0], 10) * 60 + parseInt(pParts[1], 10);
+            let diff = mMin - pMin;
+            if (diff < -720) diff += 1440;
+            if (diff > 720) diff -= 1440;
+
+            if (diff > 0) {
+                // ATRASO: Vermelho de alerta operacional
+                return `<span class="badge-turno-login-atraso" title="Login com ${diff} min de atraso (Turno ${progTime} vs Marcação ${marcacao})">+${diff} min</span>`;
+            } else if (diff === 0) {
+                // PONTUAL: Verde
+                return `<span class="badge-turno-login-pontual" title="Login pontual às ${progTime}">Pontual</span>`;
+            } else {
+                // ANTECIPADO: Azul operacional
+                return `<span class="badge-turno-login-pontual" style="background: rgba(14, 165, 233, 0.15); color: #0284c7; border-color: rgba(14, 165, 233, 0.4);" title="Login antecipado em ${Math.abs(diff)} min (Turno ${progTime} vs Marcação ${marcacao})">${diff} min</span>`;
+            }
+        }
+    } else {
+        const pParts = progTime.split(':');
+        if (pParts.length >= 2) {
+            const now = new Date();
+            const nowMin = now.getHours() * 60 + now.getMinutes();
+            const pMin = parseInt(pParts[0], 10) * 60 + parseInt(pParts[1], 10);
+            const diff = nowMin - pMin;
+            if (diff > 0 && diff < 900) {
+                return `<span class="badge-turno-login-atraso" title="Pendente de login (+${diff} min de atraso em relação ao Turno ${progTime})">+${diff} min (Atraso)</span>`;
+            }
+        }
+        return `<span class="badge-turno-login-pendente" title="Aguardando login no Turno ${progTime}">Aguardando</span>`;
+    }
+
+    return `<span style="color: var(--text-secondary); font-size: 0.74rem;">--</span>`;
+}
+
+// ==========================================================================
+// CONFIGURAÇÃO OFICIAL DE COLUNAS & ORDENAÇÃO DINÂMICA (ENTREGA DE EQUIPES)
+// ==========================================================================
+const DELIVERY_TABLE_COLUMNS = [
+    { id: 'ut', label: 'UT', default: true },
+    { id: 'base', label: 'BASE', default: true },
+    { id: 'veiculo', label: 'VEÍCULO', default: true },
+    { id: 'equipe', label: 'EQUIPE', default: true, required: true },
+    { id: 'turno_prog', label: 'TURNO PROGRAMADO', default: true },
+    { id: 'marcacao', label: 'MARCAÇÃO', default: true },
+    { id: 'termino', label: 'TÉRMINO', default: true },
+    { id: 'tempo_ativo', label: 'TEMPO ATIVO', default: true },
+    { id: 'turno_x_login', label: 'TURNO x LOGIN', default: true },
+    { id: 'gps', label: 'GPS (MIN)', default: true },
+    { id: 'status', label: 'STATUS', default: true },
+    { id: 'status_bid', label: 'STATUS BID', default: true },
+    { id: 'placa', label: 'PLACA', default: true },
+    { id: 'inicio_descanso', label: 'INÍCIO DESCANSO', default: true },
+    { id: 'ordem', label: 'ORDEM', default: true }
+];
+
+// Estado de ordenação e colunas
+if (!deliveryState.visibleColumns) deliveryState.visibleColumns = null;
+if (!deliveryState.sortColumn) deliveryState.sortColumn = null;
+if (!deliveryState.sortDirection) deliveryState.sortDirection = 'asc';
+if (typeof deliveryState.isFullscreen === 'undefined') deliveryState.isFullscreen = false;
+
+function getDeliveryVisibleColumns() {
+    if (deliveryState.visibleColumns && deliveryState.visibleColumns.size > 0) {
+        return deliveryState.visibleColumns;
+    }
+    try {
+        const saved = localStorage.getItem('delivery_visible_columns_v1');
+        if (saved) {
+            const arr = JSON.parse(saved);
+            if (Array.isArray(arr) && arr.length > 0) {
+                if (!arr.includes('equipe')) arr.push('equipe');
+                deliveryState.visibleColumns = new Set(arr);
+                return deliveryState.visibleColumns;
+            }
+        }
+    } catch (e) {
+        console.warn('[Colunas] Erro ao carregar preferências:', e);
+    }
+    deliveryState.visibleColumns = new Set(DELIVERY_TABLE_COLUMNS.map(c => c.id));
+    return deliveryState.visibleColumns;
+}
+
+function saveDeliveryVisibleColumns() {
+    try {
+        if (deliveryState.visibleColumns) {
+            localStorage.setItem('delivery_visible_columns_v1', JSON.stringify(Array.from(deliveryState.visibleColumns)));
+        }
+    } catch (e) {
+        console.warn('[Colunas] Erro ao salvar preferências:', e);
+    }
+}
+
+function updateDeliveryColCountPill() {
+    const pill = document.getElementById('deliveryColCountPill');
+    if (pill) {
+        const count = getDeliveryVisibleColumns().size;
+        pill.textContent = `${count}/${DELIVERY_TABLE_COLUMNS.length}`;
+    }
+}
+
+function renderDeliveryColPickerList() {
+    const listEl = document.getElementById('deliveryColPickerList');
+    if (!listEl) return;
+    const visCols = getDeliveryVisibleColumns();
+
+    listEl.innerHTML = DELIVERY_TABLE_COLUMNS.map(c => {
+        const isChecked = visCols.has(c.id);
+        return `
+            <label class="col-picker-item">
+                <input type="checkbox" ${isChecked ? 'checked' : ''} ${c.required ? 'disabled' : ''} onchange="toggleDeliveryColumn('${c.id}', this.checked)">
+                <span>${c.label}</span>
+                ${c.required ? '<span class="col-picker-tag">Fixo</span>' : ''}
+            </label>
+        `;
+    }).join('');
+}
+
+function toggleDeliveryColPicker(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('deliveryColPickerDropdown');
+    if (!dropdown) return;
+    const isHidden = dropdown.style.display === 'none' || !dropdown.style.display;
+    if (isHidden) {
+        renderDeliveryColPickerList();
+        dropdown.style.display = 'block';
+    } else {
+        dropdown.style.display = 'none';
+    }
+}
+
+function toggleDeliveryColumn(colId, isChecked) {
+    const cols = getDeliveryVisibleColumns();
+    if (isChecked) {
+        cols.add(colId);
+    } else {
+        const colDef = DELIVERY_TABLE_COLUMNS.find(c => c.id === colId);
+        if (colDef && colDef.required) {
+            showToast('A coluna Equipe é essencial e permanece sempre visível.', 'info');
+            renderDeliveryColPickerList();
+            return;
+        }
+        cols.delete(colId);
+    }
+    saveDeliveryVisibleColumns();
+    updateDeliveryColCountPill();
+    renderDeliveryTableHead();
+    renderDeliveryTable();
+}
+
+function setAllDeliveryColumns(val) {
+    const cols = getDeliveryVisibleColumns();
+    if (val) {
+        DELIVERY_TABLE_COLUMNS.forEach(c => cols.add(c.id));
+    } else {
+        cols.clear();
+        cols.add('equipe');
+    }
+    saveDeliveryVisibleColumns();
+    renderDeliveryColPickerList();
+    updateDeliveryColCountPill();
+    renderDeliveryTableHead();
+    renderDeliveryTable();
+}
+
+function resetDeliveryColumnsToDefault() {
+    deliveryState.visibleColumns = new Set(DELIVERY_TABLE_COLUMNS.filter(c => c.default).map(c => c.id));
+    saveDeliveryVisibleColumns();
+    renderDeliveryColPickerList();
+    updateDeliveryColCountPill();
+    renderDeliveryTableHead();
+    renderDeliveryTable();
+    showToast('Configuração de colunas restaurada para o padrão oficial.', 'info');
+}
+
+// Fechar menu de colunas ao clicar fora
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('deliveryColPickerDropdown');
+    const btn = document.getElementById('btnDeliveryColPicker');
+    if (dropdown && dropdown.style.display !== 'none') {
+        if (!dropdown.contains(e.target) && (!btn || !btn.contains(e.target))) {
+            dropdown.style.display = 'none';
+        }
+    }
+    const bidDropdown = document.getElementById('onlineBidColPickerDropdown');
+    const bidBtn = document.getElementById('btnOnlineBidColPicker');
+    if (bidDropdown && bidDropdown.style.display !== 'none') {
+        if (!bidDropdown.contains(e.target) && (!bidBtn || !bidBtn.contains(e.target))) {
+            bidDropdown.style.display = 'none';
+        }
+    }
+});
+
+// Alternador de Tela Cheia (ONE PAGE)
+function toggleDeliveryFullscreen() {
+    const card = document.getElementById('deliveryTableCardWrapper');
+    if (!card) return;
+
+    deliveryState.isFullscreen = !deliveryState.isFullscreen;
+    const isFull = deliveryState.isFullscreen;
+
+    const btn = document.getElementById('btnDeliveryFullscreen');
+    const textEl = document.getElementById('textDeliveryFullscreen');
+    const iconEl = document.getElementById('iconDeliveryFullscreen');
+
+    if (isFull) {
+        // Se a tabela estiver recolhida, expande automaticamente
+        if (deliveryState.isTableCollapsed) {
+            toggleDeliveryTableCollapse();
+        }
+        card.classList.add('delivery-table-fullscreen');
+        document.body.classList.add('delivery-fullscreen-active');
+        if (textEl) textEl.textContent = 'SAIR TELA CHEIA (ESC)';
+        if (btn) {
+            btn.style.background = 'rgba(239, 68, 68, 0.2)';
+            btn.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+            btn.style.color = '#f87171';
+        }
+        if (iconEl) iconEl.setAttribute('data-lucide', 'minimize-2');
+        showToast('Modo Tela Cheia (ONE PAGE) ativado. Pressione ESC para sair.', 'info');
+    } else {
+        card.classList.remove('delivery-table-fullscreen');
+        document.body.classList.remove('delivery-fullscreen-active');
+        if (textEl) textEl.textContent = 'TELA CHEIA (ONE PAGE)';
+        if (btn) {
+            btn.style.background = '';
+            btn.style.borderColor = '';
+            btn.style.color = '';
+        }
+        if (iconEl) iconEl.setAttribute('data-lucide', 'maximize-2');
+    }
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && deliveryState.isFullscreen) {
+        toggleDeliveryFullscreen();
+    }
+    if (e.key === 'Escape' && onlineBidState.isFullscreen) {
+        toggleOnlineBidFullscreen();
+    }
+});
+
+// Ordenação da Tabela
+function sortDeliveryTable(colId) {
+    if (deliveryState.sortColumn === colId) {
+        if (deliveryState.sortDirection === 'asc') {
+            deliveryState.sortDirection = 'desc';
+        } else {
+            deliveryState.sortColumn = null;
+            deliveryState.sortDirection = 'asc';
+        }
+    } else {
+        deliveryState.sortColumn = colId;
+        deliveryState.sortDirection = 'asc';
+    }
+    renderDeliveryTableHead();
+    renderDeliveryTable();
+}
+
+function parseTimeToMinutesHelper(val) {
+    if (!val || ['--', '-', 'None', 'nan', '--:--'].includes(String(val).trim())) return 99999;
+    const m = String(val).match(/(\d{1,2}):(\d{2})/);
+    if (!m) return 99999;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+function computeElapsedMinutesHelper(t) {
+    const hasMarc = t.marcacao && !['--', '-', '', 'None', 'nan', '--:--'].includes(String(t.marcacao).trim());
+    if (!hasMarc) return -9999;
+    const mParts = String(t.marcacao).trim().split(':');
+    if (mParts.length >= 2) {
+        const mH = parseInt(mParts[0], 10);
+        const mM = parseInt(mParts[1], 10);
+        if (!isNaN(mH) && !isNaN(mM)) {
+            const now = new Date();
+            const nowMinutes = now.getHours() * 60 + now.getMinutes();
+            let elapsed = nowMinutes - (mH * 60 + mM);
+            if (elapsed < 0) elapsed += 1440;
+            return elapsed;
+        }
+    }
+    return -9999;
+}
+
+function compareDeliveryTeams(a, b, colId, direction) {
+    let res = 0;
+    switch (colId) {
+        case 'ut':
+            res = (a.ut || '').localeCompare(b.ut || '');
+            break;
+        case 'base':
+            const baseA = a.base_display || a.base_name || a.base_code || '';
+            const baseB = b.base_display || b.base_name || b.base_code || '';
+            res = baseA.localeCompare(baseB);
+            break;
+        case 'veiculo':
+            const vA = a.vehicle_type || a.veiculo_portal || '';
+            const vB = b.vehicle_type || b.veiculo_portal || '';
+            res = vA.localeCompare(vB);
+            break;
+        case 'equipe':
+            res = (a.team_code || '').localeCompare(b.team_code || '');
+            break;
+        case 'turno_prog':
+            res = parseTimeToMinutesHelper(a.shift_slot || a.raw_shift) - parseTimeToMinutesHelper(b.shift_slot || b.raw_shift);
+            break;
+        case 'marcacao':
+            res = parseTimeToMinutesHelper(a.marcacao) - parseTimeToMinutesHelper(b.marcacao);
+            break;
+        case 'termino':
+            const termA = a.termino || computeTeamTermino(a.marcacao, a.login_time, a.shift_slot, a.vehicle_type, a.region, a.base_display);
+            const termB = b.termino || computeTeamTermino(b.marcacao, b.login_time, b.shift_slot, b.vehicle_type, b.region, b.base_display);
+            res = parseTimeToMinutesHelper(termA) - parseTimeToMinutesHelper(termB);
+            break;
+        case 'tempo_ativo':
+            res = computeElapsedMinutesHelper(a) - computeElapsedMinutesHelper(b);
+            break;
+        case 'turno_x_login':
+            const numA = (a.turno_x_login_minutos !== null && a.turno_x_login_minutos !== undefined) ? Number(a.turno_x_login_minutos) : 9999;
+            const numB = (b.turno_x_login_minutos !== null && b.turno_x_login_minutos !== undefined) ? Number(b.turno_x_login_minutos) : 9999;
+            res = numA - numB;
+            break;
+        case 'gps':
+            const gpsA = (a.gps_update_minutes !== null && a.gps_update_minutes !== undefined && a.gps_update_minutes !== '') ? Number(a.gps_update_minutes) : 99999;
+            const gpsB = (b.gps_update_minutes !== null && b.gps_update_minutes !== undefined && b.gps_update_minutes !== '') ? Number(b.gps_update_minutes) : 99999;
+            res = gpsA - gpsB;
+            break;
+        case 'status':
+            const stA = a.status_equipes_brasil || a.status || '';
+            const stB = b.status_equipes_brasil || b.status || '';
+            res = stA.localeCompare(stB);
+            break;
+        case 'status_bid':
+            const bA = normalizeBidStatus(a.status_bid || '');
+            const bB = normalizeBidStatus(b.status_bid || '');
+            res = bA.localeCompare(bB);
+            break;
+        case 'placa':
+            res = (a.plate || '').localeCompare(b.plate || '');
+            break;
+        case 'inicio_descanso':
+            res = parseTimeToMinutesHelper(a.hora_inicio_descanso) - parseTimeToMinutesHelper(b.hora_inicio_descanso);
+            break;
+        case 'ordem':
+            res = (a.ordem_servico || '').localeCompare(b.ordem_servico || '');
+            break;
+        default:
+            res = (a.team_code || '').localeCompare(b.team_code || '');
+    }
+    return direction === 'desc' ? -res : res;
+}
+
+// Renderização do Cabeçalho Congelado com Botões de Ordenação
+function renderDeliveryTableHead() {
+    const thead = document.getElementById('deliveryTableHead');
+    if (!thead) return;
+    const visCols = getDeliveryVisibleColumns();
+    const sortCol = deliveryState.sortColumn;
+    const sortDir = deliveryState.sortDirection;
+
+    const ths = DELIVERY_TABLE_COLUMNS
+        .filter(c => visCols.has(c.id))
+        .map(c => {
+            const isSorted = sortCol === c.id;
+            let badgeHtml = '<span class="th-sort-badge">↕</span>';
+            let activeClass = '';
+            let titleText = `Clique para ordenar por ${c.label}`;
+
+            if (isSorted) {
+                activeClass = 'th-active-sort';
+                const isNum = ['turno_prog', 'marcacao', 'termino', 'tempo_ativo', 'turno_x_login', 'gps', 'inicio_descanso'].includes(c.id);
+                if (sortDir === 'asc') {
+                    badgeHtml = `<span class="th-sort-badge active-asc">${isNum ? '▲ Menor' : '▲ A-Z'}</span>`;
+                    titleText = `Ordenado: Crescente (${isNum ? 'Menor para Maior' : 'A-Z'}). Clique para Decrescente.`;
+                } else {
+                    badgeHtml = `<span class="th-sort-badge active-desc">${isNum ? '▼ Maior' : '▼ Z-A'}</span>`;
+                    titleText = `Ordenado: Decrescente (${isNum ? 'Maior para Menor' : 'Z-A'}). Clique para resetar.`;
+                }
+            }
+
+            return `
+                <th class="${activeClass}" onclick="sortDeliveryTable('${c.id}')" title="${titleText}">
+                    <div class="th-sort-content">
+                        <span>${c.label}</span>
+                        ${badgeHtml}
+                    </div>
+                </th>
+            `;
+        }).join('');
+
+    thead.innerHTML = `<tr>${ths}</tr>`;
+}
+
+// Renderização da Tabela Nominal de Equipes
 function renderDeliveryTable() {
+    const prevScrollY = window.scrollY;
     const tbody = document.getElementById('deliveryTableBody');
     const countBadge = document.getElementById('deliveryResultsCountBadge');
     const subEl = document.getElementById('deliveryTableStateSubtitle');
-    const list = deliveryState.filteredTeams;
+    let list = deliveryState.filteredTeams || [];
 
     const isModeActive = deliveryState.regionalViewMode !== 'total';
     const modeLabel = isModeActive ? 'Equipes Ativas' : 'Total Acumulado do Dia';
@@ -6705,13 +7262,19 @@ function renderDeliveryTable() {
         subEl.textContent = `Exibindo ${list.length} equipes | ${parts.join(' | ')}`;
     }
 
+    // Atualiza o pill e o cabeçalho congelado
+    updateDeliveryColCountPill();
+    renderDeliveryTableHead();
+
     if (!tbody) return;
+
+    const visCols = getDeliveryVisibleColumns();
 
     if (!list || list.length === 0) {
         const hasAnyFilter = deliveryState.filters.regions.size > 0 || deliveryState.filters.bases.size > 0 || deliveryState.filters.shifts.size > 0 || deliveryState.filters.vehicles.size > 0 || deliveryState.filters.search;
         tbody.innerHTML = `
             <tr>
-                <td colspan="15" style="text-align: center; padding: 36px 20px; color: var(--text-secondary);">
+                <td colspan="${visCols.size}" style="text-align: center; padding: 36px 20px; color: var(--text-secondary);">
                     <p style="font-weight: 700; font-size: 0.95rem; margin: 0 0 6px 0; color: var(--text-primary);">Nenhuma equipe encontrada para os filtros selecionados.</p>
                     <p style="font-size: 0.8rem; margin: 0; color: var(--text-secondary);">
                         ${hasAnyFilter ? 'Tente desmarcar alguns filtros ou clique em <strong style="color: #38bdf8; cursor: pointer; text-decoration: underline;" onclick="clearDeliveryBaseFilters()">LIMPAR SELEÇÃO</strong>.' : 'Nenhuma equipe registrada no momento.'}
@@ -6725,10 +7288,15 @@ function renderDeliveryTable() {
         return;
     }
 
+    // Aplica ordenação ativa se definida
+    if (deliveryState.sortColumn) {
+        list = [...list].sort((a, b) => compareDeliveryTeams(a, b, deliveryState.sortColumn, deliveryState.sortDirection));
+    }
+
     tbody.innerHTML = list.map(t => {
         const isAct = t.is_active;
         const statusEB = t.status_equipes_brasil || t.status || (isAct ? 'Logada' : 'Turno Concluído');
-        
+
         let statusBadge = '';
         if (statusEB.toLowerCase().includes('atendimento')) {
             statusBadge = `<span class="badge-status-active" style="background: rgba(14, 165, 233, 0.15); color: #0284c7; border: 1px solid rgba(14, 165, 233, 0.4); padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 800;"><span class="live-status-dot" style="width:6px;height:6px;background:#0284c7;"></span> Em Atendimento</span>`;
@@ -6769,27 +7337,29 @@ function renderDeliveryTable() {
             `;
         }
 
-        // Marcação & Desvio
+        // Marcação
         const marcacaoVal = t.marcacao && t.marcacao !== '--' ? t.marcacao : '--';
-        const desvioVal = t.desvio && t.desvio !== '--' ? t.desvio : '--';
-        let desvioHtml = `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
-        if (desvioVal !== '--') {
-            const minVal = t.desvio_minutos || 0;
-            let dStyle = 'background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);';
-            if (Math.abs(minVal) > 30) {
-                dStyle = 'background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4);';
-            } else if (desvioVal.includes('+')) {
-                dStyle = 'background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);';
+
+        // GPS (Minutos extraídos do CDP)
+        let gpsMin = (t.gps_update_minutes !== null && t.gps_update_minutes !== undefined && t.gps_update_minutes !== '') ? Number(t.gps_update_minutes) : null;
+        let gpsDisplay = '--';
+        if (gpsMin !== null && !isNaN(gpsMin)) {
+            gpsDisplay = `${gpsMin} min`;
+        } else if (t.gps_update_str && t.gps_update_str !== '--' && t.gps_update_str !== 'None') {
+            gpsDisplay = t.gps_update_str;
+            const m = String(t.gps_update_str).match(/(\d+)\s*m/i);
+            if (m) gpsMin = parseInt(m[1], 10);
+        } else if (t.gps && t.gps !== '--' && t.gps !== 'None') {
+            gpsDisplay = t.gps;
+            const m = String(t.gps).match(/(\d+)\s*m/i);
+            if (m) {
+                gpsMin = parseInt(m[1], 10);
+                gpsDisplay = `${gpsMin} min`;
             }
-            desvioHtml = `<span class="badge" style="${dStyle} font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 9999px;">${desvioVal}</span>`;
         }
+        const gpsColor = gpsMin !== null && gpsMin > 60 ? '#f59e0b' : '#10b981';
 
-        // GPS
-        const gpsStr = t.gps_update_str && t.gps_update_str !== '--' ? t.gps_update_str : '--';
-        const gpsMin = t.gps_update_minutes;
-        const gpsColor = gpsMin !== null && gpsMin !== undefined && gpsMin > 60 ? '#f59e0b' : '#10b981';
-
-        // 11.2 Badge de Status BID (Visão Operacional)
+        // Badge de Status BID
         const rawStBid = t.status_bid || (t.bid_info && t.bid_info.status_bid) || '--';
         const stBid = normalizeBidStatus(rawStBid);
         let bidBadge = '';
@@ -6807,12 +7377,43 @@ function renderDeliveryTable() {
             bidBadge = `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
         }
 
-        // Descanso
-        const descansoHtml = t.data_inicio_descanso
-            ? `<div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 700; color: #8b5cf6;">${t.data_inicio_descanso}</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-secondary);">${t.hora_inicio_descanso || '--:--'}</div>`
-            : `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
+        // Descanso (Hora de início extraída do CDP)
+        let horaDesc = (t.hora_inicio_descanso && t.hora_inicio_descanso !== '--' && t.hora_inicio_descanso !== 'None') ? t.hora_inicio_descanso : null;
+        let dataDesc = (t.data_inicio_descanso && t.data_inicio_descanso !== '--' && t.data_inicio_descanso !== 'None') ? t.data_inicio_descanso : null;
 
-        // Ordem (com indicador de histórico deduplicado)
+        if (!horaDesc) {
+            const rawDescCandidate = t.descanso || t.inicio_descanso || t.INICIO_DESCANSO || (dataDesc && dataDesc.includes(':') ? dataDesc : '') || '';
+            const mTime = String(rawDescCandidate).match(/\b(\d{1,2}:\d{2})\b/);
+            if (mTime) {
+                horaDesc = mTime[1].padStart(5, '0');
+            }
+        }
+        if (dataDesc && dataDesc.includes(':')) {
+            const mDate = String(dataDesc).match(/\b(\d{1,2}\/\d{1,2})\b/);
+            dataDesc = mDate ? mDate[1] : null;
+        }
+
+        let descansoHtml = `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
+        if (horaDesc) {
+            descansoHtml = `
+                <div style="display: inline-flex; align-items: center; gap: 4px;">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 800; color: #a855f7;">${horaDesc}</span>
+                    ${dataDesc ? `<span style="font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--text-secondary);">(${dataDesc})</span>` : ''}
+                </div>
+            `;
+        } else if (dataDesc) {
+            descansoHtml = `<span style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #a855f7; font-weight: 700;">${dataDesc}</span>`;
+        }
+
+        // Término, Tempo Ativo e Turno x Login
+        const terminoVal = t.termino && t.termino !== '--' ? t.termino : computeTeamTermino(t.marcacao, t.login_time, t.shift_slot, t.vehicle_type, t.region, t.base_display);
+        const terminoHtml = (terminoVal && terminoVal !== '--' && terminoVal !== '--:--')
+            ? `<span class="badge-termino" title="Horário previsto de término/logoff da equipe">${terminoVal}</span>`
+            : `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
+        const tempoAtivoHtml = computeTempoAtivoBadge(t.marcacao, t.shift_slot, t.login_time, isAct, statusEB, terminoVal);
+        const turnoXLoginHtml = computeTurnoXLoginBadge(t.marcacao, t.shift_slot, t.login_time, t.turno_x_login, t.turno_x_login_minutos);
+
+        // Ordem
         const orderHist = t.order_history || [];
         const orderCount = orderHist.length;
         const ordemHtml = t.ordem_servico
@@ -6822,78 +7423,48 @@ function renderDeliveryTable() {
                </div>`
             : `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
 
-        return `
-            <tr>
-                <!-- 1. UT -->
-                <td>
-                    <div style="font-weight: 700; font-size: 0.76rem; color: var(--text-primary);">${t.ut || '--'}</div>
-                </td>
-                <!-- 2. BASE -->
-                <td>
-                    <div style="font-weight: 800; color: var(--text-primary);">${t.base_display || t.base_name || '--'}</div>
-                    <small style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-weight: 700;">${t.base_code || ''}</small>
-                </td>
-                <!-- 3. FILIAL -->
-                <td>
-                    <small style="font-weight: 800; color: #0ea5e9;">${t.filial || '--'}</small>
-                </td>
-                <!-- 4. VEÍCULO -->
-                <td>
-                    ${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal') 
-                        ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>` 
-                        : (t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste')
-                        ? `<span class="badge-vehicle-stc-leste" style="font-size: 0.72rem;">STC LESTE</span>`
-                        : `<span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type || t.veiculo_portal || '--'}</span>`
-                    }
-                </td>
-                <!-- 5. EQUIPE (Clicável para abrir Modal Ultra-Premium) -->
-                <td>
-                    <button type="button" class="team-badge clickable-team-badge" onclick="event.stopPropagation(); openDeliveryTeamModal('${t.team_code}')" title="Clique para ver Diagnóstico Completo, TRBOnet e Histórico de Ordens" style="cursor: pointer; transition: all 0.2s ease;">
-                        ${t.team_code}
-                    </button>
-                </td>
-                <!-- 6. MOTORISTA -->
-                <td>
-                    <div style="font-weight: 600; font-size: 0.76rem; color: var(--text-primary);">${t.driver || '--'}</div>
-                </td>
-                <!-- 7. TURNO PROGRAMADO -->
-                <td>
-                    <span class="shift-pill ${t.shift_pill_class}" style="font-size: 0.74rem;">${t.shift_slot}</span>
-                </td>
-                <!-- 8. MARCAÇÃO -->
-                <td>
-                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.8rem; color: #38bdf8;">${marcacaoVal}</span>
-                </td>
-                <!-- 9. DESVIO -->
-                <td>
-                    ${desvioHtml}
-                </td>
-                <!-- 10. GPS (MIN) -->
-                <td>
-                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.76rem; color: ${gpsColor};">
-                        ${gpsStr}
-                    </span>
-                </td>
-                <!-- 11. STATUS -->
-                <td>${statusBadge}</td>
-                <!-- 12. STATUS BID -->
-                <td>${bidBadge}</td>
-                <!-- 13. PLACA -->
-                <td>${plateHtml}</td>
-                <!-- 14. INÍCIO DESCANSO -->
-                <td>${descansoHtml}</td>
-                <!-- 15. ORDEM -->
-                <td>${ordemHtml}</td>
-            </tr>
-        `;
+        // Geradores de Células por ID de Coluna
+        const cellsMap = {
+            ut: `<td><div style="font-weight: 700; font-size: 0.76rem; color: var(--text-primary);">${t.ut || '--'}</div></td>`,
+            base: `<td><div style="font-weight: 800; color: var(--text-primary);">${t.base_display || t.base_name || '--'}</div><small style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-weight: 700;">${t.base_code || ''}</small></td>`,
+            veiculo: `<td>${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal')
+                ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>`
+                : (t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste')
+                ? `<span class="badge-vehicle-stc-leste" style="font-size: 0.72rem;">STC LESTE</span>`
+                : `<span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type || t.veiculo_portal || '--'}</span>`
+            }</td>`,
+            equipe: `<td><button type="button" class="team-badge clickable-team-badge" onclick="event.stopPropagation(); openDeliveryTeamModal('${t.team_code}')" title="Clique para ver Diagnóstico Completo, TRBOnet e Histórico de Ordens" style="cursor: pointer; transition: all 0.2s ease;">${t.team_code}</button></td>`,
+            turno_prog: `<td><span class="shift-pill ${t.shift_pill_class}" style="font-size: 0.74rem;">${t.shift_slot}</span></td>`,
+            marcacao: `<td><span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.8rem; color: #38bdf8;">${marcacaoVal}</span></td>`,
+            termino: `<td>${terminoHtml}</td>`,
+            tempo_ativo: `<td class="tempo-ativo-cell" data-team="${t.team_code}">${tempoAtivoHtml}</td>`,
+            turno_x_login: `<td>${turnoXLoginHtml}</td>`,
+            gps: `<td><span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.78rem; color: ${gpsColor};">${gpsDisplay}</span></td>`,
+            status: `<td>${statusBadge}</td>`,
+            status_bid: `<td>${bidBadge}</td>`,
+            placa: `<td>${plateHtml}</td>`,
+            inicio_descanso: `<td>${descansoHtml}</td>`,
+            ordem: `<td>${ordemHtml}</td>`
+        };
+
+        const rowCells = DELIVERY_TABLE_COLUMNS
+            .filter(c => visCols.has(c.id))
+            .map(c => cellsMap[c.id] || `<td>--</td>`)
+            .join('');
+
+        return `<tr>${rowCells}</tr>`;
     }).join('');
 
     if (typeof renderMobileDeliveryCards === 'function') {
         renderMobileDeliveryCards(list);
     }
+
+    if (typeof prevScrollY !== 'undefined' && Math.abs(window.scrollY - prevScrollY) > 5) {
+        window.scrollTo(0, prevScrollY);
+    }
 }
 
-// Exportação Excel (.xlsx) Sensível aos Filtros Ativos (14 Colunas Oficiais)
+// Exportação Excel (.xlsx) Sensível aos Filtros e Colunas Ativas do Usuário
 function exportDeliveryExcelFiltered() {
     const list = deliveryState.filteredTeams;
     if (!list || list.length === 0) {
@@ -6901,23 +7472,27 @@ function exportDeliveryExcelFiltered() {
         return;
     }
 
-    const rows = list.map(t => ({
-        "UT": t.ut || "",
-        "Base": t.base_display || t.base_name || "",
-        "Filial": t.filial || "",
-        "Veículo": t.vehicle_type || t.veiculo_portal || "",
-        "Equipe": t.team_code || "",
-        "Motorista": t.driver || "",
-        "Turno Programado": t.shift_slot || t.raw_shift || "",
-        "Marcação": t.marcacao || "",
-        "Status Login": t.status_login || (t.marcacao && t.marcacao !== '--' ? "LOGADA" : "PROGRAMADA"),
-        "Desvio": t.desvio || "",
-        "GPS (min)": t.gps_update_str || "",
-        "Status": t.status_equipes_brasil || t.status || (t.is_active ? "Logada" : "Turno Concluído"),
-        "Placa": t.plate || "",
-        "Início Descanso": t.data_inicio_descanso ? `${t.data_inicio_descanso} ${t.hora_inicio_descanso || ''}`.trim() : "",
-        "Ordem": t.ordem_servico || ""
-    }));
+    const visCols = getDeliveryVisibleColumns();
+
+    const rows = list.map(t => {
+        const row = {};
+        if (visCols.has('ut')) row["UT"] = t.ut || "";
+        if (visCols.has('base')) row["Base"] = t.base_display || t.base_name || "";
+        if (visCols.has('veiculo')) row["Veículo"] = t.vehicle_type || t.veiculo_portal || "";
+        if (visCols.has('equipe')) row["Equipe"] = t.team_code || "";
+        if (visCols.has('turno_prog')) row["Turno Programado"] = t.shift_slot || t.raw_shift || "";
+        if (visCols.has('marcacao')) row["Marcação"] = t.marcacao || "";
+        if (visCols.has('termino')) row["Término Previsto"] = t.termino || computeTeamTermino(t.marcacao, t.login_time, t.shift_slot, t.vehicle_type, t.region, t.base_display);
+        if (visCols.has('tempo_ativo')) row["Tempo Ativo"] = (t.marcacao && t.marcacao !== '--') ? "Ativa" : "Pendente";
+        if (visCols.has('turno_x_login')) row["Turno x Login"] = t.turno_x_login || "";
+        if (visCols.has('gps')) row["GPS (min)"] = t.gps_update_str || "";
+        if (visCols.has('status')) row["Status"] = t.status_equipes_brasil || t.status || (t.is_active ? "Logada" : "Turno Concluído");
+        if (visCols.has('status_bid')) row["Status BID"] = t.status_bid || "";
+        if (visCols.has('placa')) row["Placa"] = t.plate || "";
+        if (visCols.has('inicio_descanso')) row["Início Descanso"] = t.data_inicio_descanso ? `${t.data_inicio_descanso} ${t.hora_inicio_descanso || ''}`.trim() : "";
+        if (visCols.has('ordem')) row["Ordem"] = t.ordem_servico || "";
+        return row;
+    });
 
     if (window.XLSX) {
         const ws = XLSX.utils.json_to_sheet(rows);
@@ -6925,13 +7500,12 @@ function exportDeliveryExcelFiltered() {
         XLSX.utils.book_append_sheet(wb, ws, "Equipes Entregues");
         const dateStr = new Date().toISOString().split('T')[0];
         XLSX.writeFile(wb, `Entrega_Equipes_Enel_${dateStr}.xlsx`);
-        showToast(`Planilha gerada com sucesso (${rows.length} equipes filtradas)!`, 'success');
+        showToast(`Planilha gerada com sucesso (${rows.length} equipes, ${visCols.size} colunas)!`, 'success');
     } else {
         window.location.href = '/api/delivery/export_excel';
     }
 }
 
-// Modal Ultra-Premium de Detalhes da Equipe Entregue (Enel × TRBOnet × Ordens)
 async function openDeliveryTeamModal(teamCode) {
     if (!teamCode) return;
     const code = String(teamCode).trim().toUpperCase();
@@ -10972,6 +11546,300 @@ async function loadOnlineXBidData() {
     }
 }
 
+// ==========================================================================
+// CONFIGURAÇÃO DE COLUNAS, ORDENAÇÃO E TELA CHEIA - RECONCILIAÇÃO FORENSE
+// ==========================================================================
+const ONLINE_BID_TABLE_COLUMNS = [
+    { id: 'equipe', label: 'EQUIPE', default: true, required: true },
+    { id: 'cross_status', label: 'STATUS CRUZADO', default: true },
+    { id: 'status_login', label: 'STATUS LOGIN', default: true },
+    { id: 'status_bid', label: 'STATUS BID', default: true },
+    { id: 'marcacao', label: 'MARCAÇÃO', default: true },
+    { id: 'termino', label: 'TÉRMINO', default: true },
+    { id: 'tempo_ativo', label: 'TEMPO ATIVO', default: true },
+    { id: 'turno_x_login', label: 'TURNO x LOGIN', default: true },
+    { id: 'status_prog', label: 'STATUS PROG', default: true },
+    { id: 'tempo_bid', label: 'TEMPO NO BID', default: true },
+    { id: 'base', label: 'BASE', default: true },
+    { id: 'turno', label: 'TURNO', default: true },
+    { id: 'placa', label: 'PLACA', default: true },
+    { id: 'componentes', label: 'COMPONENTES (BID)', default: true },
+    { id: 'ordem', label: 'ORDEM SERVIÇO', default: true }
+];
+
+if (!onlineBidState.visibleColumns) onlineBidState.visibleColumns = null;
+if (!onlineBidState.sortColumn) onlineBidState.sortColumn = null;
+if (!onlineBidState.sortDirection) onlineBidState.sortDirection = 'asc';
+if (typeof onlineBidState.isFullscreen === 'undefined') onlineBidState.isFullscreen = false;
+
+function getOnlineBidVisibleColumns() {
+    if (onlineBidState.visibleColumns && onlineBidState.visibleColumns.size > 0) {
+        return onlineBidState.visibleColumns;
+    }
+    try {
+        const saved = localStorage.getItem('online_bid_visible_columns_v1');
+        if (saved) {
+            const arr = JSON.parse(saved);
+            if (Array.isArray(arr) && arr.length > 0) {
+                if (!arr.includes('equipe')) arr.push('equipe');
+                onlineBidState.visibleColumns = new Set(arr);
+                return onlineBidState.visibleColumns;
+            }
+        }
+    } catch (e) {
+        console.warn('[Colunas BID] Erro ao carregar preferências:', e);
+    }
+    onlineBidState.visibleColumns = new Set(ONLINE_BID_TABLE_COLUMNS.map(c => c.id));
+    return onlineBidState.visibleColumns;
+}
+
+function saveOnlineBidVisibleColumns() {
+    try {
+        if (onlineBidState.visibleColumns) {
+            localStorage.setItem('online_bid_visible_columns_v1', JSON.stringify(Array.from(onlineBidState.visibleColumns)));
+        }
+    } catch (e) {
+        console.warn('[Colunas BID] Erro ao salvar preferências:', e);
+    }
+}
+
+function updateOnlineBidColCountPill() {
+    const pill = document.getElementById('onlineBidColCountPill');
+    if (pill) {
+        const count = getOnlineBidVisibleColumns().size;
+        pill.textContent = `${count}/${ONLINE_BID_TABLE_COLUMNS.length}`;
+    }
+}
+
+function renderOnlineBidColPickerList() {
+    const listEl = document.getElementById('onlineBidColPickerList');
+    if (!listEl) return;
+    const visCols = getOnlineBidVisibleColumns();
+
+    listEl.innerHTML = ONLINE_BID_TABLE_COLUMNS.map(c => {
+        const isChecked = visCols.has(c.id);
+        return `
+            <label class="col-picker-item">
+                <input type="checkbox" ${isChecked ? 'checked' : ''} ${c.required ? 'disabled' : ''} onchange="toggleOnlineBidColumn('${c.id}', this.checked)">
+                <span>${c.label}</span>
+                ${c.required ? '<span class="col-picker-tag">Fixo</span>' : ''}
+            </label>
+        `;
+    }).join('');
+}
+
+function toggleOnlineBidColPicker(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('onlineBidColPickerDropdown');
+    if (!dropdown) return;
+    const isHidden = dropdown.style.display === 'none' || !dropdown.style.display;
+    if (isHidden) {
+        renderOnlineBidColPickerList();
+        dropdown.style.display = 'block';
+    } else {
+        dropdown.style.display = 'none';
+    }
+}
+
+function toggleOnlineBidColumn(colId, isChecked) {
+    const cols = getOnlineBidVisibleColumns();
+    if (isChecked) {
+        cols.add(colId);
+    } else {
+        const colDef = ONLINE_BID_TABLE_COLUMNS.find(c => c.id === colId);
+        if (colDef && colDef.required) {
+            showToast('A coluna Equipe é essencial e permanece sempre visível.', 'info');
+            renderOnlineBidColPickerList();
+            return;
+        }
+        cols.delete(colId);
+    }
+    saveOnlineBidVisibleColumns();
+    updateOnlineBidColCountPill();
+    renderOnlineBidTableHead();
+    filterOnlineBidTable();
+}
+
+function setAllOnlineBidColumns(val) {
+    const cols = getOnlineBidVisibleColumns();
+    if (val) {
+        ONLINE_BID_TABLE_COLUMNS.forEach(c => cols.add(c.id));
+    } else {
+        cols.clear();
+        cols.add('equipe');
+    }
+    saveOnlineBidVisibleColumns();
+    renderOnlineBidColPickerList();
+    updateOnlineBidColCountPill();
+    renderOnlineBidTableHead();
+    filterOnlineBidTable();
+}
+
+function resetOnlineBidColumnsToDefault() {
+    onlineBidState.visibleColumns = new Set(ONLINE_BID_TABLE_COLUMNS.filter(c => c.default).map(c => c.id));
+    saveOnlineBidVisibleColumns();
+    renderOnlineBidColPickerList();
+    updateOnlineBidColCountPill();
+    renderOnlineBidTableHead();
+    filterOnlineBidTable();
+    showToast('Configuração de colunas da reconciliação restaurada para o padrão oficial.', 'info');
+}
+
+function toggleOnlineBidFullscreen() {
+    const card = document.getElementById('onlineBidTableCardWrapper');
+    if (!card) return;
+
+    onlineBidState.isFullscreen = !onlineBidState.isFullscreen;
+    const isFull = onlineBidState.isFullscreen;
+
+    const btn = document.getElementById('btnOnlineBidFullscreen');
+    const textEl = document.getElementById('textOnlineBidFullscreen');
+    const iconEl = document.getElementById('iconOnlineBidFullscreen');
+
+    if (isFull) {
+        card.classList.add('delivery-table-fullscreen');
+        document.body.classList.add('delivery-fullscreen-active');
+        if (textEl) textEl.textContent = 'SAIR TELA CHEIA (ESC)';
+        if (btn) {
+            btn.style.background = 'rgba(239, 68, 68, 0.2)';
+            btn.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+            btn.style.color = '#f87171';
+        }
+        if (iconEl) iconEl.setAttribute('data-lucide', 'minimize-2');
+        showToast('Modo Tela Cheia (ONE PAGE) ativado. Pressione ESC para sair.', 'info');
+    } else {
+        card.classList.remove('delivery-table-fullscreen');
+        document.body.classList.remove('delivery-fullscreen-active');
+        if (textEl) textEl.textContent = 'TELA CHEIA (ONE PAGE)';
+        if (btn) {
+            btn.style.background = '';
+            btn.style.borderColor = '';
+            btn.style.color = '';
+        }
+        if (iconEl) iconEl.setAttribute('data-lucide', 'maximize-2');
+    }
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+function sortOnlineBidTable(colId) {
+    if (onlineBidState.sortColumn === colId) {
+        if (onlineBidState.sortDirection === 'asc') {
+            onlineBidState.sortDirection = 'desc';
+        } else {
+            onlineBidState.sortColumn = null;
+            onlineBidState.sortDirection = 'asc';
+        }
+    } else {
+        onlineBidState.sortColumn = colId;
+        onlineBidState.sortDirection = 'asc';
+    }
+    renderOnlineBidTableHead();
+    filterOnlineBidTable();
+}
+
+function compareOnlineBidRows(a, b, colId, direction) {
+    let res = 0;
+    switch (colId) {
+        case 'equipe':
+            res = (a.team_code || '').localeCompare(b.team_code || '');
+            break;
+        case 'cross_status':
+            res = (a.cross_status || '').localeCompare(b.cross_status || '');
+            break;
+        case 'status_login':
+            res = (a.status_login || '').localeCompare(b.status_login || '');
+            break;
+        case 'status_bid':
+            res = (a.status_bid || '').localeCompare(b.status_bid || '');
+            break;
+        case 'marcacao':
+            res = parseTimeToMinutesHelper(a.marcacao_eb || a.login_time) - parseTimeToMinutesHelper(b.marcacao_eb || b.login_time);
+            break;
+        case 'termino':
+            res = parseTimeToMinutesHelper(a.termino) - parseTimeToMinutesHelper(b.termino);
+            break;
+        case 'tempo_ativo':
+            res = parseTimeToMinutesHelper(a.marcacao_eb) - parseTimeToMinutesHelper(b.marcacao_eb);
+            break;
+        case 'turno_x_login':
+            const tA = (a.turno_x_login_minutos !== null && a.turno_x_login_minutos !== undefined) ? Number(a.turno_x_login_minutos) : 9999;
+            const tB = (b.turno_x_login_minutos !== null && b.turno_x_login_minutos !== undefined) ? Number(b.turno_x_login_minutos) : 9999;
+            res = tA - tB;
+            break;
+        case 'status_prog':
+            res = (a.status_prog || a.status_eb || '').localeCompare(b.status_prog || b.status_eb || '');
+            break;
+        case 'tempo_bid':
+            res = parseTimeToMinutesHelper(a.bid_timer_value) - parseTimeToMinutesHelper(b.bid_timer_value);
+            break;
+        case 'base':
+            const baseA = a.base_display || a.base || '';
+            const baseB = b.base_display || b.base || '';
+            res = baseA.localeCompare(baseB);
+            break;
+        case 'turno':
+            res = (a.turno || '').localeCompare(b.turno || '');
+            break;
+        case 'placa':
+            res = (a.plate || '').localeCompare(b.plate || '');
+            break;
+        case 'componentes':
+            const memLenA = Array.isArray(a.bid_members) ? a.bid_members.length : 0;
+            const memLenB = Array.isArray(b.bid_members) ? b.bid_members.length : 0;
+            res = memLenA - memLenB;
+            break;
+        case 'ordem':
+            res = (a.ordem_servico || '').localeCompare(b.ordem_servico || '');
+            break;
+        default:
+            res = (a.team_code || '').localeCompare(b.team_code || '');
+    }
+    return direction === 'desc' ? -res : res;
+}
+
+function renderOnlineBidTableHead() {
+    const thead = document.getElementById('onlineBidTableHead');
+    if (!thead) return;
+    const visCols = getOnlineBidVisibleColumns();
+    const sortCol = onlineBidState.sortColumn;
+    const sortDir = onlineBidState.sortDirection;
+
+    const ths = ONLINE_BID_TABLE_COLUMNS
+        .filter(c => visCols.has(c.id))
+        .map(c => {
+            const isSorted = sortCol === c.id;
+            let badgeHtml = '<span class="th-sort-badge">↕</span>';
+            let activeClass = '';
+            let titleText = `Clique para ordenar por ${c.label}`;
+
+            if (isSorted) {
+                activeClass = 'th-active-sort';
+                const isNum = ['marcacao', 'termino', 'tempo_ativo', 'turno_x_login', 'tempo_bid'].includes(c.id);
+                if (sortDir === 'asc') {
+                    badgeHtml = `<span class="th-sort-badge active-asc">${isNum ? '▲ Menor' : '▲ A-Z'}</span>`;
+                    titleText = `Ordenado: Crescente (${isNum ? 'Menor para Maior' : 'A-Z'}). Clique para Decrescente.`;
+                } else {
+                    badgeHtml = `<span class="th-sort-badge active-desc">${isNum ? '▼ Maior' : '▼ Z-A'}</span>`;
+                    titleText = `Ordenado: Decrescente (${isNum ? 'Maior para Menor' : 'Z-A'}). Clique para resetar.`;
+                }
+            }
+
+            return `
+                <th class="${activeClass}" onclick="sortOnlineBidTable('${c.id}')" title="${titleText}">
+                    <div class="th-sort-content">
+                        <span>${c.label}</span>
+                        ${badgeHtml}
+                    </div>
+                </th>
+            `;
+        }).join('');
+
+    thead.innerHTML = `<tr>${ths}</tr>`;
+}
+
 function filterOnlineBidTable() {
     const prevScrollY = window.scrollY;
     const tbody = document.getElementById('onlineBidTableBody');
@@ -11138,7 +12006,7 @@ function filterOnlineBidTable() {
     if (list.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="12" style="text-align: center; height: 420px; vertical-align: middle; padding: 40px 20px; color: var(--text-secondary);">
+                <td colspan="${getOnlineBidVisibleColumns().size}" style="text-align: center; height: 420px; vertical-align: middle; padding: 40px 20px; color: var(--text-secondary);">
                     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
                         <i data-lucide="filter-x" style="width: 36px; height: 36px; color: #94a3b8; margin-bottom: 12px; opacity: 0.6;"></i>
                         <p style="font-weight: 700; font-size: 0.95rem; margin: 0 0 6px 0; color: var(--text-primary);">Nenhuma equipe encontrada para os filtros selecionados.</p>
@@ -11160,6 +12028,21 @@ function filterOnlineBidTable() {
         }
         return;
     }
+
+    // Atualiza cabeçalho congelado, pill de colunas e contador
+    updateOnlineBidColCountPill();
+    renderOnlineBidTableHead();
+
+    const resCountBadge = document.getElementById('onlineBidResultsCountBadge');
+    if (resCountBadge) {
+        resCountBadge.textContent = `${list.length} equipes listadas`;
+    }
+
+    if (onlineBidState.sortColumn) {
+        list = [...list].sort((a, b) => compareOnlineBidRows(a, b, onlineBidState.sortColumn, onlineBidState.sortDirection));
+    }
+
+    const visCols = getOnlineBidVisibleColumns();
 
     tbody.innerHTML = list.map(r => {
         // Status Cruzado Badge
@@ -11269,37 +12152,55 @@ function filterOnlineBidTable() {
         }
 
         const marcacaoVal = r.marcacao_eb && r.marcacao_eb !== '--' ? r.marcacao_eb : (r.login_time || '--');
+        const terminoVal = r.termino && r.termino !== '--' ? r.termino : computeTeamTermino(marcacaoVal, r.login_time_eb || r.login_time, r.turno, r.vehicle_type, r.geo, r.base_display);
+        const terminoHtml = (terminoVal && terminoVal !== '--' && terminoVal !== '--:--')
+            ? `<span class="badge-termino" title="Horário previsto de término/logoff">${terminoVal}</span>`
+            : `<span style="color: var(--text-secondary); font-size: 0.74rem;">--</span>`;
+        const tempoAtivoHtml = computeTempoAtivoBadge(r.marcacao_eb, r.turno, r.login_time_eb || r.login_time, r.is_eb_active, r.status_eb, terminoVal);
+        const turnoXLoginHtml = computeTurnoXLoginBadge(r.marcacao_eb, r.turno, r.login_time_eb || r.login_time, r.turno_x_login, r.turno_x_login_minutos);
+
+        const cellsMap = {
+            equipe: `<td>
+                <button type="button" class="team-badge clickable-team-badge" onclick="event.stopPropagation(); openDeliveryTeamModal('${r.team_code}')" title="Clique para abrir Diagnóstico Forense Completo" style="cursor: pointer;">
+                    ${r.team_code}
+                </button>
+            </td>`,
+            cross_status: `<td>
+                ${crossBadgeHtml}
+                <div style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 3px;">${r.cross_desc || ''}</div>
+            </td>`,
+            status_login: `<td>${loginBadge}</td>`,
+            status_bid: `<td>${bBadge}</td>`,
+            marcacao: `<td>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 800; color: #38bdf8;">${marcacaoVal}</span>
+            </td>`,
+            termino: `<td>${terminoHtml}</td>`,
+            tempo_ativo: `<td class="tempo-ativo-cell" data-team="${r.team_code}">${tempoAtivoHtml}</td>`,
+            turno_x_login: `<td>${turnoXLoginHtml}</td>`,
+            status_prog: `<td>${progBadge}</td>`,
+            tempo_bid: `<td>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #38bdf8; font-weight: 700;">${timerVal}</span>
+            </td>`,
+            base: `<td>
+                <strong style="color: var(--text-primary); font-size: 0.78rem;">${r.base_display || '--'}</strong>
+                <div style="font-size: 0.68rem; color: #0ea5e9;">${r.geo || ''}</div>
+            </td>`,
+            turno: `<td>${turnoHtml}</td>`,
+            placa: `<td>${placaHtml}</td>`,
+            componentes: `<td>${componentesHtml}</td>`,
+            ordem: `<td>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #0284c7; font-weight: 700;">${r.ordem_servico || '--'}</span>
+            </td>`
+        };
+
+        const rowCells = ONLINE_BID_TABLE_COLUMNS
+            .filter(c => visCols.has(c.id))
+            .map(c => cellsMap[c.id] || `<td>--</td>`)
+            .join('');
 
         return `
             <tr onclick="openDeliveryTeamModal('${r.team_code}')" style="cursor: pointer;">
-                <td>
-                    <button type="button" class="team-badge clickable-team-badge" onclick="event.stopPropagation(); openDeliveryTeamModal('${r.team_code}')" title="Clique para abrir Diagnóstico Forense Completo" style="cursor: pointer;">
-                        ${r.team_code}
-                    </button>
-                </td>
-                <td>
-                    ${crossBadgeHtml}
-                    <div style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 3px;">${r.cross_desc || ''}</div>
-                </td>
-                <td>${loginBadge}</td>
-                <td>${bBadge}</td>
-                <td>
-                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; font-weight: 700; color: #38bdf8;">${marcacaoVal}</span>
-                </td>
-                <td class="col-desktop-only">${progBadge}</td>
-                <td class="col-desktop-only">
-                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #38bdf8; font-weight: 700;">${timerVal}</span>
-                </td>
-                <td class="col-desktop-only">
-                    <strong style="color: var(--text-primary); font-size: 0.78rem;">${r.base_display || '--'}</strong>
-                    <div style="font-size: 0.68rem; color: #0ea5e9;">${r.geo || ''}</div>
-                </td>
-                <td class="col-desktop-only">${turnoHtml}</td>
-                <td class="col-desktop-only">${placaHtml}</td>
-                <td class="col-desktop-only">${componentesHtml}</td>
-                <td class="col-desktop-only">
-                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #0284c7; font-weight: 700;">${r.ordem_servico || '--'}</span>
-                </td>
+                ${rowCells}
             </tr>
         `;
     }).join('');
@@ -11470,6 +12371,12 @@ window.triggerBidCollect = triggerBidCollect;
 window.exportOnlineXBidExcel = exportOnlineXBidExcel;
 window.toggleBidCardFilter = toggleBidCardFilter;
 window.onSelectBidCrossStatus = onSelectBidCrossStatus;
+window.toggleOnlineBidColPicker = toggleOnlineBidColPicker;
+window.toggleOnlineBidColumn = toggleOnlineBidColumn;
+window.setAllOnlineBidColumns = setAllOnlineBidColumns;
+window.resetOnlineBidColumnsToDefault = resetOnlineBidColumnsToDefault;
+window.toggleOnlineBidFullscreen = toggleOnlineBidFullscreen;
+window.sortOnlineBidTable = sortOnlineBidTable;
 
 /* ==========================================================================
    SISTEMA ADAPTATIVO MOBILE & TABLET (M3 EXPRESSIVE + APPLE LIQUID GLASS + PWA)
@@ -11953,14 +12860,15 @@ function renderMobileDeliveryCards(list) {
                         <span class="card-meta-val">${plateVal}</span>
                     </div>
                 </div>
-                <div class="card-bottom-row">
+                <div class="card-bottom-row" style="flex-wrap: wrap; gap: 8px;">
                     <div>
                         <span>Login: <strong>${marcacao}</strong></span>
+                        <span style="margin-left: 8px;">Término: <strong style="color: #fbbf24;">${terminoVal}</strong></span>
                         ${osNum !== '--' ? ` • OS: <strong style="color: #38bdf8;">${osNum}</strong>` : ''}
                     </div>
-                    <div class="card-chevron-hint">
-                        <span>Detalhes</span>
-                        <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        ${tempoAtivoHtml}
+                        ${turnoXLoginHtml}
                     </div>
                 </div>
             </div>
@@ -15793,3 +16701,28 @@ function setupTvFullscreenListener() {
 }
 
 
+
+// Relógio em Tempo Real para Atualização Contínua de Tempo Ativo (Intervalo de 20s)
+let liveActiveTimerInterval = null;
+function startLiveActiveTimerWatcher() {
+    if (liveActiveTimerInterval) clearInterval(liveActiveTimerInterval);
+    liveActiveTimerInterval = setInterval(() => {
+        try {
+            const delScreen = document.getElementById('deliveryScreenLive');
+            if (delScreen && delScreen.classList.contains('active') && deliveryState.filteredTeams && deliveryState.filteredTeams.length > 0) {
+                renderDeliveryTable();
+            }
+            const bidScreen = document.getElementById('deliveryScreenOnlineBid');
+            if (bidScreen && bidScreen.classList.contains('active') && onlineBidState.allRows && onlineBidState.allRows.length > 0) {
+                filterOnlineBidTable();
+            }
+        } catch (e) {
+            console.warn('[LiveTimerWatcher] Erro silencioso:', e);
+        }
+    }, 20000);
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startLiveActiveTimerWatcher);
+} else {
+    startLiveActiveTimerWatcher();
+}
