@@ -86,6 +86,23 @@ MONTH_ABBR_MAP = {
     10: ('Oct', 'Out'), 11: ('Nov', 'Nov'), 12: ('Dec', 'Dez')
 }
 
+def get_spotfire_target_month_year(dt=None) -> tuple[int, str]:
+    """
+    Regra Operacional Spotfire (Scanner 5.0):
+    - No dia 01 de todo mês: ainda realiza a coleta do mês anterior para consolidar o fechamento do último dia do mês (ex: 31/10).
+    - Do dia 02 em diante: começa a realizar a coleta do mês vigente (ex: 11/2026).
+    """
+    ref_dt = dt or datetime.now()
+    if ref_dt.day == 1:
+        # Dia 01: coleta o mês anterior
+        if ref_dt.month == 1:
+            return 12, str(ref_dt.year - 1)
+        else:
+            return ref_dt.month - 1, str(ref_dt.year)
+    else:
+        # Dia 02 em diante: coleta o mês vigente
+        return ref_dt.month, str(ref_dt.year)
+
 def normalize_team_code(raw_name: str) -> str:
     """Padroniza o código da equipe removendo espaços, traços e caracteres especiais."""
     if not raw_name:
@@ -505,7 +522,7 @@ def cdp_press_enter(client):
         "code": "Enter"
     })
 
-def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
+def exportar_arquivo_spotfire_via_cdp(client, all_months=False, target_year: str = None, target_month_idx: int = None) -> str:
     """
     Executa a sequência autônoma estrita do Scanner 5.0 Spotfire em 6 etapas:
     1. Atualiza a página com F5 (Page.reload) e confirma carregamento completo.
@@ -665,14 +682,20 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
         print("[SPOTFIRE CDP WARN] Botão 'Reset Visible Filters' não localizado no painel direito, prosseguindo...", flush=True)
 
     # =========================================================================
-    # ETAPA 3: Filtrar o Ano Atual (Painel Esquerdo)
+    # ETAPA 3: Filtrar o Ano Operacional (Painel Esquerdo)
     # =========================================================================
     now = datetime.now()
-    target_year = str(now.year)
-    target_month_idx = now.month
-    en_month, pt_month = MONTH_ABBR_MAP.get(target_month_idx, ('Sep', 'Set'))
-    target_month_names = [pt_month.lower(), en_month.lower(), 'set', 'sep']
+    if target_month_idx is None or target_year is None:
+        calc_m, calc_y = get_spotfire_target_month_year(now)
+        if target_month_idx is None:
+            target_month_idx = calc_m
+        if target_year is None:
+            target_year = calc_y
 
+    en_month, pt_month = MONTH_ABBR_MAP.get(target_month_idx, ('Oct', 'Out'))
+    target_month_names = list(set([pt_month.lower(), en_month.lower()]))
+
+    print(f"[SPOTFIRE CDP] Regra Operacional Mês/Ano: Dia {now.day:02d}/{now.month:02d} -> Coleta direcionada para Mês={target_month_idx:02d} ({pt_month}/{en_month}) e Ano={target_year}", flush=True)
     print(f"[SPOTFIRE CDP] Configurando filtro de Ano={target_year} no painel esquerdo...", flush=True)
 
     def adjust_year_filter():
@@ -690,7 +713,7 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
                 const isChecked = chk ? chk.classList.contains("sfpc-checked") : false;
                 const isTarget = (text === target);
 
-                if ((isTarget && !isChecked) || (!isTarget && isChecked && ["2023", "2024", "2025", "2026"].includes(text))) {{
+                if ((isTarget && !isChecked) || (!isTarget && isChecked && ["2023", "2024", "2025", "2026", "2027"].includes(text))) {{
                     const txt = el.querySelector(".sf-element-text-box") || el;
                     const r = txt.getBoundingClientRect();
                     const x = Math.round(r.left + r.width / 2);
@@ -734,225 +757,122 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
             time.sleep(3.0)
             aguardar_spotfire_idle(client, timeout=45, comfort_buffer_seconds=10, step_label="Etapa 4 - Pós Remoção Filtro Mês")
     else:
-        print(f"[SPOTFIRE CDP] Aplicando filtro estrito do Mês Atual ({pt_month} / {en_month} - Mês {target_month_idx:02d}) no painel esquerdo...", flush=True)
+        print(f"[SPOTFIRE CDP] Aplicando filtro estrito do Mês ({pt_month} / {en_month} - Mês {target_month_idx:02d} / {target_year}) no painel esquerdo...", flush=True)
 
-        month_text = pt_month.lower()
-
-        # 1. Localiza, foca e clica fisicamente no SearchInput do Mês
-        print(f"[SPOTFIRE CDP] [Etapa 4] Focando SearchInput do Mês e digitando '{month_text}'...", flush=True)
-        inp_coords = client.evaluate('''(() => {
-            const v = Array.from(document.querySelectorAll('.sf-element-visual')).find(el => {
-                const r = el.getBoundingClientRect();
-                return r.left < 250 && r.height > 400;
-            }) || document.body;
-            const inps = Array.from(v.querySelectorAll('input.SearchInput, input')).filter(i => {
-                const r = i.getBoundingClientRect();
-                return r.left < 300 && r.top > 150 && r.top < 300;
-            });
-            if (inps.length === 0) return null;
-            const inp = inps[0];
-            const r = inp.getBoundingClientRect();
-            inp.focus();
-            return {
-                x: Math.round(r.left + r.width / 2),
-                y: Math.round(r.top + r.height / 2)
-            };
-        })()''')
-
-        if inp_coords:
-            client.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": inp_coords["x"], "y": inp_coords["y"], "button": "left", "clickCount": 1})
-            client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": inp_coords["x"], "y": inp_coords["y"], "button": "left", "clickCount": 1})
-            time.sleep(0.3)
-
-        # Preenche o texto 'set' mantendo o foco no SearchInput
-        client.evaluate(f'''(() => {{
-            const v = Array.from(document.querySelectorAll('.sf-element-visual')).find(el => {{
-                const r = el.getBoundingClientRect();
-                return r.left < 250 && r.height > 400;
-            }}) || document.body;
-            const inps = Array.from(v.querySelectorAll('input.SearchInput, input')).filter(i => {{
-                const r = i.getBoundingClientRect();
-                return r.left < 300 && r.top > 150 && r.top < 300;
-            }});
-            if (inps.length === 0) return;
-            const inp = inps[0];
-            inp.focus();
-
-            const $ = window.jQuery || window.$;
-            if ($) {{
-                const $inp = $(inp);
-                $inp.val("").trigger("input");
-                $inp.val("{month_text}").trigger("input").trigger("change");
-                $inp.trigger($.Event('keydown', {{ which: 13, keyCode: 13 }}));
-                $inp.trigger($.Event('keypress', {{ which: 13, keyCode: 13, charCode: 13 }}));
-                $inp.trigger($.Event('keyup', {{ which: 13, keyCode: 13 }}));
-            }} else {{
-                inp.value = "{month_text}";
-                inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                inp.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
-                inp.dispatchEvent(new KeyboardEvent('keypress', {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
-                inp.dispatchEvent(new KeyboardEvent('keyup', {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
-            }}
-            inp.focus();
-        }})()''')
-
-        # DISPARO FÍSICO MANDATÓRIO DO "ENTER" VIA CDP COM FOCO NO SEARCHINPUT
-        print("[SPOTFIRE CDP] [Etapa 4] Pressionando tecla física 'Enter' (código 13) via CDP no SearchInput...", flush=True)
-        time.sleep(0.2)
-        cdp_press_enter(client)
-        time.sleep(0.5)
-
-        # 2. Barreira de Espera de Renderização: 4 Ciclos de 30 Segundos
-        # Regra do Usuário:
-        # - Estabelecer um tempo de 30 segundos DEPOIS que escreve 'set' e pressiona Enter para verificar se foi renderizado e selecionar o set no filtro.
-        # - Quando der os 30 segundos de espera, o CDP verifica se no selectBox do mês apareceu 'set' para aí sim selecionar.
-        # - Caso não tenha aparecido, aguarda mais 30 segundos.
-        # - Faz esse ciclo 4 vezes (total de até 120s).
-        # - Caso não apareça após os 4 ciclos, considera como falha e reinicia o processo (sem travar outros CDPs).
-        max_render_cycles = 4
-        render_cycle_wait = 30  # exatamente 30 segundos por ciclo
-        item_found = None
-
-        print(f"[SPOTFIRE CDP] [Etapa 4] Enter pressionado. Iniciando monitoramento da selectBox do Mês ({max_render_cycles} ciclos de {render_cycle_wait}s)...", flush=True)
-
-        for cycle in range(1, max_render_cycles + 1):
-            print(f"[SPOTFIRE CDP] [Etapa 4 - Ciclo {cycle}/{max_render_cycles}] Aguardando {render_cycle_wait}s após Enter para verificar se '{month_text}' foi renderizado no selectBox...", flush=True)
-            time.sleep(render_cycle_wait)
-
-            # Quando der os 30 segundos de espera, o CDP verifica se no selectBox do mês apareceu 'set'
-            check_res = client.evaluate(f'''(() => {{
-                const targetNames = {json.dumps(target_month_names)};
-                const v = Array.from(document.querySelectorAll('.sf-element-visual')).find(el => {{
-                    const r = el.getBoundingClientRect();
-                    return r.left < 250 && r.height > 400;
-                }}) || document.body;
-                const items = Array.from(v.querySelectorAll('.sf-element-list-box-item, [role="listitem"], .ListBoxItem')).filter(it => {{
-                    const r = it.getBoundingClientRect();
-                    return r.left < 300 && r.top > 150 && r.top < 450 && r.width > 0 && r.height > 0;
-                }});
-
-                const match = items.find(i => targetNames.some(m => {{
-                    const t = (i.innerText || '').trim().toLowerCase();
-                    const title = (i.getAttribute('title') || '').trim().toLowerCase();
-                    return t === m || t.startsWith(m) || title === m || title.startsWith(m);
-                }}));
-
-                if (!match) {{
-                    return {{
-                        found: false,
-                        itemsCount: items.length,
-                        sampleItems: items.slice(0, 5).map(i => (i.innerText || i.getAttribute('title') || '').trim())
-                    }};
-                }}
-
-                const r = match.getBoundingClientRect();
-                return {{
-                    found: true,
-                    text: (match.innerText || match.getAttribute('title') || '').trim(),
-                    alreadySelected: match.classList.contains("sfpc-selected") || !!match.querySelector(".sfpc-checked"),
-                    x: Math.round(r.left + r.width / 2),
-                    y: Math.round(r.top + r.height / 2)
-                }};
-            }})()''')
-
-            if check_res and check_res.get("found"):
-                item_found = check_res
-                print(f"[SPOTFIRE CDP OK] [Etapa 4 - Ciclo {cycle}/{max_render_cycles}] Item '{item_found.get('text', month_text)}' apareceu na selectBox do mês!", flush=True)
-                break
-            else:
-                items_cnt = check_res.get("itemsCount", 0) if check_res else 0
-                sample = check_res.get("sampleItems", []) if check_res else []
-                print(f"[SPOTFIRE CDP] [Etapa 4 - Ciclo {cycle}/{max_render_cycles}] Item '{month_text}' ainda não apareceu na selectBox após {cycle * render_cycle_wait}s (itens visíveis: {items_cnt}, amostra: {sample}).", flush=True)
-                if cycle < max_render_cycles:
-                    print(f"[SPOTFIRE CDP] [Etapa 4] Reaplicando foco e Enter no SearchInput para o próximo ciclo de {render_cycle_wait}s...", flush=True)
-                    client.evaluate(f'''(() => {{
-                        const v = Array.from(document.querySelectorAll('.sf-element-visual')).find(el => {{
-                            const r = el.getBoundingClientRect();
-                            return r.left < 250 && r.height > 400;
-                        }}) || document.body;
-                        const inps = Array.from(v.querySelectorAll('input.SearchInput, input')).filter(i => {{
-                            const r = i.getBoundingClientRect();
-                            return r.left < 300 && r.top > 150 && r.top < 300;
-                        }});
-                        if (inps.length > 0) {{
-                            const inp = inps[0];
-                            inp.focus();
-                            const $ = window.jQuery || window.$;
-                            if ($) $(inp).val("{month_text}").trigger("input").trigger($.Event('keypress', {{ which: 13, keyCode: 13 }}));
-                        }}
-                    }})()''')
-                    cdp_press_enter(client)
-
-        if not item_found:
-            print(f"[SPOTFIRE CDP ERROR] FALHA NA RENDERIZAÇÃO: Mês '{month_text}' não apareceu na selectBox após {max_render_cycles * render_cycle_wait}s ({max_render_cycles} ciclos de {render_cycle_wait}s).", flush=True)
-            print("[SPOTFIRE CDP ERROR] Reiniciando processo para não impactar outras rotinas e ciclos...", flush=True)
-            return ""
-
-        match_text = item_found.get("text", month_text)
-
-        # 3. Agora sim seleciona o item 'set' no filtro
-        print(f"[SPOTFIRE CDP] [Etapa 4] Renderização confirmada! Agora selecionando '{match_text}' na selectBox do mês...", flush=True)
-        if not item_found.get("alreadySelected"):
-            client.evaluate(f'''(() => {{
-                const targetNames = {json.dumps(target_month_names)};
-                const v = Array.from(document.querySelectorAll('.sf-element-visual')).find(el => {{
-                    const r = el.getBoundingClientRect();
-                    return r.left < 250 && r.height > 400;
-                }}) || document.body;
-                const items = Array.from(v.querySelectorAll('.sf-element-list-box-item, [role="listitem"], .ListBoxItem')).filter(it => {{
-                    const r = it.getBoundingClientRect();
-                    return r.left < 300 && r.top > 150 && r.top < 450 && r.width > 0 && r.height > 0;
-                }});
-                const match = items.find(i => targetNames.some(m => {{
-                    const t = (i.innerText || '').trim().toLowerCase();
-                    const title = (i.getAttribute('title') || '').trim().toLowerCase();
-                    return t === m || t.startsWith(m) || title === m || title.startsWith(m);
-                }}));
-                if (!match) return;
-
+        # 1. Se o mês desejado for a partir de maio (mês >= 5), rola o scrollbar da VirtualListBox para revelar os meses posteriores
+        if target_month_idx >= 5:
+            print(f"[SPOTFIRE CDP] [Etapa 4] Mês {target_month_idx} ({pt_month}) está abaixo da dobra inicial. Rolando lista de meses...", flush=True)
+            client.evaluate('''(() => {
+                const box = Array.from(document.querySelectorAll('.VirtualListBox')).find(b => {
+                    const r = b.getBoundingClientRect();
+                    return r.left < 50 && r.top > 150 && r.top < 250;
+                });
+                if (!box) return false;
+                const handle = box.querySelector('.ScrollbarHandle');
                 const $ = window.jQuery || window.$;
-                if ($) {{
-                    const $item = $(match);
-                    const $scrollArea = $item.closest('.ScrollArea');
-                    const offset = $item.offset();
-                    const pageY = offset.top + ($item.height() / 2);
-                    const pageX = offset.left + ($item.width() / 2);
-                    $scrollArea.trigger($.Event('mousedown', {{ which: 1, pageX, pageY }}));
-                    $(document.body).trigger($.Event('mouseup', {{ which: 1, pageX, pageY }}));
-                }} else {{
-                    const r = match.getBoundingClientRect();
-                    const x = Math.round(r.left + r.width / 2);
-                    const y = Math.round(r.top + r.height / 2);
-                    const opts = {{ bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0 }};
-                    match.dispatchEvent(new PointerEvent('pointerdown', opts));
-                    match.dispatchEvent(new MouseEvent('mousedown', opts));
-                    match.dispatchEvent(new PointerEvent('pointerup', opts));
-                    match.dispatchEvent(new MouseEvent('mouseup', opts));
-                    match.dispatchEvent(new MouseEvent('click', opts));
-                }}
-            }})()''')
-
-            # Disparo físico adicional via CDP no elemento do mês
-            x, y = item_found["x"], item_found["y"]
-            client.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1})
-            client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1})
+                if (handle && $) {
+                    const offset = $(handle).offset();
+                    $(handle).trigger($.Event('mousedown', { currentTarget: handle, pageX: offset.left + 5, pageY: offset.top + 5 }));
+                    $(document).trigger($.Event('mousemove', { pageX: offset.left + 5, pageY: offset.top + 60 }));
+                    $(document).trigger($.Event('mouseup', { pageX: offset.left + 5, pageY: offset.top + 60 }));
+                    return true;
+                }
+                return false;
+            })()''')
+            time.sleep(1.0)
+        else:
+            # Se for dos primeiros meses (jan - abr), rola para o topo caso estivesse rolado
+            client.evaluate('''(() => {
+                const box = Array.from(document.querySelectorAll('.VirtualListBox')).find(b => {
+                    const r = b.getBoundingClientRect();
+                    return r.left < 50 && r.top > 150 && r.top < 250;
+                });
+                if (!box) return false;
+                const handle = box.querySelector('.ScrollbarHandle');
+                const $ = window.jQuery || window.$;
+                if (handle && $) {
+                    const offset = $(handle).offset();
+                    $(handle).trigger($.Event('mousedown', { currentTarget: handle, pageX: offset.left + 5, pageY: offset.top + 5 }));
+                    $(document).trigger($.Event('mousemove', { pageX: offset.left + 5, pageY: offset.top - 60 }));
+                    $(document).trigger($.Event('mouseup', { pageX: offset.left + 5, pageY: offset.top - 60 }));
+                    return true;
+                }
+                return false;
+            })()''')
             time.sleep(1.0)
 
-        # 4. Confirmação obrigatória do estado sfpc-selected
+        # 2. Localiza o item do mês no DOM e aciona a seleção via jQuery mousedown/mouseup oficial do Spotfire
+        sel_res = client.evaluate(f'''(() => {{
+            const targetNames = {json.dumps(target_month_names)};
+            const box = Array.from(document.querySelectorAll('.VirtualListBox')).find(b => {{
+                const r = b.getBoundingClientRect();
+                return r.left < 50 && r.top > 150 && r.top < 250;
+            }});
+            if (!box) return {{ found: false, error: 'VirtualListBox não encontrada' }};
+
+            const items = Array.from(box.querySelectorAll('.sf-element-list-box-item'));
+            const target = items.find(it => {{
+                const t = (it.innerText || '').trim().toLowerCase();
+                return targetNames.includes(t);
+            }});
+
+            if (!target) {{
+                return {{ found: false, visible: items.map(i => i.innerText.trim()) }};
+            }}
+
+            const isAlreadySelected = target.classList.contains('sfpc-selected');
+            if (isAlreadySelected) {{
+                return {{ found: true, text: target.innerText.trim(), alreadySelected: true }};
+            }}
+
+            const $ = window.jQuery || window.$;
+            const r = target.getBoundingClientRect();
+            const opts = {{ bubbles: true, cancelable: true, which: 1, button: 0, pageX: r.left + 20, pageY: r.top + 7, clientX: r.left + 20, clientY: r.top + 7 }};
+            if ($) {{
+                $(target).trigger($.Event('mousedown', opts));
+                $(document.body).trigger($.Event('mouseup', opts));
+            }} else {{
+                target.dispatchEvent(new MouseEvent('mousedown', opts));
+                document.body.dispatchEvent(new MouseEvent('mouseup', opts));
+            }}
+
+            return {{
+                found: true,
+                text: target.innerText.trim(),
+                selected: target.classList.contains('sfpc-selected'),
+                x: Math.round(r.left + r.width / 2),
+                y: Math.round(r.top + r.height / 2)
+            }};
+        }})()''')
+
+        print(f"[SPOTFIRE CDP] [Etapa 4] Resultado da seleção do mês: {sel_res}", flush=True)
+
+        if not sel_res or not sel_res.get("found"):
+            print(f"[SPOTFIRE CDP ERROR] Mês '{pt_month}' não foi encontrado nos itens visíveis da VirtualListBox! Visíveis: {sel_res.get('visible') if sel_res else 'Nenhum'}", flush=True)
+            return ""
+
+        if not sel_res.get("alreadySelected") and not sel_res.get("selected"):
+            # Tentativa de clique físico via CDP no ponto do item
+            if sel_res.get("x") and sel_res.get("y"):
+                x, y = sel_res["x"], sel_res["y"]
+                client.call("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1})
+                client.call("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1})
+                time.sleep(1.0)
+
+        # 3. Confirmação do estado sfpc-selected
         is_sel = False
         for _ in range(15):
             is_sel = client.evaluate(f'''(() => {{
                 const targetNames = {json.dumps(target_month_names)};
-                const v = Array.from(document.querySelectorAll('.sf-element-visual')).find(el => {{
-                    const r = el.getBoundingClientRect();
-                    return r.left < 250 && r.height > 400;
-                }}) || document.body;
-                const items = Array.from(v.querySelectorAll('.sf-element-list-box-item, [role="listitem"], .ListBoxItem'));
+                const box = Array.from(document.querySelectorAll('.VirtualListBox')).find(b => {{
+                    const r = b.getBoundingClientRect();
+                    return r.left < 50 && r.top > 150 && r.top < 250;
+                }});
+                if (!box) return false;
+                const items = Array.from(box.querySelectorAll('.sf-element-list-box-item'));
                 const match = items.find(i => targetNames.some(m => {{
                     const t = (i.innerText || '').trim().toLowerCase();
-                    const title = (i.getAttribute('title') || '').trim().toLowerCase();
-                    return t === m || t.startsWith(m) || title === m || title.startsWith(m);
+                    return t === m || t.startsWith(m);
                 }}));
                 return match ? (match.classList.contains("sfpc-selected") || !!match.querySelector(".sfpc-checked")) : false;
             }})()''')
@@ -960,16 +880,16 @@ def exportar_arquivo_spotfire_via_cdp(client, all_months=False) -> str:
                 break
             time.sleep(1.0)
 
-        if not is_sel and not item_found.get("alreadySelected"):
-            print(f"[SPOTFIRE CDP ERROR] BLOQUEIO PREVENTIVO: Mês '{match_text}' clicado mas NÃO adquiriu estado 'sfpc-selected'. Reiniciando processo!", flush=True)
+        if not is_sel and not sel_res.get("alreadySelected"):
+            print(f"[SPOTFIRE CDP ERROR] BLOQUEIO PREVENTIVO: Mês '{pt_month}' clicado mas NÃO adquiriu estado 'sfpc-selected'. Reiniciando processo!", flush=True)
             return ""
 
-        print(f"[SPOTFIRE CDP OK] Mês '{match_text}' confirmado selecionado no filtro (sfpc-selected)!", flush=True)
+        print(f"[SPOTFIRE CDP OK] Mês '{pt_month}' confirmado selecionado no filtro (sfpc-selected)!", flush=True)
 
-        # 5. Barreira de Estabilização Pós-Seleção do Mês: AGUARDA O RECÁLCULO COMPLETO DA ANÁLISE E TABELA
-        print("[SPOTFIRE CDP] Mês selecionado com sucesso. Aguardando 10s para o Spotfire registrar e iniciar recálculo da Tabela Completa...", flush=True)
-        time.sleep(10.0)
-        aguardar_spotfire_idle(client, timeout=60, comfort_buffer_seconds=10, step_label="Etapa 4 -> 5 - Recálculo Tabela Completa")
+        # 4. Barreira de Estabilização Pós-Seleção do Mês
+        print("[SPOTFIRE CDP] Mês selecionado com sucesso. Aguardando recálculo da análise...", flush=True)
+        time.sleep(5.0)
+        aguardar_spotfire_idle(client, timeout=60, comfort_buffer_seconds=5, step_label="Etapa 4 -> 5 - Recálculo Tabela Completa")
 
     # =========================================================================
     # ETAPA 5: Validação Forense Mandatória da 'Tabela Completa todas Colunas' (Data Referência)
@@ -1692,7 +1612,7 @@ def processar_arquivo_scanner_para_registros(filepath: str, target_dates=None) -
 
     return records
 
-def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", full_history=True, all_months=False):
+def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", full_history=True, all_months=False, target_year=None, target_month_idx=None):
     """
     Executa o ciclo completo de sincronização do Scanner 5.0 (Spotfire):
     1. Abre WebSocket CDP na aba do Scanner 5.0.
@@ -1740,7 +1660,7 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
 
         downloaded_file = ""
         try:
-            downloaded_file = exportar_arquivo_spotfire_via_cdp(client, all_months=all_months)
+            downloaded_file = exportar_arquivo_spotfire_via_cdp(client, all_months=all_months, target_year=target_year, target_month_idx=target_month_idx)
         finally:
             client.close()
 
@@ -1751,10 +1671,11 @@ def executar_ciclo_sincronizacao_spotfire(source_label="Rotina Automática", ful
             return {"status": "error", "message": "Falha na geração do arquivo exportado do Scanner 5.0."}
 
         today_str = date.today().isoformat()
-        if full_history:
+        yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+        # Se for dia 01 ou mês diferente do corrente, processa o histórico completo do arquivo exportado
+        if full_history or (target_month_idx and target_month_idx != date.today().month):
             records = processar_arquivo_scanner_para_registros(downloaded_file, target_dates=None)
         else:
-            yesterday_str = (date.today() - timedelta(days=1)).isoformat()
             target_dates = [today_str, yesterday_str]
             records = processar_arquivo_scanner_para_registros(downloaded_file, target_dates=target_dates)
 

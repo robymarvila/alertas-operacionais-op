@@ -157,15 +157,17 @@ def extrair_dados_enel_via_cdp():
         # 1. Garante que está na página do Filtro Avançado (/teams-list) e recarrega os dados
         if "teams-list" not in current_url.lower():
             client.evaluate("location.href = '/teams-list';")
-            time.sleep(4.5)
+            time.sleep(3.0)
         else:
             client.evaluate("location.reload();")
-            time.sleep(3.5)
+            time.sleep(2.0)
 
-        # 2. Aguarda o DOM estar pronto
-        for _ in range(12):
+        # 2. Aguarda o DOM e as linhas reais da tabela carregarem completamente
+        for _ in range(25):
             ready_state = client.evaluate("document.readyState;")
-            if ready_state == "complete":
+            tr_count = client.evaluate("document.querySelectorAll('table tbody tr').length") or 0
+            first_txt = str(client.evaluate("document.querySelector('table tbody tr') ? document.querySelector('table tbody tr').innerText : ''") or "")
+            if ready_state == "complete" and tr_count > 1 and "nenhuma equipe" not in first_txt.lower() and "carregando" not in first_txt.lower():
                 break
             time.sleep(0.5)
 
@@ -192,15 +194,17 @@ def extrair_dados_enel_via_cdp():
         
         # Se alterou a paginação, aguarda carregar até 500 linhas
         if pag_status == "PAGINATION_CHANGED_TO_500":
-            time.sleep(3.0)
+            time.sleep(2.5)
         else:
-            time.sleep(1.0)
+            time.sleep(0.5)
 
         # 4. Extrai todas as linhas da tabela (14 colunas oficiais com Marcação e Desvio)
         js_extract = """
         (() => {
-            const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
-            const headers = Array.from(document.querySelectorAll('table thead th, [role="columnheader"]')).map(h => h.innerText.trim());
+            const allTables = Array.from(document.querySelectorAll('table'));
+            const mainTable = allTables.find(t => t.innerText && t.innerText.includes('EQUIPE')) || document.querySelector('table');
+            const headers = mainTable ? Array.from(mainTable.querySelectorAll('thead th, [role="columnheader"]')).map(h => h.innerText.trim()) : [];
+            const rows = mainTable ? Array.from(mainTable.querySelectorAll('tbody tr, [role="row"]')) : [];
             const results = [];
 
             // Mapeamento dinâmico de cabeçalhos
@@ -222,6 +226,7 @@ def extrair_dados_enel_via_cdp():
                 else if (cleanH.includes('PLACA') && colMap['placa'] === undefined) colMap['placa'] = idx;
                 else if (cleanH.includes('DESCANSO') && colMap['descanso'] === undefined) colMap['descanso'] = idx;
                 else if (cleanH.includes('ORDEM') && colMap['ordem'] === undefined) colMap['ordem'] = idx;
+                else if (cleanH.includes('CAMINHO') && colMap['hora_a_caminho'] === undefined) colMap['hora_a_caminho'] = idx;
             });
 
             rows.forEach(r => {
@@ -273,6 +278,7 @@ def extrair_dados_enel_via_cdp():
                     obj['PLACA'] = getVal('placa', 11);
                     obj['INICIO_DESCANSO'] = getVal('descanso', 12);
                     obj['ORDEM'] = getVal('ordem', 13);
+                    obj['HORA_A_CAMINHO'] = getVal('hora_a_caminho', 14);
 
                     results.push(obj);
                 }

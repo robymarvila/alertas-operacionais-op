@@ -5912,6 +5912,7 @@ function applyDeliveryFilters() {
     renderDeliveryKPIs(filteredActiveList, filteredTotalDayList);
     renderGroupedBasesMetrics(scopeFiltered);
     renderDeliveryCharts();
+    updateAlertPulseButtonsUI();
     renderDeliveryTable();
 }
 
@@ -6876,13 +6877,19 @@ function computeTurnoXLoginBadge(marcacao, shiftSlot, loginTime, backendDeltaStr
 }
 
 // ==========================================================================
-// CONFIGURAÇÃO OFICIAL DE COLUNAS & ORDENAÇÃO DINÂMICA (ENTREGA DE EQUIPES)
 // ==========================================================================
-const DELIVERY_TABLE_COLUMNS = [
-    { id: 'ut', label: 'UT', default: true },
-    { id: 'base', label: 'BASE', default: true },
+// CONFIGURAÇÃO OFICIAL DE COLUNAS & REORDENAÇÃO DINÂMICA (ENTREGA DE EQUIPES)
+// ==========================================================================
+// 1. Colunas Fixas Obrigatórias (Posições 1, 2 e 3 Imutáveis: UT -> BASE -> EQUIPE)
+const DELIVERY_DEFAULT_FIXED_COLUMNS = [
+    { id: 'ut', label: 'UT', default: true, required: true },
+    { id: 'base', label: 'BASE', default: true, required: true },
+    { id: 'equipe', label: 'EQUIPE', default: true, required: true }
+];
+
+// 2. Colunas Dinâmicas Reordenáveis (Livremente posicionáveis pelo usuário)
+const DELIVERY_DEFAULT_REORDERABLE_COLUMNS = [
     { id: 'veiculo', label: 'VEÍCULO', default: true },
-    { id: 'equipe', label: 'EQUIPE', default: true, required: true },
     { id: 'turno_prog', label: 'TURNO PROGRAMADO', default: true },
     { id: 'marcacao', label: 'MARCAÇÃO', default: true },
     { id: 'termino', label: 'TÉRMINO', default: true },
@@ -6893,14 +6900,104 @@ const DELIVERY_TABLE_COLUMNS = [
     { id: 'status_bid', label: 'STATUS BID', default: true },
     { id: 'placa', label: 'PLACA', default: true },
     { id: 'inicio_descanso', label: 'INÍCIO DESCANSO', default: true },
-    { id: 'ordem', label: 'ORDEM', default: true }
+    { id: 'status_descanso', label: 'STATUS DESCANSO', default: true },
+    { id: 'ordem', label: 'ORDEM', default: true },
+    { id: 'hora_a_caminho', label: 'HORA A CAMINHO', default: true },
+    { id: 'status_os', label: 'STATUS OS', default: true }
+];
+
+// Universo total de colunas oficiais
+const DELIVERY_TABLE_COLUMNS = [
+    ...DELIVERY_DEFAULT_FIXED_COLUMNS,
+    ...DELIVERY_DEFAULT_REORDERABLE_COLUMNS
 ];
 
 // Estado de ordenação e colunas
 if (!deliveryState.visibleColumns) deliveryState.visibleColumns = null;
+if (!deliveryState.reorderableColumnsOrder) deliveryState.reorderableColumnsOrder = null;
 if (!deliveryState.sortColumn) deliveryState.sortColumn = null;
 if (!deliveryState.sortDirection) deliveryState.sortDirection = 'asc';
 if (typeof deliveryState.isFullscreen === 'undefined') deliveryState.isFullscreen = false;
+if (typeof deliveryState.alertPulseEnabled === 'undefined') {
+    const savedPulse = localStorage.getItem('delivery_alert_pulse_enabled');
+    deliveryState.alertPulseEnabled = savedPulse !== null ? savedPulse === 'true' : true;
+}
+
+function getDeliveryReorderableColumnsOrder() {
+    if (deliveryState.reorderableColumnsOrder && deliveryState.reorderableColumnsOrder.length > 0) {
+        return deliveryState.reorderableColumnsOrder;
+    }
+    try {
+        const saved = localStorage.getItem('delivery_columns_order_v2');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                const validIds = new Set(DELIVERY_DEFAULT_REORDERABLE_COLUMNS.map(c => c.id));
+                const filtered = parsed.filter(id => validIds.has(id));
+                if (!filtered.includes('status_descanso')) {
+                    const dIdx = filtered.indexOf('inicio_descanso');
+                    if (dIdx !== -1) {
+                        filtered.splice(dIdx + 1, 0, 'status_descanso');
+                    } else {
+                        filtered.push('status_descanso');
+                    }
+                }
+                if (!filtered.includes('hora_a_caminho')) {
+                    const oIdx = filtered.indexOf('ordem');
+                    if (oIdx !== -1) {
+                        filtered.splice(oIdx + 1, 0, 'hora_a_caminho');
+                    } else {
+                        filtered.push('hora_a_caminho');
+                    }
+                }
+                if (!filtered.includes('status_os')) {
+                    const cIdx = filtered.indexOf('hora_a_caminho');
+                    if (cIdx !== -1) {
+                        filtered.splice(cIdx + 1, 0, 'status_os');
+                    } else {
+                        filtered.push('status_os');
+                    }
+                }
+                DELIVERY_DEFAULT_REORDERABLE_COLUMNS.forEach(c => {
+                    if (!filtered.includes(c.id)) filtered.push(c.id);
+                });
+                deliveryState.reorderableColumnsOrder = filtered;
+                return deliveryState.reorderableColumnsOrder;
+            }
+        }
+    } catch (e) {
+        console.warn('[Colunas] Erro ao carregar ordem:', e);
+    }
+    deliveryState.reorderableColumnsOrder = DELIVERY_DEFAULT_REORDERABLE_COLUMNS.map(c => c.id);
+    return deliveryState.reorderableColumnsOrder;
+}
+
+function saveDeliveryColumnsOrder() {
+    try {
+        if (deliveryState.reorderableColumnsOrder) {
+            localStorage.setItem('delivery_columns_order_v2', JSON.stringify(deliveryState.reorderableColumnsOrder));
+        }
+    } catch (e) {
+        console.warn('[Colunas] Erro ao salvar ordem:', e);
+    }
+}
+
+function getDeliveryOrderedColumns() {
+    // Retorna array completo: sempre [UT, BASE, EQUIPE] seguido pelas reordenáveis na ordem configurada
+    const fixedCols = [...DELIVERY_DEFAULT_FIXED_COLUMNS];
+    const reorderOrder = getDeliveryReorderableColumnsOrder();
+    const reorderMap = new Map(DELIVERY_DEFAULT_REORDERABLE_COLUMNS.map(c => [c.id, c]));
+    const dynamicCols = [];
+    reorderOrder.forEach(id => {
+        if (reorderMap.has(id)) {
+            dynamicCols.push(reorderMap.get(id));
+        }
+    });
+    DELIVERY_DEFAULT_REORDERABLE_COLUMNS.forEach(c => {
+        if (!dynamicCols.some(dc => dc.id === c.id)) dynamicCols.push(c);
+    });
+    return [...fixedCols, ...dynamicCols];
+}
 
 function getDeliveryVisibleColumns() {
     if (deliveryState.visibleColumns && deliveryState.visibleColumns.size > 0) {
@@ -6911,13 +7008,40 @@ function getDeliveryVisibleColumns() {
         if (saved) {
             const arr = JSON.parse(saved);
             if (Array.isArray(arr) && arr.length > 0) {
-                if (!arr.includes('equipe')) arr.push('equipe');
+                // UT, BASE e EQUIPE são estritamente obrigatórias
+                DELIVERY_DEFAULT_FIXED_COLUMNS.forEach(fc => {
+                    if (!arr.includes(fc.id)) arr.push(fc.id);
+                });
+                if (!arr.includes('status_descanso')) {
+                    const dIdx = arr.indexOf('inicio_descanso');
+                    if (dIdx !== -1) {
+                        arr.splice(dIdx + 1, 0, 'status_descanso');
+                    } else {
+                        arr.push('status_descanso');
+                    }
+                }
+                if (!arr.includes('hora_a_caminho')) {
+                    const oIdx = arr.indexOf('ordem');
+                    if (oIdx !== -1) {
+                        arr.splice(oIdx + 1, 0, 'hora_a_caminho');
+                    } else {
+                        arr.push('hora_a_caminho');
+                    }
+                }
+                if (!arr.includes('status_os')) {
+                    const cIdx = arr.indexOf('hora_a_caminho');
+                    if (cIdx !== -1) {
+                        arr.splice(cIdx + 1, 0, 'status_os');
+                    } else {
+                        arr.push('status_os');
+                    }
+                }
                 deliveryState.visibleColumns = new Set(arr);
                 return deliveryState.visibleColumns;
             }
         }
     } catch (e) {
-        console.warn('[Colunas] Erro ao carregar preferências:', e);
+        console.warn('[Colunas] Erro ao carregar visibilidade:', e);
     }
     deliveryState.visibleColumns = new Set(DELIVERY_TABLE_COLUMNS.map(c => c.id));
     return deliveryState.visibleColumns;
@@ -6929,7 +7053,7 @@ function saveDeliveryVisibleColumns() {
             localStorage.setItem('delivery_visible_columns_v1', JSON.stringify(Array.from(deliveryState.visibleColumns)));
         }
     } catch (e) {
-        console.warn('[Colunas] Erro ao salvar preferências:', e);
+        console.warn('[Colunas] Erro ao salvar visibilidade:', e);
     }
 }
 
@@ -6941,21 +7065,143 @@ function updateDeliveryColCountPill() {
     }
 }
 
+// Drag & Drop State
+let deliveryDraggedColId = null;
+
+function handleDeliveryColDragStart(event, colId) {
+    deliveryDraggedColId = colId;
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', colId);
+    }
+    const target = event.currentTarget;
+    setTimeout(() => {
+        if (target) target.classList.add('dragging');
+    }, 0);
+}
+
+function handleDeliveryColDragOver(event, targetColId) {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    if (!deliveryDraggedColId || deliveryDraggedColId === targetColId) return;
+    const item = event.currentTarget;
+    item.classList.add('drag-over');
+}
+
+function handleDeliveryColDragLeave(event) {
+    event.currentTarget.classList.remove('drag-over');
+}
+
+function handleDeliveryColDrop(event, targetColId) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drag-over');
+    if (!deliveryDraggedColId || deliveryDraggedColId === targetColId) return;
+
+    const order = [...getDeliveryReorderableColumnsOrder()];
+    const fromIdx = order.indexOf(deliveryDraggedColId);
+    const toIdx = order.indexOf(targetColId);
+
+    if (fromIdx !== -1 && toIdx !== -1) {
+        order.splice(fromIdx, 1);
+        order.splice(toIdx, 0, deliveryDraggedColId);
+        deliveryState.reorderableColumnsOrder = order;
+        saveDeliveryColumnsOrder();
+        renderDeliveryColPickerList();
+        renderDeliveryTableHead();
+        renderDeliveryTable();
+    }
+    deliveryDraggedColId = null;
+}
+
+function handleDeliveryColDragEnd(event) {
+    event.currentTarget.classList.remove('dragging');
+    document.querySelectorAll('.col-picker-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+    deliveryDraggedColId = null;
+}
+
+function moveDeliveryColumn(colId, direction) {
+    const order = [...getDeliveryReorderableColumnsOrder()];
+    const idx = order.indexOf(colId);
+    if (idx === -1) return;
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= order.length) return;
+
+    const temp = order[idx];
+    order[idx] = order[targetIdx];
+    order[targetIdx] = temp;
+
+    deliveryState.reorderableColumnsOrder = order;
+    saveDeliveryColumnsOrder();
+    renderDeliveryColPickerList();
+    renderDeliveryTableHead();
+    renderDeliveryTable();
+}
+
+function toggleDeliveryColCheckLabel(colId) {
+    const visCols = getDeliveryVisibleColumns();
+    const willCheck = !visCols.has(colId);
+    toggleDeliveryColumn(colId, willCheck);
+}
+
 function renderDeliveryColPickerList() {
     const listEl = document.getElementById('deliveryColPickerList');
     if (!listEl) return;
     const visCols = getDeliveryVisibleColumns();
+    const reorderOrder = getDeliveryReorderableColumnsOrder();
+    const reorderMap = new Map(DELIVERY_DEFAULT_REORDERABLE_COLUMNS.map(c => [c.id, c]));
 
-    listEl.innerHTML = DELIVERY_TABLE_COLUMNS.map(c => {
-        const isChecked = visCols.has(c.id);
-        return `
-            <label class="col-picker-item">
-                <input type="checkbox" ${isChecked ? 'checked' : ''} ${c.required ? 'disabled' : ''} onchange="toggleDeliveryColumn('${c.id}', this.checked)">
-                <span>${c.label}</span>
-                ${c.required ? '<span class="col-picker-tag">Fixo</span>' : ''}
-            </label>
-        `;
-    }).join('');
+    // Seção Fixa: UT, BASE, EQUIPE
+    const fixedHtml = `
+        <div class="col-picker-section-title">
+            <span>Colunas Fixas Obrigatórias</span>
+            <span style="font-size:0.6rem; color: #38bdf8;">🔒 Sequência Fixa</span>
+        </div>
+        <div class="col-picker-fixed-section">
+            ${DELIVERY_DEFAULT_FIXED_COLUMNS.map((c, idx) => `
+                <div class="col-picker-item fixed">
+                    <span style="font-size: 0.72rem; font-weight: 800; color: #38bdf8; width: 18px;">${idx + 1}º</span>
+                    <input type="checkbox" checked disabled title="Coluna fixa obrigatória">
+                    <span style="font-weight: 800; color: #f8fafc;">${c.label}</span>
+                    <span class="col-picker-tag-fixed">Fixo</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+
+    // Seção Dinâmica Reordenável
+    const dynamicCols = reorderOrder.map(id => reorderMap.get(id)).filter(Boolean);
+    const dynamicHtml = `
+        <div class="col-picker-section-title">
+            <span>Colunas Reordenáveis</span>
+            <span style="font-size:0.6rem; text-transform: none; opacity: 0.8;">Arraste ou use ▲▼</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 3px;">
+            ${dynamicCols.map((c, idx) => {
+                const isChecked = visCols.has(c.id);
+                const isFirst = idx === 0;
+                const isLast = idx === dynamicCols.length - 1;
+                return `
+                    <div class="col-picker-item draggable" draggable="true"
+                         data-col-id="${c.id}"
+                         ondragstart="handleDeliveryColDragStart(event, '${c.id}')"
+                         ondragover="handleDeliveryColDragOver(event, '${c.id}')"
+                         ondragleave="handleDeliveryColDragLeave(event)"
+                         ondrop="handleDeliveryColDrop(event, '${c.id}')"
+                         ondragend="handleDeliveryColDragEnd(event)">
+                        <span class="col-picker-drag-handle" title="Arraste para reposicionar">⋮⋮</span>
+                        <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleDeliveryColumn('${c.id}', this.checked)">
+                        <span style="flex: 1; cursor: pointer;" onclick="toggleDeliveryColCheckLabel('${c.id}')">${c.label}</span>
+                        <div class="col-picker-actions">
+                            <button type="button" class="btn-col-move" ${isFirst ? 'disabled' : ''} onclick="moveDeliveryColumn('${c.id}', -1)" title="Mover para cima">▲</button>
+                            <button type="button" class="btn-col-move" ${isLast ? 'disabled' : ''} onclick="moveDeliveryColumn('${c.id}', 1)" title="Mover para baixo">▼</button>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+
+    listEl.innerHTML = fixedHtml + dynamicHtml;
 }
 
 function toggleDeliveryColPicker(event) {
@@ -6973,15 +7219,15 @@ function toggleDeliveryColPicker(event) {
 
 function toggleDeliveryColumn(colId, isChecked) {
     const cols = getDeliveryVisibleColumns();
+    const isFixed = DELIVERY_DEFAULT_FIXED_COLUMNS.some(fc => fc.id === colId);
+    if (isFixed) {
+        showToast('As colunas UT, BASE e EQUIPE são obrigatórias e permanecem sempre visíveis.', 'info');
+        renderDeliveryColPickerList();
+        return;
+    }
     if (isChecked) {
         cols.add(colId);
     } else {
-        const colDef = DELIVERY_TABLE_COLUMNS.find(c => c.id === colId);
-        if (colDef && colDef.required) {
-            showToast('A coluna Equipe é essencial e permanece sempre visível.', 'info');
-            renderDeliveryColPickerList();
-            return;
-        }
         cols.delete(colId);
     }
     saveDeliveryVisibleColumns();
@@ -6996,7 +7242,7 @@ function setAllDeliveryColumns(val) {
         DELIVERY_TABLE_COLUMNS.forEach(c => cols.add(c.id));
     } else {
         cols.clear();
-        cols.add('equipe');
+        DELIVERY_DEFAULT_FIXED_COLUMNS.forEach(fc => cols.add(fc.id));
     }
     saveDeliveryVisibleColumns();
     renderDeliveryColPickerList();
@@ -7007,12 +7253,14 @@ function setAllDeliveryColumns(val) {
 
 function resetDeliveryColumnsToDefault() {
     deliveryState.visibleColumns = new Set(DELIVERY_TABLE_COLUMNS.filter(c => c.default).map(c => c.id));
+    deliveryState.reorderableColumnsOrder = DELIVERY_DEFAULT_REORDERABLE_COLUMNS.map(c => c.id);
     saveDeliveryVisibleColumns();
+    saveDeliveryColumnsOrder();
     renderDeliveryColPickerList();
     updateDeliveryColCountPill();
     renderDeliveryTableHead();
     renderDeliveryTable();
-    showToast('Configuração de colunas restaurada para o padrão oficial.', 'info');
+    showToast('Configuração de colunas e ordem restaurada para o padrão oficial.', 'info');
 }
 
 // Fechar menu de colunas ao clicar fora
@@ -7190,10 +7438,230 @@ function compareDeliveryTeams(a, b, colId, direction) {
         case 'ordem':
             res = (a.ordem_servico || '').localeCompare(b.ordem_servico || '');
             break;
+        case 'hora_a_caminho':
+            res = (a.hora_a_caminho || '').localeCompare(b.hora_a_caminho || '');
+            break;
+        case 'inicio_descanso':
+            res = (a.hora_inicio_descanso || '').localeCompare(b.hora_inicio_descanso || '');
+            break;
+        case 'status_descanso':
+            res = (a.status_descanso || '').localeCompare(b.status_descanso || '');
+            break;
+        case 'status_os':
+            res = (a.status_os || '').localeCompare(b.status_os || '');
+            break;
+        case 'status_descanso':
+            res = (a.status_descanso || '').localeCompare(b.status_descanso || '');
+            break;
+        case 'status_os':
+            res = (a.status_os || '').localeCompare(b.status_os || '');
+            break;
         default:
             res = (a.team_code || '').localeCompare(b.team_code || '');
     }
     return direction === 'desc' ? -res : res;
+}
+
+
+// ==========================================================================
+// FUNÇÕES DE STATUS DESCANSO (REGRA 4ª E 5ª HORA) E STATUS OS (DESLOCAMENTO)
+// ==========================================================================
+
+/**
+ * Calcula o Status de Descanso com base no cumprimento da janela entre a 4ª e 5ª hora de trabalho.
+ */
+function computeStatusDescansoBadge(marcacao, horaDesc, isActive, statusEB, loginTime, shiftSlot) {
+    const hasMarc = marcacao && !['--', '-', '', 'None', 'nan', '--:--'].includes(String(marcacao).trim());
+    let refTime = hasMarc ? String(marcacao).trim() : '';
+    if (!refTime && shiftSlot) {
+        const m = String(shiftSlot).match(/(\d{2}:\d{2})/);
+        if (m) refTime = m[1];
+    }
+    if (!refTime && loginTime && !['--', '--:--'].includes(loginTime)) {
+        refTime = loginTime;
+    }
+    if (!refTime) {
+        return `<span style="color: var(--text-secondary); font-size: 0.74rem;">--</span>`;
+    }
+
+    let startMin = 0;
+    const p = refTime.split(':');
+    if (p.length >= 2) {
+        startMin = parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+    } else {
+        return `<span style="color: var(--text-secondary); font-size: 0.74rem;">--</span>`;
+    }
+
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    let elapsedWork = nowMin - startMin;
+    if (elapsedWork < 0) elapsedWork += 1440;
+
+    // 1. Cenário A: Equipe possui INÍCIO DESCANSO registrado
+    if (horaDesc && !['--', '-', '', 'None', 'nan'].includes(String(horaDesc).trim())) {
+        const mTime = String(horaDesc).match(/\b(\d{1,2}:\d{2})\b/);
+        if (mTime) {
+            const dParts = mTime[1].split(':');
+            const descMin = parseInt(dParts[0], 10) * 60 + parseInt(dParts[1], 10);
+            let offset = descMin - startMin;
+            if (offset < 0) offset += 1440;
+
+            if (offset >= 240 && offset <= 300) {
+                return `<span class="badge-status-descanso-conforme" title="Conforme: Descanso iniciado dentro da 4ª e 5ª hora de trabalho (${Math.floor(offset/60)}h ${offset%60}m decorridos)"><i data-lucide="check-circle" style="width:11px;height:11px;"></i> CONFORME</span>`;
+            } else if (offset > 300) {
+                return `<span class="badge-status-descanso-naoconforme" title="Não Conforme: Descanso iniciado após a 5ª hora de trabalho (${Math.floor(offset/60)}h ${offset%60}m decorridos)"><i data-lucide="alert-triangle" style="width:11px;height:11px;"></i> NÃO CONFORME</span>`;
+            } else {
+                return `<span class="badge-status-descanso-naoconforme" title="Não Conforme: Descanso iniciado antes da 4ª hora de trabalho (${Math.floor(offset/60)}h ${offset%60}m decorridos)"><i data-lucide="alert-circle" style="width:11px;height:11px;"></i> NÃO CONFORME</span>`;
+            }
+        }
+    }
+
+    // 2. Cenário B: Equipe AINDA NÃO possui descanso registrado
+    const isConcluded = !isActive || (statusEB && String(statusEB).toLowerCase().includes('concluído'));
+    if (isConcluded) {
+        return `<span class="badge-status-descanso-naoconforme" title="Turno concluído sem descanso registrado"><i data-lucide="x-circle" style="width:11px;height:11px;"></i> NÃO CONFORME</span>`;
+    }
+
+    // Ainda não atingiu a 4ª hora de trabalho (< 240 minutos)
+    if (elapsedWork < 240) {
+        return `<span class="badge-status-descanso-noprazo" title="Ainda não atingiu a 4ª e 5ª hora de trabalho (${Math.floor(elapsedWork/60)}h ${elapsedWork%60}m decorridos)"><i data-lucide="clock" style="width:11px;height:11px;"></i> NO PRAZO</span>`;
+    }
+
+    // Passou da 4ª/5ª hora e não iniciou descanso
+    return `<span class="badge-status-descanso-iniciar" title="Atenção Operacional: Ultrapassou a 4ª/5ª hora (${Math.floor(elapsedWork/60)}h ${elapsedWork%60}m) e precisa iniciar o descanso imediatamente!"><i data-lucide="alert-triangle" style="width:11px;height:11px;"></i> INICIAR DESCANSO</span>`;
+}
+
+/**
+ * Calcula o Status de Deslocamento da OS e o indicador de oscilação suave de alerta.
+ */
+function computeStatusOsBadge(ordemServico, horaACaminho) {
+    const hasOs = ordemServico && !['--', '-', '', 'None', 'nan', 'NAN', null].includes(String(ordemServico).trim());
+    if (!hasOs) {
+        return {
+            html: `<span class="badge-status-os-semordem">SEM ORDEM</span>`,
+            statusKey: 'SEM ORDEM',
+            isAlertOscillate: false
+        };
+    }
+
+    const hasCaminho = horaACaminho && !['--', '-', '', 'None', 'nan', null].includes(String(horaACaminho).trim());
+    if (!hasCaminho) {
+        return {
+            html: `<span class="badge-status-os-pendente" title="Alerta: Equipe com OS mas sem horário a caminho registrado!"><span class="live-pulse-dot" style="background:#f59e0b;"></span> PENDENTE A CAMINHO</span>`,
+            statusKey: 'PENDENTE A CAMINHO',
+            isAlertOscillate: true,
+            alertType: 'warning'
+        };
+    }
+
+    const m = String(horaACaminho).match(/\b(\d{1,2}:\d{2})\b/);
+    if (!m) {
+        return {
+            html: `<span class="badge-status-os-pendente"><span class="live-pulse-dot" style="background:#f59e0b;"></span> PENDENTE A CAMINHO</span>`,
+            statusKey: 'PENDENTE A CAMINHO',
+            isAlertOscillate: true,
+            alertType: 'warning'
+        };
+    }
+
+    const p = m[1].split(':');
+    const caminhoMin = parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    let delta = nowMin - caminhoMin;
+    if (delta < 0) delta += 1440;
+
+    if (delta <= 20) {
+        return {
+            html: `<span class="badge-status-os-20" title="Deslocamento há ${delta} min"><i data-lucide="check" style="width:11px;height:11px;"></i> Até 20min</span>`,
+            statusKey: 'Até 20min',
+            isAlertOscillate: false
+        };
+    } else if (delta <= 30) {
+        return {
+            html: `<span class="badge-status-os-30" title="Deslocamento há ${delta} min"><i data-lucide="navigation" style="width:11px;height:11px;"></i> Até 30min</span>`,
+            statusKey: 'Até 30min',
+            isAlertOscillate: false
+        };
+    } else if (delta <= 50) {
+        return {
+            html: `<span class="badge-status-os-50" title="Deslocamento há ${delta} min"><i data-lucide="alert-circle" style="width:11px;height:11px;"></i> Atenção 50min</span>`,
+            statusKey: 'Atenção 50min',
+            isAlertOscillate: false
+        };
+    } else if (delta <= 60) {
+        return {
+            html: `<span class="badge-status-os-60" title="Deslocamento há ${delta} min"><i data-lucide="alert-triangle" style="width:11px;height:11px;"></i> Alerta 60min</span>`,
+            statusKey: 'Alerta 60min',
+            isAlertOscillate: false
+        };
+    } else {
+        return {
+            html: `<span class="badge-status-os-gravissimo" title="ALERTA GRAVÍSSIMO: Deslocamento há ${delta} min (> 60min)!"><span class="live-pulse-dot" style="background:#ef4444;box-shadow:0 0 8px #ef4444;"></span> Gravissimo Maior 60min</span>`,
+            statusKey: 'Gravissimo Maior 60min',
+            isAlertOscillate: true,
+            alertType: 'danger'
+        };
+    }
+}
+
+/**
+ * Alterna a oscilação suave de alerta visual para OSs pendentes e gravíssimas.
+ */
+function toggleDeliveryAlertPulse() {
+    deliveryState.alertPulseEnabled = !deliveryState.alertPulseEnabled;
+    try {
+        localStorage.setItem('delivery_alert_pulse_enabled', deliveryState.alertPulseEnabled ? 'true' : 'false');
+    } catch(e) {}
+    updateAlertPulseButtonsUI();
+    renderDeliveryTable();
+}
+
+function renderOnlineBidTable() {
+    if (typeof renderOnlineBidTableHead === 'function') {
+        renderOnlineBidTableHead();
+    }
+    if (typeof filterOnlineBidTable === 'function') {
+        filterOnlineBidTable();
+    }
+}
+window.renderOnlineBidTable = renderOnlineBidTable;
+
+function toggleOnlineBidAlertPulse() {
+    if (typeof onlineBidState.alertPulseEnabled === 'undefined') {
+        onlineBidState.alertPulseEnabled = true;
+    }
+    onlineBidState.alertPulseEnabled = !onlineBidState.alertPulseEnabled;
+    try {
+        localStorage.setItem('online_bid_alert_pulse_enabled', onlineBidState.alertPulseEnabled ? 'true' : 'false');
+    } catch(e) {}
+    updateAlertPulseButtonsUI();
+    renderOnlineBidTable();
+}
+
+function updateAlertPulseButtonsUI() {
+    const isDelOn = deliveryState.alertPulseEnabled !== false;
+    const btnDel = document.getElementById('btnToggleAlertPulse');
+    const txtDel = document.getElementById('textDeliveryAlertPulse');
+    if (btnDel) {
+        btnDel.classList.toggle('pulse-active', isDelOn);
+        btnDel.classList.toggle('pulse-inactive', !isDelOn);
+    }
+    if (txtDel) {
+        txtDel.textContent = isDelOn ? 'ALERTA VISUAL: LIGADO' : 'ALERTA VISUAL: DESLIGADO';
+    }
+
+    const isBidOn = (typeof onlineBidState.alertPulseEnabled === 'undefined' ? true : onlineBidState.alertPulseEnabled);
+    const btnBid = document.getElementById('btnToggleOnlineBidAlertPulse');
+    const txtBid = document.getElementById('textOnlineBidAlertPulse');
+    if (btnBid) {
+        btnBid.classList.toggle('pulse-active', isBidOn);
+        btnBid.classList.toggle('pulse-inactive', !isBidOn);
+    }
+    if (txtBid) {
+        txtBid.textContent = isBidOn ? 'ALERTA VISUAL: LIGADO' : 'ALERTA VISUAL: DESLIGADO';
+    }
 }
 
 // Renderização do Cabeçalho Congelado com Botões de Ordenação
@@ -7204,7 +7672,7 @@ function renderDeliveryTableHead() {
     const sortCol = deliveryState.sortColumn;
     const sortDir = deliveryState.sortDirection;
 
-    const ths = DELIVERY_TABLE_COLUMNS
+    const ths = getDeliveryOrderedColumns()
         .filter(c => visCols.has(c.id))
         .map(c => {
             const isSorted = sortCol === c.id;
@@ -7214,7 +7682,7 @@ function renderDeliveryTableHead() {
 
             if (isSorted) {
                 activeClass = 'th-active-sort';
-                const isNum = ['turno_prog', 'marcacao', 'termino', 'tempo_ativo', 'turno_x_login', 'gps', 'inicio_descanso'].includes(c.id);
+                const isNum = ['turno_prog', 'marcacao', 'termino', 'tempo_ativo', 'turno_x_login', 'gps', 'inicio_descanso', 'hora_a_caminho'].includes(c.id);
                 if (sortDir === 'asc') {
                     badgeHtml = `<span class="th-sort-badge active-asc">${isNum ? '▲ Menor' : '▲ A-Z'}</span>`;
                     titleText = `Ordenado: Crescente (${isNum ? 'Menor para Maior' : 'A-Z'}). Clique para Decrescente.`;
@@ -7346,15 +7814,31 @@ function renderDeliveryTable() {
         if (gpsMin !== null && !isNaN(gpsMin)) {
             gpsDisplay = `${gpsMin} min`;
         } else if (t.gps_update_str && t.gps_update_str !== '--' && t.gps_update_str !== 'None') {
-            gpsDisplay = t.gps_update_str;
-            const m = String(t.gps_update_str).match(/(\d+)\s*m/i);
-            if (m) gpsMin = parseInt(m[1], 10);
-        } else if (t.gps && t.gps !== '--' && t.gps !== 'None') {
-            gpsDisplay = t.gps;
-            const m = String(t.gps).match(/(\d+)\s*m/i);
-            if (m) {
-                gpsMin = parseInt(m[1], 10);
+            const hMatch = String(t.gps_update_str).match(/(\d+)\s*h/i);
+            const mMatch = String(t.gps_update_str).match(/(\d+)\s*m/i);
+            if (hMatch || mMatch) {
+                let calcM = 0;
+                if (hMatch) calcM += parseInt(hMatch[1], 10) * 60;
+                if (mMatch) calcM += parseInt(mMatch[1], 10);
+                gpsMin = calcM;
+                gpsDisplay = `${calcM} min`;
+            } else if (/^\d+$/.test(String(t.gps_update_str).trim())) {
+                gpsMin = parseInt(t.gps_update_str, 10);
                 gpsDisplay = `${gpsMin} min`;
+            } else {
+                gpsDisplay = t.gps_update_str;
+            }
+        } else if (t.gps && t.gps !== '--' && t.gps !== 'None') {
+            const hMatch = String(t.gps).match(/(\d+)\s*h/i);
+            const mMatch = String(t.gps).match(/(\d+)\s*m/i);
+            if (hMatch || mMatch) {
+                let calcM = 0;
+                if (hMatch) calcM += parseInt(hMatch[1], 10) * 60;
+                if (mMatch) calcM += parseInt(mMatch[1], 10);
+                gpsMin = calcM;
+                gpsDisplay = `${calcM} min`;
+            } else {
+                gpsDisplay = t.gps;
             }
         }
         const gpsColor = gpsMin !== null && gpsMin > 60 ? '#f59e0b' : '#10b981';
@@ -7395,14 +7879,13 @@ function renderDeliveryTable() {
 
         let descansoHtml = `<span style="color: var(--text-secondary); font-size: 0.75rem;">--</span>`;
         if (horaDesc) {
-            descansoHtml = `
-                <div style="display: inline-flex; align-items: center; gap: 4px;">
-                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 800; color: #a855f7;">${horaDesc}</span>
-                    ${dataDesc ? `<span style="font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--text-secondary);">(${dataDesc})</span>` : ''}
-                </div>
-            `;
-        } else if (dataDesc) {
-            descansoHtml = `<span style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: #a855f7; font-weight: 700;">${dataDesc}</span>`;
+            descansoHtml = `<span style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; font-weight: 800; color: #a855f7;">${horaDesc}</span>`;
+        } else if (dataDesc && dataDesc.includes(':')) {
+            const m = String(dataDesc).match(/\b(\d{1,2}:\d{2})\b/);
+            if (m) {
+                horaDesc = m[1].padStart(5, '0');
+                descansoHtml = `<span style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; font-weight: 800; color: #a855f7;">${horaDesc}</span>`;
+            }
         }
 
         // Término, Tempo Ativo e Turno x Login
@@ -7444,15 +7927,34 @@ function renderDeliveryTable() {
             status_bid: `<td>${bidBadge}</td>`,
             placa: `<td>${plateHtml}</td>`,
             inicio_descanso: `<td>${descansoHtml}</td>`,
-            ordem: `<td>${ordemHtml}</td>`
+            status_descanso: `<td>${computeStatusDescansoBadge(t.marcacao, horaDesc, isAct, statusEB, t.login_time, t.shift_slot)}</td>`,
+            ordem: `<td>${ordemHtml}</td>`,
+            hora_a_caminho: (() => {
+                let formatted = '--';
+                if (t.hora_a_caminho && !['--', '-', 'None', 'nan'].includes(t.hora_a_caminho)) {
+                    const mTime = String(t.hora_a_caminho).match(/\b(\d{1,2}:\d{2})\b/);
+                    formatted = mTime ? mTime[1].padStart(5, '0') : t.hora_a_caminho;
+                }
+                return `<td><span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.78rem; color: #f59e0b;">${formatted}</span></td>`;
+            })(),
+            status_os: `<td>${computeStatusOsBadge(t.ordem_servico, t.hora_a_caminho).html}</td>`
         };
 
-        const rowCells = DELIVERY_TABLE_COLUMNS
+        const stOs = computeStatusOsBadge(t.ordem_servico, t.hora_a_caminho);
+        let alertRowClass = '';
+        if (stOs.isAlertOscillate) {
+            alertRowClass = stOs.alertType === 'warning' ? 'tr-alert-pending-caminho' : 'tr-alert-gravissimo-60';
+            if (deliveryState.alertPulseEnabled !== false) {
+                alertRowClass += ' alert-pulse-enabled';
+            }
+        }
+
+        const rowCells = getDeliveryOrderedColumns()
             .filter(c => visCols.has(c.id))
             .map(c => cellsMap[c.id] || `<td>--</td>`)
             .join('');
 
-        return `<tr>${rowCells}</tr>`;
+        return `<tr class="${alertRowClass}">${rowCells}</tr>`;
     }).join('');
 
     if (typeof renderMobileDeliveryCards === 'function') {
@@ -7489,8 +7991,16 @@ function exportDeliveryExcelFiltered() {
         if (visCols.has('status')) row["Status"] = t.status_equipes_brasil || t.status || (t.is_active ? "Logada" : "Turno Concluído");
         if (visCols.has('status_bid')) row["Status BID"] = t.status_bid || "";
         if (visCols.has('placa')) row["Placa"] = t.plate || "";
-        if (visCols.has('inicio_descanso')) row["Início Descanso"] = t.data_inicio_descanso ? `${t.data_inicio_descanso} ${t.hora_inicio_descanso || ''}`.trim() : "";
+        if (visCols.has('inicio_descanso')) row["Início Descanso"] = t.hora_inicio_descanso || "";
+        if (visCols.has('status_descanso')) {
+            const sdHtml = computeStatusDescansoBadge(t.marcacao, t.hora_inicio_descanso, t.is_active, t.status_equipes_brasil || t.status, t.login_time, t.shift_slot);
+            row["Status Descanso"] = sdHtml.replace(/<[^>]*>/g, '').trim();
+        }
         if (visCols.has('ordem')) row["Ordem"] = t.ordem_servico || "";
+        if (visCols.has('hora_a_caminho')) row["Hora a Caminho"] = t.hora_a_caminho || "";
+        if (visCols.has('status_os')) {
+            row["Status OS"] = computeStatusOsBadge(t.ordem_servico, t.hora_a_caminho).statusKey;
+        }
         return row;
     });
 
@@ -7579,7 +8089,7 @@ async function openDeliveryTeamModal(teamCode) {
     if (bidVehicleEl) bidVehicleEl.textContent = '--';
     if (bidMembersListEl) bidMembersListEl.textContent = '--';
     if (ordersTbody) {
-        ordersTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 18px; color: var(--text-secondary);">Buscando histórico de ordens...</td></tr>`;
+        ordersTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 18px; color: var(--text-secondary);">Buscando histórico de ordens...</td></tr>`;
     }
 
     // Busca rápida nos dados locais em memória (<1ms) para pré-preencher
@@ -7742,7 +8252,7 @@ async function openDeliveryTeamModal(teamCode) {
                 if (orders.length === 0) {
                     ordersTbody.innerHTML = `
                         <tr>
-                            <td colspan="5" style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                            <td colspan="6" style="text-align: center; padding: 20px; color: var(--text-secondary);">
                                 Nenhuma ordem de serviço registrada para esta equipe no dia operacional atual.
                             </td>
                         </tr>
@@ -7766,6 +8276,13 @@ async function openDeliveryTeamModal(teamCode) {
                                 </td>
                                 <td>
                                     <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; color: var(--text-secondary);">${o.last_seen || '--:--:--'}</span>
+                                </td>
+                                <td>
+                                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; font-weight: 700; color: #f59e0b;">${(() => {
+                                        if (!o.hora_a_caminho || ['--', '-', 'None'].includes(o.hora_a_caminho)) return '--';
+                                        const m = String(o.hora_a_caminho).match(/\b(\d{1,2}:\d{2})\b/);
+                                        return m ? m[1].padStart(5, '0') : o.hora_a_caminho;
+                                    })()}</span>
                                 </td>
                                 <td>
                                     <span style="font-size: 0.74rem; font-weight: 700; color: #10b981;">${o.status || 'Atendida'}</span>
@@ -8113,7 +8630,7 @@ function toggleHistTableCollapse(forceExpand = null) {
         if (textEl) textEl.textContent = 'EXPANDIR TABELA';
         if (iconEl) iconEl.setAttribute('data-lucide', 'chevron-down');
     }
-    if (window.lucide) lucide.createIcons();
+    if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
 }
 
 // Disparo Manual de Sincronização do Spotfire via CDP
@@ -9642,7 +10159,7 @@ async function savePlanningTargets() {
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = `<i data-lucide="save" style="width: 16px; height: 16px;"></i><span>Salvar Planejamento</span>`;
-            if (window.lucide) lucide.createIcons();
+            if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
         }
     }
 }
@@ -11558,13 +12075,17 @@ const ONLINE_BID_TABLE_COLUMNS = [
     { id: 'termino', label: 'TÉRMINO', default: true },
     { id: 'tempo_ativo', label: 'TEMPO ATIVO', default: true },
     { id: 'turno_x_login', label: 'TURNO x LOGIN', default: true },
+    { id: 'inicio_descanso', label: 'INÍCIO DESCANSO', default: true },
+    { id: 'status_descanso', label: 'STATUS DESCANSO', default: true },
     { id: 'status_prog', label: 'STATUS PROG', default: true },
     { id: 'tempo_bid', label: 'TEMPO NO BID', default: true },
     { id: 'base', label: 'BASE', default: true },
     { id: 'turno', label: 'TURNO', default: true },
     { id: 'placa', label: 'PLACA', default: true },
     { id: 'componentes', label: 'COMPONENTES (BID)', default: true },
-    { id: 'ordem', label: 'ORDEM SERVIÇO', default: true }
+    { id: 'ordem', label: 'ORDEM SERVIÇO', default: true },
+    { id: 'hora_a_caminho', label: 'HORA A CAMINHO', default: true },
+    { id: 'status_os', label: 'STATUS OS', default: true }
 ];
 
 if (!onlineBidState.visibleColumns) onlineBidState.visibleColumns = null;
@@ -11582,6 +12103,16 @@ function getOnlineBidVisibleColumns() {
             const arr = JSON.parse(saved);
             if (Array.isArray(arr) && arr.length > 0) {
                 if (!arr.includes('equipe')) arr.push('equipe');
+                if (!arr.includes('status_descanso')) {
+                    const dIdx = arr.indexOf('inicio_descanso');
+                    if (dIdx !== -1) arr.splice(dIdx + 1, 0, 'status_descanso');
+                    else arr.push('status_descanso');
+                }
+                if (!arr.includes('status_os')) {
+                    const cIdx = arr.indexOf('hora_a_caminho');
+                    if (cIdx !== -1) arr.splice(cIdx + 1, 0, 'status_os');
+                    else arr.push('status_os');
+                }
                 onlineBidState.visibleColumns = new Set(arr);
                 return onlineBidState.visibleColumns;
             }
@@ -11793,6 +12324,9 @@ function compareOnlineBidRows(a, b, colId, direction) {
             break;
         case 'ordem':
             res = (a.ordem_servico || '').localeCompare(b.ordem_servico || '');
+            break;
+        case 'hora_a_caminho':
+            res = (a.hora_a_caminho || '').localeCompare(b.hora_a_caminho || '');
             break;
         default:
             res = (a.team_code || '').localeCompare(b.team_code || '');
@@ -12188,10 +12722,37 @@ function filterOnlineBidTable() {
             turno: `<td>${turnoHtml}</td>`,
             placa: `<td>${placaHtml}</td>`,
             componentes: `<td>${componentesHtml}</td>`,
+            inicio_descanso: (() => {
+                let hDesc = (r.hora_inicio_descanso && r.hora_inicio_descanso !== '--') ? r.hora_inicio_descanso : null;
+                if (!hDesc && r.data_inicio_descanso && r.data_inicio_descanso.includes(':')) {
+                    const m = String(r.data_inicio_descanso).match(/\b(\d{1,2}:\d{2})\b/);
+                    if (m) hDesc = m[1].padStart(5, '0');
+                }
+                return hDesc ? `<td><span style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; font-weight: 800; color: #a855f7;">${hDesc}</span></td>` : `<td><span style="color: var(--text-secondary); font-size: 0.74rem;">--</span></td>`;
+            })(),
+            status_descanso: `<td>${computeStatusDescansoBadge(marcacaoVal, r.hora_inicio_descanso, r.is_eb_active, r.status_eb, r.login_time_eb || r.login_time, r.turno)}</td>`,
             ordem: `<td>
                 <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #0284c7; font-weight: 700;">${r.ordem_servico || '--'}</span>
-            </td>`
+            </td>`,
+            hora_a_caminho: (() => {
+                let formatted = '--';
+                if (r.hora_a_caminho && !['--', '-', 'None', 'nan'].includes(r.hora_a_caminho)) {
+                    const mTime = String(r.hora_a_caminho).match(/\b(\d{1,2}:\d{2})\b/);
+                    formatted = mTime ? mTime[1].padStart(5, '0') : r.hora_a_caminho;
+                }
+                return `<td><span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.78rem; color: #f59e0b;">${formatted}</span></td>`;
+            })(),
+            status_os: `<td>${computeStatusOsBadge(r.ordem_servico, r.hora_a_caminho).html}</td>`
         };
+
+        const stOsBid = computeStatusOsBadge(r.ordem_servico, r.hora_a_caminho);
+        let alertRowClassBid = '';
+        if (stOsBid.isAlertOscillate) {
+            alertRowClassBid = stOsBid.alertType === 'warning' ? 'tr-alert-pending-caminho' : 'tr-alert-gravissimo-60';
+            if (onlineBidState.alertPulseEnabled !== false) {
+                alertRowClassBid += ' alert-pulse-enabled';
+            }
+        }
 
         const rowCells = ONLINE_BID_TABLE_COLUMNS
             .filter(c => visCols.has(c.id))
@@ -12199,7 +12760,7 @@ function filterOnlineBidTable() {
             .join('');
 
         return `
-            <tr onclick="openDeliveryTeamModal('${r.team_code}')" style="cursor: pointer;">
+            <tr class="${alertRowClassBid}" onclick="openDeliveryTeamModal('${r.team_code}')" style="cursor: pointer;">
                 ${rowCells}
             </tr>
         `;
@@ -12326,6 +12887,17 @@ window.debounceDeliverySearch = debounceDeliverySearch;
 window.toggleDeliveryTableCollapse = toggleDeliveryTableCollapse;
 window.exportDeliveryExcelFiltered = exportDeliveryExcelFiltered;
 window.exportDeliveryExcel = exportDeliveryExcel;
+window.handleDeliveryColDragStart = handleDeliveryColDragStart;
+window.handleDeliveryColDragOver = handleDeliveryColDragOver;
+window.handleDeliveryColDragLeave = handleDeliveryColDragLeave;
+window.handleDeliveryColDrop = handleDeliveryColDrop;
+window.handleDeliveryColDragEnd = handleDeliveryColDragEnd;
+window.moveDeliveryColumn = moveDeliveryColumn;
+window.toggleDeliveryColCheckLabel = toggleDeliveryColCheckLabel;
+window.toggleDeliveryAlertPulse = toggleDeliveryAlertPulse;
+window.toggleOnlineBidAlertPulse = toggleOnlineBidAlertPulse;
+window.computeStatusDescansoBadge = computeStatusDescansoBadge;
+window.computeStatusOsBadge = computeStatusOsBadge;
 window.openDeliveryTeamModal = openDeliveryTeamModal;
 window.setHistoryAuditMode = setHistoryAuditMode;
 window.refreshCurrentHistoryAudit = refreshCurrentHistoryAudit;
@@ -12606,7 +13178,7 @@ function openBottomSheet(sheetId) {
         backdrop.classList.add('active');
     }
     document.body.style.overflow = 'hidden';
-    if (window.lucide) lucide.createIcons();
+    if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
 }
 
 function closeBottomSheet(sheetId) {
@@ -12803,7 +13375,7 @@ function renderMobileDeliveryCards(list) {
                 <p style="color: var(--text-secondary); font-size: 0.8rem; margin: 0;">Ajuste os filtros ou toque em atualizar.</p>
             </div>
         `;
-        if (window.lucide) lucide.createIcons();
+        if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
         return;
     }
 
@@ -12832,6 +13404,9 @@ function renderMobileDeliveryCards(list) {
         const shiftSlot = t.shift_slot || t.turno || '--';
         const marcacao = t.marcacao || '--:--';
         const osNum = t.ordem_servico || '--';
+        const terminoVal = t.termino && t.termino !== '--' ? t.termino : computeTeamTermino(t.marcacao, t.login_time, t.shift_slot, t.vehicle_type, t.region, t.base_display);
+        const tempoAtivoHtml = computeTempoAtivoBadge(t.marcacao, t.shift_slot, t.login_time, isAct, statusEB, terminoVal);
+        const turnoXLoginHtml = computeTurnoXLoginBadge(t.marcacao, t.shift_slot, t.login_time, t.turno_x_login, t.turno_x_login_minutos);
 
         return `
             <div class="mobile-team-card ${borderClass}" onclick="openDeliveryTeamModal('${teamCode}')">
@@ -12875,7 +13450,7 @@ function renderMobileDeliveryCards(list) {
         `;
     }).join('');
 
-    if (window.lucide) lucide.createIcons();
+    if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
 }
 
 function renderMobileBidCards(list) {
@@ -12890,7 +13465,7 @@ function renderMobileBidCards(list) {
                 <p style="color: var(--text-secondary); font-size: 0.8rem; margin: 0;">Nenhum registro compatível com os filtros atuais.</p>
             </div>
         `;
-        if (window.lucide) lucide.createIcons();
+        if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
         return;
     }
 
@@ -12962,7 +13537,7 @@ function renderMobileBidCards(list) {
         `;
     }).join('');
 
-    if (window.lucide) lucide.createIcons();
+    if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
 }
 
 // 5. Integração PWA e Service Worker

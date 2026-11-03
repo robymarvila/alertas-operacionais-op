@@ -638,10 +638,23 @@ class DeliveryManager:
                             # Se for após as 04:30 da manhã e o turno for da noite anterior (20h/22h) já inativo, descarta
                             if (now.hour > 4 or (now.hour == 4 and now.minute >= 31)) and not t.get("is_active", True) and t.get("shift_code") in ["20:00", "22:00"]:
                                 continue
+                            if t.get("hora_a_caminho"):
+                                h_raw = str(t["hora_a_caminho"]).strip()
+                                if h_raw not in ["--", "-", "None", ""]:
+                                    m_c = re.search(r'\b(\d{1,2}:\d{2})\b', h_raw)
+                                    t["hora_a_caminho"] = m_c.group(1).zfill(5) if m_c else h_raw
                             self.daily_accumulated_teams[code] = t
 
                         self.intraday_curve = data.get("intraday_curve", {})
                         self.daily_team_order_history = data.get("team_order_history", {})
+                        for code_o, o_list in self.daily_team_order_history.items():
+                            if isinstance(o_list, list):
+                                for o in o_list:
+                                    if isinstance(o, dict) and o.get("hora_a_caminho"):
+                                        h_raw = str(o["hora_a_caminho"]).strip()
+                                        if h_raw not in ["--", "-", "None", ""]:
+                                            m_c = re.search(r'\b(\d{1,2}:\d{2})\b', h_raw)
+                                            o["hora_a_caminho"] = m_c.group(1).zfill(5) if m_c else h_raw
                         raw_bid_cache = data.get("bid_cache", {})
                         # Purga estritamente qualquer registro que pertença a data anterior
                         self.bid_cache = {
@@ -1106,6 +1119,7 @@ class DeliveryManager:
                 data_desc_input = rec.get("data_inicio_descanso")
                 hora_desc_input = rec.get("hora_inicio_descanso")
                 ordem_raw = rec.get("ORDEM") or rec.get("ordem") or rec.get("ordem_servico") or "--"
+                hora_a_caminho_raw = rec.get("HORA_A_CAMINHO") or rec.get("hora_a_caminho") or rec.get("HORA A CAMINHO") or "--"
                 marcacao_raw = rec.get("MARCACAO") or rec.get("marcacao") or rec.get("MARCAÇÃO") or rec.get("marcação") or rec.get("RAW_MARCACAO") or "--"
                 desvio_raw = rec.get("DESVIO") or rec.get("desvio") or "--"
                 is_act_input = rec.get("is_active")
@@ -1125,6 +1139,7 @@ class DeliveryManager:
                 plate = rec[11] if len(rec) > 11 else "--"
                 descanso_raw = rec[12] if len(rec) > 12 else "--"
                 ordem_raw = rec[13] if len(rec) > 13 else "--"
+                hora_a_caminho_raw = rec[14] if len(rec) > 14 else "--"
                 desvio_raw = "--"
                 is_active_val = True
             else:
@@ -1228,13 +1243,60 @@ class DeliveryManager:
                 if date_match and not data_inicio_descanso:
                     data_inicio_descanso = date_match.group(0)
 
+            # Blindagem Operacional: Se a equipe já registrou início de descanso hoje, NUNCA perde o horário mesmo voltando a Em Atendimento
+            if not hora_inicio_descanso and team_code in self.daily_accumulated_teams:
+                prev_h_desc = self.daily_accumulated_teams[team_code].get("hora_inicio_descanso")
+                if prev_h_desc and prev_h_desc not in ['-', '--', 'None', 'nan', '']:
+                    hora_inicio_descanso = prev_h_desc
+            if not data_inicio_descanso and team_code in self.daily_accumulated_teams:
+                prev_d_desc = self.daily_accumulated_teams[team_code].get("data_inicio_descanso")
+                if prev_d_desc and prev_d_desc not in ['-', '--', 'None', 'nan', '']:
+                    data_inicio_descanso = prev_d_desc
+
             # Tratamento de ORDEM
             ordem_str = str(ordem_raw or "").strip()
             ordem_servico = ordem_str if ordem_str and ordem_str not in ['-', '--', 'NAN', 'nan'] else None
 
+            # Tratamento de HORA A CAMINHO (Nova Coluna EquipesBrasil)
+            caminho_str = str(hora_a_caminho_raw or "").strip()
+            hora_a_caminho = "--"
+            if caminho_str and caminho_str not in ['-', '--', 'None', 'nan']:
+                t_match = re.search(r'\b(\d{1,2}:\d{2})\b', caminho_str)
+                if t_match:
+                    hora_a_caminho = t_match.group(1).zfill(5)
+                else:
+                    hora_a_caminho = caminho_str
+
+            order_history_list = self.daily_team_order_history.setdefault(team_code, [])
+
+            # Hidrata histórico de ordens persistido se disponível no payload
+            if isinstance(rec, dict) and rec.get("order_history") and isinstance(rec["order_history"], list):
+                for old_o in rec["order_history"]:
+                    if isinstance(old_o, dict) and old_o.get("ordem"):
+                        match = next((o for o in order_history_list if o.get("ordem") == old_o["ordem"]), None)
+                        if not match:
+                            order_history_list.append(dict(old_o))
+                        else:
+                            if match.get("hora_a_caminho") in ["--", None, ""] and old_o.get("hora_a_caminho"):
+                                match["hora_a_caminho"] = old_o["hora_a_caminho"]
+
+            # Recupera hora_a_caminho do histórico ou da equipe acumulada se não veio nesta leitura
+            if hora_a_caminho == "--" and ordem_servico:
+                hist_match = next((o for o in order_history_list if o.get("ordem") == ordem_servico and o.get("hora_a_caminho") not in ["--", "-", None, ""]), None)
+                if hist_match:
+                    h_cand = str(hist_match["hora_a_caminho"]).strip()
+                    m_cand = re.search(r'\b(\d{1,2}:\d{2})\b', h_cand)
+                    hora_a_caminho = m_cand.group(1).zfill(5) if m_cand else h_cand
+
+            if hora_a_caminho == "--" and team_code in self.daily_accumulated_teams:
+                prev_caminho = self.daily_accumulated_teams[team_code].get("hora_a_caminho")
+                if prev_caminho and prev_caminho not in ["--", "-", "None", ""]:
+                    p_cand = str(prev_caminho).strip()
+                    m_cand = re.search(r'\b(\d{1,2}:\d{2})\b', p_cand)
+                    hora_a_caminho = m_cand.group(1).zfill(5) if m_cand else p_cand
+
             # Rastreamento do Histórico de Ordens de Serviço (Deduplicação Inteligente a cada 120s)
             # Regra: Se a mesma ordem se repetir em várias atualizações, permanece registrada uma única vez!
-            order_history_list = self.daily_team_order_history.setdefault(team_code, [])
             now_time_str = now.strftime("%H:%M:%S")
             if ordem_servico:
                 existing_order = next((o for o in order_history_list if o.get("ordem") == ordem_servico), None)
@@ -1242,9 +1304,15 @@ class DeliveryManager:
                     existing_order["last_seen"] = now_time_str
                     existing_order["status"] = status_oper
                     existing_order["cycles_count"] = existing_order.get("cycles_count", 1) + 1
+                    if hora_a_caminho != "--":
+                        m_c = re.search(r'\b(\d{1,2}:\d{2})\b', str(hora_a_caminho))
+                        existing_order["hora_a_caminho"] = m_c.group(1).zfill(5) if m_c else hora_a_caminho
                 else:
+                    m_c = re.search(r'\b(\d{1,2}:\d{2})\b', str(hora_a_caminho))
+                    c_clean = m_c.group(1).zfill(5) if m_c else hora_a_caminho
                     order_history_list.append({
                         "ordem": ordem_servico,
+                        "hora_a_caminho": c_clean,
                         "first_seen": now_time_str,
                         "last_seen": now_time_str,
                         "status": status_oper,
@@ -1325,6 +1393,7 @@ class DeliveryManager:
                 "data_inicio_descanso": data_inicio_descanso,
                 "hora_inicio_descanso": hora_inicio_descanso,
                 "ordem_servico": ordem_servico,
+                "hora_a_caminho": hora_a_caminho,
                 "order_history": [dict(o) for o in order_history_list],
                 "is_active": is_active_val,
                 "vehicle_type": veh_info["type"],
@@ -1346,6 +1415,12 @@ class DeliveryManager:
                 "last_seen_time": now.strftime("%H:%M:%S")
             }
             if is_active_val:
+                # Se a equipe já existia no acumulado com valores ricos e team_obj veio com vazios (ex: sync de nuvem):
+                if team_code in self.daily_accumulated_teams:
+                    prev = self.daily_accumulated_teams[team_code]
+                    for rich_k in ["marcacao", "gps_update_str", "gps_update_minutes", "hora_inicio_descanso", "data_inicio_descanso", "ordem_servico", "hora_a_caminho", "desvio", "desvio_minutos"]:
+                        if team_obj.get(rich_k) in ["--", None, "", -9999] and prev.get(rich_k) not in ["--", None, "", -9999]:
+                            team_obj[rich_k] = prev.get(rich_k)
                 active_dict[team_code] = team_obj
 
             # Acumula no histórico do dia
@@ -1357,9 +1432,15 @@ class DeliveryManager:
                 # Atualiza com as informações mais recentes mantendo first_seen_time
                 existing = self.daily_accumulated_teams[team_code]
                 f_seen = existing.get("first_seen_time", now.strftime("%H:%M:%S"))
-                self.daily_accumulated_teams[team_code].update(team_obj)
-                self.daily_accumulated_teams[team_code]["first_seen_time"] = f_seen
-                self.daily_accumulated_teams[team_code]["is_active"] = is_active_val
+                for k, v in team_obj.items():
+                    if k == "first_seen_time":
+                        continue
+                    # Se o novo valor for vazio/None/-- mas o existente já tinha valor operacional válido, preserva!
+                    if v in ["--", None, "", -9999] and existing.get(k) not in ["--", None, "", -9999]:
+                        continue
+                    existing[k] = v
+                existing["first_seen_time"] = f_seen
+                existing["is_active"] = is_active_val
 
         active_processed = sorted(list(active_dict.values()), key=lambda x: x["team_code"])
 
@@ -1826,7 +1907,12 @@ class DeliveryManager:
                 "turno_x_login": turno_x_login_val,
                 "turno_x_login_minutos": turno_x_login_min_val,
                 "shift_hours": shift_hours_val,
-                "ordem_servico": eb.get("ordem_servico") if eb else "--"
+                "ordem_servico": eb.get("ordem_servico") if eb else "--",
+                "hora_a_caminho": eb.get("hora_a_caminho") if eb else "--",
+                "hora_inicio_descanso": eb.get("hora_inicio_descanso") if eb else None,
+                "data_inicio_descanso": eb.get("data_inicio_descanso") if eb else None,
+                "gps_update_minutes": eb.get("gps_update_minutes") if eb else None,
+                "gps_update_str": eb.get("gps_update_str") if eb else "--"
             }
             reconciled_rows.append(row_item)
 

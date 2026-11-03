@@ -2231,7 +2231,8 @@ def get_teams_data():
                 c_cap = str(cloud_snap.get("captured_at") or "")
                 l_sync = str(getattr(delivery_manager, "last_sync_time", "") or "")
                 # Se o Supabase tiver snapshot mais recente ou memória vazia ou refresh manual
-                if force_refresh or not delivery_manager.active_teams or c_cap != l_sync:
+                local_is_cdp = "CDP" in getattr(delivery_manager, "sync_source", "") or "Portal Enel" in getattr(delivery_manager, "sync_source", "")
+                if force_refresh or not delivery_manager.active_teams or (c_cap != l_sync and not local_is_cdp):
                     src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase"
                     delivery_manager.process_raw_enel_records(
                         cloud_snap["data"],
@@ -2353,10 +2354,15 @@ def get_delivery_monthly_audit():
 @app.route('/api/delivery/spotfire/sync', methods=['GET', 'POST'])
 def trigger_spotfire_sync():
     """Dispara ciclo imediato de extração do TIBCO Spotfire Scanner 5.0 via CDP."""
+    month_arg = request.args.get('month') or (request.json.get('month') if (request.is_json and request.json) else None)
+    year_arg = request.args.get('year') or (request.json.get('year') if (request.is_json and request.json) else None)
+    m_idx = int(month_arg) if month_arg and str(month_arg).isdigit() else None
+    y_str = str(year_arg) if year_arg else None
+
     is_cloud = os.environ.get("VERCEL") is not None or os.name != 'nt'
     if is_cloud:
         from supabase_client import create_sync_command, wait_for_command_completion
-        cmd_res = create_sync_command("CAPTURE_SPOTFIRE", {"source": "Painel Web"})
+        cmd_res = create_sync_command("CAPTURE_SPOTFIRE", {"source": "Painel Web", "month": m_idx, "year": y_str})
         cmd_id = cmd_res.get("command_id")
         if cmd_id:
             result = wait_for_command_completion(cmd_id, timeout_seconds=60)
@@ -2368,7 +2374,7 @@ def trigger_spotfire_sync():
     else:
         try:
             from coletor_spotfire_cdp import executar_ciclo_sincronizacao_spotfire
-            res = executar_ciclo_sincronizacao_spotfire(source_label="Disparo Manual API")
+            res = executar_ciclo_sincronizacao_spotfire(source_label="Disparo Manual API", target_month_idx=m_idx, target_year=y_str)
             return jsonify(res)
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500

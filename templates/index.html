@@ -33,7 +33,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.3.0-prio-realtime">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.9.1-fix-footer-zindex">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -167,7 +167,7 @@
     </nav>
 
     <!-- Main Container -->
-    <main class="dashboard-content">
+    <main class="dashboard-content" style="position: relative; z-index: 10;">
 
         <!-- ================================================================= -->
         <!-- TELA INICIAL: HUB DE MÓDULOS CCO (PORTAL MULTI-MÓDULOS)           -->
@@ -2254,7 +2254,7 @@
                                 <button type="button" class="btn btn-secondary btn-sm" id="btnDeliveryColPicker" onclick="toggleDeliveryColPicker(event)" style="padding: 7px 13px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px;">
                                     <i data-lucide="sliders-horizontal" style="width: 14px; height: 14px;"></i>
                                     <span>COLUNAS</span>
-                                    <span id="deliveryColCountPill" class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 0.7rem; padding: 1px 6px; border-radius: 9999px;">15/15</span>
+                                    <span id="deliveryColCountPill" class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 0.7rem; padding: 1px 6px; border-radius: 9999px;">16/16</span>
                                 </button>
                                 <div id="deliveryColPickerDropdown" class="delivery-col-picker-menu" style="display: none;" onclick="event.stopPropagation()">
                                     <div class="col-picker-header">
@@ -2270,6 +2270,12 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Botão Alerta Visual (Oscilação de Alerta) -->
+                            <button type="button" class="btn btn-secondary btn-sm btn-alert-pulse-toggle pulse-active" id="btnToggleAlertPulse" onclick="toggleDeliveryAlertPulse()" style="padding: 7px 13px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px;" title="Ativar ou desativar oscilação suave de alerta para OSs pendentes e críticas">
+                                <i data-lucide="bell" id="iconDeliveryAlertPulse" style="width: 14px; height: 14px;"></i>
+                                <span id="textDeliveryAlertPulse">ALERTA VISUAL: LIGADO</span>
+                            </button>
 
                             <!-- Botão Tela Cheia (ONE PAGE) -->
                             <button type="button" class="btn btn-secondary btn-sm" id="btnDeliveryFullscreen" onclick="toggleDeliveryFullscreen()" style="padding: 7px 13px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px;" title="Ver tabela em Tela Cheia (ONE PAGE)">
@@ -3143,6 +3149,12 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Botão Alerta Visual (Oscilação de Alerta) -->
+                            <button type="button" class="btn btn-secondary btn-sm btn-alert-pulse-toggle pulse-active" id="btnToggleOnlineBidAlertPulse" onclick="toggleOnlineBidAlertPulse()" style="padding: 7px 13px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px;" title="Ativar ou desativar oscilação suave de alerta para OSs pendentes e críticas">
+                                <i data-lucide="bell" id="iconOnlineBidAlertPulse" style="width: 14px; height: 14px;"></i>
+                                <span id="textOnlineBidAlertPulse">ALERTA VISUAL: LIGADO</span>
+                            </button>
 
                             <!-- Botão Tela Cheia (ONE PAGE) -->
                             <button type="button" class="btn btn-secondary btn-sm" id="btnOnlineBidFullscreen" onclick="toggleOnlineBidFullscreen()" style="padding: 7px 13px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px;" title="Ver tabela em Tela Cheia (ONE PAGE)">
@@ -5039,7 +5051,7 @@
     </main>
 
     <!-- Footer -->
-    <footer class="main-footer glass-card" style="justify-content: center; text-align: center;">
+    <footer class="main-footer glass-card" style="justify-content: center; text-align: center; position: relative; z-index: 1;">
         <span>Power By Gestão de Operações - Gestão de Alta Performance</span>
     </footer>
 </div>
@@ -5317,6 +5329,7 @@
                                 <th>ORDEM DE SERVIÇO</th>
                                 <th>PRIMEIRO REGISTRO</th>
                                 <th>ÚLTIMA CONFIRMAÇÃO</th>
+                                <th style="color: #f59e0b;">HORA A CAMINHO</th>
                                 <th>STATUS</th>
                                 <th>CICLOS</th>
                             </tr>
@@ -6345,7 +6358,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.7.0-forensic-table-enhancements"></script>
+<script src="/static/js/app.js?v=5.9.1-fix-console-errors"></script>
 
 </body>
 </html>

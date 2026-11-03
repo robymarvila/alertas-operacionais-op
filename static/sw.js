@@ -3,26 +3,20 @@
 // PWA Caching, Shell Offline & Background Network-First Synchronization
 // ==========================================================================
 
-const CACHE_NAME = 'alertas-cco-pwa-v5.3.0-prio-realtime';
+const CACHE_NAME = 'alertas-cco-pwa-v5.9.1';
 
-// Core shell assets to pre-cache on install
+// Core shell assets to pre-cache on install (recursos internos seguros)
 const PRECACHE_ASSETS = [
     '/',
-    '/static/css/dashboard.css?v=5.3.0-prio-realtime',
-    '/static/js/app.js?v=5.3.0-prio-realtime',
+    '/static/css/dashboard.css?v=5.9.1-fix-footer-zindex',
+    '/static/js/app.js?v=5.9.1-fix-console-errors',
     '/manifest.webmanifest',
     '/static/manifest.webmanifest',
     '/static/icons/icon-192.png',
     '/static/icons/icon-512.png',
     '/static/icons/icon-maskable.png',
     '/static/icons/icon.svg',
-    '/static/icons/favicon.svg',
-    'https://unpkg.com/lucide@latest',
-    'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
-    'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
-    'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css',
-    'https://cdn.jsdelivr.net/npm/flatpickr',
-    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
+    '/static/icons/favicon.svg'
 ];
 
 // 1. Install Event: Pre-cache App Shell
@@ -33,7 +27,7 @@ self.addEventListener('install', (event) => {
             return cache.addAll(PRECACHE_ASSETS).catch((err) => {
                 console.warn('[PWA SW] Aviso ao cachear recursos estáticos iniciais:', err);
             });
-        })
+        }).catch(() => {})
     );
 });
 
@@ -49,7 +43,7 @@ self.addEventListener('activate', (event) => {
                     }
                 })
             );
-        }).then(() => self.clients.claim())
+        }).then(() => self.clients.claim()).catch(() => {})
     );
 });
 
@@ -77,8 +71,12 @@ self.addEventListener('fetch', (event) => {
             fetch(request)
                 .then((response) => {
                     if (response && response.status === 200) {
-                        const clone = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+                        try {
+                            const clone = response.clone();
+                            caches.open(CACHE_NAME).then((cache) => {
+                                cache.put(request, clone).catch(() => {});
+                            }).catch(() => {});
+                        } catch (e) {}
                     }
                     return response;
                 })
@@ -115,9 +113,13 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
         caches.match(request).then((cachedResponse) => {
             const fetchPromise = fetch(request).then((networkResponse) => {
-                if (networkResponse && networkResponse.status === 200) {
-                    const responseClone = networkResponse.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+                if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
+                    try {
+                        const responseClone = networkResponse.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(request, responseClone).catch(() => {});
+                        }).catch(() => {});
+                    } catch (e) {}
                 }
                 return networkResponse;
             }).catch(() => {

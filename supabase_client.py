@@ -529,6 +529,7 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                     "data_inicio_descanso": t.get("data_inicio_descanso"),
                     "hora_inicio_descanso": t.get("hora_inicio_descanso"),
                     "ordem_servico": t.get("ordem_servico"),
+                    "hora_a_caminho": str(t.get("hora_a_caminho", "--")),
                     "marcacao": str(t.get("marcacao", "--")),
                     "desvio": str(t.get("desvio", "--")),
                     "desvio_minutos": t.get("desvio_minutos", 0),
@@ -549,7 +550,7 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
             new_column_keys = {
                 "veiculo_portal", "gps_update_str", "gps_update_minutes",
                 "status_equipes_brasil", "data_inicio_descanso", "hora_inicio_descanso",
-                "ordem_servico", "marcacao", "desvio", "desvio_minutos", "order_history",
+                "ordem_servico", "hora_a_caminho", "marcacao", "desvio", "desvio_minutos", "order_history",
                 "plate_clean", "plate_cadastrada",
                 "situacao_veiculo_cadastrado", "status_veiculo_cadastrado",
                 "termino", "turno_x_login", "turno_x_login_minutos"
@@ -559,13 +560,21 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                 chunk = records_payload[i:i+100]
                 resp_rec = requests.post(endpoint_records, headers=get_headers(), json=chunk, timeout=10)
                 if resp_rec.status_code not in [200, 201]:
-                    # Caso o Supabase ainda não tenha aplicado o schema_cdp_fleet_v5 / v6, faz fallback para colunas base
-                    if resp_rec.status_code == 400 and "Could not find" in resp_rec.text:
-                        fallback_chunk = []
-                        for item in chunk:
-                            base_item = {k: v for k, v in item.items() if k not in new_column_keys}
-                            fallback_chunk.append(base_item)
-                        requests.post(endpoint_records, headers=get_headers(), json=fallback_chunk, timeout=10)
+                    # Se falhar especificamente por causa de 'hora_a_caminho' não existir na tabela:
+                    if "hora_a_caminho" in resp_rec.text:
+                        safe_chunk = [{k: v for k, v in item.items() if k != "hora_a_caminho"} for item in chunk]
+                        resp_safe = requests.post(endpoint_records, headers=get_headers(), json=safe_chunk, timeout=10)
+                        if resp_safe.status_code in [200, 201]:
+                            continue
+                        resp_rec = resp_safe
+
+                    # Se falhar por outra coluna não encontrada no schema cache:
+                    if resp_rec.status_code == 400 and ("Could not find" in resp_rec.text or "PGRST204" in resp_rec.text):
+                        missing_match = re.search(r"Could not find the '([^']+)' column", resp_rec.text)
+                        if missing_match:
+                            missing_col = missing_match.group(1)
+                            fallback_chunk = [{k: v for k, v in item.items() if k != missing_col} for item in chunk]
+                            requests.post(endpoint_records, headers=get_headers(), json=fallback_chunk, timeout=10)
 
             # Persistência atômica do histórico de ordens na tabela dedicada team_order_history
             try:
