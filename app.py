@@ -2267,6 +2267,12 @@ def get_teams_data():
         except Exception as e:
             print(f"[WARN BID HYDRATE] {e}", flush=True)
 
+        # Hidrata também as justificativas de atraso para o dia operacional
+        try:
+            delivery_manager.hydrate_delay_justifications(op_date)
+        except Exception as e:
+            print(f"[WARN JUST HYDRATE] {e}", flush=True)
+
     # Garante que TODAS as equipes acumuladas e ativas possuam status_bid e bid_info sincronizados
     if hasattr(delivery_manager, 'bid_cache') and delivery_manager.bid_cache:
         for c, team_dict in delivery_manager.daily_accumulated_teams.items():
@@ -2484,6 +2490,7 @@ def sync_teams_records():
 @app.route('/api/delivery/export_excel', methods=['GET'])
 def export_teams_excel():
     """Gera e faz download de planilha Excel (.xlsx) das equipes entregues."""
+    delivery_manager.hydrate_delay_justifications(delivery_manager.get_operational_date(), force=True)
     if not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams:
         cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
         if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
@@ -2578,11 +2585,7 @@ def get_delivery_delay_justifications():
     """Retorna as justificativas de atraso de equipe da data solicitada."""
     try:
         date_ref = request.args.get("date") or delivery_manager.get_operational_date()
-        if date_ref == delivery_manager.get_operational_date():
-            justs = delivery_manager.daily_delay_justifications
-        else:
-            from supabase_client import fetch_team_delay_justifications
-            justs = fetch_team_delay_justifications(date_ref)
+        justs = delivery_manager.hydrate_delay_justifications(date_ref, force=True)
         return jsonify({"status": "success", "date_ref": date_ref, "justifications": justs})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -2633,6 +2636,7 @@ def trigger_bid_capture_direct():
 def export_bid_reconciliation_excel():
     """Gera e faz download de planilha Excel (.xlsx) da reconciliação forense ONLINE x BID."""
     date_str = request.args.get('date') or delivery_manager.get_operational_date()
+    justifications = delivery_manager.hydrate_delay_justifications(date_str, force=True)
     state = delivery_manager.get_online_x_bid_state(date_str)
     rows = state.get("rows", [])
 
@@ -2641,6 +2645,8 @@ def export_bid_reconciliation_excel():
 
     excel_rows = []
     for r in rows:
+        tc = str(r.get("team_code") or "").strip().upper()
+        just = (justifications or {}).get(tc) or (delivery_manager.daily_delay_justifications or {}).get(tc) or (r.get("delay_justification") or {}) or {}
         marc = str(r.get("marcacao_eb") or "").strip()
         is_active = r.get("is_eb_active", True)
         status_eb = str(r.get("status_eb") or "")
@@ -2771,7 +2777,11 @@ def export_bid_reconciliation_excel():
             "Ordem de Serviço Atual": ordem or "--",
             "Hora a Caminho": h_cam or "--",
             "Status OS": status_os_str,
-            "Qtd OS Coletadas": qtd_os_val
+            "Qtd OS Coletadas": qtd_os_val,
+            "Justificativa Atraso (Macro)": just.get("macro_reason", "--"),
+            "Justificativa Atraso (Submotivo)": just.get("sub_reason", "--"),
+            "Justificativa Responsável": just.get("user_name", "--"),
+            "Justificativa Observação": just.get("observation", "--")
         })
 
     import pandas as pd

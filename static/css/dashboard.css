@@ -17149,6 +17149,16 @@ tr.tr-alert-gravissimo-60.alert-pulse-enabled {
     overflow-y: auto;
 }
 
+#tvViewDelaysBox .tv-chart-box {
+    flex: 1;
+    min-height: 250px;
+}
+
+#tvViewDelaysBox #tvDelayMacroReasonsList,
+#tvViewDelaysBox #tvDelayTop5TeamsList {
+    max-height: 320px !important;
+}
+
 .tv-view-toggle-pill {
     display: inline-flex;
     align-items: center;

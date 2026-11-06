@@ -845,6 +845,21 @@ const SUPABASE_REALTIME_CONFIG = {
 let supabaseClient = null;
 let realtimeSyncChannel = null;
 
+// Sincronização Instantânea Entre Abas (Zero Latência BroadcastChannel)
+try {
+    const ccoDeliveryBroadcast = new BroadcastChannel('cco_delivery_channel');
+    ccoDeliveryBroadcast.onmessage = function(ev) {
+        if (ev.data && ev.data.type === 'DELAY_JUSTIFICATION_SAVED') {
+            if (typeof loadTvDelaysData === 'function') {
+                loadTvDelaysData();
+            }
+            if (typeof loadDeliveryData === 'function' && appState && appState.currentView === 'delivery') {
+                loadDeliveryData(false);
+            }
+        }
+    };
+} catch(e) {}
+
 function setRealtimeBadgeStatus(status) {
     const badges = [
         { pill: document.getElementById('realtimeModuleBadge'), pulse: document.getElementById('realtimeModulePulse'), text: document.getElementById('realtimeModuleText') },
@@ -941,6 +956,20 @@ function initSupabaseRealtime(retryCount = 0) {
                         loadDeliveryData(false);
                     }
                     showRealtimeIndicator('Checklist BidTech Atualizado ao Vivo');
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'team_delay_justifications' },
+                (payload) => {
+                    console.log('[REALTIME WS] Atualização na tabela team_delay_justifications!', payload);
+                    if (appState.currentView === 'delivery') {
+                        loadDeliveryData(false);
+                    }
+                    if (typeof loadTvDelaysData === 'function') {
+                        loadTvDelaysData();
+                    }
+                    showRealtimeIndicator('Justificativa de Atraso Registrada');
                 }
             )
             .on(
@@ -17612,6 +17641,12 @@ window.submitDelayJustification = async function(event) {
             if (typeof loadTvDelaysData === 'function') {
                 loadTvDelaysData();
             }
+
+            try {
+                const bc = new BroadcastChannel('cco_delivery_channel');
+                bc.postMessage({ type: 'DELAY_JUSTIFICATION_SAVED', teamCode: teamCode });
+                bc.close();
+            } catch(e) {}
         } else {
             showToast(res.message || 'Falha ao salvar justificativa.', 'error');
         }
@@ -17637,6 +17672,7 @@ window.setTvSecondaryView = function(viewMode) {
     const iconWrap = document.getElementById('tvSecondaryIconWrap');
     const iconEl = document.getElementById('tvSecondaryIcon');
     const statusBadge = document.getElementById('tvPrioStatusBadge');
+    const stripTop5 = document.getElementById('tvTop5StripSection') || document.querySelector('.tv-top5-strip-container');
 
     localStorage.setItem('tv_secondary_view', viewMode);
 
@@ -17646,6 +17682,7 @@ window.setTvSecondaryView = function(viewMode) {
     if (viewMode === 'delays') {
         if (boxPrio) boxPrio.style.display = 'none';
         if (boxDelays) boxDelays.style.display = 'flex';
+        if (stripTop5) stripTop5.style.display = 'none';
         if (btnPrio) btnPrio.classList.remove('active');
         if (btnDelays) btnDelays.classList.add('active');
 
@@ -17661,6 +17698,7 @@ window.setTvSecondaryView = function(viewMode) {
     } else {
         if (boxPrio) boxPrio.style.display = 'flex';
         if (boxDelays) boxDelays.style.display = 'none';
+        if (stripTop5) stripTop5.style.display = 'flex';
         if (btnPrio) btnPrio.classList.add('active');
         if (btnDelays) btnDelays.classList.remove('active');
 

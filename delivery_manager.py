@@ -10,6 +10,7 @@ import json
 import os
 import re
 import threading
+import time
 
 # Fuso Horário Oficial de Operação (Horário de Brasília - UTC-3)
 BR_TZ = timezone(timedelta(hours=-3))
@@ -714,6 +715,9 @@ class DeliveryManager:
             bid_recs = fetch_bid_records_by_date(current_op)
             if bid_recs:
                 self.process_raw_bid_records(bid_recs, current_op)
+
+            # Hidrata as justificativas de atraso do Supabase para o dia corrente no boot
+            self.hydrate_delay_justifications(current_op, force=True)
         except Exception as err_boot_sync:
             print(f"[DELIVERY] Boot sync Supabase falhou (usando contingência local): {err_boot_sync}", flush=True)
 
@@ -1501,8 +1505,20 @@ class DeliveryManager:
 
     def get_consolidated_state(self) -> dict:
         """Retorna o estado operacional completo com Ativas vs Total e agrupamento de bases."""
+        # Garante hidratação contínua das justificativas de atraso do Supabase
+        self.hydrate_delay_justifications(self.current_date_str)
+
         active_list = self.active_teams
         total_list = sorted(list(self.daily_accumulated_teams.values()), key=lambda x: x["team_code"])
+
+        for t in total_list:
+            c = t.get("team_code")
+            if c in self.daily_delay_justifications:
+                t["delay_justification"] = self.daily_delay_justifications[c]
+        for t in active_list:
+            c = t.get("team_code")
+            if c in self.daily_delay_justifications:
+                t["delay_justification"] = self.daily_delay_justifications[c]
 
         metrics_active = self._build_metrics_breakdown(active_list)
         metrics_total = self._build_metrics_breakdown(total_list)
@@ -1938,6 +1954,7 @@ class DeliveryManager:
                 "ordem_servico": eb.get("ordem_servico") if eb else "--",
                 "hora_a_caminho": eb.get("hora_a_caminho") if eb else "--",
                 "qtd_os_coletadas": qtd_os_coletadas,
+                "delay_justification": (eb.get("delay_justification") if eb else None) or self.daily_delay_justifications.get(code),
                 "order_history": [dict(o) for o in order_hist] if isinstance(order_hist, list) else [],
                 "hora_inicio_descanso": eb.get("hora_inicio_descanso") if eb else None,
                 "data_inicio_descanso": eb.get("data_inicio_descanso") if eb else None,
@@ -3001,6 +3018,47 @@ class DeliveryManager:
             }
 
 
+    def hydrate_delay_justifications(self, date_ref: str = None, force: bool = False) -> dict:
+        """
+        Sincroniza e hidrata as justificativas de atraso diretamente da tabela relacional
+        public.team_delay_justifications do Supabase.
+        Garante que mesmo após reboot do servidor ou refresh no front-end, todos os dados persistam com integridade.
+        """
+        if not date_ref:
+            date_ref = self.get_operational_date()
+
+        now_ts = time.time()
+        last_sync = getattr(self, "_last_just_sync_ts", 0)
+        # Se for hoje e não for forçado, respeita intervalo de 4s caso já tenha dados em memória
+        if not force and self.daily_delay_justifications and (now_ts - last_sync < 4) and (date_ref == self.get_operational_date()):
+            return dict(self.daily_delay_justifications)
+
+        try:
+            from supabase_client import fetch_team_delay_justifications
+            cloud_justs = fetch_team_delay_justifications(date_ref)
+            if cloud_justs:
+                if date_ref == self.get_operational_date():
+                    self.daily_delay_justifications.update(cloud_justs)
+                    self._last_just_sync_ts = now_ts
+                    # Aplica a justificativa em cada equipe acumulada e ativa
+                    for code, just in self.daily_delay_justifications.items():
+                        c_upper = code.strip().upper()
+                        if c_upper in self.daily_accumulated_teams:
+                            self.daily_accumulated_teams[c_upper]["delay_justification"] = dict(just)
+                        for t in self.active_teams:
+                            if t.get("team_code") == c_upper:
+                                t["delay_justification"] = dict(just)
+                    return dict(self.daily_delay_justifications)
+                return cloud_justs
+            else:
+                if date_ref == self.get_operational_date():
+                    self._last_just_sync_ts = now_ts
+                    return dict(self.daily_delay_justifications)
+                return {}
+        except Exception as e:
+            print(f"[WARN] Falha ao sincronizar justificativas de atraso com Supabase: {e}", flush=True)
+            return dict(self.daily_delay_justifications) if date_ref == self.get_operational_date() else {}
+
     def save_delay_justification(self, team_code: str, user_name: str, macro_reason: str, sub_reason: str, observation: str = "", date_ref: str = None) -> dict:
         """
         Registra ou edita uma justificativa de atraso de entrada/login de uma equipe.
@@ -3100,10 +3158,7 @@ class DeliveryManager:
                     filtered_teams.append(t)
             teams_list = filtered_teams
 
-        justifications = dict(self.daily_delay_justifications)
-        if not is_today:
-            from supabase_client import fetch_team_delay_justifications
-            justifications = fetch_team_delay_justifications(date_ref)
+        justifications = self.hydrate_delay_justifications(date_ref, force=True)
 
         def _fmt_hm(mins):
             if not mins or mins <= 0:
