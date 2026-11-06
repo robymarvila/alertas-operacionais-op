@@ -4693,9 +4693,9 @@
                             <i data-lucide="tv"></i>
                         </div>
                         <div>
-                            <div class="tv-live-pill">
-                                <span class="tv-pulse-dot"></span>
-                                <span>TRANSMISSÃO AO VIVO</span>
+                            <div class="tv-live-pill" id="tvLivePill">
+                                <span class="tv-pulse-dot" id="tvLivePulseDot"></span>
+                                <span id="tvLiveStatusText">TRANSMISSÃO AO VIVO</span>
                             </div>
                             <h2 class="tv-brand-title">PAINEL OPERACIONAL</h2>
                         </div>
@@ -4895,23 +4895,35 @@
                 <!-- ============================================== -->
                 <!-- COLUNA 2: PRIORIZADOR & ORDENS CRÍTICAS        -->
                 <!-- ============================================== -->
-                <section class="tv-card-section glass-card tv-col-priorizador">
+                <section class="tv-card-section glass-card tv-col-priorizador" id="tvColSecondarySection">
                     <div class="tv-section-header">
                         <div class="tv-section-title-wrap">
-                            <div class="tv-section-icon icon-amber">
-                                <i data-lucide="alert-octagon"></i>
+                            <div class="tv-section-icon icon-amber" id="tvSecondaryIconWrap">
+                                <i data-lucide="alert-octagon" id="tvSecondaryIcon"></i>
                             </div>
                             <div>
-                                <h3 class="tv-section-title">ORDENS PRIORITÁRIAS & BASES</h3>
+                                <h3 class="tv-section-title" id="tvSecondaryMainTitle">ORDENS PRIORITÁRIAS & BASES</h3>
                                 <p class="tv-section-subtitle" id="tvPriorizadorSubTitle">Fila de Emergências • Clientes Interrompidos (CI) & Despacho</p>
                             </div>
                         </div>
-                        <div class="tv-section-meta">
-                            <span class="tv-metric-badge badge-amber" id="tvPrioStatusBadge">
-                                <i data-lucide="shield-alert"></i> CCO Ativo
+                        <div class="tv-section-meta" style="display: flex; align-items: center; gap: 8px;">
+                            <!-- SELETOR ALTERNÁVEL: ORDENS PRIORITÁRIAS vs GESTÃO DE ATRASOS -->
+                            <div class="tv-view-toggle-pill">
+                                <button type="button" class="tv-toggle-btn active" id="tvBtnViewPriorizador" onclick="setTvSecondaryView('priorizador')" title="Visualizar Ordens Prioritárias">
+                                    <i data-lucide="alert-octagon" style="width: 12px; height: 12px;"></i> Ordens Prioritárias
+                                </button>
+                                <button type="button" class="tv-toggle-btn" id="tvBtnViewDelays" onclick="setTvSecondaryView('delays')" title="Visualizar Gestão de Atrasos & Turnos">
+                                    <i data-lucide="clock" style="width: 12px; height: 12px;"></i> Atrasos por Turno
+                                </button>
+                            </div>
+                            <span class="tv-metric-badge badge-emerald" id="tvPrioStatusBadge">
+                                <i data-lucide="shield-check"></i> CCO Ativo
                             </span>
                         </div>
                     </div>
+
+                    <!-- CONTAINER 1: VISÃO DE ORDENS PRIORITÁRIAS & BASES -->
+                    <div id="tvViewPriorizadorBox">
 
                     <!-- MINI CARDS DE ORDENS PRIORITÁRIAS (4 CARDS) -->
                     <div class="tv-prio-kpis-grid">
@@ -5013,6 +5025,129 @@
                             </div>
                         </div>
                     </div>
+                    </div><!-- /tvViewPriorizadorBox -->
+
+                    <!-- CONTAINER 2: NOVA VISÃO DE GESTÃO DE ATRASOS & PONTUALIDADE POR TURNO -->
+                    <div id="tvViewDelaysBox" style="display: none;">
+                        <!-- MINI CARDS CONSOLIDADOS (4 CARDS) -->
+                        <div class="tv-prio-kpis-grid">
+                            <!-- Card 1: TOTAL EQUIPES EM ATRASO -->
+                            <div class="tv-kpi-card" style="border-left: 3px solid #f43f5e; background: rgba(244, 63, 94, 0.08);">
+                                <div class="tv-kpi-card-header">
+                                    <span class="tv-kpi-label">EQUIPES EM ATRASO</span>
+                                    <span class="tv-kpi-tag-tipo badge-tag-rose">ATRASADAS</span>
+                                </div>
+                                <div class="tv-kpi-val-row">
+                                    <span class="tv-kpi-value text-rose font-mono" id="tvKpiDelayTotalAtraso">--</span>
+                                    <span class="tv-kpi-sub-target" id="tvKpiDelaySubAtraso">--</span>
+                                </div>
+                            </div>
+
+                            <!-- Card 2: TEMPO TOTAL DE ATRASO SOMADO -->
+                            <div class="tv-kpi-card" style="border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.08);">
+                                <div class="tv-kpi-card-header">
+                                    <span class="tv-kpi-label">TEMPO TOTAL ATRASO</span>
+                                    <span class="tv-kpi-tag-tipo badge-tag-amber">HORAS PERDIDAS</span>
+                                </div>
+                                <div class="tv-kpi-val-row">
+                                    <span class="tv-kpi-value text-amber font-mono" id="tvKpiDelayTempoTotalAtraso">--</span>
+                                    <span class="tv-kpi-sub-target">Somatório do Dia</span>
+                                </div>
+                            </div>
+
+                            <!-- Card 3: EQUIPES NO PRAZO -->
+                            <div class="tv-kpi-card" style="border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.08);">
+                                <div class="tv-kpi-card-header">
+                                    <span class="tv-kpi-label">EQUIPES NO PRAZO</span>
+                                    <span class="tv-kpi-tag-tipo badge-tag-cyan">PONTUAIS</span>
+                                </div>
+                                <div class="tv-kpi-val-row">
+                                    <span class="tv-kpi-value text-emerald font-mono" id="tvKpiDelayTotalNoPrazo">--</span>
+                                    <span class="tv-kpi-sub-target" id="tvKpiDelaySubNoPrazo">--</span>
+                                </div>
+                            </div>
+
+                            <!-- Card 4: TEMPO NO PRAZO SOMADO -->
+                            <div class="tv-kpi-card" style="border-left: 3px solid #38bdf8; background: rgba(56, 189, 248, 0.08);">
+                                <div class="tv-kpi-card-header">
+                                    <span class="tv-kpi-label">TEMPO NO PRAZO</span>
+                                    <span class="tv-kpi-tag-tipo badge-tag-purple">SALDO PONTUAL</span>
+                                </div>
+                                <div class="tv-kpi-val-row">
+                                    <span class="tv-kpi-value text-cyan font-mono" id="tvKpiDelayTempoTotalNoPrazo">--</span>
+                                    <span class="tv-kpi-sub-target">Tempo Adiantado</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- GRID DE FAIXAS HORÁRIAS DE TURNOS (MANHÃ: 06h, 08h | TARDE: 12h, 14h | NOITE: 20h, 22h) -->
+                        <div style="background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px; margin-top: 10px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                                <div style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 800; color: #f8fafc;">
+                                    <i data-lucide="clock-3" style="width: 14px; height: 14px; color: #38bdf8;"></i>
+                                    <span>PONTUALIDADE POR FAIXA HORÁRIA DE ENTRADA</span>
+                                </div>
+                                <span style="font-size: 0.7rem; color: #94a3b8;">Turnos Manhã, Tarde e Noite</span>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                                <!-- Manhã (06:00 e 08:00) -->
+                                <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 8px;">
+                                    <div style="font-size: 0.72rem; font-weight: 800; color: #38bdf8; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 3px;">
+                                        ☀️ MANHÃ
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; gap: 6px;" id="tvDelayShiftsManha">
+                                        <!-- Inserido dinamicamente via JS -->
+                                    </div>
+                                </div>
+
+                                <!-- Tarde (12:00 e 14:00) -->
+                                <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 8px;">
+                                    <div style="font-size: 0.72rem; font-weight: 800; color: #f59e0b; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 3px;">
+                                        🌤️ TARDE
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; gap: 6px;" id="tvDelayShiftsTarde">
+                                        <!-- Inserido dinamicamente via JS -->
+                                    </div>
+                                </div>
+
+                                <!-- Noite (20:00 e 22:00) -->
+                                <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 8px;">
+                                    <div style="font-size: 0.72rem; font-weight: 800; color: #c084fc; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 3px;">
+                                        🌙 NOITE
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; gap: 6px;" id="tvDelayShiftsNoite">
+                                        <!-- Inserido dinamicamente via JS -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SUB-GRID INFERIOR: PRINCIPAIS MACRO MOTIVOS + TOP 5 EQUIPES -->
+                        <div class="tv-charts-subgrid" style="margin-top: 10px;">
+                            <!-- Box 1: Principais Macro Motivos -->
+                            <div class="tv-chart-box" style="padding: 10px;">
+                                <div class="tv-chart-header" style="margin-bottom: 6px;">
+                                    <i data-lucide="pie-chart" class="mini-icon text-cyan"></i>
+                                    <span>PRINCIPAIS MOTIVOS DE ATRASO</span>
+                                </div>
+                                <div id="tvDelayMacroReasonsList" style="display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow-y: auto; padding-right: 4px;">
+                                    <!-- Inserido dinamicamente via JS -->
+                                </div>
+                            </div>
+
+                            <!-- Box 2: TOP 5 Equipes que Mais Atrasaram -->
+                            <div class="tv-chart-box" style="padding: 10px;">
+                                <div class="tv-chart-header" style="margin-bottom: 6px;">
+                                    <i data-lucide="alert-triangle" class="mini-icon text-rose"></i>
+                                    <span>TOP 5 EQUIPES QUE MAIS ATRASARAM</span>
+                                </div>
+                                <div id="tvDelayTop5TeamsList" style="display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow-y: auto; padding-right: 4px;">
+                                    <!-- Inserido dinamicamente via JS -->
+                                </div>
+                            </div>
+                        </div>
+                    </div><!-- /tvViewDelaysBox -->
                 </section>
 
             </div>
@@ -6351,6 +6486,103 @@
     </div>
     <div class="sheet-footer">
         <button class="btn-sheet-primary" style="width: 100%;" onclick="closeBottomSheet('sheetPwaInstallGuide')">Entendido</button>
+    </div>
+</div>
+
+
+<!-- Modal: Justificativa de Atraso de Entrada / Login -->
+<div class="modal-backdrop" id="delayJustificationModal" style="display: none;" onclick="if (event.target === this) closeDelayJustificationModal()">
+    <div class="modal-card glass-card" style="max-width: 560px; border-radius: 14px; box-shadow: 0 20px 45px rgba(0,0,0,0.6); border: 1px solid rgba(56, 189, 248, 0.3);">
+        <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding: 14px 18px;">
+            <div class="modal-title-wrap">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(245, 158, 11, 0.15); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(245, 158, 11, 0.3); margin-right: 12px;">
+                    <i data-lucide="clock" style="color: #f59e0b; width: 18px; height: 18px;"></i>
+                </div>
+                <div>
+                    <h3 id="delayModalTitle" style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #f8fafc;">JUSTIFICAR ATRASO DE ENTRADA</h3>
+                    <p id="delayModalSubtitle" class="modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.76rem; color: #94a3b8;">Registro de causa-raiz para monitoramento de pontualidade no CCO</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" onclick="closeDelayJustificationModal()">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body" style="padding: 18px;">
+            <!-- Resumo da Equipe & Atraso -->
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: rgba(15, 23, 42, 0.6); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 16px;">
+                <div>
+                    <span style="font-size: 0.65rem; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block;">Equipe</span>
+                    <span id="delayModalTeamCode" style="font-size: 0.95rem; font-weight: 800; color: #38bdf8; font-family: 'JetBrains Mono', monospace;">--</span>
+                </div>
+                <div>
+                    <span style="font-size: 0.65rem; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block;">Turno / Entrada</span>
+                    <span id="delayModalShift" style="font-size: 0.85rem; font-weight: 700; color: #e2e8f0;">--</span>
+                </div>
+                <div>
+                    <span style="font-size: 0.65rem; text-transform: uppercase; color: #94a3b8; font-weight: 700; display: block;">Atraso Registrado</span>
+                    <span id="delayModalMinutes" style="font-size: 0.95rem; font-weight: 800; color: #f43f5e; font-family: 'JetBrains Mono', monospace;">+0 min</span>
+                </div>
+            </div>
+
+            <form id="delayJustificationForm" onsubmit="submitDelayJustification(event)">
+                <input type="hidden" id="delayFormTeamCode" name="team_code">
+                <input type="hidden" id="delayFormDateRef" name="date_ref">
+
+                <!-- 1. Nome de quem está preenchendo -->
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #e2e8f0; margin-bottom: 5px;">
+                        Nome de quem está preenchendo <span style="color: #f43f5e;">*</span>
+                    </label>
+                    <input type="text" id="delayFormUserName" required placeholder="Digite seu nome ou identificação" 
+                        style="width: 100%; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px 12px; color: #f8fafc; font-size: 0.82rem; outline: none;">
+                </div>
+
+                <!-- 2. Motivo Macro -->
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #e2e8f0; margin-bottom: 5px;">
+                        Motivo Macro <span style="color: #f43f5e;">*</span>
+                    </label>
+                    <select id="delayFormMacroReason" required onchange="handleMacroReasonChange()"
+                        style="width: 100%; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 8px 12px; color: #f8fafc; font-size: 0.82rem; outline: none;">
+                        <option value="" disabled selected>Selecione o motivo macro...</option>
+                        <option value="PROBLEMAS TI">💻 PROBLEMAS TI</option>
+                        <option value="PROBLEMAS VEÍCULO">🚚 PROBLEMAS VEÍCULO</option>
+                        <option value="PROBLEMAS LOGISTICA">📦 PROBLEMAS LOGISTICA</option>
+                        <option value="PROBLEMAS SESMT">🦺 PROBLEMAS SESMT</option>
+                        <option value="PROBLEMAS CCO">📡 PROBLEMAS CCO</option>
+                        <option value="PROBLEMAS ABS">👥 PROBLEMAS ABS</option>
+                    </select>
+                </div>
+
+                <!-- 3. Submotivo -->
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #e2e8f0; margin-bottom: 5px;">
+                        Submotivo <span style="color: #f43f5e;">*</span>
+                    </label>
+                    <select id="delayFormSubReason" required
+                        style="width: 100%; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 8px 12px; color: #f8fafc; font-size: 0.82rem; outline: none;">
+                        <option value="" disabled selected>Primeiro selecione o Motivo Macro acima...</option>
+                    </select>
+                </div>
+
+                <!-- 4. Observação Livre -->
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 0.78rem; font-weight: 700; color: #e2e8f0; margin-bottom: 5px;">
+                        Observação <small style="color: #94a3b8; font-weight: 400;">(detalhes operacionais)</small>
+                    </label>
+                    <textarea id="delayFormObservation" rows="3" placeholder="Informações adicionais sobre o atraso..."
+                        style="width: 100%; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px 12px; color: #f8fafc; font-size: 0.82rem; outline: none; resize: vertical;"></textarea>
+                </div>
+
+                <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
+                    <button type="button" class="btn btn-secondary" onclick="closeDelayJustificationModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnSaveDelayJustification" style="background: linear-gradient(135deg, #0284c7, #0369a1); border: none; font-weight: 700; padding: 7px 16px; border-radius: 8px; color: #fff; font-size: 0.82rem;">
+                        <i data-lucide="check" style="width: 14px; height: 14px; margin-right: 4px;"></i> Salvar Justificativa
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 

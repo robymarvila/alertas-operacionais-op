@@ -9,6 +9,7 @@ from datetime import datetime, date, timedelta, timezone
 import json
 import os
 import re
+import threading
 
 # Fuso Horário Oficial de Operação (Horário de Brasília - UTC-3)
 BR_TZ = timezone(timedelta(hours=-3))
@@ -585,6 +586,7 @@ class DeliveryManager:
         self.spotfire_cache = {}              # (date_ref, norm_code) -> dict
         self.bid_cache = {}                   # team_code -> dict (Visão Operacional BidTech)
         self.last_bid_sync = "--"             # Última sincronização da BID
+        self.daily_delay_justifications = {}  # team_code -> dict (Justificativas de atraso de login)
 
         # Caches de auditoria em memória de alta performance (<1ms)
         self._daily_audit_cache = {}          # date_str -> dict
@@ -647,6 +649,7 @@ class DeliveryManager:
 
                         self.intraday_curve = data.get("intraday_curve", {})
                         self.daily_team_order_history = data.get("team_order_history", {})
+                        self.daily_delay_justifications = data.get("delay_justifications", {})
                         for code_o, o_list in self.daily_team_order_history.items():
                             if isinstance(o_list, list):
                                 for o in o_list:
@@ -684,6 +687,7 @@ class DeliveryManager:
                         self.current_date_str = current_op_date
                         self.daily_accumulated_teams = {}
                         self.daily_team_order_history = {}
+                        self.daily_delay_justifications = {}
                         self.intraday_curve = {}
                         self.bid_cache = {}
                         self.last_bid_sync = "--"
@@ -722,6 +726,7 @@ class DeliveryManager:
                 "sync_source": self.sync_source,
                 "accumulated_teams": self.daily_accumulated_teams,
                 "team_order_history": self.daily_team_order_history,
+                "delay_justifications": self.daily_delay_justifications,
                 "intraday_curve": self.intraday_curve,
                 "bid_cache": self.bid_cache,
                 "last_bid_sync": self.last_bid_sync
@@ -1406,6 +1411,7 @@ class DeliveryManager:
                 "termino": shift_info.get("termino", "--"),
                 "turno_x_login": shift_info.get("turno_x_login", "--"),
                 "turno_x_login_minutos": shift_info.get("turno_x_login_minutos", 0),
+                "delay_justification": self.daily_delay_justifications.get(team_code),
                 "shift_hours": shift_info.get("shift_hours", 8),
                 "shift_slot": shift_info["shift_slot"],
                 "shift_code": shift_info["shift_code"],
@@ -1528,6 +1534,8 @@ class DeliveryManager:
             "intraday_curve": self.intraday_curve,
             # Estrutura hierárquica das bases para renderização ágil
             "geo_groups": self.geo_groups,
+            # Justificativas de atraso de entrada da data
+            "delay_justifications": self.daily_delay_justifications,
             # Resumo Forense dos Últimos 3 Dias (Norte x Leste x Total) para o Hub Central
             "recent_3days": self.get_recent_3days_audit_summary(today_metrics=metrics_total)
         }
@@ -1873,6 +1881,26 @@ class DeliveryManager:
                 turno_x_login_min_val = calc["turno_x_login_minutos"]
                 shift_hours_val = calc["shift_hours"]
 
+            # Quantidade de OS Coletadas no Dia
+            order_hist = (eb.get("order_history") if eb else None) or self.daily_team_order_history.get(code, [])
+            distinct_orders = set()
+            if isinstance(order_hist, list):
+                for o_item in order_hist:
+                    if isinstance(o_item, dict) and o_item.get("ordem"):
+                        val = str(o_item["ordem"]).strip()
+                        if val and val not in ["--", "-", "None", "nan", ""]:
+                            distinct_orders.add(val)
+                    elif isinstance(o_item, str):
+                        val = o_item.strip()
+                        if val and val not in ["--", "-", "None", "nan", ""]:
+                            distinct_orders.add(val)
+            
+            curr_os = eb.get("ordem_servico") if eb else None
+            if curr_os and str(curr_os).strip() not in ["--", "-", "None", "nan", ""]:
+                distinct_orders.add(str(curr_os).strip())
+
+            qtd_os_coletadas = len(distinct_orders)
+
             row_item = {
                 "team_code": code,
                 "prefix": prefix,
@@ -1909,6 +1937,8 @@ class DeliveryManager:
                 "shift_hours": shift_hours_val,
                 "ordem_servico": eb.get("ordem_servico") if eb else "--",
                 "hora_a_caminho": eb.get("hora_a_caminho") if eb else "--",
+                "qtd_os_coletadas": qtd_os_coletadas,
+                "order_history": [dict(o) for o in order_hist] if isinstance(order_hist, list) else [],
                 "hora_inicio_descanso": eb.get("hora_inicio_descanso") if eb else None,
                 "data_inicio_descanso": eb.get("data_inicio_descanso") if eb else None,
                 "gps_update_minutes": eb.get("gps_update_minutes") if eb else None,
@@ -2969,6 +2999,226 @@ class DeliveryManager:
                 "avg_leste_day": 0,
                 "daily_breakdown": []
             }
+
+
+    def save_delay_justification(self, team_code: str, user_name: str, macro_reason: str, sub_reason: str, observation: str = "", date_ref: str = None) -> dict:
+        """
+        Registra ou edita uma justificativa de atraso de entrada/login de uma equipe.
+        Persiste no cache diário em memória, em disco e sincroniza com o Supabase.
+        """
+        code = str(team_code).strip().upper()
+        if not date_ref:
+            date_ref = self.get_operational_date()
+
+        team = self.daily_accumulated_teams.get(code)
+        shift_code = "08:00"
+        delay_minutes = 0
+        if team:
+            shift_code = team.get("shift_code") or "08:00"
+            delay_minutes = int(team.get("turno_x_login_minutos") or 0)
+        else:
+            for t in self.active_teams:
+                if t.get("team_code") == code:
+                    shift_code = t.get("shift_code") or "08:00"
+                    delay_minutes = int(t.get("turno_x_login_minutos") or 0)
+                    break
+
+        now_str = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
+        just_record = {
+            "date_ref": date_ref,
+            "team_code": code,
+            "shift_code": shift_code,
+            "delay_minutes": delay_minutes,
+            "user_name": str(user_name).strip(),
+            "macro_reason": str(macro_reason).strip(),
+            "sub_reason": str(sub_reason).strip(),
+            "observation": str(observation or "").strip(),
+            "updated_at": now_str
+        }
+
+        self.daily_delay_justifications[code] = just_record
+
+        # Atualiza a referência direta na equipe acumulada e ativa
+        if team:
+            team["delay_justification"] = dict(just_record)
+        for t in self.active_teams:
+            if t.get("team_code") == code:
+                t["delay_justification"] = dict(just_record)
+
+        self.save_local_cache()
+
+        # Sincronização assíncrona com Supabase
+        def _async_push():
+            try:
+                from supabase_client import save_team_delay_justification
+                save_team_delay_justification(dict(just_record))
+            except Exception as sb_err:
+                print(f"[WARN] Falha ao enviar justificativa ao Supabase: {sb_err}", flush=True)
+
+        threading.Thread(target=_async_push, daemon=True).start()
+        return {"status": "success", "justification": just_record}
+
+    def get_delay_analytics_summary(self, date_ref: str = None, geo_scope: str = "ALL") -> dict:
+        """
+        Gera os dados analíticos consolidados de pontualidade e atrasos por turno
+        para a visão alternativa de Gestão de Atrasos no Painel da TV.
+        """
+        if not date_ref:
+            date_ref = self.get_operational_date()
+
+        is_today = (date_ref == self.get_operational_date())
+        teams_list = []
+        if is_today:
+            # Painel TV / ONLINE REAL TIME: somente equipes ativas no momento (is_active == True)
+            if self.active_teams:
+                teams_list = [t for t in self.active_teams if t.get("is_active", True)]
+            else:
+                teams_list = [t for t in self.daily_accumulated_teams.values() if t.get("is_active", True)]
+        else:
+            from supabase_client import fetch_delivery_records_by_date
+            teams_list = fetch_delivery_records_by_date(date_ref)
+
+        # Filtragem por Escopo Regional (ALL, NORTE, LESTE)
+        scope_clean = str(geo_scope or "ALL").strip().upper()
+        BASES_NORTE = ["FAGUNDES", "CAJATI", "VILA MEDEIROS", "NORTE"]
+
+        if scope_clean == "NORTE":
+            filtered_teams = []
+            for t in teams_list:
+                b = str(t.get("base_name") or t.get("base_display") or t.get("base_code") or "").upper()
+                r = str(t.get("region") or "").upper()
+                if any(nb in b for nb in BASES_NORTE) or "NORTE" in r:
+                    filtered_teams.append(t)
+            teams_list = filtered_teams
+        elif scope_clean == "LESTE":
+            filtered_teams = []
+            for t in teams_list:
+                b = str(t.get("base_name") or t.get("base_display") or t.get("base_code") or "").upper()
+                r = str(t.get("region") or "").upper()
+                is_norte = any(nb in b for nb in BASES_NORTE) or "NORTE" in r
+                if not is_norte:
+                    filtered_teams.append(t)
+            teams_list = filtered_teams
+
+        justifications = dict(self.daily_delay_justifications)
+        if not is_today:
+            from supabase_client import fetch_team_delay_justifications
+            justifications = fetch_team_delay_justifications(date_ref)
+
+        def _fmt_hm(mins):
+            if not mins or mins <= 0:
+                return "00h 00m"
+            h = mins // 60
+            m = mins % 60
+            return f"{h:02d}h {m:02d}m"
+
+        shifts_data = {
+            "06:00": {"periodo": "Manhã", "shift_code": "06:00", "label": "06:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
+            "08:00": {"periodo": "Manhã", "shift_code": "08:00", "label": "08:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
+            "12:00": {"periodo": "Tarde", "shift_code": "12:00", "label": "12:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
+            "14:00": {"periodo": "Tarde", "shift_code": "14:00", "label": "14:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
+            "20:00": {"periodo": "Noite", "shift_code": "20:00", "label": "20:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
+            "22:00": {"periodo": "Noite", "shift_code": "22:00", "label": "22:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0}
+        }
+
+        total_atrasadas = 0
+        total_no_prazo = 0
+        total_tempo_atraso_min = 0
+        total_tempo_no_prazo_min = 0
+        delayed_teams = []
+
+        macro_reasons_stats = {
+            "PROBLEMAS TI": {"macro_reason": "PROBLEMAS TI", "icon": "laptop", "color": "#38bdf8", "qtd_equipes": 0, "tempo_min": 0},
+            "PROBLEMAS VEÍCULO": {"macro_reason": "PROBLEMAS VEÍCULO", "icon": "truck", "color": "#f59e0b", "qtd_equipes": 0, "tempo_min": 0},
+            "PROBLEMAS LOGISTICA": {"macro_reason": "PROBLEMAS LOGISTICA", "icon": "package", "color": "#ec4899", "qtd_equipes": 0, "tempo_min": 0},
+            "PROBLEMAS SESMT": {"macro_reason": "PROBLEMAS SESMT", "icon": "shield-check", "color": "#10b981", "qtd_equipes": 0, "tempo_min": 0},
+            "PROBLEMAS CCO": {"macro_reason": "PROBLEMAS CCO", "icon": "radio", "color": "#818cf8", "qtd_equipes": 0, "tempo_min": 0},
+            "PROBLEMAS ABS": {"macro_reason": "PROBLEMAS ABS", "icon": "user-x", "color": "#f43f5e", "qtd_equipes": 0, "tempo_min": 0},
+            "NÃO JUSTIFICADO": {"macro_reason": "NÃO JUSTIFICADO", "icon": "help-circle", "color": "#94a3b8", "qtd_equipes": 0, "tempo_min": 0}
+        }
+
+        for t in teams_list:
+            code = t.get("team_code")
+            if not code:
+                continue
+            sc = t.get("shift_code") or "08:00"
+            if sc not in shifts_data:
+                slot = str(t.get("shift_slot") or "")
+                for candidate in ["06:00", "08:00", "12:00", "14:00", "20:00", "22:00"]:
+                    if candidate in slot:
+                        sc = candidate
+                        break
+            if sc not in shifts_data:
+                sc = "08:00"
+
+            d_min = int(t.get("turno_x_login_minutos") or 0)
+            shifts_data[sc]["total"] += 1
+
+            just = justifications.get(code) or t.get("delay_justification")
+
+            if d_min > 0:
+                shifts_data[sc]["atrasadas"] += 1
+                shifts_data[sc]["tempo_atraso_min"] += d_min
+                total_atrasadas += 1
+                total_tempo_atraso_min += d_min
+
+                macro = (just.get("macro_reason") if just else None) or "NÃO JUSTIFICADO"
+                norm_macro = macro.replace("LOGÍSTICA", "LOGISTICA")
+                if norm_macro not in macro_reasons_stats:
+                    norm_macro = "NÃO JUSTIFICADO"
+
+                macro_reasons_stats[norm_macro]["qtd_equipes"] += 1
+                macro_reasons_stats[norm_macro]["tempo_min"] += d_min
+
+                delayed_teams.append({
+                    "team_code": code,
+                    "base": t.get("base_display") or t.get("base_code") or "--",
+                    "turno": f"Turno {sc}",
+                    "shift_code": sc,
+                    "marcacao": t.get("marcacao") or t.get("login_time") or "--",
+                    "delay_minutes": d_min,
+                    "delay_str": f"+{d_min} min",
+                    "macro_reason": just.get("macro_reason") if just else "NÃO JUSTIFICADO",
+                    "sub_reason": just.get("sub_reason") if just else "--",
+                    "user_name": just.get("user_name") if just else None,
+                    "observation": just.get("observation") if just else None,
+                    "has_justification": bool(just)
+                })
+            else:
+                shifts_data[sc]["no_prazo"] += 1
+                tempo_no_prazo = abs(d_min)
+                shifts_data[sc]["tempo_no_prazo_min"] += tempo_no_prazo
+                total_no_prazo += 1
+                total_tempo_no_prazo_min += tempo_no_prazo
+
+        for sc, s in shifts_data.items():
+            s["tempo_atraso_str"] = _fmt_hm(s["tempo_atraso_min"])
+            s["tempo_no_prazo_str"] = _fmt_hm(s["tempo_no_prazo_min"])
+            s["taxa_pontualidade"] = round((s["no_prazo"] / s["total"] * 100), 1) if s["total"] > 0 else 100.0
+
+        for m_key, m_val in macro_reasons_stats.items():
+            m_val["tempo_str"] = _fmt_hm(m_val["tempo_min"])
+            m_val["percentual_tempo"] = round((m_val["tempo_min"] / total_tempo_atraso_min * 100), 1) if total_tempo_atraso_min > 0 else 0.0
+
+        top5 = sorted(delayed_teams, key=lambda x: x["delay_minutes"], reverse=True)[:5]
+        macro_list = sorted(macro_reasons_stats.values(), key=lambda x: x["tempo_min"], reverse=True)
+
+        return {
+            "date_ref": date_ref,
+            "geo_scope": scope_clean,
+            "total_equipes": len(teams_list),
+            "total_atrasadas": total_atrasadas,
+            "total_no_prazo": total_no_prazo,
+            "total_tempo_atraso_min": total_tempo_atraso_min,
+            "total_tempo_atraso_str": _fmt_hm(total_tempo_atraso_min),
+            "total_tempo_no_prazo_min": total_tempo_no_prazo_min,
+            "total_tempo_no_prazo_str": _fmt_hm(total_tempo_no_prazo_min),
+            "taxa_pontualidade_geral": round((total_no_prazo / len(teams_list) * 100), 1) if teams_list else 100.0,
+            "shifts": shifts_data,
+            "top5_atrasos": top5,
+            "macro_motivos": macro_list
+        }
+
 
 delivery_manager = DeliveryManager()
 

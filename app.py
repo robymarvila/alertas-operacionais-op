@@ -10,6 +10,8 @@ import requests
 import csv
 import threading
 import time
+import re
+import json
 from datetime import datetime
 from data_manager import data_manager
 from delivery_manager import delivery_manager
@@ -31,7 +33,8 @@ from supabase_client import (
     update_command_status,
     wait_for_command_completion,
     push_delivery_snapshot_to_supabase,
-    fetch_latest_delivery_snapshot_from_supabase
+    fetch_latest_delivery_snapshot_from_supabase,
+    BR_TZ
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -556,9 +559,21 @@ def get_engine_status():
         bid_error_type = "CONNECTION_REFUSED"
         bid_msg = "Falha de Conexão: Porta 9222 fechada no navegador BidTech."
     else:
-        bid_status = "OPERATIONAL"
-        bid_error_type = "NONE"
-        bid_msg = "Operacional: Leitura automatizada da Visão Operacional BidTech a cada 2 min."
+        try:
+            from coletor_bid_cdp import _LAST_BID_SYNC_RESULT
+            if _LAST_BID_SYNC_RESULT.get("status") == "error":
+                err_type = _LAST_BID_SYNC_RESULT.get("error_type", "DATA_EXTRACTION_ERROR")
+                bid_status = "ERROR_SESSION" if err_type == "LOGIN_REQUIRED" else "ERROR"
+                bid_error_type = err_type
+                bid_msg = _LAST_BID_SYNC_RESULT.get("message", "Erro na captura do BidTech")
+            else:
+                bid_status = "OPERATIONAL"
+                bid_error_type = "NONE"
+                bid_msg = "Operacional: Leitura automatizada da Visão Operacional BidTech (Dia Atual 2 min / D-1 a cada 10 min até 13h)."
+        except Exception:
+            bid_status = "OPERATIONAL"
+            bid_error_type = "NONE"
+            bid_msg = "Operacional: Leitura automatizada da Visão Operacional BidTech a cada 2 min."
 
     bid_records_count = len(delivery_manager.bid_cache) if hasattr(delivery_manager, "bid_cache") else 0
     bid_sync_time = delivery_manager.last_bid_sync or "--:--:--"
@@ -2508,7 +2523,11 @@ def export_teams_excel():
             "Tipo Operação": t.get("tipo_operacional", ""),
             "Status BID": t.get("status_bid", "--"),
             "UT": t.get("ut", ""),
-            "Filial": t.get("filial", "")
+            "Filial": t.get("filial", ""),
+            "Justificativa Atraso (Macro)": (t.get("delay_justification") or delivery_manager.daily_delay_justifications.get(t.get("team_code"), {})).get("macro_reason", "--"),
+            "Justificativa Atraso (Submotivo)": (t.get("delay_justification") or delivery_manager.daily_delay_justifications.get(t.get("team_code"), {})).get("sub_reason", "--"),
+            "Justificativa Responsável": (t.get("delay_justification") or delivery_manager.daily_delay_justifications.get(t.get("team_code"), {})).get("user_name", "--"),
+            "Justificativa Observação": (t.get("delay_justification") or delivery_manager.daily_delay_justifications.get(t.get("team_code"), {})).get("observation", "--")
         })
 
     import pandas as pd
@@ -2525,6 +2544,61 @@ def export_teams_excel():
         as_attachment=True,
         download_name=filename
     )
+
+@app.route('/api/delivery/delay_justification', methods=['POST'])
+def save_delivery_delay_justification():
+    """Registra ou edita uma justificativa de atraso de equipe."""
+    try:
+        data = request.get_json(force=True) or {}
+        team_code = data.get("team_code")
+        user_name = data.get("user_name")
+        macro_reason = data.get("macro_reason")
+        sub_reason = data.get("sub_reason") or ""
+        observation = data.get("observation") or ""
+        date_ref = data.get("date_ref")
+
+        if not team_code or not user_name or not macro_reason:
+            return jsonify({"status": "error", "message": "Equipe, nome do preenchedor e motivo macro são obrigatórios."}), 400
+
+        res = delivery_manager.save_delay_justification(
+            team_code=team_code,
+            user_name=user_name,
+            macro_reason=macro_reason,
+            sub_reason=sub_reason,
+            observation=observation,
+            date_ref=date_ref
+        )
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/delivery/delay_justifications', methods=['GET'])
+def get_delivery_delay_justifications():
+    """Retorna as justificativas de atraso de equipe da data solicitada."""
+    try:
+        date_ref = request.args.get("date") or delivery_manager.get_operational_date()
+        if date_ref == delivery_manager.get_operational_date():
+            justs = delivery_manager.daily_delay_justifications
+        else:
+            from supabase_client import fetch_team_delay_justifications
+            justs = fetch_team_delay_justifications(date_ref)
+        return jsonify({"status": "success", "date_ref": date_ref, "justifications": justs})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/tv/delay_summary', methods=['GET'])
+def get_tv_delay_summary():
+    """Retorna o consolidado analítico de atrasos e pontualidade por turno para a nova visão da TV."""
+    try:
+        date_ref = request.args.get("date") or delivery_manager.get_operational_date()
+        geo_scope = request.args.get("scope", "ALL").upper()
+        summary = delivery_manager.get_delay_analytics_summary(date_ref=date_ref, geo_scope=geo_scope)
+        return jsonify(summary)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route('/api/bid/data', methods=['GET'])
 def get_bid_reconciliation_data():
@@ -2562,8 +2636,114 @@ def export_bid_reconciliation_excel():
     state = delivery_manager.get_online_x_bid_state(date_str)
     rows = state.get("rows", [])
 
+    now_br = datetime.now(BR_TZ)
+    now_min = now_br.hour * 60 + now_br.minute
+
     excel_rows = []
     for r in rows:
+        marc = str(r.get("marcacao_eb") or "").strip()
+        is_active = r.get("is_eb_active", True)
+        status_eb = str(r.get("status_eb") or "")
+        termino = r.get("termino", "--")
+
+        # Cálculo do Tempo Ativo
+        tempo_ativo_str = "--"
+        if marc and marc not in ['--', '-', '', 'None', 'nan', '--:--']:
+            m = re.match(r'^(\d{1,2}):(\d{2})', marc)
+            if m:
+                m_h, m_m = int(m.group(1)), int(m.group(2))
+                el_min = now_min - (m_h * 60 + m_m)
+                if el_min < 0:
+                    el_min += 1440
+                el_h = el_min // 60
+                el_rem_m = el_min % 60
+                tempo_str = f"{el_h:02d}h {el_rem_m:02d}m"
+                if not is_active or "conclu" in status_eb.lower():
+                    tempo_ativo_str = f"{tempo_str} (Concluído)"
+                else:
+                    tempo_ativo_str = tempo_str
+
+        # Cálculo do Status Descanso
+        h_desc = r.get("hora_inicio_descanso") or ""
+        status_descanso_str = "--"
+        if marc and marc not in ['--', '-', '', 'None', 'nan', '--:--']:
+            m = re.match(r'^(\d{1,2}):(\d{2})', marc)
+            if m:
+                m_h, m_m = int(m.group(1)), int(m.group(2))
+                work_min = now_min - (m_h * 60 + m_m)
+                if work_min < 0:
+                    work_min += 1440
+                has_desc = bool(h_desc and h_desc not in ['--', '-', 'None', 'nan', ''])
+                if has_desc:
+                    dm = re.match(r'\b(\d{1,2}):(\d{2})\b', str(h_desc))
+                    if dm:
+                        dh, dmin = int(dm.group(1)), int(dm.group(2))
+                        desc_min = (dh * 60 + dmin) - (m_h * 60 + m_m)
+                        if desc_min < 0:
+                            desc_min += 1440
+                        if 240 <= desc_min <= 300:
+                            status_descanso_str = "CONFORME"
+                        elif desc_min > 300:
+                            status_descanso_str = "NÃO CONFORME"
+                        else:
+                            status_descanso_str = "NO PRAZO"
+                    else:
+                        status_descanso_str = "CONFORME"
+                else:
+                    if work_min < 240:
+                        status_descanso_str = "NO PRAZO"
+                    elif 240 <= work_min <= 300:
+                        status_descanso_str = "INICIAR DESCANSO"
+                    else:
+                        status_descanso_str = "NÃO CONFORME"
+
+        # Cálculo da Hora a Caminho e Status OS
+        h_cam = r.get("hora_a_caminho") or ""
+        ordem = r.get("ordem_servico") or ""
+        status_os_str = "--"
+        has_ordem = bool(ordem and ordem not in ['--', '-', '', 'None', 'nan'])
+        has_cam = bool(h_cam and h_cam not in ['--', '-', '', 'None', 'nan'])
+        if not has_ordem:
+            status_os_str = "SEM ORDEM"
+        elif not has_cam:
+            status_os_str = "PENDENTE A CAMINHO"
+        else:
+            cm = re.match(r'\b(\d{1,2}):(\d{2})\b', str(h_cam))
+            if cm:
+                ch, cmin = int(cm.group(1)), int(cm.group(2))
+                delta_cam = now_min - (ch * 60 + cmin)
+                if delta_cam < 0:
+                    delta_cam += 1440
+                if delta_cam <= 20:
+                    status_os_str = "Até 20min"
+                elif delta_cam <= 30:
+                    status_os_str = "Até 30min"
+                elif delta_cam <= 50:
+                    status_os_str = "Atenção 50min"
+                elif delta_cam <= 60:
+                    status_os_str = "Alerta 60min"
+                else:
+                    status_os_str = "Gravissimo Maior 60min"
+            else:
+                status_os_str = "Até 20min"
+
+        # Quantidade de OS Coletadas
+        qtd_os_val = r.get("qtd_os_coletadas")
+        if qtd_os_val is None:
+            oh = r.get("order_history") or []
+            orders = set()
+            if isinstance(oh, list):
+                for item in oh:
+                    if isinstance(item, dict) and item.get("ordem"):
+                        val = str(item["ordem"]).strip()
+                        if val and val not in ["--", "-", "None", "nan", ""]:
+                            orders.add(val)
+                    elif isinstance(item, str) and item.strip() not in ["--", "-", "None", "nan", ""]:
+                        orders.add(item.strip())
+            if ordem and ordem not in ["--", "-", "None", "nan", ""]:
+                orders.add(ordem)
+            qtd_os_val = len(orders)
+
         excel_rows.append({
             "Código Equipe": r.get("team_code", ""),
             "Status Cruzado": r.get("cross_status", ""),
@@ -2583,7 +2763,15 @@ def export_bid_reconciliation_excel():
             "Tipo Operacional": r.get("bid_tipo_operacional", "--"),
             "Horário Login EB": r.get("login_time_eb", "--"),
             "Marcação Ponto": r.get("marcacao_eb", "--"),
-            "Ordem de Serviço Atual": r.get("ordem_servico", "--")
+            "Término Previsto": termino,
+            "Tempo Ativo": tempo_ativo_str,
+            "Turno x Login": r.get("turno_x_login", "--"),
+            "Início Descanso": h_desc or "--",
+            "Status Descanso": status_descanso_str,
+            "Ordem de Serviço Atual": ordem or "--",
+            "Hora a Caminho": h_cam or "--",
+            "Status OS": status_os_str,
+            "Qtd OS Coletadas": qtd_os_val
         })
 
     import pandas as pd
@@ -2600,6 +2788,22 @@ def export_bid_reconciliation_excel():
         as_attachment=True,
         download_name=filename
     )
+
+@app.route('/api/bid/sync_historical', methods=['POST', 'GET'])
+def api_bid_sync_historical():
+    """Dispara a carga histórica retroativa de datas do BidTech (ex: 01/11 a 05/11)."""
+    try:
+        from coletor_bid_cdp import sincronizar_historico_bid_periodo
+        datas_param = request.args.get('dates')
+        if datas_param:
+            datas = [d.strip() for d in datas_param.split(',') if d.strip()]
+        else:
+            datas = ["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"]
+        res = sincronizar_historico_bid_periodo(datas)
+        return jsonify({"status": "success", "results": res})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 # ==============================================================================
 # APIS DO SISTEMA DE CONTROLE OPERACIONAL (FROTAS / SIST-OPERACAO-NORTE)

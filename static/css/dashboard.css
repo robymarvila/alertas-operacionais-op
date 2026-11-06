@@ -15745,22 +15745,34 @@ body.route-tv .main-content-layout {
     gap: 5px;
     padding: 2px 8px;
     border-radius: 9999px;
-    background: rgba(239, 68, 68, 0.16);
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    color: #ef4444;
+    background: rgba(16, 185, 129, 0.16);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #10b981;
     font-size: 0.62rem;
     font-weight: 800;
     letter-spacing: 0.08em;
     margin-bottom: 2px;
+    transition: all 0.3s ease;
 }
 
 .tv-pulse-dot {
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: #ef4444;
-    box-shadow: 0 0 6px #ef4444;
+    background: #10b981;
+    box-shadow: 0 0 6px #10b981;
     animation: pulse 1.5s infinite;
+}
+
+.tv-live-pill.offline {
+    background: rgba(239, 68, 68, 0.16) !important;
+    border-color: rgba(239, 68, 68, 0.4) !important;
+    color: #ef4444 !important;
+}
+
+.tv-live-pill.offline .tv-pulse-dot {
+    background: #ef4444 !important;
+    box-shadow: 0 0 6px #ef4444 !important;
 }
 
 .tv-brand-title {
@@ -16029,6 +16041,12 @@ body.route-tv .main-content-layout {
     color: #f59e0b;
 }
 
+.tv-metric-badge.badge-emerald {
+    background: rgba(16, 185, 129, 0.14) !important;
+    border: 1px solid rgba(16, 185, 129, 0.35) !important;
+    color: #10b981 !important;
+}
+
 .tv-metric-badge i {
     width: 12px;
     height: 12px;
@@ -16037,9 +16055,15 @@ body.route-tv .main-content-layout {
 /* Grid de KPIs de Frotas (6 Cards Alinhados) */
 .tv-fleet-kpis-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 7px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
     flex-shrink: 0;
+    align-items: stretch;
+}
+
+.tv-fleet-kpis-grid .tv-kpi-card {
+    min-width: 0;
+    padding: 6px 7px;
 }
 
 /* Grid de KPIs do Priorizador (4 Cards) */
@@ -17098,4 +17122,182 @@ tr.tr-alert-gravissimo-60.alert-pulse-enabled {
     10%, 30% { transform: rotate(-12deg); }
     20%, 40% { transform: rotate(12deg); }
     50% { transform: rotate(0); }
+}
+
+/* ==========================================================================
+   GESTÃO DE ATRASOS & JUSTIFICATIVAS DE LOGIN - TV & TABELA
+   ========================================================================== */
+/* Containers das Visões Alternáveis da Coluna 2 */
+#tvViewPriorizadorBox {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0%;
+    min-height: 0;
+    height: 100%;
+    gap: 8px;
+    box-sizing: border-box;
+}
+
+#tvViewDelaysBox {
+    display: none;
+    flex-direction: column;
+    flex: 1 1 0%;
+    min-height: 0;
+    height: 100%;
+    gap: 8px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+.tv-view-toggle-pill {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.tv-toggle-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+.tv-toggle-btn:hover {
+    color: #f8fafc;
+}
+.tv-toggle-btn.active {
+    background: #0284c7;
+    color: #ffffff;
+    box-shadow: 0 1px 4px rgba(2, 132, 199, 0.4);
+}
+
+.tv-metric-badge.badge-rose {
+    background: rgba(244, 63, 94, 0.12);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+    color: #f43f5e;
+}
+
+.btn-just-tag {
+    background: rgba(56, 189, 248, 0.15);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    color: #38bdf8;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.btn-just-tag:hover {
+    background: rgba(56, 189, 248, 0.3);
+    border-color: #38bdf8;
+}
+
+.btn-just-pending {
+    background: rgba(244, 63, 94, 0.12);
+    border: 1px dashed rgba(244, 63, 94, 0.45);
+    color: #f43f5e;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+.btn-just-pending:hover {
+    background: rgba(244, 63, 94, 0.25);
+    border-color: #f43f5e;
+}
+
+.tv-shift-slot-card {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.tv-shift-slot-card.has-delay {
+    border-left: 3px solid #f43f5e;
+}
+.tv-shift-slot-card.all-punctual {
+    border-left: 3px solid #10b981;
+}
+
+.tv-macro-reason-bar-item {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tv-top5-delay-item {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Badge de Atraso Clicável e Estado Justificado */
+.badge-turno-login-atraso.clickable-delay-badge {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.badge-turno-login-atraso.clickable-delay-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(244, 63, 94, 0.45);
+    filter: brightness(1.15);
+}
+.badge-turno-login-atraso.justified {
+    border-color: rgba(16, 185, 129, 0.6) !important;
+    background: rgba(244, 63, 94, 0.14) !important;
+}
+.delay-justified-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #10b981;
+    color: #ffffff;
+    border-radius: 9999px;
+    width: 13px;
+    height: 13px;
+    font-size: 0.65rem;
+    font-weight: 900;
+    line-height: 1;
+    margin-left: 2px;
 }

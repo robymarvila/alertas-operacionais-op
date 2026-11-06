@@ -5631,6 +5631,7 @@ async function loadDeliveryData(forceRefresh = false) {
 
             deliveryState.activeTeams = (result.active_teams || []).map(sanitizeTeam);
             deliveryState.dailyTotalTeams = (result.daily_total_teams || []).map(sanitizeTeam);
+            deliveryState.delayJustifications = result.delay_justifications || {};
             deliveryState.summaryActive = result.summary_active || {};
             deliveryState.summaryTotal = result.summary_total || {};
             deliveryState.intradayCurve = result.intraday_curve || {};
@@ -7896,6 +7897,31 @@ function renderDeliveryTable() {
         const tempoAtivoHtml = computeTempoAtivoBadge(t.marcacao, t.shift_slot, t.login_time, isAct, statusEB, terminoVal);
         const turnoXLoginHtml = computeTurnoXLoginBadge(t.marcacao, t.shift_slot, t.login_time, t.turno_x_login, t.turno_x_login_minutos);
 
+                // Justificativa de Atraso integrada no clique do horario em atraso
+        const justObj = (t.delay_justification) || (deliveryState.delayJustifications && deliveryState.delayJustifications[t.team_code]);
+        let turnoXLoginCellContent = turnoXLoginHtml;
+        if (t.turno_x_login_minutos > 0) {
+            if (justObj && justObj.macro_reason) {
+                const titleTooltip = `Atraso Justificado por ${justObj.user_name || 'Usuario'}: ${justObj.macro_reason} - ${justObj.sub_reason || ''} (${justObj.observation || 'Sem observacao'}). Clique para ver/editar.`;
+                turnoXLoginCellContent = `
+                    <span class="badge-turno-login-atraso justified clickable-delay-badge" 
+                          onclick="event.stopPropagation(); openDelayJustificationModal('${t.team_code}', '${t.shift_slot || t.shift_code || ''}', ${t.turno_x_login_minutos}, '${marcacaoVal}')" 
+                          title="${titleTooltip}">
+                        +${t.turno_x_login_minutos} min
+                        <span class="delay-justified-icon" title="Justificado">&#10003;</span>
+                    </span>
+                `;
+            } else {
+                turnoXLoginCellContent = `
+                    <span class="badge-turno-login-atraso clickable-delay-badge" 
+                          onclick="event.stopPropagation(); openDelayJustificationModal('${t.team_code}', '${t.shift_slot || t.shift_code || ''}', ${t.turno_x_login_minutos}, '${marcacaoVal}')" 
+                          title="Clique para justificar o atraso da equipe ${t.team_code} (+${t.turno_x_login_minutos} min)">
+                        +${t.turno_x_login_minutos} min
+                    </span>
+                `;
+            }
+        }
+
         // Ordem
         const orderHist = t.order_history || [];
         const orderCount = orderHist.length;
@@ -7921,7 +7947,7 @@ function renderDeliveryTable() {
             marcacao: `<td><span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.8rem; color: #38bdf8;">${marcacaoVal}</span></td>`,
             termino: `<td>${terminoHtml}</td>`,
             tempo_ativo: `<td class="tempo-ativo-cell" data-team="${t.team_code}">${tempoAtivoHtml}</td>`,
-            turno_x_login: `<td>${turnoXLoginHtml}</td>`,
+            turno_x_login: `<td>${turnoXLoginCellContent}</td>`,
             gps: `<td><span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.78rem; color: ${gpsColor};">${gpsDisplay}</span></td>`,
             status: `<td>${statusBadge}</td>`,
             status_bid: `<td>${bidBadge}</td>`,
@@ -12085,7 +12111,8 @@ const ONLINE_BID_TABLE_COLUMNS = [
     { id: 'componentes', label: 'COMPONENTES (BID)', default: true },
     { id: 'ordem', label: 'ORDEM SERVIÇO', default: true },
     { id: 'hora_a_caminho', label: 'HORA A CAMINHO', default: true },
-    { id: 'status_os', label: 'STATUS OS', default: true }
+    { id: 'status_os', label: 'STATUS OS', default: true },
+    { id: 'qtd_os', label: 'QTD OS', default: true }
 ];
 
 if (!onlineBidState.visibleColumns) onlineBidState.visibleColumns = null;
@@ -12112,6 +12139,11 @@ function getOnlineBidVisibleColumns() {
                     const cIdx = arr.indexOf('hora_a_caminho');
                     if (cIdx !== -1) arr.splice(cIdx + 1, 0, 'status_os');
                     else arr.push('status_os');
+                }
+                if (!arr.includes('qtd_os')) {
+                    const sIdx = arr.indexOf('status_os');
+                    if (sIdx !== -1) arr.splice(sIdx + 1, 0, 'qtd_os');
+                    else arr.push('qtd_os');
                 }
                 onlineBidState.visibleColumns = new Set(arr);
                 return onlineBidState.visibleColumns;
@@ -12533,6 +12565,8 @@ function filterOnlineBidTable() {
         return true;
     });
 
+    onlineBidState.filteredRows = list;
+
     if (countBadge) {
         countBadge.textContent = `${list.length} equipes listadas`;
     }
@@ -12742,7 +12776,11 @@ function filterOnlineBidTable() {
                 }
                 return `<td><span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.78rem; color: #f59e0b;">${formatted}</span></td>`;
             })(),
-            status_os: `<td>${computeStatusOsBadge(r.ordem_servico, r.hora_a_caminho).html}</td>`
+            status_os: `<td>${computeStatusOsBadge(r.ordem_servico, r.hora_a_caminho).html}</td>`,
+            qtd_os: (() => {
+                const count = (typeof r.qtd_os_coletadas !== 'undefined' ? r.qtd_os_coletadas : ((r.order_history && r.order_history.length) || (r.ordem_servico && !['--', '-'].includes(r.ordem_servico) ? 1 : 0)));
+                return `<td><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem;">${count}</span></td>`;
+            })()
         };
 
         const stOsBid = computeStatusOsBadge(r.ordem_servico, r.hora_a_caminho);
@@ -12851,8 +12889,85 @@ async function triggerBidCollect() {
 function exportOnlineXBidExcel() {
     const dateInput = document.getElementById('onlineBidDateInput');
     const targetDate = (dateInput && dateInput.value) ? dateInput.value : (onlineBidState.date || getOperationalDate());
-    window.location.href = `/api/bid/export_excel?date=${encodeURIComponent(targetDate)}`;
-    showToast('Download da planilha de reconciliação ONLINE x BID iniciado!', 'success');
+    const list = onlineBidState.filteredRows || onlineBidState.allRows || [];
+
+    if (window.XLSX && list.length > 0) {
+        const rows = list.map(r => {
+            const marcacaoVal = r.marcacao_eb && r.marcacao_eb !== '--' ? r.marcacao_eb : (r.login_time || '--');
+            const terminoVal = r.termino && r.termino !== '--' ? r.termino : computeTeamTermino(marcacaoVal, r.login_time_eb || r.login_time, r.turno, r.vehicle_type, r.geo, r.base_display);
+            
+            // Tempo Ativo formatado
+            let tempoAtivoText = '--';
+            const taHtml = computeTempoAtivoBadge(r.marcacao_eb, r.turno, r.login_time_eb || r.login_time, r.is_eb_active, r.status_eb, terminoVal);
+            if (taHtml) {
+                tempoAtivoText = taHtml.replace(/<[^>]*>/g, '').trim();
+            }
+
+            // Turno x Login formatado
+            let turnoXLoginText = '--';
+            const txHtml = computeTurnoXLoginBadge(r.marcacao_eb, r.turno, r.login_time_eb || r.login_time, r.turno_x_login, r.turno_x_login_minutos);
+            if (txHtml) {
+                turnoXLoginText = txHtml.replace(/<[^>]*>/g, '').trim();
+            }
+
+            // Status Descanso formatado
+            let statusDescansoText = '--';
+            const sdHtml = computeStatusDescansoBadge(marcacaoVal, r.hora_inicio_descanso, r.is_eb_active, r.status_eb, r.login_time_eb || r.login_time, r.turno);
+            if (sdHtml) {
+                statusDescansoText = sdHtml.replace(/<[^>]*>/g, '').trim();
+            }
+
+            // Status OS formatado
+            let statusOsText = '--';
+            const soObj = computeStatusOsBadge(r.ordem_servico, r.hora_a_caminho);
+            if (soObj && soObj.statusKey) {
+                statusOsText = soObj.statusKey;
+            }
+
+            // Formatação da Hora a Caminho
+            let horaCaminhoText = '--';
+            if (r.hora_a_caminho && !['--', '-', 'None', 'nan'].includes(r.hora_a_caminho)) {
+                const mTime = String(r.hora_a_caminho).match(/\b(\d{1,2}:\d{2})\b/);
+                horaCaminhoText = mTime ? mTime[1].padStart(5, '0') : r.hora_a_caminho;
+            }
+
+            return {
+                "Equipe": r.team_code || "",
+                "Status Cruzado": r.cross_status || "",
+                "Diagnóstico": r.cross_desc || "",
+                "Base": r.base_display || "",
+                "Região": r.geo || "",
+                "Turno": r.turno || "",
+                "Marcação": marcacaoVal,
+                "Término Previsto": terminoVal || "--",
+                "Tempo Ativo": tempoAtivoText,
+                "Turno x Login": turnoXLoginText,
+                "Status Prog": r.status_prog || (r.is_eb_active ? "Logada" : "Não Logada"),
+                "Status Login": r.status_login || "--",
+                "Status BID": r.status_bid || "Não Encontrada",
+                "Tempo BID": r.bid_timer_value || "--",
+                "Início Descanso": r.hora_inicio_descanso || "--",
+                "Status Descanso": statusDescansoText,
+                "Ordem": r.ordem_servico || "--",
+                "Hora a Caminho": horaCaminhoText,
+                "Status OS": statusOsText,
+                "Qtd OS Coletadas": (typeof r.qtd_os_coletadas !== 'undefined' ? r.qtd_os_coletadas : ((r.order_history && r.order_history.length) || (r.ordem_servico && !['--', '-'].includes(r.ordem_servico) ? 1 : 0))),
+                "Motorista": r.driver || "",
+                "Placa": r.plate || "",
+                "Tipo Veículo": r.vehicle_type || "",
+                "Telefone": r.bid_phone || "--"
+            };
+        });
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Reconciliação ONLINE x BID");
+        XLSX.writeFile(wb, `Reconciliacao_Online_x_BID_${targetDate}.xlsx`);
+        showToast(`Download da planilha concluído com sucesso (${rows.length} equipes reconciliadas)!`, 'success');
+    } else {
+        window.location.href = `/api/bid/export_excel?date=${encodeURIComponent(targetDate)}`;
+        showToast('Download da planilha de reconciliação ONLINE x BID iniciado!', 'success');
+    }
 }
 
 // Binds Globais - Módulo TRBOnet x Equipes Brasil
@@ -16157,6 +16272,10 @@ function initTvDashboard() {
     startTvClock();
     setupTvFullscreenListener();
     setTvGeoScope(tvDashboardState.geoScope || 'ALL', false);
+    const savedSecondaryView = localStorage.getItem('tv_secondary_view') || 'priorizador';
+    if (typeof setTvSecondaryView === 'function') {
+        setTvSecondaryView(savedSecondaryView);
+    }
     loadTvDashboardData(true);
     startTvCountdown();
     tvDashboardState.initialized = true;
@@ -16236,6 +16355,9 @@ function setTvGeoScope(scope, reload = true) {
     if (reload && tvDashboardState.deliveryData && tvDashboardState.priorizadorData) {
         renderTvDashboard();
     }
+    if (reload && typeof loadTvDelaysData === 'function') {
+        loadTvDelaysData();
+    }
 }
 window.setTvGeoScope = setTvGeoScope;
 
@@ -16245,8 +16367,14 @@ async function loadTvDashboardData(isManual = false) {
 
     const delBadge = document.getElementById('tvDeliveryStatusBadge');
     const prioBadge = document.getElementById('tvPrioStatusBadge');
-    if (delBadge) delBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Atualizando...';
-    if (prioBadge) prioBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Sincronizando...';
+    if (delBadge) {
+        delBadge.className = 'tv-metric-badge badge-cyan';
+        delBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Atualizando...';
+    }
+    if (prioBadge) {
+        prioBadge.className = 'tv-metric-badge badge-emerald';
+        prioBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Sincronizando...';
+    }
     initIcons();
 
     try {
@@ -16276,12 +16404,33 @@ async function loadTvDashboardData(isManual = false) {
             if (delBadge) delBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
         }
 
-        if (prioRes && (prioRes.status === 'success' || Array.isArray(prioRes.active_orders) || Array.isArray(prioRes.orders))) {
+        if (localStorage.getItem('tv_secondary_view') === 'delays' && typeof loadTvDelaysData === 'function') {
+            loadTvDelaysData();
+        }
+
+                if (prioRes && (prioRes.status === 'success' || Array.isArray(prioRes.active_orders) || Array.isArray(prioRes.orders))) {
             tvDashboardState.priorizadorData = prioRes;
             hasPrioSuccess = true;
-            if (prioBadge) prioBadge.innerHTML = '<i data-lucide="shield-alert"></i> CCO Ativo';
+            if (prioBadge) {
+                prioBadge.className = 'tv-metric-badge badge-emerald';
+                prioBadge.innerHTML = '<i data-lucide="shield-check"></i> CCO Ativo';
+            }
         } else {
-            if (prioBadge) prioBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
+            if (prioBadge) {
+                prioBadge.className = 'tv-metric-badge badge-rose';
+                prioBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
+            }
+        }
+
+        // Atualização do Indicador de Transmissão ao Vivo (Verde ao Vivo / Vermelho se Offline)
+        const tvPill = document.getElementById('tvLivePill');
+        const tvPillText = document.getElementById('tvLiveStatusText');
+        if (hasDelSuccess || hasPrioSuccess) {
+            if (tvPill) tvPill.classList.remove('offline');
+            if (tvPillText) tvPillText.textContent = 'TRANSMISSÃO AO VIVO';
+        } else {
+            if (tvPill) tvPill.classList.add('offline');
+            if (tvPillText) tvPillText.textContent = 'PAINEL OFFLINE';
         }
 
         renderTvDashboard();
@@ -17301,3 +17450,371 @@ if (document.readyState === 'loading') {
 } else {
     startLiveActiveTimerWatcher();
 }
+
+// ==============================================================================
+// GESTÃO DE ATRASOS & SISTEMA DE JUSTIFICATIVAS DE LOGIN
+// ==============================================================================
+
+const DELAY_JUSTIFICATION_TAXONOMY = {
+    "PROBLEMAS TI": [
+        "AGUARDANDO SMART",
+        "PROBLEMAS EM APP",
+        "PROBLEMA NA LINHA",
+        "PROBLEMA EM DADOS"
+    ],
+    "PROBLEMAS VEÍCULO": [
+        "AGUARDANDO VEÍCULO",
+        "MANUTENÇÃO DE VEÍCULO",
+        "VEÍCULO QUEBRADO"
+    ],
+    "PROBLEMAS LOGISTICA": [
+        "AGUARDANDO ATERRAMENTO",
+        "AGUARDANDO MULTIMETRO + PONTEIRA",
+        "AGUARDANDO ALMOXI"
+    ],
+    "PROBLEMAS SESMT": [
+        "PARADA DE SEGURANÇA",
+        "MOMENTO ENEL",
+        "TREINAMENTO",
+        "DDS"
+    ],
+    "PROBLEMAS CCO": [
+        "AGUARDANDO LOGIN",
+        "AGUARDANDO CALENDÁRIO"
+    ],
+    "PROBLEMAS ABS": [
+        "AGUARDANDO PARCEIRO",
+        "PARCEIRO FALTOU"
+    ]
+};
+
+window.openDelayJustificationModal = function(teamCode, shiftSlot, delayMinutes, marcacao) {
+    const modal = document.getElementById('delayJustificationModal');
+    if (!modal) return;
+
+    document.getElementById('delayFormTeamCode').value = teamCode;
+    document.getElementById('delayFormDateRef').value = (deliveryState && deliveryState.date) || getOperationalDate();
+    document.getElementById('delayModalTeamCode').textContent = teamCode;
+    document.getElementById('delayModalShift').textContent = `${shiftSlot || '--'} (${marcacao || '--'})`;
+    document.getElementById('delayModalMinutes').textContent = `+${delayMinutes || 0} min`;
+
+    const savedUser = localStorage.getItem('last_delay_justifier_name') || '';
+    const userInp = document.getElementById('delayFormUserName');
+    if (userInp) {
+        userInp.value = savedUser;
+    }
+
+    const justObj = (deliveryState && deliveryState.delayJustifications && deliveryState.delayJustifications[teamCode]) || null;
+    const macroSel = document.getElementById('delayFormMacroReason');
+    const obsText = document.getElementById('delayFormObservation');
+
+    if (justObj) {
+        if (macroSel) macroSel.value = justObj.macro_reason || '';
+        handleMacroReasonChange();
+        const subSel = document.getElementById('delayFormSubReason');
+        if (subSel) subSel.value = justObj.sub_reason || '';
+        if (obsText) obsText.value = justObj.observation || '';
+        if (userInp && justObj.user_name) userInp.value = justObj.user_name;
+    } else {
+        if (macroSel) macroSel.value = '';
+        handleMacroReasonChange();
+        if (obsText) obsText.value = '';
+    }
+
+    modal.style.display = 'flex';
+    void modal.offsetWidth;
+    modal.classList.add('active');
+    if (window.lucide) lucide.createIcons();
+};
+
+window.closeDelayJustificationModal = function() {
+    const modal = document.getElementById('delayJustificationModal');
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 200);
+    }
+};
+
+window.handleMacroReasonChange = function() {
+    const macroSel = document.getElementById('delayFormMacroReason');
+    const subSel = document.getElementById('delayFormSubReason');
+    if (!macroSel || !subSel) return;
+
+    const selectedMacro = macroSel.value;
+    subSel.innerHTML = '';
+
+    if (!selectedMacro || !DELAY_JUSTIFICATION_TAXONOMY[selectedMacro]) {
+        subSel.innerHTML = '<option value="" disabled selected>Primeiro selecione o Motivo Macro acima...</option>';
+        return;
+    }
+
+    const options = DELAY_JUSTIFICATION_TAXONOMY[selectedMacro];
+    subSel.innerHTML = '<option value="" disabled selected>Selecione o submotivo...</option>' +
+        options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+};
+
+window.submitDelayJustification = async function(event) {
+    if (event) event.preventDefault();
+    const teamCode = document.getElementById('delayFormTeamCode').value;
+    const dateRef = document.getElementById('delayFormDateRef').value || getOperationalDate();
+    const userName = (document.getElementById('delayFormUserName').value || '').trim();
+    const macroReason = document.getElementById('delayFormMacroReason').value;
+    const subReason = document.getElementById('delayFormSubReason').value;
+    const observation = (document.getElementById('delayFormObservation').value || '').trim();
+
+    if (!teamCode || !userName || !macroReason || !subReason) {
+        showToast('Por favor, preencha todos os campos obrigatórios!', 'error');
+        return;
+    }
+
+    localStorage.setItem('last_delay_justifier_name', userName);
+
+    const btn = document.getElementById('btnSaveDelayJustification');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Gravando...';
+        if (window.lucide) lucide.createIcons();
+    }
+
+    try {
+        const resp = await fetch('/api/delivery/delay_justification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                team_code: teamCode,
+                date_ref: dateRef,
+                user_name: userName,
+                macro_reason: macroReason,
+                sub_reason: subReason,
+                observation: observation
+            })
+        });
+
+        const res = await resp.json();
+        if (resp.ok && res.status === 'success') {
+            if (!deliveryState.delayJustifications) deliveryState.delayJustifications = {};
+            deliveryState.delayJustifications[teamCode] = res.justification;
+
+            const tAct = (deliveryState.activeTeams || []).find(x => x.team_code === teamCode);
+            if (tAct) tAct.delay_justification = res.justification;
+            const tTot = (deliveryState.dailyTotalTeams || []).find(x => x.team_code === teamCode);
+            if (tTot) tTot.delay_justification = res.justification;
+
+            closeDelayJustificationModal();
+            showToast(`Justificativa da equipe ${teamCode} salva com sucesso!`, 'success');
+
+            if (typeof renderDeliveryTable === 'function') {
+                renderDeliveryTable();
+            }
+
+            if (typeof loadTvDelaysData === 'function') {
+                loadTvDelaysData();
+            }
+        } else {
+            showToast(res.message || 'Falha ao salvar justificativa.', 'error');
+        }
+    } catch (err) {
+        console.error('Erro ao enviar justificativa:', err);
+        showToast('Erro de comunicação com o servidor.', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="check" style="width: 14px; height: 14px; margin-right: 4px;"></i> Salvar Justificativa';
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+};
+
+window.setTvSecondaryView = function(viewMode) {
+    const boxPrio = document.getElementById('tvViewPriorizadorBox');
+    const boxDelays = document.getElementById('tvViewDelaysBox');
+    const btnPrio = document.getElementById('tvBtnViewPriorizador');
+    const btnDelays = document.getElementById('tvBtnViewDelays');
+    const mainTitle = document.getElementById('tvSecondaryMainTitle');
+    const subTitle = document.getElementById('tvPriorizadorSubTitle');
+    const iconWrap = document.getElementById('tvSecondaryIconWrap');
+    const iconEl = document.getElementById('tvSecondaryIcon');
+    const statusBadge = document.getElementById('tvPrioStatusBadge');
+
+    localStorage.setItem('tv_secondary_view', viewMode);
+
+    const scope = (tvDashboardState && tvDashboardState.geoScope) ? tvDashboardState.geoScope : 'ALL';
+    const scopeLabel = scope === 'ALL' ? 'Norte + Leste' : `Região ${scope}`;
+
+    if (viewMode === 'delays') {
+        if (boxPrio) boxPrio.style.display = 'none';
+        if (boxDelays) boxDelays.style.display = 'flex';
+        if (btnPrio) btnPrio.classList.remove('active');
+        if (btnDelays) btnDelays.classList.add('active');
+
+        if (mainTitle) mainTitle.textContent = 'GESTÃO DE ATRASOS & TURNOS';
+        if (subTitle) subTitle.textContent = `Equipes Logadas Online (${scopeLabel}) • Pontualidade & Turnos`;
+        if (iconWrap) iconWrap.className = 'tv-section-icon icon-rose';
+        if (iconEl) iconEl.setAttribute('data-lucide', 'clock');
+        if (statusBadge) {
+            statusBadge.className = 'tv-metric-badge badge-emerald';
+            statusBadge.innerHTML = '<i data-lucide="radio"></i> Tempo Real';
+        }
+        loadTvDelaysData();
+    } else {
+        if (boxPrio) boxPrio.style.display = 'flex';
+        if (boxDelays) boxDelays.style.display = 'none';
+        if (btnPrio) btnPrio.classList.add('active');
+        if (btnDelays) btnDelays.classList.remove('active');
+
+        if (mainTitle) mainTitle.textContent = 'ORDENS PRIORITÁRIAS & BASES';
+        if (subTitle) subTitle.textContent = `Fila de Emergências (${scopeLabel}) • Clientes Interrompidos (CI) & Despacho`;
+        if (iconWrap) iconWrap.className = 'tv-section-icon icon-amber';
+        if (iconEl) iconEl.setAttribute('data-lucide', 'alert-octagon');
+        if (statusBadge) {
+            statusBadge.className = 'tv-metric-badge badge-emerald';
+            statusBadge.innerHTML = '<i data-lucide="shield-check"></i> CCO Ativo';
+        }
+        if (typeof renderTvPriorizadorSection === 'function') {
+            renderTvPriorizadorSection();
+        }
+        if (tvDashboardState && tvDashboardState.charts && tvDashboardState.charts.baseChart) {
+            setTimeout(() => {
+                try { tvDashboardState.charts.baseChart.resize(); } catch(e){}
+            }, 60);
+        }
+    }
+    if (window.lucide) lucide.createIcons();
+};
+
+window.loadTvDelaysData = async function() {
+    try {
+        const scope = (tvDashboardState && tvDashboardState.geoScope) ? tvDashboardState.geoScope : 'ALL';
+        const resp = await fetch(`/api/tv/delay_summary?scope=${encodeURIComponent(scope)}&_=${Date.now()}`);
+        if (resp.ok) {
+            const data = await resp.json();
+            renderTvDelaySection(data);
+        }
+    } catch (err) {
+        console.warn('Erro ao carregar /api/tv/delay_summary:', err);
+    }
+};
+
+window.renderTvDelaySection = function(data) {
+    if (!data) return;
+
+    // 1. Mini Cards
+    const elTotAtraso = document.getElementById('tvKpiDelayTotalAtraso');
+    const elSubAtraso = document.getElementById('tvKpiDelaySubAtraso');
+    const elTempoAtraso = document.getElementById('tvKpiDelayTempoTotalAtraso');
+    const elTotNoPrazo = document.getElementById('tvKpiDelayTotalNoPrazo');
+    const elSubNoPrazo = document.getElementById('tvKpiDelaySubNoPrazo');
+    const elTempoNoPrazo = document.getElementById('tvKpiDelayTempoTotalNoPrazo');
+
+    if (elTotAtraso) elTotAtraso.textContent = data.total_atrasadas || 0;
+    if (elSubAtraso) elSubAtraso.textContent = `${(100 - (data.taxa_pontualidade_geral || 0)).toFixed(1)}% das equipes`;
+    if (elTempoAtraso) elTempoAtraso.textContent = data.total_tempo_atraso_str || '00h 00m';
+    if (elTotNoPrazo) elTotNoPrazo.textContent = data.total_no_prazo || 0;
+    if (elSubNoPrazo) elSubNoPrazo.textContent = `${(data.taxa_pontualidade_geral || 0)}% no prazo`;
+    if (elTempoNoPrazo) elTempoNoPrazo.textContent = data.total_tempo_no_prazo_str || '00h 00m';
+
+    // 2. Faixas Horárias de Turnos
+    const shifts = data.shifts || {};
+    const renderShiftCard = (s) => {
+        if (!s) return '';
+        const pct = s.taxa_pontualidade || 0;
+        const barColor = pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#f43f5e';
+        const hasAtraso = (s.atrasadas || 0) > 0;
+        return `
+            <div class="tv-shift-slot-card ${hasAtraso ? 'has-delay' : 'all-punctual'}">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="font-size: 0.76rem; color: #f8fafc; font-family: 'JetBrains Mono', monospace;">${s.label}</strong>
+                    <span style="font-size: 0.68rem; font-weight: 800; color: ${barColor};">${pct}%</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.7rem;">
+                    <span style="color: #f43f5e; font-weight: 700;">Atraso: ${s.atrasadas} (${s.tempo_atraso_str})</span>
+                    <span style="color: #10b981; font-weight: 700;">Prazo: ${s.no_prazo}</span>
+                </div>
+                <div style="height: 4px; background: rgba(255,255,255,0.08); border-radius: 9999px; overflow: hidden; margin-top: 2px;">
+                    <div style="height: 100%; width: ${pct}%; background: ${barColor}; border-radius: 9999px;"></div>
+                </div>
+            </div>
+        `;
+    };
+
+    const cManha = document.getElementById('tvDelayShiftsManha');
+    if (cManha) {
+        cManha.innerHTML = renderShiftCard(shifts['06:00']) + renderShiftCard(shifts['08:00']);
+    }
+
+    const cTarde = document.getElementById('tvDelayShiftsTarde');
+    if (cTarde) {
+        cTarde.innerHTML = renderShiftCard(shifts['12:00']) + renderShiftCard(shifts['14:00']);
+    }
+
+    const cNoite = document.getElementById('tvDelayShiftsNoite');
+    if (cNoite) {
+        cNoite.innerHTML = renderShiftCard(shifts['20:00']) + renderShiftCard(shifts['22:00']);
+    }
+
+    // 3. Principais Macro Motivos de Atraso
+    const elMacroList = document.getElementById('tvDelayMacroReasonsList');
+    if (elMacroList) {
+        const macros = (data.macro_motivos || []).filter(m => m.qtd_equipes > 0);
+        if (macros.length === 0) {
+            elMacroList.innerHTML = '<div style="color: #94a3b8; font-size: 0.75rem; text-align: center; padding: 15px;">Nenhum atraso registrado no momento.</div>';
+        } else {
+            elMacroList.innerHTML = macros.map(m => {
+                const icon = (m.macro_reason === 'PROBLEMAS TI' ? '💻' :
+                             m.macro_reason === 'PROBLEMAS VEÍCULO' ? '🚚' :
+                             m.macro_reason === 'PROBLEMAS LOGISTICA' ? '📦' :
+                             m.macro_reason === 'PROBLEMAS SESMT' ? '🦺' :
+                             m.macro_reason === 'PROBLEMAS CCO' ? '📡' :
+                             m.macro_reason === 'PROBLEMAS ABS' ? '👥' : '⚠️');
+                const cleanName = m.macro_reason.replace('PROBLEMAS ', '');
+                return `
+                    <div class="tv-macro-reason-bar-item">
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem;">
+                            <span style="font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 4px;">
+                                <span>${icon}</span> <span>${cleanName}</span>
+                            </span>
+                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; color: ${m.color};">
+                                ${m.qtd_equipes} eq (${m.tempo_str})
+                            </span>
+                        </div>
+                        <div style="height: 5px; background: rgba(255,255,255,0.08); border-radius: 9999px; overflow: hidden;">
+                            <div style="height: 100%; width: ${m.percentual_tempo || 0}%; background: ${m.color}; border-radius: 9999px;"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    // 4. TOP 5 Equipes que Mais Atrasaram
+    const elTop5 = document.getElementById('tvDelayTop5TeamsList');
+    if (elTop5) {
+        const top5 = data.top5_atrasos || [];
+        if (top5.length === 0) {
+            elTop5.innerHTML = '<div style="color: #94a3b8; font-size: 0.75rem; text-align: center; padding: 15px;">Nenhuma equipe em atraso hoje!</div>';
+        } else {
+            elTop5.innerHTML = top5.map((t, idx) => {
+                const justBadge = t.has_justification
+                    ? `<span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700;">${t.macro_reason.replace('PROBLEMAS ', '')}</span>`
+                    : `<span style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700;">Pendente</span>`;
+                return `
+                    <div class="tv-top5-delay-item">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 0.7rem; font-weight: 800; color: #f59e0b; width: 14px;">${idx + 1}º</span>
+                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.78rem; color: #38bdf8;">${t.team_code}</span>
+                            <small style="font-size: 0.68rem; color: #94a3b8;">${t.base} (${t.turno})</small>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.8rem; color: #f43f5e;">${t.delay_str}</span>
+                            ${justBadge}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    if (window.lucide) lucide.createIcons();
+};

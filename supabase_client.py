@@ -674,11 +674,27 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
 def fetch_delivery_records_by_date(date_str: str) -> list:
     """Busca registros históricos de equipes entregues para uma data específica (YYYY-MM-DD)."""
     try:
-        endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&order=captured_at.desc&limit=4000"
+        # Tenta buscar a sessão de entrega consolidada mais recente da data (altamente otimizado via índice de sessão)
+        sess_url = f"{BASE_REST_URL}/team_delivery_sessions?date_ref=eq.{date_str}&order=id.desc&limit=1"
+        resp_s = requests.get(sess_url, headers=get_headers(), timeout=5)
+        if resp_s.status_code == 200 and resp_s.json():
+            last_sess_id = resp_s.json()[0].get("id")
+            if last_sess_id:
+                rec_url = f"{BASE_REST_URL}/team_delivery_records?session_id=eq.{last_sess_id}&limit=2000"
+                resp_rec = requests.get(rec_url, headers=get_headers(), timeout=10)
+                if resp_rec.status_code == 200 and resp_rec.json():
+                    seen = {}
+                    for r in resp_rec.json():
+                        code = r.get("team_code")
+                        if code and code not in seen:
+                            seen[code] = r
+                    return list(seen.values())
+
+        # Fallback sem order by captured_at (para evitar timeout no PostgREST caso não haja sessão)
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&limit=2000"
         resp = requests.get(endpoint, headers=get_headers(), timeout=15)
         if resp.status_code == 200:
             raw = resp.json() or []
-            # Deduplica por equipe preservando o snapshot mais recente/completo
             seen = {}
             for r in raw:
                 code = r.get("team_code")
@@ -1938,3 +1954,63 @@ def fetch_priorizador_mutations_history(limit=100) -> list:
     except Exception as e:
         print(f"[SUPABASE FETCH MUTATIONS ERROR] {e}", flush=True)
     return []
+
+def save_team_delay_justification(payload: dict) -> dict:
+    """
+    Persiste ou atualiza uma justificativa de atraso de equipe no Supabase.
+    Payload esperado: {date_ref, team_code, shift_code, delay_minutes, user_name, macro_reason, sub_reason, observation}
+    """
+    try:
+        headers = get_headers()
+        headers["Prefer"] = "return=representation,resolution=merge-duplicates"
+        now_iso = datetime.now(BR_TZ).isoformat()
+        payload["updated_at"] = now_iso
+        if "created_at" not in payload:
+            payload["created_at"] = now_iso
+
+        endpoint = f"{BASE_REST_URL}/team_delay_justifications?on_conflict=date_ref,team_code"
+        resp = requests.post(endpoint, headers=headers, json=[payload], timeout=8)
+        if resp.status_code in [200, 201]:
+            # Sincroniza também as colunas relacionais em team_delivery_records para paridade 100%
+            try:
+                rec_ep = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{payload['date_ref']}&team_code=eq.{payload['team_code']}"
+                requests.patch(rec_ep, headers=get_headers(), json={
+                    "delay_macro_reason": payload.get("macro_reason", "--"),
+                    "delay_sub_reason": payload.get("sub_reason", "--"),
+                    "delay_user_name": payload.get("user_name", "--"),
+                    "delay_observation": payload.get("observation", "--")
+                }, timeout=5)
+            except Exception:
+                pass
+            data_res = resp.json() if (resp.text and resp.text.strip()) else [payload]
+            return {"status": "success", "data": data_res}
+        elif resp.status_code == 404:
+            return {
+                "status": "pending_migration",
+                "code": 404,
+                "message": "Tabela 'team_delay_justifications' ainda não criada no Supabase. Execute o script schema_delivery_delay_justifications_v11.sql no SQL Editor do Supabase para habilitar a gravação relacional."
+            }
+        else:
+            return {"status": "error", "code": resp.status_code, "message": resp.text}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def fetch_team_delay_justifications(date_ref: str = None) -> dict:
+    """
+    Retorna as justificativas de atraso de equipes para uma data de referência (YYYY-MM-DD).
+    Retorna um dicionário indexado por team_code: {team_code: justification_dict}
+    """
+    if not date_ref:
+        date_ref = datetime.now(BR_TZ).strftime("%Y-%m-%d")
+    try:
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/team_delay_justifications?date_ref=eq.{date_ref}&limit=1000"
+        resp = requests.get(url, headers=headers, timeout=8)
+        if resp.status_code == 200:
+            recs = resp.json() or []
+            return {r.get("team_code"): r for r in recs if r.get("team_code")}
+        return {}
+    except Exception as e:
+        print(f"[SUPABASE FETCH DELAY JUSTIFICATIONS ERROR] {e}", flush=True)
+        return {}

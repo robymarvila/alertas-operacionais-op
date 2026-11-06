@@ -307,7 +307,22 @@ CARDS_EXTRACTION_JS = """
 """
 
 
-def extrair_cards_bid_visao_operacional():
+CHECK_LOGIN_JS = """
+(() => {
+    const url = (window.location.href || '').toLowerCase();
+    const isLoginUrl = url.includes('/login') || url.includes('/auth') || url.includes('/signin');
+    const hasPassword = !!document.querySelector("input[type='password']");
+    const hasDateInput = !!document.querySelector("input[type='date']");
+    const isLoginPage = (isLoginUrl || hasPassword) && !hasDateInput;
+    return {
+        isLoginPage: isLoginPage,
+        url: window.location.href,
+        title: document.title
+    };
+})()
+"""
+
+def extrair_cards_bid_visao_operacional(target_date: str = None):
     """
     Conecta via CDP WebSocket na aba do BidTech, verifica necessidade de F5
     (na virada das 04:31 ou a cada 1 hora de ciclo contínuo), limpa campos de busca,
@@ -330,25 +345,28 @@ def extrair_cards_bid_visao_operacional():
     if not ws_url:
         return {"status": "error", "message": "webSocketDebuggerUrl ausente para a aba BidTech.", "records": []}
 
-    target_date = get_operational_date_str()
+    is_custom_date = target_date is not None
+    if not target_date:
+        target_date = get_operational_date_str()
     now_ts = time.time()
 
-    # Verifica se precisa de F5 (Hard Reload da página):
+    # Verifica se precisa de F5 (Hard Reload da página) - apenas para a data operacional vigente:
     # 1. Primeiro ciclo de execução (_LAST_PAGE_RELOAD_TS == 0.0)
     # 2. Virada de data operacional após 04:31 (_LAST_OPERATIONAL_DATE != target_date)
     # 3. A cada 1 hora (3600 segundos) de operação contínua
     needs_f5 = False
     reason_f5 = ""
-    if _LAST_PAGE_RELOAD_TS == 0.0:
-        needs_f5 = True
-        reason_f5 = "Inicialização / Primeiro Ciclo do Coletor CDP"
-    elif _LAST_OPERATIONAL_DATE is not None and target_date != _LAST_OPERATIONAL_DATE:
-        needs_f5 = True
-        reason_f5 = f"Virada de Data Operacional ({_LAST_OPERATIONAL_DATE} -> {target_date} após 04:31)"
-    elif (now_ts - _LAST_PAGE_RELOAD_TS) >= 3600:
-        elapsed_min = int((now_ts - _LAST_PAGE_RELOAD_TS) / 60)
-        needs_f5 = True
-        reason_f5 = f"Ciclo Horário de Limpeza e Atualização F5 ({elapsed_min} min decorridos)"
+    if not is_custom_date:
+        if _LAST_PAGE_RELOAD_TS == 0.0:
+            needs_f5 = True
+            reason_f5 = "Inicialização / Primeiro Ciclo do Coletor CDP"
+        elif _LAST_OPERATIONAL_DATE is not None and target_date != _LAST_OPERATIONAL_DATE:
+            needs_f5 = True
+            reason_f5 = f"Virada de Data Operacional ({_LAST_OPERATIONAL_DATE} -> {target_date} após 04:31)"
+        elif (now_ts - _LAST_PAGE_RELOAD_TS) >= 3600:
+            elapsed_min = int((now_ts - _LAST_PAGE_RELOAD_TS) / 60)
+            needs_f5 = True
+            reason_f5 = f"Ciclo Horário de Limpeza e Atualização F5 ({elapsed_min} min decorridos)"
 
     if needs_f5:
         print(f"[BID CDP] Forçando recarregamento 100% da página (F5): {reason_f5}...", flush=True)
@@ -372,6 +390,19 @@ def extrair_cards_bid_visao_operacional():
     ws = None
     try:
         ws = websocket.create_connection(ws_url, timeout=15, suppress_origin=True)
+
+        # Passo 0: Checa se a página caiu na tela de Login (Sessão Expirada)
+        resp_login = _send_cdp(ws, "Runtime.evaluate", {"expression": CHECK_LOGIN_JS, "returnByValue": True})
+        login_val = resp_login.get("result", {}).get("result", {}).get("value", {})
+        if login_val.get("isLoginPage"):
+            login_url = login_val.get("url") or "https://suite360.bidtech.com.br/login"
+            print(f"[BID CDP LOGIN ERROR] Tela de Login detectada no portal BidTech ({login_url}). A rotina nao consegue extrair dados deslogada.", flush=True)
+            return {
+                "status": "error",
+                "error_type": "LOGIN_REQUIRED",
+                "message": f"Sessão Expirada: Tela de login detectada no portal BidTech ({login_url}). Conclua o login na aba do navegador.",
+                "records": []
+            }
 
         # Passo 1: Limpa qualquer filtro de texto no campo de busca (evita tela filtrada/vazia)
         resp_clear = _send_cdp(ws, "Runtime.evaluate", {"expression": CLEAR_SEARCH_JS, "returnByValue": True})
@@ -446,7 +477,7 @@ def extrair_cards_bid_visao_operacional():
                 pass
 
 
-def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 min)"):
+def executar_ciclo_sincronizacao_bid(target_date: str = None, source_label: str = "Rotina Automática (2 min)"):
     """
     Executa o ciclo completo de coleta da Visão Operacional Bid:
     1. Extrai cards via CDP
@@ -473,7 +504,7 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
     print(f"\n[{ts_start}] [CDP BIDTECH] >>> INICIANDO CICLO DE COLETA: Visão Operacional ({source_label})...", flush=True)
 
     try:
-        result = extrair_cards_bid_visao_operacional()
+        result = extrair_cards_bid_visao_operacional(target_date=target_date)
 
         if result.get("status") == "success":
             records = result.get("records", [])
@@ -491,8 +522,12 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
                 except Exception as prune_err:
                     print(f"[BID CDP] Aviso ao purgar registros fantasmas: {prune_err}", flush=True)
 
-            # 3. Atualiza o delivery_manager em memória
-            delivery_manager.process_raw_bid_records(records, date_ref)
+            # 3. Atualiza o delivery_manager em memória apenas se for o dia operacional vigente
+            current_op = get_operational_date_str()
+            if date_ref == current_op:
+                delivery_manager.process_raw_bid_records(records, date_ref)
+            else:
+                print(f"[CDP BIDTECH] Coleta histórica/D-1 ({date_ref}) persistida no Supabase sem sobrescrever cache do dia atual ({current_op}).", flush=True)
 
             # 4. Notifica o monitor de saúde no Supabase
             try:
@@ -530,11 +565,13 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
             elapsed = round(time.time() - start_t, 2)
             ts_end = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
             err_msg = result.get("message", "Erro desconhecido")
+            err_type = result.get("error_type", "CONNECTION_REFUSED")
+            engine_status = "ERROR_SESSION" if err_type == "LOGIN_REQUIRED" else "ERROR_CONNECTION"
             try:
                 from supabase_client import update_engine_health
                 update_engine_health(
-                    "bid_cdp_collector", "ERROR_CONNECTION", is_running=True,
-                    error_type="CONNECTION_REFUSED", last_error=err_msg,
+                    "bid_cdp_collector", engine_status, is_running=True,
+                    error_type=err_type, last_error=err_msg,
                     records_count=0,
                     engine_label="Robô CDP BidTech (Checklist Operacional)"
                 )
@@ -543,6 +580,7 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
 
             _LAST_BID_SYNC_RESULT = {
                 "status": "error",
+                "error_type": err_type,
                 "timestamp": ts_end,
                 "total_extracted": 0,
                 "status_counts": {},
@@ -561,10 +599,13 @@ def executar_ciclo_sincronizacao_bid(source_label: str = "Rotina Automática (2 
 
 def bid_background_worker(interval_seconds=120, stop_event=None):
     """
-    Thread de background que executa a coleta contínua da Visão Operacional BidTech a cada 120 segundos.
+    Thread de background que executa a coleta contínua da Visão Operacional BidTech:
+    1. Dia atual a cada 120 segundos.
+    2. Dia anterior (D-1) a cada 10 minutos (600s) até as 13:00 (horário BRT).
     """
-    print(f"[BACKGROUND WORKER] Motor CDP BidTech ativo (intervalo: {interval_seconds}s).", flush=True)
+    print(f"[BACKGROUND WORKER] Motor CDP BidTech ativo (intervalo dia atual: {interval_seconds}s, rotina D-1: a cada 10 min até 13h).", flush=True)
     time.sleep(8)
+    last_d1_sync_ts = 0.0
 
     while True:
         if stop_event and stop_event.is_set():
@@ -574,7 +615,23 @@ def bid_background_worker(interval_seconds=120, stop_event=None):
         try:
             from cluster_manager import cluster_manager
             if cluster_manager.is_feeding_database():
-                executar_ciclo_sincronizacao_bid()
+                # 1. Coleta padrão do dia atual
+                executar_ciclo_sincronizacao_bid(source_label="Rotina Automática (2 min)")
+
+                # 2. Coleta periódica do dia anterior (D-1) até as 13:00 BRT a cada 10 min
+                now_br = datetime.now(BR_TZ)
+                if now_br.hour < 13:
+                    if (time.time() - last_d1_sync_ts) >= 600:
+                        curr_op = get_operational_date_str()
+                        d_curr = datetime.strptime(curr_op, "%Y-%m-%d").date()
+                        d_prev = (d_curr - timedelta(days=1)).isoformat()
+                        print(f"[CDP BIDTECH] >>> Iniciando coleta periódica D-1 ({d_prev}) até as 13:00...", flush=True)
+                        time.sleep(2)
+                        executar_ciclo_sincronizacao_bid(target_date=d_prev, source_label="Rotina D-1 (10 min até 13h)")
+                        last_d1_sync_ts = time.time()
+                        time.sleep(2)
+                        # Retorna a aba para a data do dia atual para manter prontidão
+                        extrair_cards_bid_visao_operacional(target_date=curr_op)
         except Exception as e:
             print(f"[BID BACKGROUND ERROR] Exceção no ciclo: {e}", flush=True)
 
@@ -590,3 +647,31 @@ if __name__ == '__main__':
     print("Testando coletor CDP do BidTech...")
     res = executar_ciclo_sincronizacao_bid()
     print(json.dumps(res, indent=2, ensure_ascii=False))
+
+
+def sincronizar_historico_bid_periodo(datas: list = None):
+    """
+    Executa a coleta retroativa dia a dia para uma lista de datas (ex: 01/11 a 05/11),
+    gravando cada uma no Supabase e restaurando a aba para o dia atual ao final.
+    """
+    if not datas:
+        datas = ["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"]
+
+    relatorio = {}
+    print(f"\n==============================================================================")
+    print(f"[CDP BIDTECH HISTÓRICO] INICIANDO CARGA RETROATIVA PARA {len(datas)} DIAS: {datas}")
+    print(f"==============================================================================")
+    for d in datas:
+        print(f"\n[CDP BIDTECH HISTÓRICO] >>> Coletando data: {d}...", flush=True)
+        res = executar_ciclo_sincronizacao_bid(target_date=d, source_label=f"Carga Histórica {d}")
+        relatorio[d] = res
+        time.sleep(3)
+
+    # Restaura a aba para o dia operacional vigente
+    curr_op = get_operational_date_str()
+    print(f"\n[CDP BIDTECH HISTÓRICO] Retornando aba para o dia atual ({curr_op})...", flush=True)
+    executar_ciclo_sincronizacao_bid(target_date=curr_op, source_label="Retorno Pós-Histórico")
+    print(f"==============================================================================")
+    print(f"[CDP BIDTECH HISTÓRICO] CARGA RETROATIVA FINALIZADA COM SUCESSO!")
+    print(f"==============================================================================\n")
+    return relatorio
