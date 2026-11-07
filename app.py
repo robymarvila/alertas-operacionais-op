@@ -2303,6 +2303,7 @@ def get_delivery_history_by_date():
     date_str = request.args.get('date') or date.today().isoformat()
     return jsonify(delivery_manager.get_daily_audit_data(date_str))
 
+@app.route('/api/delivery/history/dates', methods=['GET'])
 @app.route('/api/delivery/available-dates', methods=['GET'])
 def get_delivery_available_dates():
     """Retorna datas e meses com dados disponíveis no Supabase para o calendário e seletores."""
@@ -2599,6 +2600,178 @@ def get_tv_delay_summary():
         geo_scope = request.args.get("scope", "ALL").upper()
         summary = delivery_manager.get_delay_analytics_summary(date_ref=date_ref, geo_scope=geo_scope)
         return jsonify(summary)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/delivery/delays_analytics', methods=['GET'])
+def get_delivery_delays_analytics():
+    """
+    Retorna o consolidado analítico e financeiro para a nova tela 'ATRASOS E TURNOS'.
+    Suporta os 3 horizontes temporais (realtime, daily, monthly) e todos os filtros hierárquicos.
+    """
+    try:
+        mode = request.args.get("mode", "realtime").lower()
+        today_op = delivery_manager.get_operational_date()
+        date_ref = request.args.get("date") or today_op
+        if mode == "realtime" or date_ref > today_op:
+            date_ref = today_op
+        month_ref = request.args.get("month") or date_ref[:7]
+        geo_scope = request.args.get("scope", "ALL").upper()
+        base_filter = request.args.getlist("base") or request.args.get("base", "")
+        vehicle_filter = request.args.getlist("vehicle") or request.args.get("vehicle", "")
+        shift_filter = request.args.getlist("shift") or request.args.get("shift", "")
+        shift_code_filter = request.args.getlist("shift_code") or request.args.get("shift_code", "")
+        status_login_filter = request.args.getlist("status_login") or request.args.get("status_login", "")
+        include_stc_leste = request.args.get("include_stc_leste", "true").lower() in ["true", "1", "yes"]
+
+        analytics = delivery_manager.get_delays_and_shifts_analytics(
+            mode=mode,
+            date_ref=date_ref,
+            month_ref=month_ref,
+            geo_scope=geo_scope,
+            base_filter=base_filter,
+            vehicle_filter=vehicle_filter,
+            shift_filter=shift_filter,
+            shift_code_filter=shift_code_filter,
+            status_login_filter=status_login_filter,
+            include_stc_leste=include_stc_leste
+        )
+        return jsonify(analytics)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/delivery/delays/export_excel', methods=['GET'])
+def export_delivery_delays_excel():
+    """
+    Exporta a análise completa de Atrasos, Horas Perdidas e Impacto Financeiro em planilha Excel (.xlsx).
+    """
+    try:
+        mode = request.args.get("mode", "realtime").lower()
+        today_op = delivery_manager.get_operational_date()
+        date_ref = request.args.get("date") or today_op
+        if mode == "realtime" or date_ref > today_op:
+            date_ref = today_op
+        month_ref = request.args.get("month") or date_ref[:7]
+        geo_scope = request.args.get("scope", "ALL").upper()
+        base_filter = request.args.getlist("base") or request.args.get("base", "")
+        vehicle_filter = request.args.getlist("vehicle") or request.args.get("vehicle", "")
+        shift_filter = request.args.getlist("shift") or request.args.get("shift", "")
+        shift_code_filter = request.args.getlist("shift_code") or request.args.get("shift_code", "")
+        status_login_filter = request.args.getlist("status_login") or request.args.get("status_login", "")
+        include_stc_leste = request.args.get("include_stc_leste", "true").lower() in ["true", "1", "yes"]
+
+        data = delivery_manager.get_delays_and_shifts_analytics(
+            mode=mode,
+            date_ref=date_ref,
+            month_ref=month_ref,
+            geo_scope=geo_scope,
+            base_filter=base_filter,
+            vehicle_filter=vehicle_filter,
+            shift_filter=shift_filter,
+            shift_code_filter=shift_code_filter,
+            status_login_filter=status_login_filter,
+            include_stc_leste=include_stc_leste
+        )
+
+        import pandas as pd
+        import io
+        output = io.BytesIO()
+
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            if mode == "monthly":
+                # Aba 1: Evolução Diária no Mês
+                trend_rows = []
+                for dt in data.get("daily_trend", []):
+                    trend_rows.append({
+                        "Data": dt.get("date"),
+                        "Dia do Mês": dt.get("day"),
+                        "Total Equipes": dt.get("total_equipes"),
+                        "Equipes Atrasadas": dt.get("atrasadas"),
+                        "Equipes no Prazo": dt.get("no_prazo"),
+                        "Tempo Atraso": dt.get("tempo_atraso_str"),
+                        "Tempo Atraso (min)": dt.get("tempo_atraso_min"),
+                        "Perda Financeira (R$)": dt.get("perda_financeira")
+                    })
+                pd.DataFrame(trend_rows).to_excel(writer, index=False, sheet_name='Evolucao_Diaria_Mes')
+
+                # Aba 2: Ranking Reincidentes do Mês
+                rec_rows = []
+                for tr in data.get("top_recurrent_teams", []):
+                    rec_rows.append({
+                        "Código Equipe": tr.get("team_code"),
+                        "Base": tr.get("base"),
+                        "Região": tr.get("region"),
+                        "Frota": tr.get("vehicle_type"),
+                        "Dias Trabalhados": tr.get("dias_trabalhados"),
+                        "Dias em Atraso": tr.get("dias_atraso"),
+                        "Tempo Total Atraso": tr.get("tempo_atraso_str"),
+                        "Perda Financeira Total (R$)": tr.get("perda_financeira")
+                    })
+                pd.DataFrame(rec_rows).to_excel(writer, index=False, sheet_name='Equipes_Reincidentes')
+
+                # Aba 3: Por Base Operacional
+                base_rows = []
+                for b in data.get("bases_summary", []):
+                    base_rows.append({
+                        "Base Operacional": b.get("name"),
+                        "Região": b.get("region"),
+                        "Total Equipes": b.get("equipes"),
+                        "Equipes Atrasadas": b.get("atrasadas"),
+                        "Tempo Atraso": b.get("tempo_str"),
+                        "Tempo Atraso (min)": b.get("tempo_min"),
+                        "Perda Financeira (R$)": b.get("perda_reais")
+                    })
+                pd.DataFrame(base_rows).to_excel(writer, index=False, sheet_name='Por_Base_Operacional')
+
+                # Aba 4: Justificativas Mensais
+                just_rows = []
+                for j in data.get("justifications_summary", []):
+                    just_rows.append({
+                        "Macro Motivo": j.get("macro_reason"),
+                        "Submotivo Frequente": j.get("top_sub_reason"),
+                        "Qtd Equipes": j.get("qtd_equipes"),
+                        "Tempo Atraso": j.get("tempo_str"),
+                        "Tempo Atraso (min)": j.get("tempo_min"),
+                        "Perda Financeira (R$)": j.get("perda_reais"),
+                        "Impacto Contratual (%)": j.get("pct_perda")
+                    })
+                pd.DataFrame(just_rows).to_excel(writer, index=False, sheet_name='Top_Justificativas_Mes')
+                filename = f"Relatorio_Mensal_Atrasos_Custos_{month_ref}.xlsx"
+            else:
+                # Modo Realtime ou Daily: Lista detalhada nominal
+                rows = []
+                for t in data.get("teams", []):
+                    rows.append({
+                        "Código Equipe": t.get("team_code"),
+                        "Base": t.get("base"),
+                        "Região": t.get("region"),
+                        "Frota": t.get("vehicle_type"),
+                        "Turno": t.get("turno"),
+                        "Horário Programado": t.get("shift_code"),
+                        "Horário Login": t.get("login_time"),
+                        "Marcação Ponto": t.get("marcacao"),
+                        "Status Login": t.get("status_login"),
+                        "Atraso (Turno x Login)": t.get("delay_str"),
+                        "Diferença (min)": t.get("delay_minutes"),
+                        "Valor da Hora Contrato (R$)": t.get("rate_hour"),
+                        "Perda Financeira Calculada (R$)": t.get("financial_loss"),
+                        "Motivo Macro": t.get("macro_reason"),
+                        "Submotivo": t.get("sub_reason"),
+                        "Responsável": t.get("user_name") or "--",
+                        "Observação": t.get("observation") or "--"
+                    })
+                pd.DataFrame(rows).to_excel(writer, index=False, sheet_name='Relatorio_Atrasos_Equipes')
+                filename = f"Relatorio_Atrasos_Custos_{date_ref}.xlsx"
+
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 

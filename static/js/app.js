@@ -5548,6 +5548,7 @@ const deliveryState = {
     planningTargets: null,
     workforceChart: null
 };
+window.deliveryState = deliveryState;
 
 // Alternador de Telas (ONLINE vs ONLINE x BID vs AUDITORIA & HISTÓRICO)
 async function switchDeliveryScreen(screenName) {
@@ -5555,33 +5556,51 @@ async function switchDeliveryScreen(screenName) {
     const btnOnline = document.getElementById('btnSwitchOnline');
     const btnOnlineBid = document.getElementById('btnSwitchOnlineBid');
     const btnHist = document.getElementById('btnSwitchHistory');
+    const btnDelays = document.getElementById('btnSwitchDelays');
     const scrOnline = document.getElementById('deliveryScreenOnline');
     const scrOnlineBid = document.getElementById('deliveryScreenOnlineBid');
     const scrHist = document.getElementById('deliveryScreenHistory');
+    const scrDelays = document.getElementById('deliveryScreenDelays');
 
     if (screenName === 'online') {
         if (btnOnline) btnOnline.classList.add('active');
         if (btnOnlineBid) btnOnlineBid.classList.remove('active');
         if (btnHist) btnHist.classList.remove('active');
+        if (btnDelays) btnDelays.classList.remove('active');
         if (scrOnline) scrOnline.style.display = 'block';
         if (scrOnlineBid) scrOnlineBid.style.display = 'none';
         if (scrHist) scrHist.style.display = 'none';
+        if (scrDelays) scrDelays.style.display = 'none';
         renderDeliveryCharts();
     } else if (screenName === 'online_bid') {
         if (btnOnline) btnOnline.classList.remove('active');
         if (btnOnlineBid) btnOnlineBid.classList.add('active');
         if (btnHist) btnHist.classList.remove('active');
+        if (btnDelays) btnDelays.classList.remove('active');
         if (scrOnline) scrOnline.style.display = 'none';
         if (scrOnlineBid) scrOnlineBid.style.display = 'block';
         if (scrHist) scrHist.style.display = 'none';
+        if (scrDelays) scrDelays.style.display = 'none';
         await loadOnlineXBidData();
+    } else if (screenName === 'delays') {
+        if (btnOnline) btnOnline.classList.remove('active');
+        if (btnOnlineBid) btnOnlineBid.classList.remove('active');
+        if (btnHist) btnHist.classList.remove('active');
+        if (btnDelays) btnDelays.classList.add('active');
+        if (scrOnline) scrOnline.style.display = 'none';
+        if (scrOnlineBid) scrOnlineBid.style.display = 'none';
+        if (scrHist) scrHist.style.display = 'none';
+        if (scrDelays) scrDelays.style.display = 'block';
+        await loadDelaysAnalytics();
     } else {
         if (btnOnline) btnOnline.classList.remove('active');
         if (btnOnlineBid) btnOnlineBid.classList.remove('active');
         if (btnHist) btnHist.classList.add('active');
+        if (btnDelays) btnDelays.classList.remove('active');
         if (scrOnline) scrOnline.style.display = 'none';
         if (scrOnlineBid) scrOnlineBid.style.display = 'none';
         if (scrHist) scrHist.style.display = 'block';
+        if (scrDelays) scrDelays.style.display = 'none';
 
         // Garante carga das datas e meses disponíveis do Supabase
         await reloadAuditAvailableDates();
@@ -5803,7 +5822,8 @@ function checkTeamMatchesDeliveryFilters(t, filters, q) {
     // 1. Filtro por Status Login (TODAS / LOGADA / PROGRAMADA)
     const sLoginFilter = statusLogin || 'ALL';
     if (sLoginFilter !== 'ALL') {
-        const teamStatusLogin = t.status_login || (t.marcacao && t.marcacao !== '--' ? 'LOGADA' : 'PROGRAMADA');
+        const hasMarc = Boolean(t.marcacao && t.marcacao !== '--' && t.marcacao !== '-' && t.marcacao !== 'None');
+        const teamStatusLogin = hasMarc ? 'LOGADA' : 'PROGRAMADA';
         if (teamStatusLogin !== sLoginFilter) return false;
     }
 
@@ -13126,6 +13146,8 @@ function updateMobileSubnav(viewName, subScreen) {
             document.getElementById('mobSubDeliveryBid')?.classList.add('active');
         } else if (targetScreen === 'history') {
             document.getElementById('mobSubDeliveryHistory')?.classList.add('active');
+        } else if (targetScreen === 'delays') {
+            document.getElementById('mobSubDeliveryDelays')?.classList.add('active');
         }
     } else if (viewName === 'module' || viewName === 'trbonet' || viewName === 'alerts') {
         subnavBar.style.display = 'flex';
@@ -17856,3 +17878,1419 @@ window.renderTvDelaySection = function(data) {
 
     if (window.lucide) lucide.createIcons();
 };
+
+
+// ==============================================================================
+// MÓDULO: GESTÃO DE ATRASOS E TURNOS & PERDA FINANCEIRA (OPERACIONAL & C-LEVEL)
+// ==============================================================================
+
+const delaysState = {
+    mode: 'realtime', // 'realtime' | 'daily' | 'monthly'
+    date: (window.deliveryState && window.deliveryState.historyDate) || getOperationalDate(),
+    month: (window.deliveryState && window.deliveryState.historyMonth) || getOperationalDate().substring(0, 7),
+    geoScope: 'ALL',
+    selectedBases: [],
+    selectedVehicles: [],
+    selectedShifts: [],
+    selectedStatuses: [],
+    includeStcLeste: true,
+    data: null,
+    searchTerm: '',
+    isLoading: false,
+    chartInstance: null
+};
+
+// Alternador de Modo de Horizonte Temporal (Realtime, Diária, Mensal)
+window.setDelaysHorizonMode = async function(mode) {
+    delaysState.mode = mode;
+    const btnRt = document.getElementById('btnDelaysModeRealtime');
+    const btnDay = document.getElementById('btnDelaysModeDaily');
+    const btnMonth = document.getElementById('btnDelaysModeMonthly');
+
+    if (btnRt) btnRt.classList.toggle('active', mode === 'realtime');
+    if (btnDay) btnDay.classList.toggle('active', mode === 'daily');
+    if (btnMonth) btnMonth.classList.toggle('active', mode === 'monthly');
+
+    const grpPeriod = document.getElementById('delaysPeriodFilterGroup');
+    const dtPicker = document.getElementById('delaysDatePicker');
+    const mthPicker = document.getElementById('delaysMonthPicker');
+    const prevBtn = document.getElementById('btnDelaysPrevDay');
+    const nextBtn = document.getElementById('btnDelaysNextDay');
+    const todayBtn = document.getElementById('btnDelaysGoToday');
+    const lblPeriod = document.getElementById('delaysPeriodFilterLabel');
+    const liveBadge = document.getElementById('delaysLiveIndicator');
+    const liveText = document.getElementById('delaysLiveIndicatorText');
+
+    const todayOp = getOperationalDate();
+
+    if (mode === 'monthly') {
+        if (grpPeriod) grpPeriod.style.display = 'flex';
+        if (dtPicker) dtPicker.style.display = 'none';
+        if (mthPicker) {
+            mthPicker.style.display = 'inline-block';
+            if (mthPicker.options.length <= 1) {
+                await populateDelaysMonthPicker();
+            }
+            mthPicker.value = delaysState.month;
+        }
+        if (prevBtn) prevBtn.style.display = 'none';
+        if (nextBtn) nextBtn.style.display = 'none';
+        if (todayBtn) todayBtn.style.display = 'none';
+        if (lblPeriod) lblPeriod.innerHTML = '<i data-lucide="bar-chart-2" style="width: 12px; height: 12px; color: #c084fc;"></i><span>MÊS EXECUTIVO:</span>';
+        if (liveBadge) liveBadge.className = 'delays-live-badge badge-purple';
+        if (liveText) liveText.textContent = 'ACUMULADO DO MÊS';
+    } else if (mode === 'daily') {
+        if (!delaysState.date || delaysState.date > todayOp) {
+            delaysState.date = todayOp;
+        }
+        if (grpPeriod) grpPeriod.style.display = 'flex';
+        if (dtPicker) {
+            dtPicker.style.display = 'inline-block';
+            dtPicker.max = todayOp;
+            dtPicker.value = delaysState.date;
+        }
+        if (mthPicker) mthPicker.style.display = 'none';
+        if (prevBtn) prevBtn.style.display = 'inline-flex';
+        if (nextBtn) nextBtn.style.display = 'inline-flex';
+        if (todayBtn) todayBtn.style.display = 'inline-flex';
+        if (lblPeriod) lblPeriod.innerHTML = '<i data-lucide="calendar" style="width: 12px; height: 12px; color: #f59e0b;"></i><span>DATA HISTÓRICA:</span>';
+        if (liveBadge) liveBadge.className = 'delays-live-badge badge-amber';
+        if (liveText) liveText.textContent = 'HISTÓRICO AUDITADO';
+    } else {
+        // realtime: OCULTA COMPLETAMENTE O FILTRO DE DATA (TEMPO REAL = HOJE AGORA)
+        delaysState.date = todayOp;
+        if (grpPeriod) grpPeriod.style.display = 'none';
+        if (dtPicker) {
+            dtPicker.max = todayOp;
+            dtPicker.value = todayOp;
+        }
+        if (mthPicker) mthPicker.style.display = 'none';
+        if (prevBtn) prevBtn.style.display = 'none';
+        if (nextBtn) nextBtn.style.display = 'none';
+        if (todayBtn) todayBtn.style.display = 'none';
+        if (liveBadge) liveBadge.className = 'delays-live-badge';
+        if (liveText) liveText.textContent = 'AO VIVO • HOJE';
+    }
+
+    if (window.lucide) lucide.createIcons();
+
+    // Cache no frontend: se já temos dados para esse modo e filtros, renderiza imediatamente (0ms)
+    if (!delaysState.modeCache) delaysState.modeCache = {};
+    const periodKey = mode === 'monthly' ? delaysState.month : delaysState.date;
+    const cacheKey = `${mode}_${periodKey}_${delaysState.geoScope}_${delaysState.includeStcLeste}_${delaysState.selectedBases.join(',')}_${delaysState.selectedVehicles.join(',')}_${delaysState.selectedShifts.join(',')}_${delaysState.selectedStatuses.join(',')}`;
+    if (delaysState.modeCache[cacheKey]) {
+        renderDelaysScreen(delaysState.modeCache[cacheKey]);
+    }
+
+    await loadDelaysAnalytics();
+};
+
+window.setDelaysScope = function(scope) {
+    delaysState.geoScope = scope;
+    const btnAll = document.getElementById('btnDelaysScopeAll');
+    const btnNorte = document.getElementById('btnDelaysScopeNorte');
+    const btnLeste = document.getElementById('btnDelaysScopeLeste');
+
+    if (btnAll) btnAll.classList.toggle('active', scope === 'ALL');
+    if (btnNorte) btnNorte.classList.toggle('active', scope === 'NORTE');
+    if (btnLeste) btnLeste.classList.toggle('active', scope === 'LESTE');
+
+    loadDelaysAnalytics();
+};
+
+window.toggleDelaysStcLeste = function() {
+    delaysState.includeStcLeste = !delaysState.includeStcLeste;
+    const pill = document.getElementById('btnToggleStcLestePill');
+    const txt = document.getElementById('delaysStcStatusText');
+    const ico = document.getElementById('delaysStcIcon');
+
+    if (pill) pill.classList.toggle('desconsiderar', !delaysState.includeStcLeste);
+    if (txt) txt.textContent = delaysState.includeStcLeste ? 'CONTABILIZAR' : 'DESCONSIDERAR';
+    if (ico) {
+        ico.setAttribute('data-lucide', delaysState.includeStcLeste ? 'check' : 'x');
+        if (window.lucide) lucide.createIcons();
+    }
+
+    loadDelaysAnalytics();
+};
+
+window.stepDelaysDate = function(delta) {
+    if (!delaysState.date) delaysState.date = getOperationalDate();
+    const parts = delaysState.date.split('-');
+    const curr = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    curr.setDate(curr.getDate() + delta);
+    const y = curr.getFullYear();
+    const m = String(curr.getMonth() + 1).padStart(2, '0');
+    const d = String(curr.getDate()).padStart(2, '0');
+    const targetDate = `${y}-${m}-${d}`;
+    const todayOp = getOperationalDate();
+    if (targetDate > todayOp) {
+        showToast('Não é possível navegar para datas futuras.', 'warning');
+        return;
+    }
+    delaysState.date = targetDate;
+    const picker = document.getElementById('delaysDatePicker');
+    if (picker) {
+        picker.max = todayOp;
+        picker.value = delaysState.date;
+    }
+    loadDelaysAnalytics(true);
+};
+
+window.goDelaysToday = function() {
+    const todayOp = getOperationalDate();
+    delaysState.date = todayOp;
+    const picker = document.getElementById('delaysDatePicker');
+    if (picker) {
+        picker.max = todayOp;
+        picker.value = delaysState.date;
+    }
+    loadDelaysAnalytics(true);
+};
+
+window.onDelaysDateChange = function() {
+    const picker = document.getElementById('delaysDatePicker');
+    if (picker && picker.value) {
+        const todayOp = getOperationalDate();
+        if (picker.value > todayOp) {
+            showToast('Data futura não permitida. Retornando para hoje.', 'warning');
+            picker.value = todayOp;
+        }
+        delaysState.date = picker.value;
+        if (delaysState.mode === 'realtime') {
+            setDelaysHorizonMode('daily');
+        } else {
+            loadDelaysAnalytics(true);
+        }
+    }
+};
+
+window.onDelaysMonthChange = function() {
+    const picker = document.getElementById('delaysMonthPicker');
+    if (picker && picker.value) {
+        delaysState.month = picker.value;
+        loadDelaysAnalytics();
+    }
+};
+
+// =========================================================================
+// HANDLERS MULTI-SELECT POPOVERS (PADRÃO EQUIPES LOGADAS x CHECKLIST)
+// =========================================================================
+window.toggleDelaysPopover = function(filterType) {
+    const menu = document.getElementById(`delays${filterType}Menu`);
+    const trigger = document.getElementById(`btnDelays${filterType}Trigger`);
+    if (!menu) return;
+    const isVisible = menu.classList.contains('active');
+    
+    // Fecha todos os outros popovers abertos na tela
+    document.querySelectorAll('#deliveryScreenDelays .period-filter-popover').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#deliveryScreenDelays .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#deliveryScreenDelays .dropdown-popover-container').forEach(c => c.classList.remove('active'));
+    
+    if (!isVisible) {
+        menu.classList.add('active');
+        if (trigger) {
+            trigger.classList.add('active');
+            const container = trigger.closest('.dropdown-popover-container');
+            if (container) container.classList.add('active');
+        }
+    }
+};
+
+// Aliases para compatibilidade
+window.toggleDelaysDropdown = window.toggleDelaysPopover;
+
+window.selectAllDelaysMulti = function(filterType, selectAll) {
+    const menu = document.getElementById(`delays${filterType}Menu`);
+    if (!menu) return;
+    const checkboxes = menu.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => cb.checked = selectAll);
+    onDelaysMultiChange(filterType);
+};
+
+window.onDelaysMultiChange = function(filterType) {
+    const menu = document.getElementById(`delays${filterType}Menu`);
+    if (!menu) return;
+    const checkboxes = Array.from(menu.querySelectorAll('input[type="checkbox"]:checked'));
+    const vals = checkboxes.map(cb => cb.value);
+
+    if (filterType === 'Base') delaysState.selectedBases = vals;
+    else if (filterType === 'Vehicle') delaysState.selectedVehicles = vals;
+    else if (filterType === 'Shift') delaysState.selectedShifts = vals;
+    else if (filterType === 'Status') delaysState.selectedStatuses = vals;
+
+    updateDelaysMultiLabel(filterType, vals);
+    loadDelaysAnalytics();
+};
+
+function updateDelaysMultiLabel(filterType, vals) {
+    const lbl = document.getElementById(`lblDelays${filterType}`);
+    if (!lbl) return;
+    const count = vals.length;
+    if (count === 0) {
+        lbl.textContent = 'Todas';
+    } else if (count === 1) {
+        lbl.textContent = vals[0];
+    } else {
+        if (filterType === 'Base') lbl.textContent = `Bases (${count})`;
+        else if (filterType === 'Vehicle') lbl.textContent = `Frotas (${count})`;
+        else if (filterType === 'Shift') lbl.textContent = `Horários (${count})`;
+        else if (filterType === 'Status') lbl.textContent = `Status (${count})`;
+    }
+}
+
+// Fechar popovers ao clicar fora
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#deliveryScreenDelays .dropdown-popover-container')) {
+        document.querySelectorAll('#deliveryScreenDelays .period-filter-popover').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('#deliveryScreenDelays .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('#deliveryScreenDelays .dropdown-popover-container').forEach(c => c.classList.remove('active'));
+    }
+});
+
+// Popular e sincronizar o Select de Meses
+async function populateDelaysMonthPicker() {
+    const picker = document.getElementById('delaysMonthPicker');
+    if (!picker) return;
+    if (picker.options && picker.options.length > 0) return;
+
+    try {
+        const resp = await fetch('/api/delivery/available-dates');
+        const data = await resp.json();
+        const months = data.months || [];
+        if (months.length > 0) {
+            picker.innerHTML = months.map(m => 
+                `<option value="${m.value}" ${m.value === delaysState.month ? 'selected' : ''}>${m.label}</option>`
+            ).join('');
+
+            if (!months.some(m => m.value === delaysState.month)) {
+                delaysState.month = months[0].value;
+                picker.value = months[0].value;
+            }
+        }
+    } catch(e) {
+        picker.innerHTML = `
+            <option value="2026-11" selected>Novembro/2026</option>
+            <option value="2026-10">Outubro/2026</option>
+            <option value="2026-09">Setembro/2026</option>
+        `;
+    }
+}
+
+window.loadDelaysAnalytics = async function(forceRefresh = false) {
+    if (delaysState.isLoading) return;
+    delaysState.isLoading = true;
+
+    try {
+        await populateDelaysMonthPicker();
+
+        const todayOp = getOperationalDate();
+        if (delaysState.mode === 'realtime') {
+            delaysState.date = todayOp;
+        } else if (delaysState.date > todayOp) {
+            delaysState.date = todayOp;
+        }
+
+        const pickerDt = document.getElementById('delaysDatePicker');
+        if (pickerDt) {
+            pickerDt.max = todayOp;
+            if (!pickerDt.value || delaysState.mode === 'realtime') {
+                pickerDt.value = delaysState.date;
+            }
+        }
+        const pickerMth = document.getElementById('delaysMonthPicker');
+        if (pickerMth && !pickerMth.value) pickerMth.value = delaysState.month;
+
+        const periodKey = delaysState.mode === 'monthly' ? delaysState.month : delaysState.date;
+        const cacheKey = `${delaysState.mode}_${periodKey}_${delaysState.geoScope}_${delaysState.includeStcLeste}_${delaysState.selectedBases.join(',')}_${delaysState.selectedVehicles.join(',')}_${delaysState.selectedShifts.join(',')}_${delaysState.selectedStatuses.join(',')}`;
+
+        if (!forceRefresh && delaysState.modeCache && delaysState.modeCache[cacheKey]) {
+            renderDelaysScreen(delaysState.modeCache[cacheKey]);
+            delaysState.isLoading = false;
+            return;
+        }
+
+        const params = new URLSearchParams({
+            mode: delaysState.mode,
+            date: delaysState.date,
+            month: delaysState.month,
+            scope: delaysState.geoScope,
+            base: delaysState.selectedBases.join(','),
+            vehicle: delaysState.selectedVehicles.join(','),
+            shift_code: delaysState.selectedShifts.join(','),
+            status_login: delaysState.selectedStatuses.join(','),
+            include_stc_leste: delaysState.includeStcLeste ? 'true' : 'false',
+            _: Date.now()
+        });
+
+        const resp = await fetch(`/api/delivery/delays_analytics?${params.toString()}`);
+        if (!resp.ok) throw new Error(`HTTP error! status: ${resp.status}`);
+        const data = await resp.json();
+
+        delaysState.data = data;
+        if (!delaysState.modeCache) delaysState.modeCache = {};
+        delaysState.modeCache[cacheKey] = data;
+        renderDelaysScreen(data);
+    } catch (err) {
+        console.error('[DELAYS ANALYTICS ERROR]', err);
+        showToast('Erro ao carregar dados de atrasos e turnos.', 'error');
+    } finally {
+        delaysState.isLoading = false;
+    }
+};
+
+function renderDelaysScreen(data) {
+    if (!data) return;
+
+    // 1. Atualiza KPIs Globais
+    const kpiLoss = document.getElementById('delaysKpiTotalPerda');
+    const kpiNorte = document.getElementById('delaysKpiNortePerda');
+    const kpiLeste = document.getElementById('delaysKpiLestePerda');
+    const kpiMedio = document.getElementById('delaysKpiCustoMedio');
+
+    if (kpiLoss) kpiLoss.textContent = data.total_perda_financeira_str || 'R$ 0,00';
+    if (kpiNorte) kpiNorte.textContent = `Norte: ${data.perda_financeira_norte_str || 'R$ 0,00'}`;
+    if (kpiLeste) kpiLeste.textContent = `Leste: ${data.perda_financeira_leste_str || 'R$ 0,00'}`;
+    if (kpiMedio) kpiMedio.textContent = `Média/Atrasada: ${data.custo_medio_atrasada_str || 'R$ 0,00'}`;
+
+    const kpiDelayTime = document.getElementById('delaysKpiTotalTempoAtraso');
+    const kpiDelayTeams = document.getElementById('delaysKpiTotalAtrasadas');
+    const kpiDelayPct = document.getElementById('delaysKpiAtrasadasPct');
+
+    if (kpiDelayTime) kpiDelayTime.textContent = data.total_tempo_atraso_str || '00h 00m';
+    if (kpiDelayTeams) kpiDelayTeams.textContent = `${data.total_atrasadas || 0} equipes em atraso`;
+    const atrasadasPct = data.total_equipes > 0 ? Math.round((data.total_atrasadas / data.total_equipes) * 100) : 0;
+    if (kpiDelayPct) kpiDelayPct.textContent = `${atrasadasPct}% do total`;
+
+    const kpiPunctualTime = document.getElementById('delaysKpiTotalTempoNoPrazo');
+    const kpiPunctualTeams = document.getElementById('delaysKpiTotalNoPrazo');
+    const kpiPunctualPct = document.getElementById('delaysKpiNoPrazoPct');
+
+    if (kpiPunctualTime) kpiPunctualTime.textContent = data.total_tempo_no_prazo_str || '00h 00m';
+    if (kpiPunctualTeams) kpiPunctualTeams.textContent = `${data.total_no_prazo || 0} equipes pontuais`;
+    const noPrazoPct = data.total_equipes > 0 ? Math.round((data.total_no_prazo / data.total_equipes) * 100) : 100;
+    if (kpiPunctualPct) kpiPunctualPct.textContent = `${noPrazoPct}% do total`;
+
+    const kpiAssert = document.getElementById('delaysKpiTaxaPontualidade');
+    const kpiTotal = document.getElementById('delaysKpiTotalEquipes');
+
+    if (kpiAssert) kpiAssert.textContent = `${data.taxa_pontualidade_geral || 100}%`;
+    if (kpiTotal) kpiTotal.textContent = `${data.total_equipes || 0} equipes entregues`;
+
+    // 2. Alterna entre Visão Diária e Visão Mensal
+    const boxDaily = document.getElementById('delaysContainerDailyView');
+    const boxMonthly = document.getElementById('delaysContainerMonthlyView');
+
+    if (delaysState.mode === 'monthly') {
+        if (boxDaily) boxDaily.style.display = 'none';
+        if (boxMonthly) boxMonthly.style.display = 'block';
+        renderDelaysMonthlyView(data);
+    } else {
+        if (boxDaily) boxDaily.style.display = 'block';
+        if (boxMonthly) boxMonthly.style.display = 'none';
+        renderDelaysDailyShifts(data.shifts || {});
+        renderDelaysTopTeams(data.top_teams || []);
+        renderDelaysJustificationsList('delaysDailyJustificationsList', data.justifications_summary || []);
+    }
+
+    // 3. Renderiza Tabela Analítica com Cabeçalho Dinâmico
+    renderDelaysTableHead();
+    renderDelaysTable(data.teams || []);
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function renderDelaysDailyShifts(shifts) {
+    const sManha = shifts['Manhã'] || {};
+    const sTarde = shifts['Tarde'] || {};
+    const sNoite = shifts['Noite'] || {};
+
+    // Manhã
+    const elLossM = document.getElementById('delaysShiftLossManha');
+    const elAtrM = document.getElementById('delaysShiftAtrasadasManha');
+    const elPraM = document.getElementById('delaysShiftNoPrazoManha');
+    const elTmpM = document.getElementById('delaysShiftTempoManha');
+    const elSlotsM = document.getElementById('delaysShiftSlotsManha');
+
+    if (elLossM) elLossM.textContent = sManha.perda_financeira_str || 'R$ 0,00';
+    if (elAtrM) elAtrM.textContent = sManha.atrasadas || 0;
+    if (elPraM) elPraM.textContent = sManha.no_prazo || 0;
+    if (elTmpM) elTmpM.textContent = sManha.tempo_atraso_str || '00h 00m';
+
+    if (elSlotsM && sManha.horarios) {
+        elSlotsM.innerHTML = Object.values(sManha.horarios).map(h => `
+            <div class="delays-slot-row-item">
+                <span class="delays-slot-tag">${h.shift_code}</span>
+                <span class="text-rose font-mono"><b>${h.atrasadas}</b> atraso</span>
+                <span class="text-emerald font-mono"><b>${h.no_prazo}</b> prazo</span>
+                <span class="text-amber font-mono">${h.tempo_atraso_str}</span>
+                <span class="font-mono text-rose" style="font-weight: 700;">${h.perda_financeira_str}</span>
+            </div>
+        `).join('');
+    }
+
+    // Tarde
+    const elLossT = document.getElementById('delaysShiftLossTarde');
+    const elAtrT = document.getElementById('delaysShiftAtrasadasTarde');
+    const elPraT = document.getElementById('delaysShiftNoPrazoTarde');
+    const elTmpT = document.getElementById('delaysShiftTempoTarde');
+    const elSlotsT = document.getElementById('delaysShiftSlotsTarde');
+
+    if (elLossT) elLossT.textContent = sTarde.perda_financeira_str || 'R$ 0,00';
+    if (elAtrT) elAtrT.textContent = sTarde.atrasadas || 0;
+    if (elPraT) elPraT.textContent = sTarde.no_prazo || 0;
+    if (elTmpT) elTmpT.textContent = sTarde.tempo_atraso_str || '00h 00m';
+
+    if (elSlotsT && sTarde.horarios) {
+        elSlotsT.innerHTML = Object.values(sTarde.horarios).map(h => `
+            <div class="delays-slot-row-item">
+                <span class="delays-slot-tag">${h.shift_code}</span>
+                <span class="text-rose font-mono"><b>${h.atrasadas}</b> atraso</span>
+                <span class="text-emerald font-mono"><b>${h.no_prazo}</b> prazo</span>
+                <span class="text-amber font-mono">${h.tempo_atraso_str}</span>
+                <span class="font-mono text-rose" style="font-weight: 700;">${h.perda_financeira_str}</span>
+            </div>
+        `).join('');
+    }
+
+    // Noite
+    const elLossN = document.getElementById('delaysShiftLossNoite');
+    const elAtrN = document.getElementById('delaysShiftAtrasadasNoite');
+    const elPraN = document.getElementById('delaysShiftNoPrazoNoite');
+    const elTmpN = document.getElementById('delaysShiftTempoNoite');
+    const elSlotsN = document.getElementById('delaysShiftSlotsNoite');
+
+    if (elLossN) elLossN.textContent = sNoite.perda_financeira_str || 'R$ 0,00';
+    if (elAtrN) elAtrN.textContent = sNoite.atrasadas || 0;
+    if (elPraN) elPraN.textContent = sNoite.no_prazo || 0;
+    if (elTmpN) elTmpN.textContent = sNoite.tempo_atraso_str || '00h 00m';
+
+    if (elSlotsN && sNoite.horarios) {
+        elSlotsN.innerHTML = Object.values(sNoite.horarios).map(h => `
+            <div class="delays-slot-row-item">
+                <span class="delays-slot-tag">${h.shift_code}</span>
+                <span class="text-rose font-mono"><b>${h.atrasadas}</b> atraso</span>
+                <span class="text-emerald font-mono"><b>${h.no_prazo}</b> prazo</span>
+                <span class="text-amber font-mono">${h.tempo_atraso_str}</span>
+                <span class="font-mono text-rose" style="font-weight: 700;">${h.perda_financeira_str}</span>
+            </div>
+        `).join('');
+    }
+}
+
+function renderDelaysTopTeams(teams) {
+    const list = document.getElementById('delaysTopTeamsList');
+    if (!list) return;
+
+    if (!teams || teams.length === 0) {
+        list.innerHTML = '<div style="padding: 16px; color: #94a3b8; font-size: 0.76rem; text-align: center;">Nenhuma equipe em atraso no recorte.</div>';
+        return;
+    }
+
+    list.innerHTML = teams.slice(0, 8).map((t, idx) => `
+        <div class="delays-item-row" style="cursor: pointer;" onclick="openDelayJustificationModal('${t.team_code}', '${t.shift_code}', ${t.delay_minutes}, '${t.marcacao}')" title="Clique para justificar atraso">
+            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                <span class="badge-tag-turno" style="background: rgba(244, 63, 94, 0.2); color: #f43f5e; font-weight: 800; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;">#${idx + 1}</span>
+                <div class="delays-team-inline-meta" style="display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.76rem;">
+                    <strong style="color: #38bdf8; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">${t.team_code}</strong>
+                    <span style="color: #64748b; font-size: 0.72rem; font-weight: 700;">&gt;</span>
+                    <span style="color: #cbd5e1; font-weight: 600;">${t.base}</span>
+                    <span style="color: #64748b; font-size: 0.72rem; font-weight: 700;">&gt;</span>
+                    <span style="color: #94a3b8;">${t.shift_code || t.turno}</span>
+                    <span style="color: #64748b; font-size: 0.72rem; font-weight: 700;">&gt;</span>
+                    <span style="color: #fbbf24; font-family: 'JetBrains Mono', monospace; font-weight: 700;">${t.marcacao || '--:--'}</span>
+                </div>
+            </div>
+            <div style="text-align: right; flex-shrink: 0; margin-left: 10px;">
+                <strong class="text-rose font-mono" style="font-size: 0.85rem; display: block;">${t.financial_loss_str}</strong>
+                <span class="text-amber font-mono" style="font-size: 0.72rem;">+${t.delay_minutes} min ${t.has_justification ? '<span class="delay-justified-icon">&#10003;</span>' : ''}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderDelaysMonthlyView(data) {
+    // 1. Gráfico Chart.js e Mini Cards de Evolução Diária no Mês
+    const dailyTrend = data.daily_trend || [];
+    renderDelaysMonthlyChart(dailyTrend);
+
+    const trendGrid = document.getElementById('delaysDailyTrendGrid');
+    if (trendGrid) {
+        if (dailyTrend.length === 0) {
+            trendGrid.innerHTML = '<div style="padding: 20px; color: #94a3b8; grid-column: 1/-1; text-align: center;">Nenhum registro encontrado para este mês.</div>';
+        } else {
+            trendGrid.innerHTML = dailyTrend.map(d => `
+                <div class="delays-day-trend-box" onclick="drillDownToDay('${d.date}')" title="Clique para auditar o dia ${d.date}">
+                    <span class="delays-day-num">Dia ${String(d.day).padStart(2, '0')}</span>
+                    <span class="delays-day-loss">${d.perda_financeira_str}</span>
+                    <span class="delays-day-hours">${d.tempo_atraso_str}</span>
+                    <span style="font-size: 0.62rem; color: #64748b;">${d.atrasadas} equipes</span>
+                </div>
+            `).join('');
+        }
+    }
+
+    // 2. Bases no Mês
+    const basesList = document.getElementById('delaysBasesMonthlyList');
+    if (basesList) {
+        const bases = data.bases_summary || [];
+        basesList.innerHTML = bases.map(b => `
+            <div class="delays-item-row">
+                <div>
+                    <strong style="color: #f8fafc; display: block;">${b.name}</strong>
+                    <span style="font-size: 0.68rem; color: #94a3b8;">Região ${b.region} • ${b.atrasadas} de ${b.equipes} atrasaram</span>
+                </div>
+                <div style="text-align: right;">
+                    <strong class="text-rose font-mono" style="font-size: 0.85rem; display: block;">${b.perda_reais_str}</strong>
+                    <span class="text-amber font-mono" style="font-size: 0.7rem;">${b.tempo_str}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 3. TOP Equipes Reincidentes no Mês
+    const recList = document.getElementById('delaysRecurrentTeamsList');
+    if (recList) {
+        const rec = data.top_recurrent_teams || [];
+        if (rec.length === 0) {
+            recList.innerHTML = '<div style="padding: 10px; color: #94a3b8; text-align: center;">Nenhuma equipe reincidente em atraso no mês.</div>';
+        } else {
+            recList.innerHTML = rec.slice(0, 10).map((r, idx) => `
+                <div class="delays-item-row">
+                    <div>
+                        <strong style="color: #f8fafc; font-family: 'JetBrains Mono', monospace;">#${idx + 1} ${r.team_code}</strong>
+                        <span style="font-size: 0.68rem; color: #94a3b8; display: block;">${r.base} • ${r.dias_atraso} de ${r.dias_trabalhados} dias com atraso</span>
+                    </div>
+                    <div style="text-align: right;">
+                        <strong class="text-rose font-mono" style="font-size: 0.85rem; display: block;">${r.perda_financeira_str}</strong>
+                        <span class="text-amber font-mono" style="font-size: 0.7rem;">${r.tempo_atraso_str}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+    }
+
+    // 4. TOP Justificativas no Mês
+    renderDelaysJustificationsList('delaysMonthlyJustificationsGrid', data.justifications_summary || []);
+}
+
+function renderDelaysMonthlyChart(dailyTrend) {
+    const canvas = document.getElementById('delaysMonthlyTrendChart');
+    if (!canvas || !window.Chart) return;
+
+    if (delaysState.chartInstance) {
+        delaysState.chartInstance.destroy();
+        delaysState.chartInstance = null;
+    }
+
+    if (!dailyTrend || dailyTrend.length === 0) return;
+
+    const labels = dailyTrend.map(d => `Dia ${String(d.day).padStart(2, '0')}`);
+    const lossData = dailyTrend.map(d => d.perda_financeira || 0);
+    const hoursData = dailyTrend.map(d => Math.round(((d.tempo_atraso_min || 0) / 60) * 10) / 10);
+
+    const ctx = canvas.getContext('2d');
+    const gradLoss = ctx.createLinearGradient(0, 0, 0, 240);
+    gradLoss.addColorStop(0, 'rgba(244, 63, 94, 0.85)');
+    gradLoss.addColorStop(1, 'rgba(244, 63, 94, 0.15)');
+
+    delaysState.chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Perda Financeira (R$)',
+                    data: lossData,
+                    backgroundColor: gradLoss,
+                    borderColor: '#f43f5e',
+                    borderWidth: 1.5,
+                    borderRadius: 6,
+                    yAxisID: 'yLoss',
+                    order: 2
+                },
+                {
+                    type: 'line',
+                    label: 'Horas em Atraso (h)',
+                    data: hoursData,
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                    borderWidth: 2.5,
+                    pointBackgroundColor: '#38bdf8',
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.3,
+                    yAxisID: 'yHours',
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            onClick: (evt, activeEls) => {
+                if (activeEls && activeEls.length > 0) {
+                    const idx = activeEls[0].index;
+                    const dObj = dailyTrend[idx];
+                    if (dObj && dObj.date) {
+                        drillDownToDay(dObj.date);
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: {
+                        color: '#cbd5e1',
+                        font: { family: 'Plus Jakarta Sans', size: 11, weight: 'bold' }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleColor: '#38bdf8',
+                    bodyColor: '#f8fafc',
+                    borderColor: 'rgba(255, 255, 255, 0.15)',
+                    borderWidth: 1,
+                    padding: 10,
+                    callbacks: {
+                        label: function(context) {
+                            if (context.dataset.yAxisID === 'yLoss') {
+                                return `Perda: R$ ${context.parsed.y.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                            }
+                            return `Atraso: ${context.parsed.y}h`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
+                },
+                yLoss: {
+                    type: 'linear',
+                    position: 'left',
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        color: '#f43f5e',
+                        font: { family: 'JetBrains Mono', size: 10 },
+                        callback: val => 'R$ ' + (val >= 1000 ? Math.round(val/1000) + 'k' : val)
+                    }
+                },
+                yHours: {
+                    type: 'linear',
+                    position: 'right',
+                    grid: { drawOnChartArea: false },
+                    ticks: {
+                        color: '#38bdf8',
+                        font: { family: 'JetBrains Mono', size: 10 },
+                        callback: val => val + 'h'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderDelaysJustificationsList(containerId, justList) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!justList || justList.length === 0) {
+        container.innerHTML = '<div style="padding: 16px; color: #94a3b8; font-size: 0.76rem; text-align: center;">Nenhuma justificativa registrada no recorte.</div>';
+        return;
+    }
+
+    container.innerHTML = justList.map(j => {
+        const pct = j.pct_perda || 0;
+        const isUnjustified = !j.has_justification;
+        const icon = isUnjustified ? 'alert-triangle' : 'file-check';
+        const colorClass = isUnjustified ? 'text-amber' : 'text-emerald';
+
+        return `
+            <div class="delays-just-card">
+                <div class="delays-just-card-header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="${icon}" class="${colorClass}" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+                        <div>
+                            <strong class="delays-just-title">${j.macro_reason}</strong>
+                            <div style="font-size: 0.68rem; color: #94a3b8;">${j.qtd_equipes} equipes • Submotivo frequente: <i>${j.top_sub_reason || '--'}</i></div>
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <strong class="delays-just-loss font-mono">${j.perda_reais_str}</strong>
+                        <div class="font-mono text-amber" style="font-size: 0.7rem;">${j.tempo_str}</div>
+                    </div>
+                </div>
+                <div class="delays-just-sub-row">
+                    <span>Impacto Contratual: <strong>${pct}%</strong> da perda</span>
+                </div>
+                <div class="delays-just-bar-wrap">
+                    <div class="delays-just-bar" style="width: ${Math.min(100, Math.max(4, pct))}%;"></div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+window.drillDownToDay = function(dateStr) {
+    delaysState.date = dateStr;
+    const picker = document.getElementById('delaysDatePicker');
+    if (picker) {
+        picker.max = getOperationalDate();
+        picker.value = dateStr;
+    }
+    setDelaysHorizonMode('daily');
+};
+
+// ==========================================================================
+// GERENCIADOR DE COLUNAS, REORDENAÇÃO & ORDENAÇÃO: AUDITORIA DE ATRASOS
+// ==========================================================================
+const DELAYS_DEFAULT_FIXED_COLUMNS = [
+    { id: 'ut', label: 'UT', default: true, required: true },
+    { id: 'base', label: 'BASE', default: true, required: true },
+    { id: 'equipe', label: 'EQUIPE', default: true, required: true }
+];
+
+const DELAYS_DEFAULT_REORDERABLE_COLUMNS = [
+    { id: 'regiao', label: 'REGIÃO', default: true },
+    { id: 'frota', label: 'FROTA', default: true },
+    { id: 'turno', label: 'TURNO', default: true },
+    { id: 'horario_previsto', label: 'HORÁRIO PREVISTO', default: true },
+    { id: 'login_efetivo', label: 'LOGIN EFETIVO', default: true },
+    { id: 'status_login', label: 'STATUS LOGIN', default: true },
+    { id: 'tempo_atraso', label: 'TURNO x LOGIN', default: true },
+    { id: 'valor_hora', label: 'VALOR HORA', default: true },
+    { id: 'perda_financeira', label: 'PERDA FINANCEIRA', default: true },
+    { id: 'macro_motivo', label: 'JUSTIFICATIVA (MACRO)', default: true },
+    { id: 'sub_motivo', label: 'SUB-MOTIVO', default: true },
+    { id: 'acoes', label: 'AÇÕES', default: true }
+];
+
+const DELAYS_TABLE_COLUMNS = [
+    ...DELAYS_DEFAULT_FIXED_COLUMNS,
+    ...DELAYS_DEFAULT_REORDERABLE_COLUMNS
+];
+
+if (!delaysState.visibleColumns) delaysState.visibleColumns = null;
+if (!delaysState.reorderableColumnsOrder) delaysState.reorderableColumnsOrder = null;
+if (!delaysState.sortColumn) delaysState.sortColumn = null;
+if (!delaysState.sortDirection) delaysState.sortDirection = 'asc';
+if (typeof delaysState.isTableCollapsed === 'undefined') delaysState.isTableCollapsed = false;
+if (typeof delaysState.isFullscreen === 'undefined') delaysState.isFullscreen = false;
+
+function getDelaysReorderableColumnsOrder() {
+    if (delaysState.reorderableColumnsOrder && Array.isArray(delaysState.reorderableColumnsOrder)) {
+        return delaysState.reorderableColumnsOrder;
+    }
+    try {
+        const saved = localStorage.getItem('delays_reorderable_columns_order');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                const validIds = new Set(DELAYS_DEFAULT_REORDERABLE_COLUMNS.map(c => c.id));
+                const filtered = parsed.filter(id => validIds.has(id));
+                DELAYS_DEFAULT_REORDERABLE_COLUMNS.forEach(c => {
+                    if (!filtered.includes(c.id)) filtered.push(c.id);
+                });
+                delaysState.reorderableColumnsOrder = filtered;
+                return delaysState.reorderableColumnsOrder;
+            }
+        }
+    } catch (e) {
+        console.warn('[Delays Colunas] Erro ao carregar ordem:', e);
+    }
+    delaysState.reorderableColumnsOrder = DELAYS_DEFAULT_REORDERABLE_COLUMNS.map(c => c.id);
+    return delaysState.reorderableColumnsOrder;
+}
+
+function saveDelaysColumnsOrder() {
+    try {
+        if (delaysState.reorderableColumnsOrder) {
+            localStorage.setItem('delays_reorderable_columns_order', JSON.stringify(delaysState.reorderableColumnsOrder));
+        }
+    } catch (e) {
+        console.warn('[Delays Colunas] Erro ao salvar ordem:', e);
+    }
+}
+
+function getDelaysVisibleColumns() {
+    if (delaysState.visibleColumns && delaysState.visibleColumns instanceof Set) {
+        return delaysState.visibleColumns;
+    }
+    try {
+        const saved = localStorage.getItem('delays_visible_columns');
+        if (saved) {
+            const arr = JSON.parse(saved);
+            if (Array.isArray(arr) && arr.length > 0) {
+                DELAYS_DEFAULT_FIXED_COLUMNS.forEach(fc => {
+                    if (!arr.includes(fc.id)) arr.push(fc.id);
+                });
+                delaysState.visibleColumns = new Set(arr);
+                return delaysState.visibleColumns;
+            }
+        }
+    } catch (e) {
+        console.warn('[Delays Colunas] Erro ao carregar colunas visíveis:', e);
+    }
+    delaysState.visibleColumns = new Set(DELAYS_TABLE_COLUMNS.filter(c => c.default).map(c => c.id));
+    return delaysState.visibleColumns;
+}
+
+function saveDelaysVisibleColumns() {
+    try {
+        if (delaysState.visibleColumns) {
+            localStorage.setItem('delays_visible_columns', JSON.stringify(Array.from(delaysState.visibleColumns)));
+        }
+    } catch (e) {
+        console.warn('[Delays Colunas] Erro ao salvar colunas visíveis:', e);
+    }
+}
+
+function getDelaysActiveColumns() {
+    const visCols = getDelaysVisibleColumns();
+    const reorderOrder = getDelaysReorderableColumnsOrder();
+    const colMap = new Map(DELAYS_TABLE_COLUMNS.map(c => [c.id, c]));
+
+    const fixed = DELAYS_DEFAULT_FIXED_COLUMNS.filter(c => visCols.has(c.id));
+    const reordered = reorderOrder
+        .filter(id => visCols.has(id) && colMap.has(id))
+        .map(id => colMap.get(id));
+
+    return [...fixed, ...reordered];
+}
+
+function updateDelaysColCountPill() {
+    const pill = document.getElementById('delaysColCountPill');
+    if (!pill) return;
+    const visCols = getDelaysVisibleColumns();
+    const total = DELAYS_TABLE_COLUMNS.length;
+    pill.textContent = `${visCols.size}/${total}`;
+}
+
+function toggleDelaysColPicker(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('delaysColPickerDropdown');
+    if (!dropdown) return;
+    const isShown = dropdown.style.display === 'block';
+    if (isShown) {
+        dropdown.style.display = 'none';
+    } else {
+        dropdown.style.display = 'block';
+        renderDelaysColPickerList();
+    }
+}
+
+function renderDelaysColPickerList() {
+    const container = document.getElementById('delaysColPickerList');
+    if (!container) return;
+
+    const visCols = getDelaysVisibleColumns();
+    const reorderOrder = getDelaysReorderableColumnsOrder();
+    const reorderMap = new Map(DELAYS_DEFAULT_REORDERABLE_COLUMNS.map(c => [c.id, c]));
+
+    const fixedHtml = `
+        <div class="col-picker-section-title">
+            <span>Colunas Fixas Obrigatórias</span>
+            <span style="font-size:0.6rem; color: #38bdf8;">🔒 Sequência Fixa</span>
+        </div>
+        <div class="col-picker-fixed-section">
+            ${DELAYS_DEFAULT_FIXED_COLUMNS.map((c, idx) => `
+                <div class="col-picker-item fixed">
+                    <span style="font-size: 0.72rem; font-weight: 800; color: #38bdf8; width: 18px;">${idx + 1}º</span>
+                    <input type="checkbox" checked disabled title="Coluna fixa obrigatória">
+                    <span style="font-weight: 800; color: #f8fafc;">${c.label}</span>
+                    <span class="col-picker-tag-fixed">Fixo</span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+
+    const dynamicHtml = `
+        <div class="col-picker-section-title" style="margin-top: 10px;">
+            <span>Colunas Reordenáveis</span>
+            <span style="font-size:0.6rem; color: #38bdf8;">Arraste e solte na posição desejada</span>
+        </div>
+        <div class="col-picker-dynamic-section" id="delaysColPickerDynamicList">
+            ${reorderOrder.map((colId, index) => {
+                const c = reorderMap.get(colId);
+                if (!c) return '';
+                const isChecked = visCols.has(c.id);
+                return `
+                    <div class="col-picker-item draggable" draggable="true"
+                         data-col-id="${c.id}"
+                         ondragstart="handleDelaysColDragStart(event, '${c.id}')"
+                         ondragover="handleDelaysColDragOver(event, '${c.id}')"
+                         ondragleave="handleDelaysColDragLeave(event)"
+                         ondrop="handleDelaysColDrop(event, '${c.id}')"
+                         ondragend="handleDelaysColDragEnd(event)">
+                        <span class="col-picker-drag-handle" title="Clique e arraste para posicionar">⋮⋮</span>
+                        <span style="font-size: 0.68rem; font-weight: 700; color: #64748b; width: 16px;">${index + 4}º</span>
+                        <input type="checkbox" id="chkDelCol_${c.id}" ${isChecked ? 'checked' : ''} onchange="toggleDelaysColumn('${c.id}', this.checked)">
+                        <label for="chkDelCol_${c.id}" style="cursor: grab; flex: 1; user-select: none; margin: 0; font-size: 0.78rem;">${c.label}</label>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+
+    container.innerHTML = fixedHtml + dynamicHtml;
+    updateDelaysColCountPill();
+}
+
+let delaysDraggedColId = null;
+
+function handleDelaysColDragStart(event, colId) {
+    delaysDraggedColId = colId;
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', colId);
+    }
+    const target = event.currentTarget;
+    setTimeout(() => {
+        if (target) target.classList.add('dragging');
+    }, 0);
+}
+
+function handleDelaysColDragOver(event, targetColId) {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    if (!delaysDraggedColId || delaysDraggedColId === targetColId) return;
+    const item = event.currentTarget;
+    item.classList.add('drag-over');
+}
+
+function handleDelaysColDragLeave(event) {
+    event.currentTarget.classList.remove('drag-over');
+}
+
+function handleDelaysColDrop(event, targetColId) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drag-over');
+    if (!delaysDraggedColId || delaysDraggedColId === targetColId) return;
+
+    const order = [...getDelaysReorderableColumnsOrder()];
+    const fromIdx = order.indexOf(delaysDraggedColId);
+    const toIdx = order.indexOf(targetColId);
+
+    if (fromIdx !== -1 && toIdx !== -1) {
+        order.splice(fromIdx, 1);
+        order.splice(toIdx, 0, delaysDraggedColId);
+        delaysState.reorderableColumnsOrder = order;
+        saveDelaysColumnsOrder();
+        renderDelaysColPickerList();
+        renderDelaysTableHead();
+        renderDelaysTable((delaysState.data && delaysState.data.teams) || []);
+    }
+}
+
+function handleDelaysColDragEnd(event) {
+    event.currentTarget.classList.remove('dragging');
+    document.querySelectorAll('#delaysColPickerList .col-picker-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+    delaysDraggedColId = null;
+}
+
+function toggleDelaysColumn(colId, isChecked) {
+    const cols = getDelaysVisibleColumns();
+    const isFixed = DELAYS_DEFAULT_FIXED_COLUMNS.some(fc => fc.id === colId);
+    if (isFixed) {
+        showToast('As colunas UT, BASE e EQUIPE são obrigatórias e permanecem sempre visíveis.', 'info');
+        renderDelaysColPickerList();
+        return;
+    }
+    if (isChecked) {
+        cols.add(colId);
+    } else {
+        cols.delete(colId);
+    }
+    saveDelaysVisibleColumns();
+    updateDelaysColCountPill();
+    renderDelaysTableHead();
+    renderDelaysTable((delaysState.data && delaysState.data.teams) || []);
+}
+
+function setAllDelaysColumns(enableAll) {
+    const cols = getDelaysVisibleColumns();
+    if (enableAll) {
+        DELAYS_TABLE_COLUMNS.forEach(c => cols.add(c.id));
+    } else {
+        cols.clear();
+        DELAYS_DEFAULT_FIXED_COLUMNS.forEach(fc => cols.add(fc.id));
+    }
+    saveDelaysVisibleColumns();
+    renderDelaysColPickerList();
+    updateDelaysColCountPill();
+    renderDelaysTableHead();
+    renderDelaysTable((delaysState.data && delaysState.data.teams) || []);
+}
+
+function resetDelaysColumnsToDefault() {
+    delaysState.visibleColumns = new Set(DELAYS_TABLE_COLUMNS.filter(c => c.default).map(c => c.id));
+    delaysState.reorderableColumnsOrder = DELAYS_DEFAULT_REORDERABLE_COLUMNS.map(c => c.id);
+    saveDelaysVisibleColumns();
+    saveDelaysColumnsOrder();
+    renderDelaysColPickerList();
+    updateDelaysColCountPill();
+    renderDelaysTableHead();
+    renderDelaysTable((delaysState.data && delaysState.data.teams) || []);
+    showToast('Configuração de colunas e ordem da tabela de atrasos restaurada para o padrão oficial.', 'info');
+}
+
+function moveDelaysColumn(colId, direction) {
+    const order = getDelaysReorderableColumnsOrder();
+    const idx = order.indexOf(colId);
+    if (idx === -1) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= order.length) return;
+
+    const [moved] = order.splice(idx, 1);
+    order.splice(newIdx, 0, moved);
+    delaysState.reorderableColumnsOrder = order;
+    saveDelaysColumnsOrder();
+    renderDelaysColPickerList();
+    renderDelaysTableHead();
+    renderDelaysTable((delaysState.data && delaysState.data.teams) || []);
+}
+
+function toggleDelaysTableCollapse() {
+    delaysState.isTableCollapsed = !delaysState.isTableCollapsed;
+    const bodyEl = document.getElementById('delaysTableCollapseBody');
+    const textEl = document.getElementById('textToggleDelaysTable');
+    const subEl = document.getElementById('delaysTableSubtitle');
+
+    if (delaysState.isTableCollapsed) {
+        if (bodyEl) bodyEl.classList.add('table-collapsed');
+        if (textEl) textEl.textContent = 'EXPANDIR TABELA';
+        if (subEl) subEl.textContent = 'Tabela recolhida. Clique em Expandir para visualizar a relação nominal.';
+    } else {
+        if (bodyEl) bodyEl.classList.remove('table-collapsed');
+        if (textEl) textEl.textContent = 'RECOLHER TABELA';
+        if (subEl) subEl.textContent = 'Exibindo relação nominal detalhada de pontualidade, horários e perdas financeiras.';
+        renderDelaysTable((delaysState.data && delaysState.data.teams) || []);
+    }
+}
+
+function toggleDelaysFullscreen() {
+    const card = document.getElementById('delaysTableCardWrapper');
+    if (!card) return;
+
+    delaysState.isFullscreen = !delaysState.isFullscreen;
+    const isFull = delaysState.isFullscreen;
+
+    const btn = document.getElementById('btnDelaysFullscreen');
+    const textEl = document.getElementById('textDelaysFullscreen');
+    const iconEl = document.getElementById('iconDelaysFullscreen');
+
+    if (isFull) {
+        if (delaysState.isTableCollapsed) {
+            toggleDelaysTableCollapse();
+        }
+        card.classList.add('delivery-table-fullscreen');
+        document.body.classList.add('delivery-fullscreen-active');
+        if (textEl) textEl.textContent = 'SAIR TELA CHEIA (ESC)';
+        if (btn) {
+            btn.style.background = 'rgba(239, 68, 68, 0.2)';
+            btn.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+            btn.style.color = '#f87171';
+        }
+        if (iconEl) iconEl.setAttribute('data-lucide', 'minimize-2');
+        showToast('Modo Tela Cheia (ONE PAGE) de atrasos ativado. Pressione ESC para sair.', 'info');
+    } else {
+        card.classList.remove('delivery-table-fullscreen');
+        document.body.classList.remove('delivery-fullscreen-active');
+        if (textEl) textEl.textContent = 'TELA CHEIA (ONE PAGE)';
+        if (btn) {
+            btn.style.background = '';
+            btn.style.borderColor = '';
+            btn.style.color = '';
+        }
+        if (iconEl) iconEl.setAttribute('data-lucide', 'maximize-2');
+    }
+    if (window.lucide) lucide.createIcons();
+}
+
+// Fechar menu de colunas de atrasos ao clicar fora
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('delaysColPickerDropdown');
+    const btn = document.getElementById('btnDelaysColPicker');
+    if (dropdown && dropdown.style.display === 'block') {
+        if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && delaysState.isFullscreen) {
+        toggleDelaysFullscreen();
+    }
+});
+
+function sortDelaysTable(colId) {
+    if (delaysState.sortColumn === colId) {
+        if (delaysState.sortDirection === 'asc') {
+            delaysState.sortDirection = 'desc';
+        } else {
+            delaysState.sortColumn = null;
+            delaysState.sortDirection = 'asc';
+        }
+    } else {
+        delaysState.sortColumn = colId;
+        delaysState.sortDirection = 'asc';
+    }
+    renderDelaysTableHead();
+    renderDelaysTable((delaysState.data && delaysState.data.teams) || []);
+}
+
+function compareDelaysTeams(a, b, colId, direction) {
+    let res = 0;
+    switch (colId) {
+        case 'ut':
+            res = (a.ut || a.prefix || '').localeCompare(b.ut || b.prefix || '');
+            break;
+        case 'base':
+            res = (a.base || '').localeCompare(b.base || '');
+            break;
+        case 'equipe':
+            res = (a.team_code || '').localeCompare(b.team_code || '');
+            break;
+        case 'regiao':
+            res = (a.region || '').localeCompare(b.region || '');
+            break;
+        case 'frota':
+            res = (a.vehicle_type || '').localeCompare(b.vehicle_type || '');
+            break;
+        case 'turno':
+            res = (a.turno || '').localeCompare(b.turno || '');
+            break;
+        case 'horario_previsto':
+            res = parseTimeToMinutesHelper(a.shift_code) - parseTimeToMinutesHelper(b.shift_code);
+            break;
+        case 'login_efetivo':
+            res = parseTimeToMinutesHelper(a.login_time || a.marcacao) - parseTimeToMinutesHelper(b.login_time || b.marcacao);
+            break;
+        case 'status_login':
+            res = (a.status_login || '').localeCompare(b.status_login || '');
+            break;
+        case 'tempo_atraso':
+            res = (a.delay_minutes || 0) - (b.delay_minutes || 0);
+            break;
+        case 'valor_hora':
+            res = (a.rate_hour || 0) - (b.rate_hour || 0);
+            break;
+        case 'perda_financeira':
+            res = (a.financial_loss || 0) - (b.financial_loss || 0);
+            break;
+        case 'macro_motivo':
+            res = (a.macro_reason || '').localeCompare(b.macro_reason || '');
+            break;
+        case 'sub_motivo':
+            res = (a.sub_reason || '').localeCompare(b.sub_reason || '');
+            break;
+        default:
+            res = 0;
+    }
+    return direction === 'desc' ? -res : res;
+}
+
+function renderDelaysTableHead() {
+    const thead = document.getElementById('delaysTableHead');
+    if (!thead) return;
+
+    const activeCols = getDelaysActiveColumns();
+    const sortCol = delaysState.sortColumn;
+    const sortDir = delaysState.sortDirection;
+
+    thead.innerHTML = `
+        <tr>
+            ${activeCols.map(col => {
+                const isActive = sortCol === col.id;
+                let arrow = '<span class="delays-sort-icon">⇅</span>';
+                if (isActive) {
+                    arrow = sortDir === 'asc' ? '<span class="delays-sort-icon">▲</span>' : '<span class="delays-sort-icon">▼</span>';
+                }
+                const alignRight = ['tempo_atraso', 'valor_hora', 'perda_financeira'].includes(col.id);
+                const alignCenter = ['acoes', 'status_login', 'turno', 'horario_previsto', 'login_efetivo'].includes(col.id);
+                const styleAlign = alignRight ? 'text-align: right;' : (alignCenter ? 'text-align: center;' : 'text-align: left;');
+                
+                return `
+                    <th style="${styleAlign} cursor: pointer;" onclick="sortDelaysTable('${col.id}')" title="Clique para ordenar por ${col.label}">
+                        <div class="delays-th-sort-btn ${isActive ? 'active' : ''}" style="${alignRight ? 'justify-content: flex-end;' : (alignCenter ? 'justify-content: center;' : 'justify-content: flex-start;')}">
+                            <span>${col.label}</span>
+                            ${arrow}
+                        </div>
+                    </th>
+                `;
+            }).join('')}
+        </tr>
+    `;
+    updateDelaysColCountPill();
+}
+
+function renderDelaysTable(teams) {
+    const tbody = document.getElementById('delaysTableBody');
+    const subtitle = document.getElementById('delaysTableSubtitle');
+    const countBadge = document.getElementById('delaysResultsCountBadge');
+    const activeCols = getDelaysActiveColumns();
+
+    if (!tbody) return;
+
+    if (!teams || teams.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${activeCols.length || 15}" style="text-align: center; padding: 24px; color: #94a3b8;">Nenhuma equipe encontrada com os filtros selecionados.</td></tr>`;
+        if (subtitle && !delaysState.isTableCollapsed) subtitle.textContent = '0 equipes listadas no recorte';
+        if (countBadge) countBadge.textContent = '0 equipes listadas';
+        return;
+    }
+
+    if (subtitle && !delaysState.isTableCollapsed) subtitle.textContent = `${teams.length} equipes listadas no recorte`;
+    if (countBadge) countBadge.textContent = `${teams.length} equipes listadas`;
+
+    // Aplica ordenação se houver coluna selecionada
+    let displayTeams = [...teams];
+    if (delaysState.sortColumn) {
+        displayTeams.sort((a, b) => compareDelaysTeams(a, b, delaysState.sortColumn, delaysState.sortDirection));
+    }
+
+    tbody.innerHTML = displayTeams.map(t => {
+        const isDelay = t.delay_minutes > 0;
+        const delayBadge = isDelay
+            ? `<span class="badge-turno-login-atraso clickable-delay-badge ${t.has_justification ? 'justified' : ''}" 
+                     onclick="event.stopPropagation(); openDelayJustificationModal('${t.team_code}', '${t.shift_code}', ${t.delay_minutes}, '${t.marcacao}')"
+                     title="${t.has_justification ? 'Justificado: ' + (t.macro_reason || '') + '. Clique para editar.' : 'Clique para justificar atraso.'}">
+                 ${t.delay_str} ${t.has_justification ? '<span class="delay-justified-icon">&#10003;</span>' : ''}
+               </span>`
+            : `<span class="badge-turno-login-pontual">${t.delay_str}</span>`;
+
+        const statusLoginBadge = t.status_login === 'LOGADA'
+            ? `<span class="badge-status-login badge-status-logada">LOGADA</span>`
+            : `<span class="badge-status-login badge-status-programada">PROGRAMADA</span>`;
+
+        return `
+            <tr>
+                ${activeCols.map(col => {
+                    switch (col.id) {
+                        case 'ut':
+                            return `<td class="font-mono text-cyan" style="font-weight: 700;">${t.ut || t.prefix || '--'}</td>`;
+                        case 'base':
+                            return `<td><span style="font-weight: 600; color: #cbd5e1;">${t.base || '--'}</span></td>`;
+                        case 'equipe':
+                            return `<td><strong class="font-mono text-cyan" style="cursor: pointer;" onclick="openDelayJustificationModal('${t.team_code}', '${t.shift_code}', ${t.delay_minutes}, '${t.marcacao}')" title="Clique para gerenciar justificativa">${t.team_code}</strong></td>`;
+                        case 'regiao':
+                            return `<td><span class="badge-subtle">${t.region || '--'}</span></td>`;
+                        case 'frota':
+                            return `<td>${t.vehicle_type || '--'}</td>`;
+                        case 'turno':
+                            return `<td style="text-align: center;"><span class="badge-tag-turno">${t.turno || '--'}</span></td>`;
+                        case 'horario_previsto':
+                            return `<td class="font-mono" style="text-align: center;">${t.shift_code || '--'}</td>`;
+                        case 'login_efetivo':
+                            return `<td class="font-mono" style="text-align: center; color: ${t.login_time ? '#38bdf8' : '#64748b'};">${t.login_time || t.marcacao || '--:--'}</td>`;
+                        case 'status_login':
+                            return `<td style="text-align: center;">${statusLoginBadge}</td>`;
+                        case 'tempo_atraso':
+                            return `<td style="text-align: right;">${delayBadge}</td>`;
+                        case 'valor_hora':
+                            return `<td class="font-mono" style="text-align: right; color: #94a3b8;">${t.rate_hour_str || '--'}</td>`;
+                        case 'perda_financeira':
+                            return `<td class="font-mono ${isDelay ? 'text-rose' : ''}" style="text-align: right; font-weight: 700;">${t.financial_loss_str || 'R$ 0,00'}</td>`;
+                        case 'macro_motivo':
+                            return `<td>${t.macro_reason && t.macro_reason !== '--' ? `<span class="badge badge-tag-amber">${t.macro_reason}</span>` : '<span style="color:#64748b;">--</span>'}</td>`;
+                        case 'sub_motivo':
+                            return `<td style="color: #94a3b8; font-size: 0.72rem;">${t.sub_reason || '--'}</td>`;
+                        case 'acoes':
+                            return `
+                                <td style="text-align: center;">
+                                    ${isDelay ? `
+                                    <button class="btn-table-action-sm btn-action-justificar ${t.has_justification ? 'btn-justificado' : ''}" 
+                                            onclick="event.stopPropagation(); openDelayJustificationModal('${t.team_code}', '${t.shift_code}', ${t.delay_minutes}, '${t.marcacao}')" 
+                                            title="${t.has_justification ? 'Editar Justificativa' : 'Registrar Justificativa'}">
+                                        <i data-lucide="${t.has_justification ? 'check-circle' : 'file-edit'}" style="width: 12px; height: 12px;"></i>
+                                        <span>${t.has_justification ? 'Editar' : 'Justificar'}</span>
+                                    </button>
+                                    ` : '<span style="color: #64748b; font-size: 0.7rem;">--</span>'}
+                                </td>
+                            `;
+                        default:
+                            return `<td>--</td>`;
+                    }
+                }).join('')}
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+
+window.filterDelaysTable = function() {
+    const input = document.getElementById('delaysSearchInput');
+    const term = (input ? input.value : '').toLowerCase().trim();
+    if (!delaysState.data || !delaysState.data.teams) return;
+
+    if (!term) {
+        renderDelaysTable(delaysState.data.teams);
+        return;
+    }
+
+    const filtered = delaysState.data.teams.filter(t => {
+        return (t.team_code && t.team_code.toLowerCase().includes(term)) ||
+               (t.base && t.base.toLowerCase().includes(term)) ||
+               (t.vehicle_type && t.vehicle_type.toLowerCase().includes(term)) ||
+               (t.macro_reason && t.macro_reason.toLowerCase().includes(term)) ||
+               (t.sub_reason && t.sub_reason.toLowerCase().includes(term)) ||
+               (t.user_name && t.user_name.toLowerCase().includes(term)) ||
+               (t.observation && t.observation.toLowerCase().includes(term));
+    });
+
+    renderDelaysTable(filtered);
+};
+
+window.exportDelaysExcel = function() {
+    const params = new URLSearchParams({
+        mode: delaysState.mode,
+        date: delaysState.date,
+        month: delaysState.month,
+        scope: delaysState.geoScope,
+        base: delaysState.selectedBases.join(','),
+        vehicle: delaysState.selectedVehicles.join(','),
+        shift_code: delaysState.selectedShifts.join(','),
+        status_login: delaysState.selectedStatuses.join(','),
+        include_stc_leste: delaysState.includeStcLeste ? 'true' : 'false'
+    });
+
+    window.open(`/api/delivery/delays/export_excel?${params.toString()}`, '_blank');
+};
+
+window.toggleDelaysColPicker = toggleDelaysColPicker;
+window.setAllDelaysColumns = setAllDelaysColumns;
+window.resetDelaysColumnsToDefault = resetDelaysColumnsToDefault;
+window.moveDelaysColumn = moveDelaysColumn;
+window.toggleDelaysColumn = toggleDelaysColumn;
+window.toggleDelaysTableCollapse = toggleDelaysTableCollapse;
+window.toggleDelaysFullscreen = toggleDelaysFullscreen;
+window.sortDelaysTable = sortDelaysTable;
+window.renderDelaysTableHead = renderDelaysTableHead;
+window.renderDelaysTable = renderDelaysTable;
+window.handleDelaysColDragStart = handleDelaysColDragStart;
+window.handleDelaysColDragOver = handleDelaysColDragOver;
+window.handleDelaysColDragLeave = handleDelaysColDragLeave;
+window.handleDelaysColDrop = handleDelaysColDrop;
+window.handleDelaysColDragEnd = handleDelaysColDragEnd;
+
+// Listener para atualização Realtime automática da tela de ATRASOS E TURNOS
+try {
+    const ccoDelaysBroadcast = new BroadcastChannel('cco_delivery_channel');
+    ccoDelaysBroadcast.onmessage = function(ev) {
+        if (ev.data && ev.data.type === 'DELAY_JUSTIFICATION_SAVED') {
+            const scrDelays = document.getElementById('deliveryScreenDelays');
+            if (scrDelays && scrDelays.style.display !== 'none') {
+                loadDelaysAnalytics();
+            }
+        }
+    };
+} catch(e) {}

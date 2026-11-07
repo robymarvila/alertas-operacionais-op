@@ -16137,6 +16137,42 @@ body.route-tv .main-content-layout {
     white-space: nowrap;
 }
 
+/* Badges de KPI e Status da Tela ATRASOS E TURNOS (Paridade Tipográfica com ONLINE / TEMPO REAL) */
+.delays-live-badge {
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    font-size: 0.70rem !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.08em !important;
+    padding: 5px 12px !important;
+    border-radius: 9999px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    text-transform: uppercase !important;
+    background: rgba(16, 185, 129, 0.15) !important;
+    border: 1px solid rgba(16, 185, 129, 0.4) !important;
+    color: #10b981 !important;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.2) !important;
+}
+
+.badge-tag-cyan,
+.badge-tag-amber,
+.badge-tag-rose,
+.badge-tag-emerald,
+.badge-tag-purple {
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    font-size: 0.68rem !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.07em !important;
+    padding: 3px 8px !important;
+    border-radius: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    line-height: 1.1 !important;
+    text-transform: uppercase !important;
+    border: 1px solid transparent !important;
+}
+
 .badge-tag-cyan {
     background: rgba(0, 242, 254, 0.14) !important;
     border-color: rgba(0, 242, 254, 0.35) !important;
@@ -16153,6 +16189,12 @@ body.route-tv .main-content-layout {
     background: rgba(239, 68, 68, 0.14) !important;
     border-color: rgba(239, 68, 68, 0.35) !important;
     color: #ef4444 !important;
+}
+
+.badge-tag-emerald {
+    background: rgba(16, 185, 129, 0.14) !important;
+    border-color: rgba(16, 185, 129, 0.35) !important;
+    color: #10b981 !important;
 }
 
 .badge-tag-purple {
@@ -17311,3 +17353,1208 @@ tr.tr-alert-gravissimo-60.alert-pulse-enabled {
     line-height: 1;
     margin-left: 2px;
 }
+
+
+/* ==========================================================================
+   TELA: ATRASOS E TURNOS & GESTÃO FINANCEIRA DE PONTUALIDADE (ULTRA-PREMIUM)
+   ========================================================================== */
+
+.delays-horizon-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    border-radius: 16px;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.delays-horizon-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.delays-horizon-icon-wrap {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(244, 63, 94, 0.15);
+    border: 1px solid rgba(244, 63, 94, 0.35);
+    color: #f43f5e;
+}
+
+.delays-horizon-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #f8fafc;
+    letter-spacing: 0.03em;
+    margin: 0 0 2px 0;
+}
+
+.delays-horizon-subtitle {
+    font-size: 0.76rem;
+    color: #94a3b8;
+    margin: 0;
+}
+
+.delays-horizon-switcher {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 4px;
+}
+
+.delays-mode-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.delays-mode-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.delays-mode-btn.active {
+    background: #0284c7;
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(2, 132, 199, 0.45);
+}
+
+.delays-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 2. Barra de Filtros Dinâmicos */
+.delays-filters-container {
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    margin-bottom: 18px;
+    position: relative;
+    z-index: 100;
+    overflow: visible !important;
+}
+
+.delays-filters-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 100;
+    overflow: visible !important;
+}
+
+.delays-filter-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.delays-filter-label {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: uppercase;
+}
+
+.delays-filter-label i {
+    width: 12px;
+    height: 12px;
+    color: #38bdf8;
+}
+
+.delays-input-select {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #f8fafc;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    outline: none;
+    transition: all 0.2s ease;
+    min-width: 130px;
+}
+
+.delays-input-select:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+}
+
+.delays-date-nav-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-date-step {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+    border-radius: 6px;
+    padding: 5px 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.btn-date-step:hover {
+    background: rgba(56, 189, 248, 0.2);
+    color: #ffffff;
+    border-color: #38bdf8;
+}
+
+.btn-today-pill {
+    background: rgba(56, 189, 248, 0.15);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    color: #38bdf8;
+    font-size: 0.7rem;
+    font-weight: 800;
+    padding: 5px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-today-pill:hover {
+    background: rgba(56, 189, 248, 0.3);
+    color: #ffffff;
+}
+
+.delays-pills-group {
+    display: inline-flex;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.delays-pill-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.delays-pill-btn:hover {
+    color: #ffffff;
+}
+
+.delays-pill-btn.active {
+    background: #0284c7;
+    color: #ffffff;
+    box-shadow: 0 1px 4px rgba(2, 132, 199, 0.4);
+}
+
+/* Switch STC Leste */
+.delays-stc-switch-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+}
+
+.delays-stc-switch-box:hover {
+    border-color: #ec4899;
+}
+
+.delays-switch-slider {
+    width: 28px;
+    height: 16px;
+    background: #475569;
+    border-radius: 9999px;
+    position: relative;
+    transition: all 0.2s ease;
+    display: inline-block;
+}
+
+.delays-switch-slider::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ffffff;
+    top: 2px;
+    left: 2px;
+    transition: all 0.2s ease;
+}
+
+.delays-stc-switch-box.active .delays-switch-slider {
+    background: #ec4899;
+}
+
+.delays-stc-switch-box.active .delays-switch-slider::after {
+    left: 14px;
+}
+
+.delays-switch-text {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #ec4899;
+    letter-spacing: 0.04em;
+}
+
+.delays-stc-switch-box:not(.active) .delays-switch-text {
+    color: #94a3b8;
+}
+
+.delays-btn-export {
+    font-weight: 800;
+    font-size: 0.75rem;
+    padding: 6px 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-color: rgba(16, 185, 129, 0.4);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.delays-btn-export:hover {
+    background: rgba(16, 185, 129, 0.25);
+    border-color: #10b981;
+}
+
+/* 3. Grade de KPIs Monumentais */
+.delays-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 20px;
+    position: relative;
+    z-index: 10;
+}
+
+.delays-kpi-card {
+    border-radius: 14px;
+    padding: 14px 18px;
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+    overflow: hidden;
+}
+
+.delays-kpi-card-financial {
+    border-left: 4px solid #f43f5e;
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.08) 0%, rgba(15, 23, 42, 0.8) 100%);
+    box-shadow: 0 4px 20px rgba(244, 63, 94, 0.12);
+}
+
+.delays-kpi-card-delay {
+    border-left: 4px solid #f59e0b;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(15, 23, 42, 0.8) 100%);
+}
+
+.delays-kpi-card-punctual {
+    border-left: 4px solid #38bdf8;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.08) 0%, rgba(15, 23, 42, 0.8) 100%);
+}
+
+.delays-kpi-card-assertive {
+    border-left: 4px solid #10b981;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.8) 100%);
+}
+
+.delays-kpi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.delays-kpi-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.delays-kpi-label {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+}
+
+.delays-kpi-icon-glow {
+    width: 20px;
+    height: 20px;
+    opacity: 0.85;
+}
+
+.delays-kpi-val-row {
+    margin: 2px 0;
+}
+
+.delays-kpi-main-val {
+    font-size: 1.65rem;
+    font-weight: 800;
+    line-height: 1.1;
+    display: block;
+}
+
+.delays-kpi-sub-breakdown {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 0.72rem;
+}
+
+.delays-sub-pill {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 0.68rem;
+}
+
+.delays-sub-pill.pill-secondary {
+    color: #94a3b8;
+}
+
+/* 4. Grade de Turnos e Horários */
+.delays-shifts-section {
+    padding: 16px 20px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.delays-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.delays-section-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.delays-section-title-wrap h4 {
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #f8fafc;
+    letter-spacing: 0.03em;
+    margin: 0;
+}
+
+.delays-section-meta {
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+
+.delays-shifts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+}
+
+.delays-shift-card {
+    border-radius: 12px;
+    background: rgba(30, 41, 59, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.shift-card-morning {
+    border-top: 3px solid #38bdf8;
+}
+.shift-card-afternoon {
+    border-top: 3px solid #f59e0b;
+}
+.shift-card-night {
+    border-top: 3px solid #c084fc;
+}
+
+.delays-shift-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.delays-shift-title {
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #f8fafc;
+}
+
+.delays-shift-badge-loss {
+    background: rgba(244, 63, 94, 0.15);
+    border: 1px solid rgba(244, 63, 94, 0.35);
+    color: #f43f5e;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+.delays-shift-summary-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    background: rgba(15, 23, 42, 0.45);
+    border-radius: 8px;
+    padding: 8px;
+}
+
+.shift-stat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    text-align: center;
+}
+
+.shift-stat-box .stat-lbl {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+}
+
+.shift-stat-box .stat-val {
+    font-size: 0.95rem;
+    font-weight: 800;
+}
+
+.delays-slot-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.delays-slot-row-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.75rem;
+}
+
+.delays-slot-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+/* 5. TOP Equipes Mais Atrasadas */
+.delays-top-teams-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+}
+
+.delays-top-team-card {
+    background: rgba(30, 41, 59, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.delays-top-team-card:hover {
+    border-color: rgba(244, 63, 94, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.delays-top-rank-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-weight: 900;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(244, 63, 94, 0.15);
+    color: #f43f5e;
+    display: inline-block;
+}
+
+.delays-top-team-code {
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #f8fafc;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* 6. Modo Mensal C-Level */
+.delays-daily-trend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(75px, 1fr));
+    gap: 8px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 6px 2px;
+}
+
+.delays-day-trend-box {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 8px 6px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.delays-day-trend-box:hover {
+    border-color: #38bdf8;
+    background: rgba(56, 189, 248, 0.1);
+    transform: translateY(-2px);
+}
+
+.delays-day-num {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: #38bdf8;
+}
+
+.delays-day-loss {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #f43f5e;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.delays-day-hours {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.delays-monthly-split-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+}
+
+.delays-split-col {
+    padding: 16px 20px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.delays-bases-monthly-list,
+.delays-recurrent-teams-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.delays-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(30, 41, 59, 0.4);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 0.78rem;
+}
+
+/* 7. Tabela Analítica Detalhada */
+.delays-table-section {
+    padding: 16px 20px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.delays-table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.delays-table-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.delays-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #f8fafc;
+    margin: 0;
+}
+
+.delays-table-subtitle {
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+
+.delays-search-wrap {
+    position: relative;
+    width: 320px;
+}
+
+.delays-search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    color: #94a3b8;
+}
+
+.delays-search-input {
+    width: 100%;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 6px 12px 6px 32px;
+    color: #f8fafc;
+    font-size: 0.78rem;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.delays-search-input:focus {
+    border-color: #38bdf8;
+}
+
+.delays-table-scroll-wrap {
+    overflow-x: auto;
+    max-height: 520px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.delays-enhanced-table th {
+    background: rgba(15, 23, 42, 0.95);
+    color: #94a3b8;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    padding: 8px 12px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.delays-enhanced-table td {
+    padding: 8px 12px;
+    font-size: 0.76rem;
+    color: #cbd5e1;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    white-space: nowrap;
+}
+
+.delays-enhanced-table tbody tr:hover {
+    background: rgba(56, 189, 248, 0.06);
+}
+
+/* Responsividade Mobile */
+@media (max-width: 1200px) {
+    .delays-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .delays-shifts-grid {
+        grid-template-columns: 1fr;
+    }
+    .delays-top-teams-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .delays-monthly-split-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .delays-kpi-grid {
+        grid-template-columns: 1fr;
+    }
+    .delays-top-teams-grid {
+        grid-template-columns: 1fr;
+    }
+    .delays-horizon-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+/* ==========================================================================
+   TIPOGRAFIA E MULTI-SELECT DA TELA ATRASOS E TURNOS
+   ========================================================================== */
+
+#deliveryScreenDelays,
+#deliveryScreenDelays * {
+    font-family: var(--font-main);
+}
+
+#deliveryScreenDelays [class*='font-mono'],
+#deliveryScreenDelays .font-mono,
+#deliveryScreenDelays .delays-kpi-main-val,
+#deliveryScreenDelays .delays-slot-tag,
+#deliveryScreenDelays .delays-day-loss,
+#deliveryScreenDelays .delays-day-hours,
+#deliveryScreenDelays .stat-val,
+#deliveryScreenDelays td:nth-child(1),
+#deliveryScreenDelays td:nth-child(6),
+#deliveryScreenDelays td:nth-child(7),
+#deliveryScreenDelays td:nth-child(9),
+#deliveryScreenDelays td:nth-child(10),
+#deliveryScreenDelays td:nth-child(11) {
+    font-family: var(--font-mono) !important;
+}
+
+/* Componentes Dropdown Multi-Select */
+.delays-ms-wrap {
+    position: relative;
+    z-index: 101;
+}
+
+.delays-ms-wrap:focus-within,
+.delays-ms-wrap.active {
+    z-index: 1200 !important;
+}
+
+.delays-multiselect-dropdown {
+    position: relative;
+    display: inline-block;
+    min-width: 175px;
+    z-index: 102;
+}
+
+.delays-ms-wrap.active .delays-multiselect-dropdown {
+    z-index: 1200 !important;
+}
+
+.delays-ms-trigger {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: #f8fafc;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+}
+
+.delays-ms-trigger:hover,
+.delays-ms-trigger.active {
+    border-color: #38bdf8;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+    background: rgba(23, 37, 66, 0.95);
+}
+
+.delays-ms-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    flex: 1;
+}
+
+.delays-ms-chevron {
+    width: 14px;
+    height: 14px;
+    color: #94a3b8;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.delays-ms-trigger.active .delays-ms-chevron {
+    transform: rotate(180deg);
+}
+
+.delays-ms-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 240px;
+    max-width: 320px;
+    background: #0f172a !important;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 12px;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.2);
+    z-index: 99999 !important;
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 340px;
+    overflow-y: auto;
+    backdrop-filter: blur(20px);
+}
+
+.delays-ms-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 6px 6px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 4px;
+}
+
+.delays-ms-act-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #38bdf8;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.delays-ms-act-btn:hover {
+    background: rgba(56, 189, 248, 0.2);
+    color: #ffffff;
+}
+
+.delays-ms-group-title {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    text-transform: uppercase;
+    padding: 6px 6px 2px 6px;
+}
+
+.delays-ms-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    color: #cbd5e1;
+    font-size: 0.74rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    user-select: none;
+}
+
+.delays-ms-item:hover {
+    background: rgba(56, 189, 248, 0.12);
+    color: #ffffff;
+}
+
+.delays-ms-item input[type="checkbox"] {
+    accent-color: #38bdf8;
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+/* Cards e Listas de Justificativas */
+.delays-justifications-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.delays-justifications-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.delays-just-card {
+    background: rgba(30, 41, 59, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.delays-just-card:hover {
+    border-color: rgba(245, 158, 11, 0.4);
+    background: rgba(245, 158, 11, 0.06);
+}
+
+.delays-just-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.delays-just-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #f8fafc;
+}
+
+.delays-just-loss {
+    font-size: 0.84rem;
+    font-weight: 800;
+    color: #f43f5e;
+    font-family: var(--font-mono) !important;
+}
+
+.delays-just-sub-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.7rem;
+    color: #94a3b8;
+}
+
+.delays-just-bar-wrap {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 2px;
+}
+
+.delays-just-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #f59e0b, #f43f5e);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.delays-chart-container {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 12px;
+    box-sizing: border-box;
+}
+
+/* ==========================================================================
+   BOTÃO JUSTIFICAR ATRASO (DESIGN ULTRA-PREMIUM HARMONIZADO)
+   ========================================================================== */
+
+.btn-table-action-sm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: var(--font-main);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    border: 1px solid transparent;
+    outline: none;
+    box-sizing: border-box;
+    text-decoration: none;
+}
+
+/* Estado Pendente (Atraso pendente de justificativa - Âmbar Elegante) */
+.btn-action-justificar {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(217, 119, 6, 0.26)) !important;
+    border-color: rgba(245, 158, 11, 0.45) !important;
+    color: #fbbf24 !important;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2) !important;
+}
+
+.btn-action-justificar:hover {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.35), rgba(217, 119, 6, 0.45)) !important;
+    border-color: #f59e0b !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) scale(1.03);
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4) !important;
+}
+
+.btn-action-justificar svg,
+.btn-action-justificar i {
+    width: 13px !important;
+    height: 13px !important;
+    color: #fbbf24 !important;
+    transition: transform 0.2s ease;
+}
+
+.btn-action-justificar:hover svg,
+.btn-action-justificar:hover i {
+    color: #ffffff !important;
+    transform: scale(1.15);
+}
+
+/* Estado Justificado (Verde/Esmeralda Conforme) */
+.btn-action-justificar.btn-justificado {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(5, 150, 105, 0.26)) !important;
+    border-color: rgba(16, 185, 129, 0.45) !important;
+    color: #34d399 !important;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2) !important;
+}
+
+.btn-action-justificar.btn-justificado:hover {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.45)) !important;
+    border-color: #10b981 !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) scale(1.03);
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4) !important;
+}
+
+.btn-action-justificar.btn-justificado svg,
+.btn-action-justificar.btn-justificado i {
+    color: #34d399 !important;
+}
+
+.btn-action-justificar.btn-justificado:hover svg,
+.btn-action-justificar.btn-justificado:hover i {
+    color: #ffffff !important;
+}
+
+/* Badge de Turno x Login Clicável na Tabela */
+.clickable-delay-badge {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.clickable-delay-badge:hover {
+    transform: scale(1.05);
+    filter: brightness(1.2);
+}
+
+/* STC Leste Pill no Filtro */
+#btnToggleStcLestePill.desconsiderar {
+    opacity: 0.65;
+    border-color: rgba(244, 63, 94, 0.4);
+    color: #f43f5e;
+}
+
+#btnToggleStcLestePill.desconsiderar i {
+    color: #f43f5e !important;
+}
+
+/* Tabela de Atrasos & Pontualidade: Cabeçalhos com Ordenação e Sticky Header */
+.delays-enhanced-table th {
+    font-size: 0.72rem !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.05em !important;
+    padding: 10px 12px !important;
+    white-space: nowrap !important;
+    user-select: none;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: #0f172a;
+}
+
+.delays-th-sort-btn {
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    width: 100%;
+    transition: color 0.15s ease;
+}
+
+.delays-th-sort-btn:hover {
+    color: #38bdf8 !important;
+}
+
+.delays-sort-icon {
+    font-size: 0.75rem;
+    opacity: 0.45;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.delays-th-sort-btn.active .delays-sort-icon {
+    opacity: 1;
+    color: #38bdf8;
+}
+
+.delays-table-scroll-wrapper {
+    max-height: 65vh;
+}
+

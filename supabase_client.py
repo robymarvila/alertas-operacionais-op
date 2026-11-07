@@ -2014,3 +2014,21 @@ def fetch_team_delay_justifications(date_ref: str = None) -> dict:
     except Exception as e:
         print(f"[SUPABASE FETCH DELAY JUSTIFICATIONS ERROR] {e}", flush=True)
         return {}
+
+def fetch_team_delay_justifications_by_month(month_ref: str = None) -> list:
+    """
+    Retorna todas as justificativas de atraso de equipes para um mes de referencia (YYYY-MM).
+    """
+    if not month_ref:
+        month_ref = datetime.now(BR_TZ).strftime("%Y-%m")
+    try:
+        headers = get_headers()
+        url = f"{BASE_REST_URL}/team_delay_justifications?date_ref=gte.{month_ref}-01&date_ref=lte.{month_ref}-31&limit=5000"
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            return resp.json() or []
+        return []
+    except Exception as e:
+        print(f"[SUPABASE FETCH DELAY JUSTIFICATIONS MONTH ERROR] {e}", flush=True)
+        return []
+

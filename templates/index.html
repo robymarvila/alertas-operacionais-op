@@ -1749,6 +1749,10 @@
                         <button class="screen-switch-btn" id="btnSwitchHistory" onclick="switchDeliveryScreen('history')">
                             <span>AUDITORIA & HISTÓRICO</span>
                         </button>
+                        <button class="screen-switch-btn" id="btnSwitchDelays" onclick="switchDeliveryScreen('delays')">
+                            <i data-lucide="clock-alert" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                            <span>ATRASOS E TURNOS</span>
+                        </button>
                     </div>
                 </div>
 
@@ -3189,7 +3193,557 @@
             <!-- FIM DE deliveryScreenOnlineBid -->
 
         </div>
-        <!-- FIM DO MÓDULO 2 (moduleDeliveryView) -->
+
+            <!-- ================================================================= -->
+            <!-- TELA: ATRASOS E TURNOS & GESTÃO FINANCEIRA DE PONTUALIDADE (ULTRA-PREMIUM) -->
+            <!-- ================================================================= -->
+            <div id="deliveryScreenDelays" class="delivery-screen-container" style="display: none;">
+
+                <!-- 1. BARRA SUPERIOR DE HORIZONTE TEMPORAL (TRÍADE: REALTIME, DIÁRIA, MENSAL) -->
+                <div class="delays-horizon-bar glass-card">
+                    <div class="delays-horizon-title-wrap">
+                        <div class="delays-horizon-icon-wrap pulse-rose">
+                            <i data-lucide="clock-alert"></i>
+                        </div>
+                        <div>
+                            <h3 class="delays-horizon-title">ATRASOS E TURNOS & PERDA FINANCEIRA</h3>
+                            <p class="delays-horizon-subtitle">Gestão Integrada de Pontualidade, Horas Perdidas e Custos Contratuais de Ociosidade</p>
+                        </div>
+                    </div>
+
+                    <!-- Seletor Segmentado dos 3 Horizontes Temporais (1 Ícone por Botão) -->
+                    <div class="delays-horizon-switcher">
+                        <button class="delays-mode-btn active" id="btnDelaysModeRealtime" onclick="setDelaysHorizonMode('realtime')">
+                            <i data-lucide="zap"></i>
+                            <span>TEMPO REAL (HOJE)</span>
+                        </button>
+                        <button class="delays-mode-btn" id="btnDelaysModeDaily" onclick="setDelaysHorizonMode('daily')">
+                            <i data-lucide="calendar"></i>
+                            <span>HISTÓRICO DIA A DIA</span>
+                        </button>
+                        <button class="delays-mode-btn" id="btnDelaysModeMonthly" onclick="setDelaysHorizonMode('monthly')">
+                            <i data-lucide="bar-chart-3"></i>
+                            <span>ACUMULADO DO MÊS</span>
+                        </button>
+                    </div>
+
+                    <!-- Badge de Status e Botão de Atualização -->
+                    <div class="delays-header-actions">
+                        <span class="delays-live-badge" id="delaysLiveIndicator">
+                            <span class="live-status-dot"></span>
+                            <span id="delaysLiveIndicatorText">AO VIVO • HOJE</span>
+                        </span>
+                        <button class="btn btn-secondary btn-sm" onclick="loadDelaysAnalytics(true)" title="Recarregar Dados">
+                            <i data-lucide="refresh-cw" style="width: 13px; height: 13px;"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. BARRA DE FILTROS OPERACIONAIS DE ATRASOS E TURNOS (DESIGN PADRONIZADO EQUIPES LOGADAS x CHECKLIST) -->
+                <div class="period-filters-bar online-bid-filters-bar delays-filters-bar" style="margin-bottom: 20px; flex-direction: column; align-items: stretch;">
+                    <!-- LINHA 1: TÍTULO E CONTAGEM ISOLADOS -->
+                    <div class="period-filters-title-row" style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                        <div class="period-filters-title" style="margin: 0;">
+                            <i data-lucide="filter" class="period-filter-icon"></i>
+                            <span>FILTROS OPERACIONAIS DE ATRASOS E TURNOS</span>
+                        </div>
+                        <span id="delaysTableCountBadge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 800; font-size: 0.76rem; padding: 5px 12px; border-radius: 9999px;">
+                            0 equipes listadas
+                        </span>
+                    </div>
+
+                    <!-- LINHA 2: CONTROLES MULTI-FILTRO (ESTILO POPOVER RECONCILIAÇÃO) -->
+                    <div class="period-filters-controls" style="width: 100%; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px;">
+                        <!-- FILTRO 0: DATA OPERACIONAL / MÊS EXECUTIVO (OCULTO EM TEMPO REAL) -->
+                        <div class="period-filter-group" id="delaysPeriodFilterGroup" style="min-width: 175px; display: none;">
+                            <span class="period-filter-label" id="delaysPeriodFilterLabel" style="display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="calendar" style="width: 12px; height: 12px; color: #38bdf8;"></i> DATA OPERACIONAL
+                            </span>
+                            <div class="period-filter-select-wrap">
+                                <button class="btn-date-step" id="btnDelaysPrevDay" onclick="stepDelaysDate(-1)" title="Dia Anterior" style="display: none; margin-right: 4px;">
+                                    <i data-lucide="chevron-left"></i>
+                                </button>
+                                <input type="date" id="delaysDatePicker" class="period-filter-select online-bid-date-picker" onchange="onDelaysDateChange()" title="Selecione a data para auditoria de atrasos">
+                                <select id="delaysMonthPicker" class="period-filter-select" onchange="onDelaysMonthChange()" style="display: none;" title="Selecione o mês para consolidado executivo"></select>
+                                <button class="btn-date-step" id="btnDelaysNextDay" onclick="stepDelaysDate(1)" title="Próximo Dia" style="display: none; margin-left: 4px;">
+                                    <i data-lucide="chevron-right"></i>
+                                </button>
+                                <button class="btn-today-pill" id="btnDelaysGoToday" onclick="goDelaysToday()" title="Voltar para Hoje" style="display: none; margin-left: 6px;">Hoje</button>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 1: REGIÃO (TODAS / NORTE / LESTE) -->
+                        <div class="period-filter-group">
+                            <span class="period-filter-label" style="display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="map-pin" style="width: 12px; height: 12px; color: #38bdf8;"></i> REGIÃO
+                            </span>
+                            <div class="delays-pills-group" style="display: flex; gap: 4px;">
+                                <button type="button" class="delays-pill-btn active" id="btnDelaysScopeAll" onclick="setDelaysScope('ALL')">TODAS</button>
+                                <button type="button" class="delays-pill-btn" id="btnDelaysScopeNorte" onclick="setDelaysScope('NORTE')">NORTE</button>
+                                <button type="button" class="delays-pill-btn" id="btnDelaysScopeLeste" onclick="setDelaysScope('LESTE')">LESTE</button>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 2: BASE / UT (MULTI-SELEÇÃO HIERÁRQUICA: NORTE / LESTE) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label" style="display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="building-2" style="width: 12px; height: 12px; color: #38bdf8;"></i> BASE / UT
+                            </span>
+                            <button type="button" class="period-filter-pill-btn" id="btnDelaysBaseTrigger" onclick="toggleDelaysPopover('Base')">
+                                <span id="lblDelaysBase">Todas</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="delaysBaseMenu" style="min-width: 260px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" onclick="selectAllDelaysMulti('Base', true)">Todas</button>
+                                    <button type="button" class="popover-action-btn" onclick="selectAllDelaysMulti('Base', false)">Limpar</button>
+                                </div>
+                                <div class="popover-items-list">
+                                    <div class="popover-group-section">
+                                        <div class="popover-group-header">Região Norte</div>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Fagundes Filho" onchange="onDelaysMultiChange('Base')"> <span>Fagundes Filho (ENL)</span></label>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Cajati" onchange="onDelaysMultiChange('Base')"> <span>Cajati (ECL)</span></label>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Vila Medeiros" onchange="onDelaysMultiChange('Base')"> <span>Vila Medeiros (EEL)</span></label>
+                                    </div>
+                                    <div class="popover-group-section">
+                                        <div class="popover-group-header">Região Leste</div>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Monte Santo" onchange="onDelaysMultiChange('Base')"> <span>Monte Santo (EML)</span></label>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Aricanduva" onchange="onDelaysMultiChange('Base')"> <span>Aricanduva (EQL)</span></label>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Catumbi" onchange="onDelaysMultiChange('Base')"> <span>Catumbi (EVL)</span></label>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Santo André" onchange="onDelaysMultiChange('Base')"> <span>Santo André (ESL)</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 3: FROTA / VEÍCULO (MULTI-SELEÇÃO COM NOMES PUROS) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label" style="display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="truck" style="width: 12px; height: 12px; color: #38bdf8;"></i> FROTA / VEÍCULO
+                            </span>
+                            <button type="button" class="period-filter-pill-btn" id="btnDelaysVehicleTrigger" onclick="toggleDelaysPopover('Vehicle')">
+                                <span id="lblDelaysVehicle">Todas</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="delaysVehicleMenu" style="min-width: 210px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" onclick="selectAllDelaysMulti('Vehicle', true)">Todas</button>
+                                    <button type="button" class="popover-action-btn" onclick="selectAllDelaysMulti('Vehicle', false)">Limpar</button>
+                                </div>
+                                <div class="popover-items-list">
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="CESTO" onchange="onDelaysMultiChange('Vehicle')"> <span>Cesto Aéreo</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="LEVE" onchange="onDelaysMultiChange('Vehicle')"> <span>Leve</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="MOTO" onchange="onDelaysMultiChange('Vehicle')"> <span>Moto</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="RAMAL" onchange="onDelaysMultiChange('Vehicle')"> <span>Projeto Ramal</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="STC" onchange="onDelaysMultiChange('Vehicle')"> <span>STC Leste</span></label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 4: TURNO & HORÁRIO (AGRUPAMENTO OFICIAL ONLINE / TEMPO REAL) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label" style="display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="clock" style="width: 12px; height: 12px; color: #38bdf8;"></i> TURNO & HORÁRIO
+                            </span>
+                            <button type="button" class="period-filter-pill-btn" id="btnDelaysShiftTrigger" onclick="toggleDelaysPopover('Shift')">
+                                <span id="lblDelaysShift">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="delaysShiftMenu" style="min-width: 210px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" onclick="selectAllDelaysMulti('Shift', true)">Todos</button>
+                                    <button type="button" class="popover-action-btn" onclick="selectAllDelaysMulti('Shift', false)">Limpar</button>
+                                </div>
+                                <div class="popover-items-list">
+                                    <div class="popover-group-section">
+                                        <div class="popover-group-header">Turno Manhã</div>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="06:00" onchange="onDelaysMultiChange('Shift')"> <span>06:00</span></label>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="08:00" onchange="onDelaysMultiChange('Shift')"> <span>08:00</span></label>
+                                    </div>
+                                    <div class="popover-group-section">
+                                        <div class="popover-group-header">Turno Tarde</div>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="12:00" onchange="onDelaysMultiChange('Shift')"> <span>12:00</span></label>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="14:00" onchange="onDelaysMultiChange('Shift')"> <span>14:00</span></label>
+                                    </div>
+                                    <div class="popover-group-section">
+                                        <div class="popover-group-header">Turno Noite</div>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="20:00" onchange="onDelaysMultiChange('Shift')"> <span>20:00</span></label>
+                                        <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="22:00" onchange="onDelaysMultiChange('Shift')"> <span>22:00</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FILTRO 5: STATUS LOGIN (PARIDADE STATUS PROG: LOGADO, PROGRAMADO, EM ATRASO, NO PRAZO) -->
+                        <div class="period-filter-group dropdown-popover-container">
+                            <span class="period-filter-label" style="display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="user-check" style="width: 12px; height: 12px; color: #38bdf8;"></i> STATUS LOGIN
+                            </span>
+                            <button type="button" class="period-filter-pill-btn" id="btnDelaysStatusTrigger" onclick="toggleDelaysPopover('Status')">
+                                <span id="lblDelaysStatus">Todos</span>
+                                <i data-lucide="chevron-right" class="pill-arrow"></i>
+                            </button>
+                            <div class="period-filter-popover" id="delaysStatusMenu" style="min-width: 210px;">
+                                <div class="popover-actions">
+                                    <button type="button" class="popover-action-btn" onclick="selectAllDelaysMulti('Status', true)">Todos</button>
+                                    <button type="button" class="popover-action-btn" onclick="selectAllDelaysMulti('Status', false)">Limpar</button>
+                                </div>
+                                <div class="popover-items-list">
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Logado" onchange="onDelaysMultiChange('Status')"> <span>Logado</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Programado" onchange="onDelaysMultiChange('Status')"> <span>Programado</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Em Atraso" onchange="onDelaysMultiChange('Status')"> <span>Em Atraso</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="No Prazo" onchange="onDelaysMultiChange('Status')"> <span>No Prazo</span></label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CONTROLE ESPECIAL: STC LESTE (PILL EQUILIBRADA) -->
+                        <div class="period-filter-group" style="align-self: flex-end;">
+                            <span class="period-filter-label" style="display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="layers" style="width: 12px; height: 12px; color: #38bdf8;"></i> STC LESTE
+                            </span>
+                            <button type="button" class="period-filter-pill-btn" id="btnToggleStcLestePill" onclick="toggleDelaysStcLeste()" title="Clique para desconsiderar ou incluir equipes STC Leste" style="min-width: 130px;">
+                                <span id="delaysStcStatusText">CONTABILIZAR</span>
+                                <i data-lucide="check" style="width: 13px; height: 13px; color: #10b981;" id="delaysStcIcon"></i>
+                            </button>
+                        </div>
+
+                        <!-- BOTÃO EXPORTAR EXCEL (ESTILO BOTÃO VIEW PADRÃO) -->
+                        <div class="period-filter-group" style="align-self: flex-end; margin-left: auto;">
+                            <button type="button" class="btn-action-view" onclick="exportDelaysExcel()" title="Exportar Relatório Analítico e Financeiro em Excel" style="border-radius: 12px; padding: 7px 16px;">
+                                <i data-lucide="file-spreadsheet" style="width: 14px; height: 14px; color: #10b981;"></i>
+                                <span style="font-size: 0.8rem; font-weight: 700;">EXPORTAR EXCEL</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. GRADE DE KPIS MONUMENTAIS (OPERACIONAL, HORAS & IMPACTO FINANCEIRO) -->
+                <div class="delays-kpi-grid">
+                    <!-- KPI 1: Perda Financeira Estimada -->
+                    <div class="delays-kpi-card delays-kpi-card-financial">
+                        <div class="delays-kpi-header">
+                            <div class="delays-kpi-title-row">
+                                <span class="delays-kpi-label">PERDA FINANCEIRA ESTIMADA</span>
+                                <span class="badge-tag-rose">CUSTO OCIOSIDADE</span>
+                            </div>
+                            <i data-lucide="dollar-sign" class="delays-kpi-icon-glow text-rose"></i>
+                        </div>
+                        <div class="delays-kpi-val-row">
+                            <span class="delays-kpi-main-val text-rose font-mono" id="delaysKpiTotalPerda">R$ 0,00</span>
+                        </div>
+                        <div class="delays-kpi-sub-breakdown">
+                            <span class="delays-sub-pill" id="delaysKpiNortePerda">Norte: R$ 0,00</span>
+                            <span class="delays-sub-pill" id="delaysKpiLestePerda">Leste: R$ 0,00</span>
+                            <span class="delays-sub-pill pill-secondary" id="delaysKpiCustoMedio">Média/Atrasada: R$ 0,00</span>
+                        </div>
+                    </div>
+
+                    <!-- KPI 2: Horas Perdidas em Atraso -->
+                    <div class="delays-kpi-card delays-kpi-card-delay">
+                        <div class="delays-kpi-header">
+                            <div class="delays-kpi-title-row">
+                                <span class="delays-kpi-label">HORAS PERDIDAS EM ATRASO</span>
+                                <span class="badge-tag-amber">TURNO x LOGIN</span>
+                            </div>
+                            <i data-lucide="clock" class="delays-kpi-icon-glow text-amber"></i>
+                        </div>
+                        <div class="delays-kpi-val-row">
+                            <span class="delays-kpi-main-val text-amber font-mono" id="delaysKpiTotalTempoAtraso">00h 00m</span>
+                        </div>
+                        <div class="delays-kpi-sub-breakdown">
+                            <span class="delays-sub-pill text-amber" id="delaysKpiTotalAtrasadas">0 equipes em atraso</span>
+                            <span class="delays-sub-pill pill-secondary" id="delaysKpiAtrasadasPct">0% do total</span>
+                        </div>
+                    </div>
+
+                    <!-- KPI 3: Saldo Positivo / Horas no Prazo -->
+                    <div class="delays-kpi-card delays-kpi-card-punctual">
+                        <div class="delays-kpi-header">
+                            <div class="delays-kpi-title-row">
+                                <span class="delays-kpi-label">SALDO PONTUAL / NO PRAZO</span>
+                                <span class="badge-tag-cyan">HORAS ANTECIPADAS</span>
+                            </div>
+                            <i data-lucide="shield-check" class="delays-kpi-icon-glow text-cyan"></i>
+                        </div>
+                        <div class="delays-kpi-val-row">
+                            <span class="delays-kpi-main-val text-cyan font-mono" id="delaysKpiTotalTempoNoPrazo">00h 00m</span>
+                        </div>
+                        <div class="delays-kpi-sub-breakdown">
+                            <span class="delays-sub-pill text-cyan" id="delaysKpiTotalNoPrazo">0 equipes pontuais</span>
+                            <span class="delays-sub-pill pill-secondary" id="delaysKpiNoPrazoPct">0% do total</span>
+                        </div>
+                    </div>
+
+                    <!-- KPI 4: Assertividade de Entrada -->
+                    <div class="delays-kpi-card delays-kpi-card-assertive">
+                        <div class="delays-kpi-header">
+                            <div class="delays-kpi-title-row">
+                                <span class="delays-kpi-label">ASSERTIVIDADE GERAL</span>
+                                <span class="badge-tag-emerald">PONTUALIDADE</span>
+                            </div>
+                            <i data-lucide="activity" class="delays-kpi-icon-glow text-emerald"></i>
+                        </div>
+                        <div class="delays-kpi-val-row">
+                            <span class="delays-kpi-main-val text-emerald font-mono" id="delaysKpiTaxaPontualidade">100%</span>
+                        </div>
+                        <div class="delays-kpi-sub-breakdown">
+                            <span class="delays-sub-pill" id="delaysKpiTotalEquipes">0 equipes entregues</span>
+                            <span class="delays-sub-pill pill-secondary">Escopo Selecionado</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. ÁREA CENTRAL DINÂMICA: MODO DIÁRIO/REALTIME (TURNOS & TOP RANKING) OU MENSAL (CURVA & REINCIDENTES) -->
+                
+                <!-- CONTAINER 4A: VISÃO OPERACIONAL DIÁRIA / REALTIME -->
+                <div id="delaysContainerDailyView" style="display: block;">
+                    <!-- GRADE DOS 3 TURNOS (MANHÃ, TARDE, NOITE COM HORÁRIOS) -->
+                    <div class="delays-shifts-section glass-card">
+                        <div class="delays-section-header">
+                            <div class="delays-section-title-wrap">
+                                <i data-lucide="calendar-clock" class="text-cyan"></i>
+                                <h4>DETALHAMENTO ANALÍTICO POR TURNO & HORÁRIO DE ENTRADA</h4>
+                            </div>
+                            <span class="delays-section-meta">Atrasos e Custo Financeiro por Janela de Turno</span>
+                        </div>
+
+                        <div class="delays-shifts-grid">
+                            <!-- Card Turno Manhã -->
+                            <div class="delays-shift-card shift-card-morning">
+                                <div class="delays-shift-header">
+                                    <div class="delays-shift-title">
+                                        <i data-lucide="sun" class="text-sky"></i>
+                                        <span>TURNO MANHÃ</span>
+                                    </div>
+                                    <span class="delays-shift-badge-loss" id="delaysShiftLossManha">R$ 0,00</span>
+                                </div>
+                                <div class="delays-shift-summary-row">
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">Atrasadas</span>
+                                        <span class="stat-val text-rose font-mono" id="delaysShiftAtrasadasManha">0</span>
+                                    </div>
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">No Prazo</span>
+                                        <span class="stat-val text-emerald font-mono" id="delaysShiftNoPrazoManha">0</span>
+                                    </div>
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">Tempo Atraso</span>
+                                        <span class="stat-val text-amber font-mono" id="delaysShiftTempoManha">00h 00m</span>
+                                    </div>
+                                </div>
+                                <div class="delays-slot-rows" id="delaysShiftSlotsManha"></div>
+                            </div>
+
+                            <!-- Card Turno Tarde -->
+                            <div class="delays-shift-card shift-card-afternoon">
+                                <div class="delays-shift-header">
+                                    <div class="delays-shift-title">
+                                        <i data-lucide="sunset" class="text-amber"></i>
+                                        <span>TURNO TARDE</span>
+                                    </div>
+                                    <span class="delays-shift-badge-loss" id="delaysShiftLossTarde">R$ 0,00</span>
+                                </div>
+                                <div class="delays-shift-summary-row">
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">Atrasadas</span>
+                                        <span class="stat-val text-rose font-mono" id="delaysShiftAtrasadasTarde">0</span>
+                                    </div>
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">No Prazo</span>
+                                        <span class="stat-val text-emerald font-mono" id="delaysShiftNoPrazoTarde">0</span>
+                                    </div>
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">Tempo Atraso</span>
+                                        <span class="stat-val text-amber font-mono" id="delaysShiftTempoTarde">00h 00m</span>
+                                    </div>
+                                </div>
+                                <div class="delays-slot-rows" id="delaysShiftSlotsTarde"></div>
+                            </div>
+
+                            <!-- Card Turno Noite -->
+                            <div class="delays-shift-card shift-card-night">
+                                <div class="delays-shift-header">
+                                    <div class="delays-shift-title">
+                                        <i data-lucide="moon" class="text-purple"></i>
+                                        <span>TURNO NOITE</span>
+                                    </div>
+                                    <span class="delays-shift-badge-loss" id="delaysShiftLossNoite">R$ 0,00</span>
+                                </div>
+                                <div class="delays-shift-summary-row">
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">Atrasadas</span>
+                                        <span class="stat-val text-rose font-mono" id="delaysShiftAtrasadasNoite">0</span>
+                                    </div>
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">No Prazo</span>
+                                        <span class="stat-val text-emerald font-mono" id="delaysShiftNoPrazoNoite">0</span>
+                                    </div>
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">Tempo Atraso</span>
+                                        <span class="stat-val text-amber font-mono" id="delaysShiftTempoNoite">00h 00m</span>
+                                    </div>
+                                </div>
+                                <div class="delays-slot-rows" id="delaysShiftSlotsNoite"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SUB-GRID: TOP EQUIPES EM ATRASO + TOP JUSTIFICATIVAS (DIÁRIO / REALTIME) -->
+                    <div class="delays-monthly-split-grid" style="margin-top: 16px;">
+                        <!-- Coluna 1: TOP Equipes que Mais Atrasaram -->
+                        <div class="delays-split-col glass-card">
+                            <div class="delays-section-header">
+                                <div class="delays-section-title-wrap">
+                                    <i data-lucide="flame" class="text-rose"></i>
+                                    <h4>TOP EQUIPES EM ATRASO & IMPACTO</h4>
+                                </div>
+                                <span class="delays-section-meta">Clique no status para justificar</span>
+                            </div>
+                            <div class="delays-top-teams-list" id="delaysTopTeamsList"></div>
+                        </div>
+
+                        <!-- Coluna 2: TOP Justificativas & Impacto Financeiro Diário -->
+                        <div class="delays-split-col glass-card">
+                            <div class="delays-section-header">
+                                <div class="delays-section-title-wrap">
+                                    <i data-lucide="file-text" class="text-amber"></i>
+                                    <h4>TOP JUSTIFICATIVAS & IMPACTO FINANCEIRO</h4>
+                                </div>
+                                <span class="delays-section-meta">Causas raiz com maior prejuízo</span>
+                            </div>
+                            <div class="delays-justifications-list" id="delaysDailyJustificationsList"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTAINER 4B: VISÃO EXECUTIVA C-LEVEL ACUMULADA DO MÊS -->
+                <div id="delaysContainerMonthlyView" style="display: none;">
+                    <!-- CURVA DIÁRIA DE PREJUÍZO E ATRASOS NO MÊS -->
+                    <div class="delays-monthly-trend-section glass-card">
+                        <div class="delays-section-header">
+                            <div class="delays-section-title-wrap">
+                                <i data-lucide="trending-down" class="text-rose"></i>
+                                <h4>EVOLUÇÃO DIÁRIA DE PERDA FINANCEIRA & HORAS DE ATRASO NO MÊS</h4>
+                            </div>
+                            <span class="delays-section-meta">Consolidado dia a dia até a data atual • Clique em qualquer dia para inspecionar</span>
+                        </div>
+                        <!-- Gráfico Interativo Chart.js -->
+                        <div class="delays-chart-container" style="position: relative; height: 260px; width: 100%; margin-bottom: 14px;">
+                            <canvas id="delaysMonthlyTrendChart"></canvas>
+                        </div>
+                        <!-- Grid de Barras Diárias Resumidas -->
+                        <div class="delays-daily-trend-grid" id="delaysDailyTrendGrid"></div>
+                    </div>
+
+                    <!-- SUB-GRID: BASES NO MÊS + TOP REINCIDENTES NO MÊS -->
+                    <div class="delays-monthly-split-grid" style="margin-top: 16px;">
+                        <!-- Coluna 1: Perdas por Base Operacional -->
+                        <div class="delays-split-col glass-card">
+                            <div class="delays-section-header">
+                                <div class="delays-section-title-wrap">
+                                    <i data-lucide="building" class="text-cyan"></i>
+                                    <h4>PERDA FINANCEIRA POR BASE OPERACIONAL NO MÊS</h4>
+                                </div>
+                            </div>
+                            <div class="delays-bases-monthly-list" id="delaysBasesMonthlyList"></div>
+                        </div>
+
+                        <!-- Coluna 2: Ranking TOP Equipes Reincidentes no Mês -->
+                        <div class="delays-split-col glass-card">
+                            <div class="delays-section-header">
+                                <div class="delays-section-title-wrap">
+                                    <i data-lucide="alert-octagon" class="text-amber"></i>
+                                    <h4>TOP EQUIPES REINCIDENTES EM ATRASO NO MÊS</h4>
+                                </div>
+                            </div>
+                            <div class="delays-recurrent-teams-list" id="delaysRecurrentTeamsList"></div>
+                        </div>
+                    </div>
+
+                    <!-- SEÇÃO MENSAL: TOP JUSTIFICATIVAS DO MÊS (FULL-WIDTH) -->
+                    <div class="delays-justifications-section glass-card" style="margin-top: 16px;">
+                        <div class="delays-section-header">
+                            <div class="delays-section-title-wrap">
+                                <i data-lucide="file-check-2" class="text-emerald"></i>
+                                <h4>TOP JUSTIFICATIVAS & IMPACTO FINANCEIRO ACUMULADO NO MÊS</h4>
+                            </div>
+                            <span class="delays-section-meta">Ranking das causas de atraso de maior custo para o contrato no mês</span>
+                        </div>
+                        <div class="delays-justifications-grid" id="delaysMonthlyJustificationsGrid"></div>
+                    </div>
+                </div>
+
+                <!-- 5. TABELA ANALÍTICA DETALHADA FORENSE (CLUSTER COLAPSÁVEL + TELA CHEIA + SELETOR DE COLUNAS) -->
+                <div class="delivery-table-collapsible-wrapper delays-table-collapsible-wrapper" id="delaysTableCardWrapper" style="margin-top: 20px;">
+                    <div class="delivery-table-collapsible-header">
+                        <div>
+                            <h4 style="font-size: 1rem; font-weight: 800; letter-spacing: 0.04em; color: var(--text-primary); margin-bottom: 4px;" id="delaysTableMainTitle">
+                                AUDITORIA ANALÍTICA DE EQUIPES & PONTUALIDADE
+                            </h4>
+                            <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="delaysTableSubtitle">
+                                Exibindo relação nominal detalhada de pontualidade, horários e perdas financeiras.
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <span class="history-count-badge" id="delaysResultsCountBadge" style="font-size: 0.78rem;">0 equipes listadas</span>
+
+                            <!-- Botão e Popover de Seleção de Colunas -->
+                            <div class="delivery-col-dropdown-wrapper">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnDelaysColPicker" onclick="toggleDelaysColPicker(event)" style="padding: 7px 13px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px;">
+                                    <i data-lucide="sliders-horizontal" style="width: 14px; height: 14px;"></i>
+                                    <span>COLUNAS</span>
+                                    <span id="delaysColCountPill" class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 0.7rem; padding: 1px 6px; border-radius: 9999px;">15/15</span>
+                                </button>
+                                <div id="delaysColPickerDropdown" class="delivery-col-picker-menu" style="display: none;" onclick="event.stopPropagation()">
+                                    <div class="col-picker-header">
+                                        <div style="font-weight: 800; font-size: 0.8rem; color: #fff;">Personalizar Colunas</div>
+                                        <div style="display: flex; gap: 8px;">
+                                            <button type="button" class="btn-text-xs" onclick="setAllDelaysColumns(true)">Todas</button>
+                                            <span style="color: var(--text-secondary);">•</span>
+                                            <button type="button" class="btn-text-xs" onclick="resetDelaysColumnsToDefault()">Padrão</button>
+                                        </div>
+                                    </div>
+                                    <div class="col-picker-list" id="delaysColPickerList">
+                                        <!-- Checkboxes das colunas gerados dinamicamente via JS -->
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Botão Tela Cheia (ONE PAGE) -->
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnDelaysFullscreen" onclick="toggleDelaysFullscreen()" style="padding: 7px 13px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px;" title="Ver tabela em Tela Cheia (ONE PAGE)">
+                                <i data-lucide="maximize-2" id="iconDelaysFullscreen" style="width: 14px; height: 14px;"></i>
+                                <span id="textDelaysFullscreen">TELA CHEIA (ONE PAGE)</span>
+                            </button>
+
+                            <!-- Botão Recolher / Expandir -->
+                            <button class="table-collapse-trigger-btn" id="btnToggleDelaysTable" onclick="toggleDelaysTableCollapse()">
+                                <span id="textToggleDelaysTable">RECOLHER TABELA</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="delivery-table-body-container" id="delaysTableCollapseBody">
+                        <div class="delivery-table-scroll-wrapper delays-table-scroll-wrapper" id="delaysTableScrollWrapper" style="margin-top: 12px;">
+                            <table class="data-table delivery-enhanced-table delays-enhanced-table" id="delaysAnalyticsTable">
+                                <thead id="delaysTableHead">
+                                    <!-- Cabeçalhos das 15 colunas com ordenação gerados reativamente via renderDelaysTableHead() -->
+                                </thead>
+                                <tbody id="delaysTableBody">
+                                    <tr>
+                                        <td colspan="15" style="text-align: center; padding: 24px; color: #94a3b8;">
+                                            Carregando dados de atrasos...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+                <!-- FIM DO MÓDULO 2 (moduleDeliveryView) -->
 
         <!-- ================================================================= -->
         <!-- MÓDULO 3: PRIORIZADOR - ORDENS CRÍTICAS (TIBCO SPOTFIRE)          -->
@@ -6590,7 +7144,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.9.1-fix-console-errors"></script>
+<script src="/static/js/app.js?v=5.9.2-fix-syntax-delays"></script>
 
 </body>
 </html>
