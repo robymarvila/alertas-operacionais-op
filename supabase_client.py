@@ -618,11 +618,12 @@ def fetch_team_order_history(team_code: str, date_ref: str = None) -> list:
         pass
     return []
 
-def fetch_latest_delivery_snapshot_from_supabase() -> dict:
-    """Busca estritamente os registros da última sessão de entrega ativa gravada no Supabase."""
+def fetch_latest_delivery_snapshot_from_supabase(date_ref: str = None) -> dict:
+    """Busca estritamente os registros da última sessão de entrega ativa gravada no Supabase (filtrando por date_ref se informado)."""
     try:
-        # 1. Busca as sessões mais recentes que contenham equipes
-        endpoint_sess = f"{BASE_REST_URL}/team_delivery_sessions?total_teams=gt.0&order=captured_at.desc&limit=5"
+        # 1. Busca as sessões mais recentes que contenham equipes (filtrando estritamente pela data se fornecida)
+        date_q = f"&date_ref=eq.{date_ref}" if date_ref else ""
+        endpoint_sess = f"{BASE_REST_URL}/team_delivery_sessions?total_teams=gt.0{date_q}&order=captured_at.desc&limit=5"
         resp_sess = requests.get(endpoint_sess, headers=get_headers(), timeout=8)
         
         if resp_sess.status_code == 200:
@@ -633,6 +634,9 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
                 s_sync_source = s.get("sync_source")
                 s_captured_at = s.get("captured_at")
                 if not s_id:
+                    continue
+
+                if date_ref and s_date != date_ref:
                     continue
 
                 date_filter = f"date_ref=eq.{s_date}&" if s_date else ""
@@ -652,7 +656,8 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
                         }
 
         # Fallback: busca os últimos registros deduplicando por team_code
-        endpoint = f"{BASE_REST_URL}/team_delivery_records?order=captured_at.desc&limit=300"
+        date_fb = f"?date_ref=eq.{date_ref}&" if date_ref else "?"
+        endpoint = f"{BASE_REST_URL}/team_delivery_records{date_fb}order=captured_at.desc&limit=300"
         resp = requests.get(endpoint, headers=get_headers(), timeout=8)
         if resp.status_code == 200:
             raw_records = resp.json() or []
@@ -660,22 +665,25 @@ def fetch_latest_delivery_snapshot_from_supabase() -> dict:
             dedup = []
             latest_captured_at = None
             for r in raw_records:
+                if date_ref and r.get("date_ref") != date_ref:
+                    continue
                 if not latest_captured_at and r.get("captured_at"):
                     latest_captured_at = r.get("captured_at")
                 code = r.get("team_code")
                 if code and code not in seen:
                     seen.add(code)
                     dedup.append(r)
-            return {"status": "success", "data": dedup, "captured_at": latest_captured_at}
-        return {"status": "error", "message": resp.text, "data": []}
+            ret_d = date_ref or (raw_records[0].get("date_ref") if raw_records else None)
+            return {"status": "success", "data": dedup, "captured_at": latest_captured_at, "date_ref": ret_d}
+        return {"status": "error", "message": resp.text, "data": [], "date_ref": date_ref}
     except Exception as e:
-        return {"status": "error", "message": str(e), "data": []}
+        return {"status": "error", "message": str(e), "data": [], "date_ref": date_ref}
 
 def fetch_delivery_records_by_date(date_str: str) -> list:
     """Busca registros históricos de equipes entregues para uma data específica (YYYY-MM-DD)."""
     try:
         # Tenta buscar a sessão de entrega consolidada mais recente da data (altamente otimizado via índice de sessão)
-        sess_url = f"{BASE_REST_URL}/team_delivery_sessions?date_ref=eq.{date_str}&order=id.desc&limit=1"
+        sess_url = f"{BASE_REST_URL}/team_delivery_sessions?date_ref=eq.{date_str}&order=captured_at.desc&limit=1"
         resp_s = requests.get(sess_url, headers=get_headers(), timeout=5)
         if resp_s.status_code == 200 and resp_s.json():
             last_sess_id = resp_s.json()[0].get("id")

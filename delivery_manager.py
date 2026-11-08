@@ -714,6 +714,15 @@ class DeliveryManager:
                             # Se for após as 04:30 da manhã e o turno for da noite anterior (20h/22h) já inativo, descarta
                             if (now.hour > 4 or (now.hour == 4 and now.minute >= 31)) and not t.get("is_active", True) and t.get("shift_code") in ["20:00", "22:00"]:
                                 continue
+                            # Se a equipe não está ativa e nunca foi vista ativa hoje no dia operacional, descarta
+                            if not t.get("is_active", True) and not t.get("seen_active_today"):
+                                continue
+                            # Se a equipe estiver inativa e pertencer a um turno futuro cujo horário de início ainda não ocorreu hoje, descarta
+                            now_min_check = now.hour * 60 + now.minute
+                            sc_chk = t.get("shift_code", "08:00")
+                            sc_start_chk = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc_chk, 480)
+                            if not t.get("is_active", True) and sc_start_chk > now_min_check:
+                                continue
                             if t.get("hora_a_caminho"):
                                 h_raw = str(t["hora_a_caminho"]).strip()
                                 if h_raw not in ["--", "-", "None", ""]:
@@ -772,16 +781,18 @@ class DeliveryManager:
         # Sincronização Inteligente no Boot com a Nuvem Supabase
         try:
             from supabase_client import fetch_latest_delivery_snapshot_from_supabase, fetch_bid_records_by_date
-            cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+            current_op_date = self.get_operational_date()
+            cloud_snap = fetch_latest_delivery_snapshot_from_supabase(date_ref=current_op_date)
             if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
                 c_date = cloud_snap.get("date_ref")
-                current_op_date = self.get_operational_date()
-                if not c_date or c_date == current_op_date:
+                if c_date and c_date == current_op_date:
                     src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase (Boot)"
                     cap_at = cloud_snap.get("captured_at")
                     print(f"[DELIVERY] Boot sync: Hidratando {len(cloud_snap['data'])} equipes do Supabase ({cap_at})...", flush=True)
                     self.process_raw_enel_records(cloud_snap["data"], source_label=src_lbl, captured_at=cap_at)
                     self.save_local_cache()
+                else:
+                    print(f"[DELIVERY] Boot sync: Snapshot da nuvem ignorado (data {c_date} != {current_op_date}). Acumulador inicia limpo.", flush=True)
 
             # Hidrata também o BID para o dia corrente
             current_op = self.get_operational_date()
@@ -1501,6 +1512,7 @@ class DeliveryManager:
                 "last_seen_time": now.strftime("%H:%M:%S")
             }
             if is_active_val:
+                team_obj["seen_active_today"] = True
                 # Se a equipe já existia no acumulado com valores ricos e team_obj veio com vazios (ex: sync de nuvem):
                 if team_code in self.daily_accumulated_teams:
                     prev = self.daily_accumulated_teams[team_code]
@@ -1511,12 +1523,17 @@ class DeliveryManager:
 
             # Acumula no histórico do dia
             if team_code not in self.daily_accumulated_teams:
+                # Se vier inativa em carga de snapshot e nunca foi vista ativa hoje no dia operacional, não adiciona
+                if not is_active_val and not team_obj.get("seen_active_today"):
+                    continue
                 team_copy = dict(team_obj)
                 team_copy["first_seen_time"] = now.strftime("%H:%M:%S")
                 self.daily_accumulated_teams[team_code] = team_copy
             else:
                 # Atualiza com as informações mais recentes mantendo first_seen_time
                 existing = self.daily_accumulated_teams[team_code]
+                if is_active_val:
+                    existing["seen_active_today"] = True
                 f_seen = existing.get("first_seen_time", now.strftime("%H:%M:%S"))
                 for k, v in team_obj.items():
                     if k == "first_seen_time":
@@ -1532,12 +1549,23 @@ class DeliveryManager:
 
         # Marca equipes acumuladas que saíram da lista ativa nesta coleta
         active_codes = set(active_dict.keys())
+        now_min = now.hour * 60 + now.minute
         for code, t in list(self.daily_accumulated_teams.items()):
             if code not in active_codes:
+                # Se a equipe nunca foi vista ativa hoje no dia operacional, purga imediatamente (registro fantasma)
+                if not t.get("seen_active_today"):
+                    del self.daily_accumulated_teams[code]
+                    continue
                 t["is_active"] = False
                 t["status"] = "Deslogada / Turno Concluído"
                 # Se for após as 04:30 e for turno da noite anterior (20h/22h), descarta do acumulado do dia atual
                 if (now.hour > 4 or (now.hour == 4 and now.minute >= 31)) and t.get("shift_code") in ["20:00", "22:00"]:
+                    del self.daily_accumulated_teams[code]
+                    continue
+                # Se a equipe estiver inativa e pertencer a um turno futuro cujo início ainda não ocorreu hoje, descarta
+                sc_cand = t.get("shift_code", "08:00")
+                sc_min = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc_cand, 480)
+                if sc_min > now_min:
                     del self.daily_accumulated_teams[code]
 
         self.active_teams = active_processed
@@ -1728,8 +1756,8 @@ class DeliveryManager:
             from supabase_client import fetch_delivery_records_by_date, fetch_latest_delivery_snapshot_from_supabase
             if is_today:
                 if not self.active_teams and not self.daily_accumulated_teams:
-                    cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
-                    if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
+                    cloud_snap = fetch_latest_delivery_snapshot_from_supabase(date_ref=current_op)
+                    if cloud_snap.get("status") == "success" and cloud_snap.get("data") and cloud_snap.get("date_ref") == current_op:
                         self.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase", captured_at=cloud_snap.get("captured_at"))
 
                 if self.active_teams:
@@ -3377,6 +3405,16 @@ class DeliveryManager:
             m = mins % 60
             return f"{h:02d}h {m:02d}m"
 
+        def _fmt_min_or_hm(mins):
+            if not mins or mins <= 0:
+                return "0 min"
+            mins_r = int(round(mins))
+            if mins_r < 60:
+                return f"{mins_r} min"
+            h = mins_r // 60
+            m = mins_r % 60
+            return f"{h:02d}h {m:02d}m"
+
         def _fmt_brl(val):
             if not val or val <= 0:
                 return "R$ 0,00"
@@ -3448,12 +3486,38 @@ class DeliveryManager:
             if now_ts - c_ts < ttl:
                 return c_data
 
+        now_dt = datetime.now(BR_TZ)
+        current_clock_minutes = now_dt.hour * 60 + now_dt.minute
+
         def _matches_filters(t_obj, pricing):
-            # 0. Regra Executiva/Operacional: Em HISTÓRICO DIA A DIA e ACUMULADO DO MÊS,
-            # desconsiderar equipes apenas programadas que não efetuaram login (mostrar somente equipes que logaram)
+            # 0. Regra Executiva/Operacional:
+            # - No modo TEMPO REAL (HOJE):
+            #   Considerar somente equipes que efetivamente logaram (possuem marcação) ou que estão ativas no portal da Enel.
+            #   Descartar equipes inativas de turnos futuros (cujo horário de início ainda não ocorreu hoje).
+            # - Nos modos HISTÓRICO DIA A DIA e ACUMULADO DO MÊS:
+            #   Desconsiderar equipes apenas programadas que não efetuaram login (mostrar somente equipes que logaram).
             has_marc = bool(t_obj.get("marcacao") and str(t_obj.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
+            is_active = bool(t_obj.get("is_active", False))
+
             if mode in ["daily", "monthly"]:
                 if not has_marc:
+                    return False
+            elif mode == "realtime":
+                if not has_marc and not is_active:
+                    return False
+
+                # Trava Temporal: se o turno é futuro e a equipe não está ativa no portal agora, descarta
+                raw_sc = str(t_obj.get("shift_code") or "08:00").strip()
+                t_turno = str(t_obj.get("turno") or "").lower()
+                if "tarde" in t_turno or raw_sc in ["11:30", "12:00", "12:30", "13:00", "14:00", "15:00", "15:30"]:
+                    sc_canon = "12:00" if raw_sc in ["11:30", "12:00", "12:30", "13:00"] else "14:00"
+                elif "noite" in t_turno or raw_sc in ["18:00", "18:30", "19:00", "20:00", "20:30", "21:00", "22:00"]:
+                    sc_canon = "20:00" if raw_sc in ["18:00", "18:30", "19:00", "20:00", "20:30", "21:00"] else "22:00"
+                else:
+                    sc_canon = "06:00" if raw_sc in ["06:00", "06:30", "07:00", "07:30"] else "08:00"
+
+                sc_start_min = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc_canon, 480)
+                if sc_start_min > current_clock_minutes and not is_active:
                     return False
 
             code = str(t_obj.get("team_code") or "").strip().upper()
@@ -3557,11 +3621,28 @@ class DeliveryManager:
 
             daily_trend = []
             tot_monthly_teams = 0
+            tot_monthly_teams_norte = 0
+            tot_monthly_teams_leste = 0
+
             tot_monthly_atrasadas = 0
+            tot_monthly_atrasadas_norte = 0
+            tot_monthly_atrasadas_leste = 0
+
             tot_monthly_no_prazo = 0
+            tot_monthly_no_prazo_norte = 0
+            tot_monthly_no_prazo_leste = 0
+
             tot_monthly_tempo_atraso_min = 0
+            tot_monthly_tempo_atraso_norte_min = 0
+            tot_monthly_tempo_atraso_leste_min = 0
+
             tot_monthly_tempo_no_prazo_min = 0
+            tot_monthly_tempo_no_prazo_norte_min = 0
+            tot_monthly_tempo_no_prazo_leste_min = 0
+
             tot_monthly_perda_financeira = 0.0
+            tot_monthly_perda_financeira_norte = 0.0
+            tot_monthly_perda_financeira_leste = 0.0
 
             # Bases oficiais
             bases_accum = {
@@ -3632,6 +3713,12 @@ class DeliveryManager:
                         continue
 
                     d_count += 1
+                    is_norte = (pricing["contract_regiao"] == "NORTE")
+                    if is_norte:
+                        tot_monthly_teams_norte += 1
+                    else:
+                        tot_monthly_teams_leste += 1
+
                     d_min = pricing["delay_minutes"]
                     loss = pricing["financial_loss"]
 
@@ -3665,6 +3752,15 @@ class DeliveryManager:
                         d_atrasadas += 1
                         d_tempo_atraso += d_min
                         d_perda_fin += loss
+
+                        if is_norte:
+                            tot_monthly_atrasadas_norte += 1
+                            tot_monthly_tempo_atraso_norte_min += d_min
+                            tot_monthly_perda_financeira_norte += loss
+                        else:
+                            tot_monthly_atrasadas_leste += 1
+                            tot_monthly_tempo_atraso_leste_min += d_min
+                            tot_monthly_perda_financeira_leste += loss
 
                         if matched_base in bases_accum:
                             bases_accum[matched_base]["atrasadas"] += 1
@@ -3702,6 +3798,13 @@ class DeliveryManager:
                         d_no_prazo += 1
                         d_tempo_no_prazo += abs(d_min)
                         shifts_accum[t_shift_key]["no_prazo"] += 1
+
+                        if is_norte:
+                            tot_monthly_no_prazo_norte += 1
+                            tot_monthly_tempo_no_prazo_norte_min += abs(d_min)
+                        else:
+                            tot_monthly_no_prazo_leste += 1
+                            tot_monthly_tempo_no_prazo_leste_min += abs(d_min)
 
                     if matched_base in bases_accum:
                         bases_accum[matched_base]["equipes"] += 1
@@ -3758,6 +3861,7 @@ class DeliveryManager:
             monthly_table_teams = []
             for r in top_recurrent:
                 monthly_table_teams.append({
+                    "ut": f"UT {str(r.get('region', 'Norte')).title()}",
                     "team_code": r["team_code"],
                     "base": r["base"],
                     "region": r["region"],
@@ -3778,6 +3882,11 @@ class DeliveryManager:
                     "has_justification": False
                 })
 
+            custo_medio_mensal_atrasada = (tot_monthly_perda_financeira / tot_monthly_atrasadas) if tot_monthly_atrasadas > 0 else 0.0
+            taxa_pont_mensal_norte = round((tot_monthly_no_prazo_norte / tot_monthly_teams_norte * 100), 1) if tot_monthly_teams_norte > 0 else 100.0
+            taxa_pont_mensal_leste = round((tot_monthly_no_prazo_leste / tot_monthly_teams_leste * 100), 1) if tot_monthly_teams_leste > 0 else 100.0
+            taxa_pont_mensal_geral = round((tot_monthly_no_prazo / tot_monthly_teams * 100), 1) if tot_monthly_teams > 0 else 100.0
+
             res_monthly = {
                 "status": "success",
                 "mode": "monthly",
@@ -3787,13 +3896,39 @@ class DeliveryManager:
                 "total_equipes": tot_monthly_teams,
                 "total_atrasadas": tot_monthly_atrasadas,
                 "total_no_prazo": tot_monthly_no_prazo,
-                "total_tempo_atraso_min": tot_monthly_tempo_atraso_min,
-                "total_tempo_atraso_str": _fmt_hm(tot_monthly_tempo_atraso_min),
-                "total_tempo_no_prazo_min": tot_monthly_tempo_no_prazo_min,
-                "total_tempo_no_prazo_str": _fmt_hm(tot_monthly_tempo_no_prazo_min),
+
                 "total_perda_financeira": round(tot_monthly_perda_financeira, 2),
                 "total_perda_financeira_str": _fmt_brl(tot_monthly_perda_financeira),
-                "taxa_pontualidade_geral": round((tot_monthly_no_prazo / tot_monthly_teams * 100), 1) if tot_monthly_teams > 0 else 100.0,
+                "perda_financeira_norte": round(tot_monthly_perda_financeira_norte, 2),
+                "perda_financeira_norte_str": _fmt_brl(tot_monthly_perda_financeira_norte),
+                "perda_financeira_leste": round(tot_monthly_perda_financeira_leste, 2),
+                "perda_financeira_leste_str": _fmt_brl(tot_monthly_perda_financeira_leste),
+                "custo_medio_atrasada": custo_medio_mensal_atrasada,
+                "custo_medio_atrasada_str": _fmt_brl(custo_medio_mensal_atrasada),
+
+                "total_tempo_atraso_min": tot_monthly_tempo_atraso_min,
+                "total_tempo_atraso_str": _fmt_hm(tot_monthly_tempo_atraso_min),
+                "tempo_atraso_norte_min": tot_monthly_tempo_atraso_norte_min,
+                "tempo_atraso_norte_str": _fmt_hm(tot_monthly_tempo_atraso_norte_min),
+                "tempo_atraso_leste_min": tot_monthly_tempo_atraso_leste_min,
+                "tempo_atraso_leste_str": _fmt_hm(tot_monthly_tempo_atraso_leste_min),
+                "media_tempo_atrasada_str": _fmt_min_or_hm((tot_monthly_tempo_atraso_min / tot_monthly_atrasadas) if tot_monthly_atrasadas > 0 else 0),
+
+                "total_tempo_no_prazo_min": tot_monthly_tempo_no_prazo_min,
+                "total_tempo_no_prazo_str": _fmt_hm(tot_monthly_tempo_no_prazo_min),
+                "tempo_no_prazo_norte_min": tot_monthly_tempo_no_prazo_norte_min,
+                "tempo_no_prazo_norte_str": _fmt_hm(tot_monthly_tempo_no_prazo_norte_min),
+                "tempo_no_prazo_leste_min": tot_monthly_tempo_no_prazo_leste_min,
+                "tempo_no_prazo_leste_str": _fmt_hm(tot_monthly_tempo_no_prazo_leste_min),
+                "media_tempo_no_prazo_str": _fmt_min_or_hm((tot_monthly_tempo_no_prazo_min / tot_monthly_no_prazo) if tot_monthly_no_prazo > 0 else 0),
+
+                "taxa_pontualidade_geral": taxa_pont_mensal_geral,
+                "taxa_pontualidade_geral_str": f"{taxa_pont_mensal_geral}%",
+                "taxa_pontualidade_norte": taxa_pont_mensal_norte,
+                "taxa_pontualidade_norte_str": f"{taxa_pont_mensal_norte}%",
+                "taxa_pontualidade_leste": taxa_pont_mensal_leste,
+                "taxa_pontualidade_leste_str": f"{taxa_pont_mensal_leste}%",
+
                 "daily_trend": daily_trend,
                 "bases_summary": bases_list,
                 "shifts_summary": shifts_list,
@@ -3883,10 +4018,25 @@ class DeliveryManager:
         }
 
         total_filtradas = 0
+        total_filtradas_norte = 0
+        total_filtradas_leste = 0
+
         total_atrasadas = 0
+        total_atrasadas_norte = 0
+        total_atrasadas_leste = 0
+
         total_no_prazo = 0
+        total_no_prazo_norte = 0
+        total_no_prazo_leste = 0
+
         total_tempo_atraso_min = 0
+        tempo_atraso_norte_min = 0
+        tempo_atraso_leste_min = 0
+
         total_tempo_no_prazo_min = 0
+        tempo_no_prazo_norte_min = 0
+        tempo_no_prazo_leste_min = 0
+
         total_perda_financeira = 0.0
         perda_financeira_norte = 0.0
         perda_financeira_leste = 0.0
@@ -3894,6 +4044,40 @@ class DeliveryManager:
         enriched_teams = []
         delayed_teams = []
         justifications_daily_accum = {}
+
+        # Estrutura para Curva Horaria Dinamica de Perdas e Tempo (Baseada na Hora da Marcacao/Login)
+        def _extract_hour(marc_val):
+            if not marc_val:
+                return "08:00", 8
+            m_str = str(marc_val).strip()
+            if " " in m_str:
+                m_str = m_str.split(" ")[-1]
+            elif "T" in m_str:
+                m_str = m_str.split("T")[-1]
+            if ":" in m_str:
+                parts = m_str.split(":")
+                try:
+                    h = int(parts[0])
+                    if 0 <= h <= 23:
+                        return f"{h:02d}:00", h
+                except Exception:
+                    pass
+            return "08:00", 8
+
+        hourly_accum = {}
+        for h in range(5, 24):
+            h_str = f"{h:02d}:00"
+            hourly_accum[h_str] = {
+                "hour_str": h_str,
+                "hour_num": h,
+                "total_loss": 0.0,
+                "total_delay_min": 0,
+                "count_teams": 0,
+                "norte": {"loss": 0.0, "delay_min": 0, "count": 0},
+                "leste": {"loss": 0.0, "delay_min": 0, "count": 0},
+                "_bases": {},
+                "_teams": []
+            }
 
         for t in teams_list:
             code = str(t.get("team_code") or "").strip().upper()
@@ -3905,6 +4089,12 @@ class DeliveryManager:
                 continue
 
             total_filtradas += 1
+            is_norte = (pricing["contract_regiao"] == "NORTE")
+            if is_norte:
+                total_filtradas_norte += 1
+            else:
+                total_filtradas_leste += 1
+
             d_min = pricing["delay_minutes"]
             loss = pricing["financial_loss"]
             sc = str(t.get("shift_code") or "08:00").strip()
@@ -3920,6 +4110,14 @@ class DeliveryManager:
             else:
                 turno_key = "Manhã"
                 sc = "06:00" if sc in ["06:00", "06:30", "07:00", "07:30"] else "08:00"
+
+            # Trava Temporal Absoluta em Tempo Real:
+            # Turnos cujo horário de início ainda não ocorreu hoje (ex: turnos da tarde/noite durante a manhã)
+            # JAMAIS podem computar atraso antes do seu horário de início!
+            sc_start_min = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc, 480)
+            if mode == "realtime" and sc_start_min > current_clock_minutes:
+                d_min = 0
+                loss = 0.0
 
             if sc not in shifts_structure[turno_key]["horarios"]:
                 shifts_structure[turno_key]["horarios"][sc] = {
@@ -3943,15 +4141,23 @@ class DeliveryManager:
             t_has_marc = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
             st_login_val = "LOGADA" if t_has_marc else "PROGRAMADA"
 
+            ut_val = str(t.get("ut") or "").strip()
+            if not ut_val or ut_val in ["--", "-", "None", "nan", ""]:
+                ut_val = "UT Norte" if pricing["contract_regiao"] == "NORTE" else "UT Leste"
+
             if d_min > 0 and t_has_marc:
                 total_atrasadas += 1
                 total_tempo_atraso_min += d_min
                 total_perda_financeira += loss
 
-                if pricing["contract_regiao"] == "NORTE":
+                if is_norte:
                     perda_financeira_norte += loss
+                    total_atrasadas_norte += 1
+                    tempo_atraso_norte_min += d_min
                 else:
                     perda_financeira_leste += loss
+                    total_atrasadas_leste += 1
+                    tempo_atraso_leste_min += d_min
 
                 shifts_structure[turno_key]["atrasadas"] += 1
                 shifts_structure[turno_key]["tempo_atraso_min"] += d_min
@@ -3962,6 +4168,7 @@ class DeliveryManager:
                 shifts_structure[turno_key]["horarios"][sc]["perda_financeira"] += loss
 
                 team_entry = {
+                    "ut": ut_val,
                     "team_code": code,
                     "base": base_std,
                     "region": pricing["contract_regiao"],
@@ -4001,17 +4208,74 @@ class DeliveryManager:
                 justifications_daily_accum[macro_r]["perda_reais"] += loss
                 if sub_r and sub_r != "--":
                     justifications_daily_accum[macro_r]["sub_reasons"][sub_r] = justifications_daily_accum[macro_r]["sub_reasons"].get(sub_r, 0) + 1
+
+                # Acumula na Curva Horaria Dinamica pela Hora da Marcacao/Login (Termino da Ociosidade)
+                h_str, h_num = _extract_hour(t.get("marcacao") or t.get("login_time"))
+                if h_str not in hourly_accum:
+                    hourly_accum[h_str] = {
+                        "hour_str": h_str,
+                        "hour_num": h_num,
+                        "total_loss": 0.0,
+                        "total_delay_min": 0,
+                        "count_teams": 0,
+                        "norte": {"loss": 0.0, "delay_min": 0, "count": 0},
+                        "leste": {"loss": 0.0, "delay_min": 0, "count": 0},
+                        "_bases": {},
+                        "_teams": []
+                    }
+
+                h_bucket = hourly_accum[h_str]
+                h_bucket["total_loss"] += loss
+                h_bucket["total_delay_min"] += d_min
+                h_bucket["count_teams"] += 1
+
+                is_norte = (pricing["contract_regiao"] == "NORTE")
+                reg_k = "norte" if is_norte else "leste"
+                h_bucket[reg_k]["loss"] += loss
+                h_bucket[reg_k]["delay_min"] += d_min
+                h_bucket[reg_k]["count"] += 1
+
+                if base_std not in h_bucket["_bases"]:
+                    h_bucket["_bases"][base_std] = {
+                        "name": base_std,
+                        "region": "Norte" if is_norte else "Leste",
+                        "loss": 0.0,
+                        "delay_min": 0,
+                        "count": 0
+                    }
+                h_bucket["_bases"][base_std]["loss"] += loss
+                h_bucket["_bases"][base_std]["delay_min"] += d_min
+                h_bucket["_bases"][base_std]["count"] += 1
+
+                h_bucket["_teams"].append({
+                    "team_code": code,
+                    "base": base_std,
+                    "region": "Norte" if is_norte else "Leste",
+                    "marcacao": t.get("marcacao") or "--",
+                    "delay_minutes": d_min,
+                    "delay_str": f"+{d_min} min",
+                    "financial_loss": loss,
+                    "financial_loss_str": pricing["financial_loss_str"]
+                })
             else:
                 if t_has_marc:
                     total_no_prazo += 1
                     tempo_no_prazo = abs(d_min)
                     total_tempo_no_prazo_min += tempo_no_prazo
 
+                    if is_norte:
+                        total_no_prazo_norte += 1
+                        tempo_no_prazo_norte_min += tempo_no_prazo
+                    else:
+                        total_no_prazo_leste += 1
+                        tempo_no_prazo_leste_min += tempo_no_prazo
+
                     shifts_structure[turno_key]["no_prazo"] += 1
                     shifts_structure[turno_key]["tempo_no_prazo_min"] += tempo_no_prazo
                     shifts_structure[turno_key]["horarios"][sc]["no_prazo"] += 1
 
                 enriched_teams.append({
+                    "ut": ut_val,
                     "team_code": code,
                     "base": base_std,
                     "region": pricing["contract_regiao"],
@@ -4063,6 +4327,94 @@ class DeliveryManager:
 
         custo_medio_atrasada = (total_perda_financeira / total_atrasadas) if total_atrasadas > 0 else 0.0
 
+        # Consolida a Curva Horaria Dinamica de Perdas e Tempo
+        hourly_curve_list = []
+        max_loss_val = -1.0
+        peak_hour_loss = {"hour": "--:--", "loss": 0.0, "loss_str": "R$ 0,00"}
+        max_delay_val = -1
+        peak_hour_delay = {"hour": "--:--", "delay_min": 0, "delay_str": "00h 00m"}
+
+        for h_k in sorted(hourly_accum.keys(), key=lambda x: hourly_accum[x]["hour_num"]):
+            b = hourly_accum[h_k]
+            tot_l = round(b["total_loss"], 2)
+            tot_d = b["total_delay_min"]
+
+            # Top base daquela hora
+            if b["_bases"]:
+                top_b_item = sorted(b["_bases"].values(), key=lambda x: (x["loss"], x["delay_min"]), reverse=True)[0]
+                top_base_dict = {
+                    "name": top_b_item["name"],
+                    "region": top_b_item["region"],
+                    "loss": round(top_b_item["loss"], 2),
+                    "loss_str": _fmt_brl(top_b_item["loss"]),
+                    "delay_min": top_b_item["delay_min"],
+                    "delay_str": _fmt_hm(top_b_item["delay_min"]),
+                    "count": top_b_item["count"]
+                }
+            else:
+                top_base_dict = None
+
+            # TOP 3 Equipes daquela hora
+            top_3_teams_hour = sorted(b["_teams"], key=lambda x: (x["financial_loss"], x["delay_minutes"]), reverse=True)[:3]
+
+            n_loss = round(b["norte"]["loss"], 2)
+            l_loss = round(b["leste"]["loss"], 2)
+
+            h_entry = {
+                "hour_str": b["hour_str"],
+                "hour_num": b["hour_num"],
+                "total_loss": tot_l,
+                "total_loss_str": _fmt_brl(tot_l),
+                "total_delay_min": tot_d,
+                "total_delay_str": _fmt_hm(tot_d),
+                "count_teams": b["count_teams"],
+                "norte": {
+                    "loss": n_loss,
+                    "loss_str": _fmt_brl(n_loss),
+                    "delay_min": b["norte"]["delay_min"],
+                    "delay_str": _fmt_hm(b["norte"]["delay_min"]),
+                    "count": b["norte"]["count"]
+                },
+                "leste": {
+                    "loss": l_loss,
+                    "loss_str": _fmt_brl(l_loss),
+                    "delay_min": b["leste"]["delay_min"],
+                    "delay_str": _fmt_hm(b["leste"]["delay_min"]),
+                    "count": b["leste"]["count"]
+                },
+                "top_base": top_base_dict,
+                "top_teams": top_3_teams_hour
+            }
+            hourly_curve_list.append(h_entry)
+
+            if tot_l > max_loss_val and tot_l > 0:
+                max_loss_val = tot_l
+                peak_hour_loss = {"hour": b["hour_str"], "loss": tot_l, "loss_str": _fmt_brl(tot_l)}
+
+            if tot_d > max_delay_val and tot_d > 0:
+                max_delay_val = tot_d
+                peak_hour_delay = {"hour": b["hour_str"], "delay_min": tot_d, "delay_str": _fmt_hm(tot_d)}
+
+        # Modelo Matematico de Linha de Tendencia e Projecao (Ultimos 3 Dias + Ritmo Intraday)
+        trend_projection = self._compute_hourly_trend_projection(
+            date_ref=date_ref,
+            clean_scope=clean_scope,
+            base_filter=base_filter,
+            vehicle_filter=vehicle_filter,
+            shift_filter=shift_filter,
+            shift_code_filter=shift_code_filter,
+            status_login_filter=status_login_filter,
+            include_stc_leste=include_stc_leste,
+            hourly_curve_list=hourly_curve_list
+        )
+
+        media_tempo_atrasada_min = (total_tempo_atraso_min / total_atrasadas) if total_atrasadas > 0 else 0
+        media_tempo_no_prazo_min = (total_tempo_no_prazo_min / total_no_prazo) if total_no_prazo > 0 else 0
+
+        taxa_pont_diaria_norte = round((total_no_prazo_norte / total_filtradas_norte * 100), 1) if total_filtradas_norte > 0 else 100.0
+        taxa_pont_diaria_leste = round((total_no_prazo_leste / total_filtradas_leste * 100), 1) if total_filtradas_leste > 0 else 100.0
+        taxa_pont_diaria_geral = round((total_no_prazo / total_filtradas * 100), 1) if total_filtradas > 0 else 100.0
+
         res_daily = {
             "status": "success",
             "mode": mode,
@@ -4072,10 +4424,7 @@ class DeliveryManager:
             "total_equipes": total_filtradas,
             "total_atrasadas": total_atrasadas,
             "total_no_prazo": total_no_prazo,
-            "total_tempo_atraso_min": total_tempo_atraso_min,
-            "total_tempo_atraso_str": _fmt_hm(total_tempo_atraso_min),
-            "total_tempo_no_prazo_min": total_tempo_no_prazo_min,
-            "total_tempo_no_prazo_str": _fmt_hm(total_tempo_no_prazo_min),
+
             "total_perda_financeira": round(total_perda_financeira, 2),
             "total_perda_financeira_str": _fmt_brl(total_perda_financeira),
             "perda_financeira_norte": round(perda_financeira_norte, 2),
@@ -4084,14 +4433,194 @@ class DeliveryManager:
             "perda_financeira_leste_str": _fmt_brl(perda_financeira_leste),
             "custo_medio_atrasada": custo_medio_atrasada,
             "custo_medio_atrasada_str": _fmt_brl(custo_medio_atrasada),
-            "taxa_pontualidade_geral": round((total_no_prazo / total_filtradas * 100), 1) if total_filtradas > 0 else 100.0,
+
+            "total_tempo_atraso_min": total_tempo_atraso_min,
+            "total_tempo_atraso_str": _fmt_hm(total_tempo_atraso_min),
+            "tempo_atraso_norte_min": tempo_atraso_norte_min,
+            "tempo_atraso_norte_str": _fmt_hm(tempo_atraso_norte_min),
+            "tempo_atraso_leste_min": tempo_atraso_leste_min,
+            "tempo_atraso_leste_str": _fmt_hm(tempo_atraso_leste_min),
+            "media_tempo_atrasada_str": _fmt_min_or_hm(media_tempo_atrasada_min),
+
+            "total_tempo_no_prazo_min": total_tempo_no_prazo_min,
+            "total_tempo_no_prazo_str": _fmt_hm(total_tempo_no_prazo_min),
+            "tempo_no_prazo_norte_min": tempo_no_prazo_norte_min,
+            "tempo_no_prazo_norte_str": _fmt_hm(tempo_no_prazo_norte_min),
+            "tempo_no_prazo_leste_min": tempo_no_prazo_leste_min,
+            "tempo_no_prazo_leste_str": _fmt_hm(tempo_no_prazo_leste_min),
+            "media_tempo_no_prazo_str": _fmt_min_or_hm(media_tempo_no_prazo_min),
+
+            "taxa_pontualidade_geral": taxa_pont_diaria_geral,
+            "taxa_pontualidade_geral_str": f"{taxa_pont_diaria_geral}%",
+            "taxa_pontualidade_norte": taxa_pont_diaria_norte,
+            "taxa_pontualidade_norte_str": f"{taxa_pont_diaria_norte}%",
+            "taxa_pontualidade_leste": taxa_pont_diaria_leste,
+            "taxa_pontualidade_leste_str": f"{taxa_pont_diaria_leste}%",
+
             "shifts": shifts_structure,
             "top_teams": top_delayed,
             "justifications_summary": just_daily_list,
-            "teams": enriched_teams
+            "teams": enriched_teams,
+            "hourly_loss_curve": hourly_curve_list,
+            "peak_hour_loss": peak_hour_loss,
+            "peak_hour_delay": peak_hour_delay,
+            "trend_projection": trend_projection
         }
         self._delays_analytics_cache[cache_key] = (now_ts, res_daily)
         return res_daily
+
+    def _compute_hourly_trend_projection(
+        self,
+        date_ref: str,
+        clean_scope: str,
+        base_filter,
+        vehicle_filter,
+        shift_filter,
+        shift_code_filter,
+        status_login_filter,
+        include_stc_leste: bool,
+        hourly_curve_list: list
+    ) -> dict:
+        """
+        Modelo Matematico Preditivo para Projecao da Perda e Atraso Hora a Hora.
+        Combina o perfil historico dos ultimos 3 dias operacionais com o ritmo do dia corrente (Pace Factor).
+        Atualiza dinamicamente conforme novos dias avancam.
+        """
+        def _fmt_hm(mins):
+            if not mins or mins <= 0: return "00h 00m"
+            return f"{mins // 60:02d}h {mins % 60:02d}m"
+
+        def _fmt_brl(val):
+            if not val or val <= 0: return "R$ 0,00"
+            return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        def _extract_hour(marc_val):
+            if not marc_val: return "08:00", 8
+            m_str = str(marc_val).strip()
+            if " " in m_str: m_str = m_str.split(" ")[-1]
+            elif "T" in m_str: m_str = m_str.split("T")[-1]
+            if ":" in m_str:
+                try:
+                    h = int(m_str.split(":")[0])
+                    if 0 <= h <= 23: return f"{h:02d}:00", h
+                except Exception: pass
+            return "08:00", 8
+
+        avail = self.get_available_audit_dates()
+        all_dates = sorted([str(d) for d in avail.get("dates", []) if str(d) < str(date_ref)])
+        prev_3_dates = all_dates[-3:]
+
+        if not prev_3_dates:
+            return {
+                "status": "SEM_HISTORICO",
+                "pace_factor": 1.0,
+                "diff_pct": 0.0,
+                "diff_str": "0%",
+                "comparison_label": "Sem base historica previa",
+                "reference_days": [],
+                "curve": [{"hour_str": h["hour_str"], "hour_num": h["hour_num"], "projected_loss": 0.0, "projected_loss_str": "R$ 0,00", "projected_delay_min": 0, "projected_delay_str": "00h 00m"} for h in hourly_curve_list]
+            }
+
+        # Pesos exponenciais do mais antigo para o mais recente (ex: 3 dias -> 0.20, 0.30, 0.50)
+        n_days = len(prev_3_dates)
+        if n_days == 3:
+            weights = [0.20, 0.30, 0.50]
+        elif n_days == 2:
+            weights = [0.40, 0.60]
+        else:
+            weights = [1.0]
+
+        hourly_baseline = {f"{h:02d}:00": {"loss": 0.0, "delay_min": 0.0} for h in range(5, 24)}
+
+        # Carrega e agrega cada dia historico
+        for dt, w in zip(prev_3_dates, weights):
+            if dt in self._delays_history_records_cache:
+                recs = self._delays_history_records_cache[dt]
+            else:
+                from supabase_client import fetch_delivery_records_by_date
+                recs = fetch_delivery_records_by_date(dt) or []
+                self._delays_history_records_cache[dt] = recs
+
+            day_h = {f"{h:02d}:00": {"loss": 0.0, "delay_min": 0} for h in range(5, 24)}
+            for t in recs:
+                # Aplica filtros de escopo e inclusao de STC Leste
+                t_code = str(t.get("team_code") or "").strip().upper()
+                if not t_code:
+                    continue
+
+                pricing = classify_and_price_team(t, date_ref=dt)
+                if not include_stc_leste and pricing["is_stc_leste"]:
+                    continue
+
+                if clean_scope != "ALL" and pricing["contract_regiao"] != clean_scope:
+                    continue
+
+                d_min = pricing["delay_minutes"]
+                loss = pricing["financial_loss"]
+                has_m = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
+                if d_min > 0 and has_m:
+                    h_str, _ = _extract_hour(t.get("marcacao") or t.get("login_time"))
+                    if h_str in day_h:
+                        day_h[h_str]["loss"] += loss
+                        day_h[h_str]["delay_min"] += d_min
+
+            for h_str in hourly_baseline:
+                hourly_baseline[h_str]["loss"] += day_h[h_str]["loss"] * w
+                hourly_baseline[h_str]["delay_min"] += day_h[h_str]["delay_min"] * w
+
+        # Determina o ritmo do dia corrente (Pace Factor)
+        active_hours_today = [h for h in hourly_curve_list if h.get("count_teams", 0) > 0 or h.get("total_loss", 0) > 0]
+        max_h_observed = max([h["hour_num"] for h in active_hours_today]) if active_hours_today else 8
+
+        cum_today_loss = sum(h["total_loss"] for h in hourly_curve_list if h["hour_num"] <= max_h_observed)
+        cum_base_loss = sum(hourly_baseline[f"{h:02d}:00"]["loss"] for h in range(5, max_h_observed + 1))
+
+        if cum_base_loss > 50.0:
+            raw_pace = cum_today_loss / cum_base_loss
+            # Amortecimento: 70% ritmo de hoje + 30% baseline neutro (1.0), com teto seguro [0.40, 2.50]
+            pace = max(0.40, min(2.50, 0.70 * raw_pace + 0.30 * 1.0))
+            diff_pct = ((cum_today_loss - cum_base_loss) / cum_base_loss) * 100.0
+        else:
+            pace = 1.0
+            diff_pct = 0.0
+
+        if diff_pct <= -5.0:
+            status = "MELHOR"
+            comparison_label = f"Ritmo do dia {abs(diff_pct):.1f}% MELHOR que a projeção média"
+        elif diff_pct >= 5.0:
+            status = "PIOR"
+            comparison_label = f"Ritmo do dia {abs(diff_pct):.1f}% PIOR que a projeção média"
+        else:
+            status = "EM_LINHA"
+            comparison_label = "Ritmo do dia EM LINHA com a projeção esperada"
+
+        projected_curve = []
+        for h_item in hourly_curve_list:
+            h_str = h_item["hour_str"]
+            base_loss = hourly_baseline.get(h_str, {}).get("loss", 0.0)
+            base_delay = hourly_baseline.get(h_str, {}).get("delay_min", 0.0)
+
+            proj_loss = round(base_loss * pace, 2)
+            proj_delay = int(round(base_delay * pace))
+
+            projected_curve.append({
+                "hour_str": h_str,
+                "hour_num": h_item["hour_num"],
+                "projected_loss": proj_loss,
+                "projected_loss_str": _fmt_brl(proj_loss),
+                "projected_delay_min": proj_delay,
+                "projected_delay_str": _fmt_hm(proj_delay)
+            })
+
+        return {
+            "status": status,
+            "pace_factor": round(pace, 2),
+            "diff_pct": round(diff_pct, 1),
+            "diff_str": f"{abs(diff_pct):.1f}%",
+            "comparison_label": comparison_label,
+            "reference_days": prev_3_dates,
+            "curve": projected_curve
+        }
 
 
 delivery_manager = DeliveryManager()

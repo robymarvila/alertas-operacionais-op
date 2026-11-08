@@ -6,13 +6,14 @@ Fornece rotas web, APIs RESTful para sincronização em tempo real e upload de a
 from flask import Flask, render_template, jsonify, request, send_file, make_response, send_from_directory, redirect
 import io
 import os
+import socket
 import requests
 import csv
 import threading
 import time
 import re
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from data_manager import data_manager
 from delivery_manager import delivery_manager
 from fleet_client import fleet_client
@@ -2241,20 +2242,25 @@ def get_teams_data():
     if should_check_supabase:
         get_teams_data._last_check_ts = now_ts
         try:
-            cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+            cloud_snap = fetch_latest_delivery_snapshot_from_supabase(date_ref=op_date)
             if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
-                c_cap = str(cloud_snap.get("captured_at") or "")
-                l_sync = str(getattr(delivery_manager, "last_sync_time", "") or "")
-                # Se o Supabase tiver snapshot mais recente ou memória vazia ou refresh manual
-                local_is_cdp = "CDP" in getattr(delivery_manager, "sync_source", "") or "Portal Enel" in getattr(delivery_manager, "sync_source", "")
-                if force_refresh or not delivery_manager.active_teams or (c_cap != l_sync and not local_is_cdp):
-                    src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase"
-                    delivery_manager.process_raw_enel_records(
-                        cloud_snap["data"],
-                        source_label=src_lbl,
-                        captured_at=c_cap
-                    )
-                    delivery_manager.save_local_cache()
+                snap_date = cloud_snap.get("date_ref")
+                # Validação estrita: NUNCA hidratar dados que pertençam a data diferente da data operacional
+                if snap_date and snap_date != op_date:
+                    print(f"[DELIVERY CLOUD SYNC] Snapshot ignorado: data ({snap_date}) diverge da operacional ({op_date})", flush=True)
+                else:
+                    c_cap = str(cloud_snap.get("captured_at") or "")
+                    l_sync = str(getattr(delivery_manager, "last_sync_time", "") or "")
+                    # Se o Supabase tiver snapshot mais recente ou memória vazia ou refresh manual
+                    local_is_cdp = "CDP" in getattr(delivery_manager, "sync_source", "") or "Portal Enel" in getattr(delivery_manager, "sync_source", "")
+                    if force_refresh or not delivery_manager.active_teams or (c_cap != l_sync and not local_is_cdp):
+                        src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase"
+                        delivery_manager.process_raw_enel_records(
+                            cloud_snap["data"],
+                            source_label=src_lbl,
+                            captured_at=c_cap
+                        )
+                        delivery_manager.save_local_cache()
         except Exception as err_cloud:
             print(f"[WARN DELIVERY CLOUD SYNC] {err_cloud}", flush=True)
 
@@ -2700,9 +2706,9 @@ def export_delivery_delays_excel():
                 rec_rows = []
                 for tr in data.get("top_recurrent_teams", []):
                     rec_rows.append({
-                        "Código Equipe": tr.get("team_code"),
+                        "UT": tr.get("ut") or f"UT {str(tr.get('region', '')).title()}",
                         "Base": tr.get("base"),
-                        "Região": tr.get("region"),
+                        "Código Equipe": tr.get("team_code"),
                         "Frota": tr.get("vehicle_type"),
                         "Dias Trabalhados": tr.get("dias_trabalhados"),
                         "Dias em Atraso": tr.get("dias_atraso"),
@@ -2744,9 +2750,9 @@ def export_delivery_delays_excel():
                 rows = []
                 for t in data.get("teams", []):
                     rows.append({
-                        "Código Equipe": t.get("team_code"),
+                        "UT": t.get("ut") or f"UT {str(t.get('region', '')).title()}",
                         "Base": t.get("base"),
-                        "Região": t.get("region"),
+                        "Código Equipe": t.get("team_code"),
                         "Frota": t.get("vehicle_type"),
                         "Turno": t.get("turno"),
                         "Horário Programado": t.get("shift_code"),

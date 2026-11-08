@@ -18243,6 +18243,7 @@ function renderDelaysScreen(data) {
     if (!data) return;
 
     // 1. Atualiza KPIs Globais
+    // KPI 1: Perda Financeira Estimada
     const kpiLoss = document.getElementById('delaysKpiTotalPerda');
     const kpiNorte = document.getElementById('delaysKpiNortePerda');
     const kpiLeste = document.getElementById('delaysKpiLestePerda');
@@ -18253,29 +18254,38 @@ function renderDelaysScreen(data) {
     if (kpiLeste) kpiLeste.textContent = `Leste: ${data.perda_financeira_leste_str || 'R$ 0,00'}`;
     if (kpiMedio) kpiMedio.textContent = `Média/Atrasada: ${data.custo_medio_atrasada_str || 'R$ 0,00'}`;
 
+    // KPI 2: Horas Perdidas em Atraso
     const kpiDelayTime = document.getElementById('delaysKpiTotalTempoAtraso');
-    const kpiDelayTeams = document.getElementById('delaysKpiTotalAtrasadas');
-    const kpiDelayPct = document.getElementById('delaysKpiAtrasadasPct');
+    const kpiDelayNorte = document.getElementById('delaysKpiNorteTempoAtraso');
+    const kpiDelayLeste = document.getElementById('delaysKpiLesteTempoAtraso');
+    const kpiDelayMedia = document.getElementById('delaysKpiMediaTempoAtraso');
 
     if (kpiDelayTime) kpiDelayTime.textContent = data.total_tempo_atraso_str || '00h 00m';
-    if (kpiDelayTeams) kpiDelayTeams.textContent = `${data.total_atrasadas || 0} equipes em atraso`;
-    const atrasadasPct = data.total_equipes > 0 ? Math.round((data.total_atrasadas / data.total_equipes) * 100) : 0;
-    if (kpiDelayPct) kpiDelayPct.textContent = `${atrasadasPct}% do total`;
+    if (kpiDelayNorte) kpiDelayNorte.textContent = `Norte: ${data.tempo_atraso_norte_str || '00h 00m'}`;
+    if (kpiDelayLeste) kpiDelayLeste.textContent = `Leste: ${data.tempo_atraso_leste_str || '00h 00m'}`;
+    if (kpiDelayMedia) kpiDelayMedia.textContent = `Média/Atrasada: ${data.media_tempo_atrasada_str || '0 min'}`;
 
+    // KPI 3: Saldo Positivo / Horas no Prazo
     const kpiPunctualTime = document.getElementById('delaysKpiTotalTempoNoPrazo');
-    const kpiPunctualTeams = document.getElementById('delaysKpiTotalNoPrazo');
-    const kpiPunctualPct = document.getElementById('delaysKpiNoPrazoPct');
+    const kpiPunctualNorte = document.getElementById('delaysKpiNorteTempoNoPrazo');
+    const kpiPunctualLeste = document.getElementById('delaysKpiLesteTempoNoPrazo');
+    const kpiPunctualMedia = document.getElementById('delaysKpiMediaTempoNoPrazo');
 
     if (kpiPunctualTime) kpiPunctualTime.textContent = data.total_tempo_no_prazo_str || '00h 00m';
-    if (kpiPunctualTeams) kpiPunctualTeams.textContent = `${data.total_no_prazo || 0} equipes pontuais`;
-    const noPrazoPct = data.total_equipes > 0 ? Math.round((data.total_no_prazo / data.total_equipes) * 100) : 100;
-    if (kpiPunctualPct) kpiPunctualPct.textContent = `${noPrazoPct}% do total`;
+    if (kpiPunctualNorte) kpiPunctualNorte.textContent = `Norte: ${data.tempo_no_prazo_norte_str || '00h 00m'}`;
+    if (kpiPunctualLeste) kpiPunctualLeste.textContent = `Leste: ${data.tempo_no_prazo_leste_str || '00h 00m'}`;
+    if (kpiPunctualMedia) kpiPunctualMedia.textContent = `Média/Pontual: ${data.media_tempo_no_prazo_str || '0 min'}`;
 
+    // KPI 4: Assertividade de Entrada
     const kpiAssert = document.getElementById('delaysKpiTaxaPontualidade');
-    const kpiTotal = document.getElementById('delaysKpiTotalEquipes');
+    const kpiAssertNorte = document.getElementById('delaysKpiNortePontualidade');
+    const kpiAssertLeste = document.getElementById('delaysKpiLestePontualidade');
+    const kpiAssertMedia = document.getElementById('delaysKpiMediaPontualidade');
 
     if (kpiAssert) kpiAssert.textContent = `${data.taxa_pontualidade_geral || 100}%`;
-    if (kpiTotal) kpiTotal.textContent = `${data.total_equipes || 0} equipes entregues`;
+    if (kpiAssertNorte) kpiAssertNorte.textContent = `Norte: ${data.taxa_pontualidade_norte_str || '100%'}`;
+    if (kpiAssertLeste) kpiAssertLeste.textContent = `Leste: ${data.taxa_pontualidade_leste_str || '100%'}`;
+    if (kpiAssertMedia) kpiAssertMedia.textContent = `Média Geral: ${data.taxa_pontualidade_geral_str || (data.taxa_pontualidade_geral + '%') || '100%'}`;
 
     // 2. Alterna entre Visão Diária e Visão Mensal
     const boxDaily = document.getElementById('delaysContainerDailyView');
@@ -18288,7 +18298,8 @@ function renderDelaysScreen(data) {
     } else {
         if (boxDaily) boxDaily.style.display = 'block';
         if (boxMonthly) boxMonthly.style.display = 'none';
-        renderDelaysDailyShifts(data.shifts || {});
+        renderDelaysDailyShifts(data.shifts || {}, data);
+        renderDelaysHourlyDynamicChart(data.hourly_loss_curve || [], data.peak_hour_loss, data.peak_hour_delay, data.trend_projection);
         renderDelaysTopTeams(data.top_teams || []);
         renderDelaysJustificationsList('delaysDailyJustificationsList', data.justifications_summary || []);
     }
@@ -18300,10 +18311,56 @@ function renderDelaysScreen(data) {
     if (window.lucide) lucide.createIcons();
 }
 
-function renderDelaysDailyShifts(shifts) {
+function renderDelaysDailyShifts(shifts, data) {
     const sManha = shifts['Manhã'] || {};
     const sTarde = shifts['Tarde'] || {};
     const sNoite = shifts['Noite'] || {};
+
+    // 0. Card TOTAL CONSOLIDADO
+    const elLossTot = document.getElementById('delaysShiftLossTotal');
+    const elAtrTot = document.getElementById('delaysShiftAtrasadasTotal');
+    const elPraTot = document.getElementById('delaysShiftNoPrazoTotal');
+    const elTmpTot = document.getElementById('delaysShiftTempoTotal');
+    const elSlotsTot = document.getElementById('delaysShiftSlotsTotal');
+
+    const totalAtrasadas = (sManha.atrasadas || 0) + (sTarde.atrasadas || 0) + (sNoite.atrasadas || 0);
+    const totalNoPrazo = (sManha.no_prazo || 0) + (sTarde.no_prazo || 0) + (sNoite.no_prazo || 0);
+    const totalTempoAtrasoMin = (sManha.tempo_atraso_min || 0) + (sTarde.tempo_atraso_min || 0) + (sNoite.tempo_atraso_min || 0);
+    const totalPerdaFin = (sManha.perda_financeira || 0) + (sTarde.perda_financeira || 0) + (sNoite.perda_financeira || 0);
+
+    const hTot = Math.floor(totalTempoAtrasoMin / 60);
+    const mTot = totalTempoAtrasoMin % 60;
+    const fmtTotalTempo = `${String(hTot).padStart(2, '0')}h ${String(mTot).padStart(2, '0')}m`;
+    const fmtTotalPerda = (data && data.total_perda_financeira_str) ? data.total_perda_financeira_str :
+        `R$ ${totalPerdaFin.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    if (elLossTot) elLossTot.textContent = fmtTotalPerda;
+    if (elAtrTot) elAtrTot.textContent = (data && data.total_atrasadas !== undefined) ? data.total_atrasadas : totalAtrasadas;
+    if (elPraTot) elPraTot.textContent = (data && data.total_no_prazo !== undefined) ? data.total_no_prazo : totalNoPrazo;
+    if (elTmpTot) elTmpTot.textContent = (data && data.total_tempo_atraso_str) ? data.total_tempo_atraso_str : fmtTotalTempo;
+
+    if (elSlotsTot) {
+        elSlotsTot.innerHTML = `
+            <div class="delays-slot-row-item">
+                <span class="delays-slot-tag" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">Manhã</span>
+                <span class="text-rose font-mono"><b>${sManha.atrasadas || 0}</b> atraso</span>
+                <span class="text-emerald font-mono"><b>${sManha.no_prazo || 0}</b> prazo</span>
+                <span class="font-mono text-rose" style="font-weight: 700;">${sManha.perda_financeira_str || 'R$ 0,00'}</span>
+            </div>
+            <div class="delays-slot-row-item">
+                <span class="delays-slot-tag" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">Tarde</span>
+                <span class="text-rose font-mono"><b>${sTarde.atrasadas || 0}</b> atraso</span>
+                <span class="text-emerald font-mono"><b>${sTarde.no_prazo || 0}</b> prazo</span>
+                <span class="font-mono text-rose" style="font-weight: 700;">${sTarde.perda_financeira_str || 'R$ 0,00'}</span>
+            </div>
+            <div class="delays-slot-row-item">
+                <span class="delays-slot-tag" style="background: rgba(192, 132, 252, 0.2); color: #c084fc;">Noite</span>
+                <span class="text-rose font-mono"><b>${sNoite.atrasadas || 0}</b> atraso</span>
+                <span class="text-emerald font-mono"><b>${sNoite.no_prazo || 0}</b> prazo</span>
+                <span class="font-mono text-rose" style="font-weight: 700;">${sNoite.perda_financeira_str || 'R$ 0,00'}</span>
+            </div>
+        `;
+    }
 
     // Manhã
     const elLossM = document.getElementById('delaysShiftLossManha');
@@ -18377,6 +18434,589 @@ function renderDelaysDailyShifts(shifts) {
         `).join('');
     }
 }
+
+// =============================================================================
+// GRÁFICO DINÂMICO HORA A HORA & PLAYER DA LINHA DO TEMPO ULTRA PREMIUM
+// =============================================================================
+let delaysHourlyState = {
+    chartInstance: null,
+    metric: 'loss', // 'loss' | 'time'
+    curveData: [],
+    peakLoss: null,
+    peakDelay: null,
+    trendProjection: null,
+    selectedHours: new Set(),
+    isPlaying: false,
+    timer: null,
+    currentStepIdx: -1
+};
+
+function setDelaysHourlyMetric(metric) {
+    if (delaysHourlyState.metric === metric) return;
+    delaysHourlyState.metric = metric;
+
+    const btnLoss = document.getElementById('btnDelaysViewMetricLoss');
+    const btnTime = document.getElementById('btnDelaysViewMetricTime');
+    if (btnLoss && btnTime) {
+        if (metric === 'loss') {
+            btnLoss.classList.add('active');
+            btnTime.classList.remove('active');
+        } else {
+            btnLoss.classList.remove('active');
+            btnTime.classList.add('active');
+        }
+    }
+
+    updateDelaysHourlyPeakBadge();
+    updateDelaysHourlyTrendBadge(delaysHourlyState.trendProjection);
+    renderDelaysHourlyDynamicChart(
+        delaysHourlyState.curveData,
+        delaysHourlyState.peakLoss,
+        delaysHourlyState.peakDelay,
+        delaysHourlyState.trendProjection,
+        true
+    );
+}
+
+function updateDelaysHourlyPeakBadge() {
+    const elPeakVal = document.getElementById('delaysHourlyPeakVal');
+    if (!elPeakVal) return;
+    if (delaysHourlyState.metric === 'loss') {
+        const p = delaysHourlyState.peakLoss;
+        elPeakVal.textContent = (p && p.hour && p.hour !== '--:--' && p.loss > 0) ? `${p.hour} (${p.loss_str})` : 'Sem perdas';
+    } else {
+        const p = delaysHourlyState.peakDelay;
+        elPeakVal.textContent = (p && p.hour && p.hour !== '--:--' && p.delay_min > 0) ? `${p.hour} (${p.delay_str})` : '00h 00m';
+    }
+}
+
+function updateDelaysHourlyTrendBadge(trend) {
+    const badge = document.getElementById('delaysHourlyTrendBadge');
+    const valEl = document.getElementById('delaysHourlyTrendVal');
+    if (!badge || !valEl) return;
+
+    if (!trend || !trend.status || trend.status === 'SEM_HISTORICO') {
+        badge.className = 'delays-trend-badge';
+        valEl.textContent = 'Histórico em consolidação';
+        return;
+    }
+
+    badge.className = 'delays-trend-badge';
+    if (trend.status === 'MELHOR') {
+        badge.classList.add('trend-better');
+        valEl.textContent = `🟢 Ritmo ${trend.diff_str} melhor que a projeção`;
+    } else if (trend.status === 'PIOR') {
+        badge.classList.add('trend-worse');
+        valEl.textContent = `🔴 Ritmo ${trend.diff_str} pior que a projeção`;
+    } else {
+        badge.classList.add('trend-expected');
+        valEl.textContent = `🔵 Ritmo em linha com a projeção (±${trend.diff_str})`;
+    }
+}
+
+function toggleDelaysHourlyPlay() {
+    if (delaysHourlyState.isPlaying) {
+        pauseDelaysHourlyPlay();
+    } else {
+        startDelaysHourlyPlay();
+    }
+}
+
+function pauseDelaysHourlyPlay() {
+    delaysHourlyState.isPlaying = false;
+    if (delaysHourlyState.timer) {
+        clearInterval(delaysHourlyState.timer);
+        delaysHourlyState.timer = null;
+    }
+    const icon = document.getElementById('iconDelaysPlayPause');
+    if (icon) {
+        icon.setAttribute('data-lucide', 'play');
+        if (window.lucide) lucide.createIcons();
+    }
+    const peakBadge = document.getElementById('delaysHourlyPeakBadge');
+    if (peakBadge) peakBadge.classList.remove('glow-pulse');
+}
+
+function resetDelaysHourlyPlay() {
+    pauseDelaysHourlyPlay();
+    delaysHourlyState.currentStepIdx = -1;
+    const lbl = document.getElementById('delaysPlayerCurrentHour');
+    if (lbl) lbl.textContent = 'Tempo Real';
+    const tooltipEl = document.getElementById('delaysHourlyChartTooltip');
+    if (tooltipEl) tooltipEl.style.opacity = '0';
+    if (delaysHourlyState.chartInstance) {
+        delaysHourlyState.chartInstance.setActiveElements([]);
+        delaysHourlyState.chartInstance.update();
+    }
+}
+
+function startDelaysHourlyPlay() {
+    if (!delaysHourlyState.curveData || delaysHourlyState.curveData.length === 0) return;
+    delaysHourlyState.isPlaying = true;
+    const icon = document.getElementById('iconDelaysPlayPause');
+    if (icon) {
+        icon.setAttribute('data-lucide', 'pause');
+        if (window.lucide) lucide.createIcons();
+    }
+
+    if (delaysHourlyState.currentStepIdx >= delaysHourlyState.curveData.length - 1) {
+        delaysHourlyState.currentStepIdx = -1;
+    }
+
+    if (delaysHourlyState.currentStepIdx === -1) {
+        const firstActive = delaysHourlyState.curveData.findIndex(d => d.count_teams > 0);
+        delaysHourlyState.currentStepIdx = firstActive !== -1 ? firstActive : 0;
+    }
+
+    stepDelaysHourlyPlayer();
+    delaysHourlyState.timer = setInterval(() => {
+        delaysHourlyState.currentStepIdx++;
+        if (delaysHourlyState.currentStepIdx >= delaysHourlyState.curveData.length) {
+            pauseDelaysHourlyPlay();
+            return;
+        }
+        stepDelaysHourlyPlayer();
+    }, 1200);
+}
+
+function stepDelaysHourlyPlayer() {
+    const chart = delaysHourlyState.chartInstance;
+    const idx = delaysHourlyState.currentStepIdx;
+    const item = delaysHourlyState.curveData[idx];
+    if (!chart || !item) return;
+
+    const lbl = document.getElementById('delaysPlayerCurrentHour');
+    if (lbl) lbl.textContent = `Hora: ${item.hour_str}`;
+
+    // Ativa as barras Norte (dataset 1) e Leste (dataset 2)
+    chart.setActiveElements([
+        { datasetIndex: 1, index: idx },
+        { datasetIndex: 2, index: idx }
+    ]);
+    chart.update('none');
+
+    const peakBadge = document.getElementById('delaysHourlyPeakBadge');
+    const isPeak = (delaysHourlyState.metric === 'loss' && delaysHourlyState.peakLoss && delaysHourlyState.peakLoss.hour === item.hour_str) ||
+                   (delaysHourlyState.metric === 'time' && delaysHourlyState.peakDelay && delaysHourlyState.peakDelay.hour === item.hour_str);
+
+    if (peakBadge) {
+        if (isPeak && item.total_loss > 0) {
+            peakBadge.classList.add('glow-pulse');
+        } else {
+            peakBadge.classList.remove('glow-pulse');
+        }
+    }
+
+    showCustomHourlyTooltip(chart, idx, item);
+}
+
+function getTeamMarcacaoHour(t) {
+    const raw = String(t.marcacao || t.login_time || '').trim();
+    if (!raw || ['--', '-', 'None', 'nan', '', '--:--'].includes(raw)) return null;
+    let timeStr = raw;
+    if (timeStr.includes(' ')) timeStr = timeStr.split(' ')[1];
+    else if (timeStr.includes('T')) timeStr = timeStr.split('T')[1];
+    if (timeStr.includes(':')) {
+        const h = parseInt(timeStr.split(':')[0], 10);
+        if (!isNaN(h) && h >= 0 && h <= 23) {
+            return `${String(h).padStart(2, '0')}:00`;
+        }
+    }
+    return null;
+}
+
+function applyDelaysHourlyFilter() {
+    const banner = document.getElementById('delaysHourlyFilterBanner');
+    const listEl = document.getElementById('delaysHourlyFilterHoursList');
+    const allTeams = (delaysState.data && delaysState.data.teams) || [];
+
+    if (delaysHourlyState.selectedHours.size > 0) {
+        const sortedSelected = Array.from(delaysHourlyState.selectedHours).sort();
+        if (banner) banner.style.display = 'flex';
+        if (listEl) listEl.textContent = sortedSelected.join(', ');
+
+        const filtered = allTeams.filter(t => {
+            const h = getTeamMarcacaoHour(t);
+            return h && delaysHourlyState.selectedHours.has(h);
+        });
+
+        renderDelaysTable(filtered);
+    } else {
+        if (banner) banner.style.display = 'none';
+        renderDelaysTable(allTeams);
+    }
+
+    if (delaysHourlyState.chartInstance) {
+        renderDelaysHourlyDynamicChart(
+            delaysHourlyState.curveData,
+            delaysHourlyState.peakLoss,
+            delaysHourlyState.peakDelay,
+            delaysHourlyState.trendProjection,
+            true
+        );
+    }
+}
+
+function clearDelaysHourlyFilter() {
+    delaysHourlyState.selectedHours.clear();
+    applyDelaysHourlyFilter();
+}
+
+function showCustomHourlyTooltip(chart, idx, item) {
+    let tooltipEl = document.getElementById('delaysHourlyChartTooltip');
+    if (!tooltipEl) {
+        tooltipEl = document.createElement('div');
+        tooltipEl.id = 'delaysHourlyChartTooltip';
+        document.body.appendChild(tooltipEl);
+    }
+
+    const meta1 = chart.getDatasetMeta(1);
+    const meta2 = chart.getDatasetMeta(2);
+    const elem1 = meta1 && meta1.data && meta1.data[idx];
+    const elem2 = meta2 && meta2.data && meta2.data[idx];
+    const targetElem = elem1 || elem2;
+
+    if (!targetElem) {
+        tooltipEl.style.opacity = '0';
+        return;
+    }
+
+    const canvasRect = chart.canvas.getBoundingClientRect();
+    const tooltipX = canvasRect.left + window.scrollX + targetElem.x;
+    const tooltipY = canvasRect.top + window.scrollY + targetElem.y;
+
+    const isLoss = delaysHourlyState.metric === 'loss';
+    const mainValStr = isLoss ? item.total_loss_str : item.total_delay_str;
+    const norteValStr = isLoss ? item.norte.loss_str : item.norte.delay_str;
+    const lesteValStr = isLoss ? item.leste.loss_str : item.leste.delay_str;
+
+    // Busca Projeção da Hora
+    const trendCurve = (delaysHourlyState.trendProjection && delaysHourlyState.trendProjection.curve) || [];
+    const trendItem = trendCurve.find(tc => tc.hour_str === item.hour_str);
+    let trendHtml = '';
+    if (trendItem) {
+        const projValStr = isLoss ? trendItem.projected_loss_str : trendItem.projected_delay_str;
+        const actualNum = isLoss ? item.total_loss : item.total_delay_min;
+        const projNum = isLoss ? trendItem.projected_loss : trendItem.projected_delay_min;
+        let diffBadge = '';
+        if (projNum > 0 && actualNum > 0) {
+            const dPct = ((actualNum - projNum) / projNum) * 100;
+            if (dPct <= -5) {
+                diffBadge = `<span style="color:#34d399; font-weight:700;">(-${Math.abs(dPct).toFixed(1)}% economia)</span>`;
+            } else if (dPct >= 5) {
+                diffBadge = `<span style="color:#f43f5e; font-weight:700;">(+${Math.abs(dPct).toFixed(1)}% desvio)</span>`;
+            } else {
+                diffBadge = `<span style="color:#38bdf8; font-weight:700;">(em linha)</span>`;
+            }
+        }
+        trendHtml = `
+            <div style="background: rgba(251, 191, 36, 0.1); border: 1px dashed rgba(251, 191, 36, 0.35); border-radius: 6px; padding: 5px 8px; margin-bottom: 8px; font-size: 0.72rem; display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: #fbbf24; font-weight: 700;">⚡ Tendência Projetada:</span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #f1f5f9;">${projValStr} ${diffBadge}</span>
+            </div>
+        `;
+    }
+
+    let baseHtml = '';
+    if (item.top_base) {
+        baseHtml = `
+            <div class="delays-tip-top-base">
+                <div class="delays-tip-base-title">
+                    <i data-lucide="map-pin" style="width:12px; height:12px;"></i> Base Mais Crítica: <b>${item.top_base.name}</b> (${item.top_base.region})
+                </div>
+                <div class="delays-tip-base-desc">
+                    Perda: <strong class="text-rose font-mono">${item.top_base.loss_str}</strong> • Atraso: <span class="text-amber font-mono">${item.top_base.delay_str}</span> (${item.top_base.count} eqp)
+                </div>
+            </div>
+        `;
+    }
+
+    let teamsHtml = '';
+    if (item.top_teams && item.top_teams.length > 0) {
+        teamsHtml = `
+            <div class="delays-tip-teams-section">
+                <div class="delays-tip-teams-title">TOP Equipes no Horário:</div>
+                ${item.top_teams.map((t) => `
+                    <div class="delays-tip-team-row">
+                        <div>
+                            <span class="delays-tip-team-code">${t.team_code}</span>
+                            <span class="delays-tip-team-base">${t.base} (${t.marcacao})</span>
+                        </div>
+                        <div class="delays-tip-team-metrics">
+                            <span class="delays-tip-team-delay">${t.delay_str}</span>
+                            <span class="delays-tip-team-loss">${t.financial_loss_str}</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } else {
+        teamsHtml = '<div style="font-size: 0.68rem; color: #64748b; font-style: italic; margin-top: 4px;">Nenhuma equipe atrasada neste horário.</div>';
+    }
+
+    const isHourSelected = delaysHourlyState.selectedHours.has(item.hour_str);
+    const filterHint = isHourSelected ? '<span style="color:#fbbf24; font-size:0.65rem; font-weight:700;">★ FILTRO ATIVO</span>' : '<span style="color:#94a3b8; font-size:0.65rem;">(Clique para filtrar)</span>';
+
+    tooltipEl.innerHTML = `
+        <div class="delays-tip-header">
+            <div class="delays-tip-hour">
+                <i data-lucide="clock" style="width: 14px; height: 14px;"></i>
+                <span>${item.hour_str} - ${String(item.hour_num).padStart(2, '0')}:59</span>
+                ${filterHint}
+            </div>
+            <div class="delays-tip-total-val">${mainValStr}</div>
+        </div>
+        ${trendHtml}
+        <div class="delays-tip-regions">
+            <div class="delays-tip-reg-item">
+                <span class="delays-tip-reg-label norte">UT Norte</span>
+                <span class="delays-tip-reg-val">${norteValStr}</span>
+                <span style="font-size: 0.62rem; color: #94a3b8;">${item.norte.count} eqp</span>
+            </div>
+            <div class="delays-tip-reg-item">
+                <span class="delays-tip-reg-label leste">UT Leste</span>
+                <span class="delays-tip-reg-val">${lesteValStr}</span>
+                <span style="font-size: 0.62rem; color: #94a3b8;">${item.leste.count} eqp</span>
+            </div>
+        </div>
+        ${baseHtml}
+        ${teamsHtml}
+    `;
+
+    if (window.lucide) lucide.createIcons({ root: tooltipEl });
+
+    const tipWidth = tooltipEl.offsetWidth || 300;
+    const tipHeight = tooltipEl.offsetHeight || 240;
+
+    let posX = tooltipX - (tipWidth / 2);
+    let posY = tooltipY - tipHeight - 14;
+
+    if (posX < 10) posX = 10;
+    if (posX + tipWidth > window.innerWidth - 10) posX = window.innerWidth - tipWidth - 10;
+    if (posY < 10) posY = tooltipY + 24;
+
+    tooltipEl.style.left = `${posX}px`;
+    tooltipEl.style.top = `${posY}px`;
+    tooltipEl.style.opacity = '1';
+}
+
+function renderDelaysHourlyDynamicChart(curveData, peakLoss, peakDelay, trendProjection, isMetricSwitch = false) {
+    const canvas = document.getElementById('delaysHourlyDynamicChart');
+    if (!canvas || !window.Chart) return;
+
+    if (curveData) delaysHourlyState.curveData = curveData;
+    if (peakLoss) delaysHourlyState.peakLoss = peakLoss;
+    if (peakDelay) delaysHourlyState.peakDelay = peakDelay;
+    if (trendProjection) delaysHourlyState.trendProjection = trendProjection;
+
+    updateDelaysHourlyPeakBadge();
+    updateDelaysHourlyTrendBadge(delaysHourlyState.trendProjection);
+
+    const data = delaysHourlyState.curveData;
+    if (!data || data.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    const isLoss = delaysHourlyState.metric === 'loss';
+
+    const labels = data.map(d => d.hour_str);
+    const norteVals = data.map(d => isLoss ? (d.norte.loss || 0) : (Math.round(((d.norte.delay_min || 0) / 60) * 10) / 10));
+    const lesteVals = data.map(d => isLoss ? (d.leste.loss || 0) : (Math.round(((d.leste.delay_min || 0) / 60) * 10) / 10));
+
+    // Curva de Tendência Preditiva (Dataset Linha)
+    const trendCurve = (delaysHourlyState.trendProjection && delaysHourlyState.trendProjection.curve) || [];
+    const trendMap = {};
+    trendCurve.forEach(tc => { trendMap[tc.hour_str] = tc; });
+
+    const trendVals = data.map(d => {
+        const tItem = trendMap[d.hour_str];
+        if (!tItem) return 0;
+        return isLoss ? (tItem.projected_loss || 0) : (Math.round(((tItem.projected_delay_min || 0) / 60) * 10) / 10);
+    });
+
+    const hasSelection = delaysHourlyState.selectedHours.size > 0;
+
+    // Gradientes Base
+    const gradNorte = ctx.createLinearGradient(0, 0, 0, 260);
+    gradNorte.addColorStop(0, 'rgba(0, 242, 254, 0.85)');
+    gradNorte.addColorStop(1, 'rgba(2, 132, 199, 0.20)');
+
+    const gradLeste = ctx.createLinearGradient(0, 0, 0, 260);
+    gradLeste.addColorStop(0, 'rgba(192, 132, 252, 0.85)');
+    gradLeste.addColorStop(1, 'rgba(147, 51, 234, 0.20)');
+
+    const bgNorte = data.map(d => {
+        if (!hasSelection) return gradNorte;
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? 'rgba(0, 242, 254, 0.95)' : 'rgba(0, 242, 254, 0.15)';
+    });
+
+    const borderNorte = data.map(d => {
+        if (!hasSelection) return '#00f2fe';
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? '#ffffff' : 'rgba(0, 242, 254, 0.2)';
+    });
+
+    const bgLeste = data.map(d => {
+        if (!hasSelection) return gradLeste;
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? 'rgba(192, 132, 252, 0.95)' : 'rgba(192, 132, 252, 0.15)';
+    });
+
+    const borderLeste = data.map(d => {
+        if (!hasSelection) return '#c084fc';
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? '#ffffff' : 'rgba(192, 132, 252, 0.2)';
+    });
+
+    const borderWidthArr = data.map(d => {
+        if (!hasSelection) return 1.5;
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? 2.5 : 1.0;
+    });
+
+    if (delaysHourlyState.chartInstance) {
+        delaysHourlyState.chartInstance.destroy();
+        delaysHourlyState.chartInstance = null;
+    }
+
+    delaysHourlyState.chartInstance = new Chart(ctx, {
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    type: 'line',
+                    label: 'Projeção de Tendência (3 Dias + Ritmo)',
+                    data: trendVals,
+                    borderColor: '#fbbf24',
+                    backgroundColor: 'rgba(251, 191, 36, 0.08)',
+                    borderWidth: 2.5,
+                    borderDash: [5, 4],
+                    pointBackgroundColor: '#fbbf24',
+                    pointBorderColor: '#0f172a',
+                    pointBorderWidth: 1.5,
+                    pointRadius: 3.5,
+                    pointHoverRadius: 6.5,
+                    tension: 0.35,
+                    order: 0,
+                    stack: false
+                },
+                {
+                    type: 'bar',
+                    label: 'UT Norte',
+                    data: norteVals,
+                    backgroundColor: bgNorte,
+                    borderColor: borderNorte,
+                    borderWidth: borderWidthArr,
+                    borderRadius: 6,
+                    borderSkipped: false,
+                    stack: 'delaysStack',
+                    order: 1
+                },
+                {
+                    type: 'bar',
+                    label: 'UT Leste',
+                    data: lesteVals,
+                    backgroundColor: bgLeste,
+                    borderColor: borderLeste,
+                    borderWidth: borderWidthArr,
+                    borderRadius: 6,
+                    borderSkipped: false,
+                    stack: 'delaysStack',
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            onClick: function(event, elements) {
+                if (elements && elements.length > 0) {
+                    const idx = elements[0].index;
+                    const clickedHour = delaysHourlyState.curveData[idx].hour_str;
+                    if (delaysHourlyState.selectedHours.has(clickedHour)) {
+                        delaysHourlyState.selectedHours.delete(clickedHour);
+                    } else {
+                        delaysHourlyState.selectedHours.add(clickedHour);
+                    }
+                    applyDelaysHourlyFilter();
+                }
+            },
+            animation: {
+                duration: isMetricSwitch ? 300 : 700,
+                easing: 'easeOutQuart'
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    enabled: false,
+                    external: function(context) {
+                        const tooltipModel = context.tooltip;
+                        const tooltipEl = document.getElementById('delaysHourlyChartTooltip');
+                        if (tooltipModel.opacity === 0) {
+                            if (tooltipEl && !delaysHourlyState.isPlaying) {
+                                tooltipEl.style.opacity = '0';
+                            }
+                            return;
+                        }
+                        if (tooltipModel.dataPoints && tooltipModel.dataPoints.length > 0) {
+                            const idx = tooltipModel.dataPoints[0].dataIndex;
+                            const item = delaysHourlyState.curveData[idx];
+                            if (item) {
+                                showCustomHourlyTooltip(context.chart, idx, item);
+                            }
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.05)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: {
+                            family: "'JetBrains Mono', monospace",
+                            size: 11,
+                            weight: 600
+                        }
+                    }
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.06)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: {
+                            family: "'JetBrains Mono', monospace",
+                            size: 11
+                        },
+                        callback: function(val) {
+                            if (isLoss) {
+                                return val >= 1000 ? `R$ ${(val / 1000).toFixed(1)}k` : `R$ ${val}`;
+                            } else {
+                                return `${val}h`;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Bind Global Window
+window.setDelaysHourlyMetric = setDelaysHourlyMetric;
+window.toggleDelaysHourlyPlay = toggleDelaysHourlyPlay;
+window.resetDelaysHourlyPlay = resetDelaysHourlyPlay;
+window.clearDelaysHourlyFilter = clearDelaysHourlyFilter;
 
 function renderDelaysTopTeams(teams) {
     const list = document.getElementById('delaysTopTeamsList');
@@ -18658,11 +19298,10 @@ const DELAYS_DEFAULT_FIXED_COLUMNS = [
 ];
 
 const DELAYS_DEFAULT_REORDERABLE_COLUMNS = [
-    { id: 'regiao', label: 'REGIÃO', default: true },
     { id: 'frota', label: 'FROTA', default: true },
     { id: 'turno', label: 'TURNO', default: true },
     { id: 'horario_previsto', label: 'HORÁRIO PREVISTO', default: true },
-    { id: 'login_efetivo', label: 'LOGIN EFETIVO', default: true },
+    { id: 'login_efetivo', label: 'MARCAÇÃO (LOGIN)', default: true },
     { id: 'status_login', label: 'STATUS LOGIN', default: true },
     { id: 'tempo_atraso', label: 'TURNO x LOGIN', default: true },
     { id: 'valor_hora', label: 'VALOR HORA', default: true },
@@ -18728,10 +19367,13 @@ function getDelaysVisibleColumns() {
         if (saved) {
             const arr = JSON.parse(saved);
             if (Array.isArray(arr) && arr.length > 0) {
+                // Filtra qualquer coluna legada/removida (como 'regiao')
+                const validIds = new Set(DELAYS_TABLE_COLUMNS.map(c => c.id));
+                const cleanArr = arr.filter(id => validIds.has(id));
                 DELAYS_DEFAULT_FIXED_COLUMNS.forEach(fc => {
-                    if (!arr.includes(fc.id)) arr.push(fc.id);
+                    if (!cleanArr.includes(fc.id)) cleanArr.push(fc.id);
                 });
-                delaysState.visibleColumns = new Set(arr);
+                delaysState.visibleColumns = new Set(cleanArr);
                 return delaysState.visibleColumns;
             }
         }
@@ -19051,7 +19693,7 @@ function compareDelaysTeams(a, b, colId, direction) {
     let res = 0;
     switch (colId) {
         case 'ut':
-            res = (a.ut || a.prefix || '').localeCompare(b.ut || b.prefix || '');
+            res = (a.ut || '').localeCompare(b.ut || '');
             break;
         case 'base':
             res = (a.base || '').localeCompare(b.base || '');
@@ -19072,7 +19714,7 @@ function compareDelaysTeams(a, b, colId, direction) {
             res = parseTimeToMinutesHelper(a.shift_code) - parseTimeToMinutesHelper(b.shift_code);
             break;
         case 'login_efetivo':
-            res = parseTimeToMinutesHelper(a.login_time || a.marcacao) - parseTimeToMinutesHelper(b.login_time || b.marcacao);
+            res = parseTimeToMinutesHelper(a.marcacao || a.login_time) - parseTimeToMinutesHelper(b.marcacao || b.login_time);
             break;
         case 'status_login':
             res = (a.status_login || '').localeCompare(b.status_login || '');
@@ -19175,7 +19817,7 @@ function renderDelaysTable(teams) {
                 ${activeCols.map(col => {
                     switch (col.id) {
                         case 'ut':
-                            return `<td class="font-mono text-cyan" style="font-weight: 700;">${t.ut || t.prefix || '--'}</td>`;
+                            return `<td class="font-mono text-cyan" style="font-weight: 700;">${t.ut || (t.region ? 'UT ' + t.region.charAt(0).toUpperCase() + t.region.slice(1).toLowerCase() : '--')}</td>`;
                         case 'base':
                             return `<td><span style="font-weight: 600; color: #cbd5e1;">${t.base || '--'}</span></td>`;
                         case 'equipe':
@@ -19189,7 +19831,8 @@ function renderDelaysTable(teams) {
                         case 'horario_previsto':
                             return `<td class="font-mono" style="text-align: center;">${t.shift_code || '--'}</td>`;
                         case 'login_efetivo':
-                            return `<td class="font-mono" style="text-align: center; color: ${t.login_time ? '#38bdf8' : '#64748b'};">${t.login_time || t.marcacao || '--:--'}</td>`;
+                            const valMarc = (t.marcacao && t.marcacao !== '--') ? t.marcacao : (t.login_time && t.login_time !== '--' ? t.login_time : '--:--');
+                            return `<td class="font-mono" style="text-align: center; color: ${valMarc !== '--:--' ? '#38bdf8' : '#64748b'}; font-weight: 700;">${valMarc}</td>`;
                         case 'status_login':
                             return `<td style="text-align: center;">${statusLoginBadge}</td>`;
                         case 'tempo_atraso':

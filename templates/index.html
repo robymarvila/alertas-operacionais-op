@@ -3452,8 +3452,9 @@
                             <span class="delays-kpi-main-val text-amber font-mono" id="delaysKpiTotalTempoAtraso">00h 00m</span>
                         </div>
                         <div class="delays-kpi-sub-breakdown">
-                            <span class="delays-sub-pill text-amber" id="delaysKpiTotalAtrasadas">0 equipes em atraso</span>
-                            <span class="delays-sub-pill pill-secondary" id="delaysKpiAtrasadasPct">0% do total</span>
+                            <span class="delays-sub-pill" id="delaysKpiNorteTempoAtraso">Norte: 00h 00m</span>
+                            <span class="delays-sub-pill" id="delaysKpiLesteTempoAtraso">Leste: 00h 00m</span>
+                            <span class="delays-sub-pill pill-secondary" id="delaysKpiMediaTempoAtraso">Média/Atrasada: 0 min</span>
                         </div>
                     </div>
 
@@ -3470,8 +3471,9 @@
                             <span class="delays-kpi-main-val text-cyan font-mono" id="delaysKpiTotalTempoNoPrazo">00h 00m</span>
                         </div>
                         <div class="delays-kpi-sub-breakdown">
-                            <span class="delays-sub-pill text-cyan" id="delaysKpiTotalNoPrazo">0 equipes pontuais</span>
-                            <span class="delays-sub-pill pill-secondary" id="delaysKpiNoPrazoPct">0% do total</span>
+                            <span class="delays-sub-pill" id="delaysKpiNorteTempoNoPrazo">Norte: 00h 00m</span>
+                            <span class="delays-sub-pill" id="delaysKpiLesteTempoNoPrazo">Leste: 00h 00m</span>
+                            <span class="delays-sub-pill pill-secondary" id="delaysKpiMediaTempoNoPrazo">Média/Pontual: 0 min</span>
                         </div>
                     </div>
 
@@ -3488,8 +3490,9 @@
                             <span class="delays-kpi-main-val text-emerald font-mono" id="delaysKpiTaxaPontualidade">100%</span>
                         </div>
                         <div class="delays-kpi-sub-breakdown">
-                            <span class="delays-sub-pill" id="delaysKpiTotalEquipes">0 equipes entregues</span>
-                            <span class="delays-sub-pill pill-secondary">Escopo Selecionado</span>
+                            <span class="delays-sub-pill" id="delaysKpiNortePontualidade">Norte: 100%</span>
+                            <span class="delays-sub-pill" id="delaysKpiLestePontualidade">Leste: 100%</span>
+                            <span class="delays-sub-pill pill-secondary" id="delaysKpiMediaPontualidade">Média Geral: 100%</span>
                         </div>
                     </div>
                 </div>
@@ -3498,7 +3501,87 @@
                 
                 <!-- CONTAINER 4A: VISÃO OPERACIONAL DIÁRIA / REALTIME -->
                 <div id="delaysContainerDailyView" style="display: block;">
-                    <!-- GRADE DOS 3 TURNOS (MANHÃ, TARDE, NOITE COM HORÁRIOS) -->
+                    <!-- NOVO: GRÁFICO DINÂMICO HORA A HORA ULTRA PREMIUM (PERDAS E TEMPO COM REPLAY/PLAYER) -->
+                    <div class="delays-hourly-analytics-card glass-card">
+                        <div class="delays-hourly-header">
+                            <div class="delays-hourly-title-group">
+                                <div class="delays-hourly-icon-badge">
+                                    <i data-lucide="activity" class="text-cyan"></i>
+                                </div>
+                                <div>
+                                    <h4 class="delays-hourly-title">DINÂMICA HORÁRIA DE PERDAS & OCIOSIDADE</h4>
+                                    <p class="delays-hourly-subtitle">Evolução intraday consolidada pelo momento da marcação / login (encerramento da ociosidade)</p>
+                                </div>
+                            </div>
+
+                            <!-- CONTROLES EXECUTIVOS: RADAR DE PICO, TENDÊNCIA, TOGGLE DE MÉTRICA & PLAYER DE LINHA DO TEMPO -->
+                            <div class="delays-hourly-controls">
+                                <!-- Badge de Pico Crítico -->
+                                <div class="delays-peak-badge" id="delaysHourlyPeakBadge">
+                                    <span class="pulse-indicator"></span>
+                                    <span class="peak-label">PICO DO DIA:</span>
+                                    <span class="peak-val font-mono" id="delaysHourlyPeakVal">--:-- (R$ 0,00)</span>
+                                </div>
+
+                                <!-- Badge de Linha de Tendência / Ritmo Projeção -->
+                                <div class="delays-trend-badge" id="delaysHourlyTrendBadge" title="Comparativo do ritmo de hoje com a tendência histórica dos últimos 3 dias">
+                                    <span class="trend-dot"></span>
+                                    <span class="trend-label">RITMO DO DIA:</span>
+                                    <span class="trend-val font-mono" id="delaysHourlyTrendVal">Calculando tendência...</span>
+                                </div>
+
+                                <!-- Alternador de Métrica (Segmented Switcher) -->
+                                <div class="delays-metric-switch">
+                                    <button type="button" class="metric-btn active" id="btnDelaysViewMetricLoss" onclick="setDelaysHourlyMetric('loss')">
+                                        <i data-lucide="badge-dollar-sign"></i> Impacto Financeiro (R$)
+                                    </button>
+                                    <button type="button" class="metric-btn" id="btnDelaysViewMetricTime" onclick="setDelaysHourlyMetric('time')">
+                                        <i data-lucide="clock"></i> Tempo Perdido
+                                    </button>
+                                </div>
+
+                                <!-- Player de Linha do Tempo Replay -->
+                                <div class="delays-player-bar">
+                                    <button type="button" class="player-btn" id="btnDelaysPlayHourly" title="Reproduzir Linha do Tempo" onclick="toggleDelaysHourlyPlay()">
+                                        <i data-lucide="play" id="iconDelaysPlayPause"></i>
+                                    </button>
+                                    <button type="button" class="player-btn-secondary" id="btnDelaysResetHourly" title="Reiniciar Animação" onclick="resetDelaysHourlyPlay()">
+                                        <i data-lucide="rotate-ccw"></i>
+                                    </button>
+                                    <div class="player-timeline-info">
+                                        <span class="player-step-lbl" id="delaysPlayerCurrentHour">Tempo Real</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CANVAS DO GRÁFICO ULTRA PREMIUM -->
+                        <div class="delays-hourly-canvas-wrap" style="position: relative; height: 260px; width: 100%;">
+                            <canvas id="delaysHourlyDynamicChart"></canvas>
+                        </div>
+
+                        <!-- LEGENDA REFINADA REGIONAL & TOOLTIP HIGHLIGHT -->
+                        <div class="delays-hourly-footer-legend">
+                            <div class="legend-chip">
+                                <span class="legend-bullet bullet-norte"></span>
+                                <span class="legend-txt"><b>UT Norte</b> (Ciano Elétrico)</span>
+                            </div>
+                            <div class="legend-chip">
+                                <span class="legend-bullet bullet-leste"></span>
+                                <span class="legend-txt"><b>UT Leste</b> (Violeta Neon)</span>
+                            </div>
+                            <div class="legend-chip">
+                                <span class="legend-line-sample"></span>
+                                <span class="legend-txt"><b>Linha de Tendência</b> (Projeção 3 Dias + Ritmo)</span>
+                            </div>
+                            <div class="legend-chip tip-chip">
+                                <i data-lucide="sparkles" class="text-amber"></i>
+                                <span>Clique nas barras para filtrar a tabela por horário • Passe o mouse para ver detalhes</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GRADE DOS TURNOS (TOTAL CONSOLIDADO, MANHÃ, TARDE, NOITE COM HORÁRIOS) -->
                     <div class="delays-shifts-section glass-card">
                         <div class="delays-section-header">
                             <div class="delays-section-title-wrap">
@@ -3509,6 +3592,32 @@
                         </div>
 
                         <div class="delays-shifts-grid">
+                            <!-- Card Turno 0: TOTAL CONSOLIDADO -->
+                            <div class="delays-shift-card shift-card-total">
+                                <div class="delays-shift-header">
+                                    <div class="delays-shift-title">
+                                        <i data-lucide="layers" class="text-emerald"></i>
+                                        <span>TOTAL CONSOLIDADO</span>
+                                    </div>
+                                    <span class="delays-shift-badge-loss badge-total-glow" id="delaysShiftLossTotal">R$ 0,00</span>
+                                </div>
+                                <div class="delays-shift-summary-row">
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">Atrasadas</span>
+                                        <span class="stat-val text-rose font-mono" id="delaysShiftAtrasadasTotal">0</span>
+                                    </div>
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">No Prazo</span>
+                                        <span class="stat-val text-emerald font-mono" id="delaysShiftNoPrazoTotal">0</span>
+                                    </div>
+                                    <div class="shift-stat-box">
+                                        <span class="stat-lbl">Tempo Atraso</span>
+                                        <span class="stat-val text-amber font-mono" id="delaysShiftTempoTotal">00h 00m</span>
+                                    </div>
+                                </div>
+                                <div class="delays-slot-rows" id="delaysShiftSlotsTotal"></div>
+                            </div>
+
                             <!-- Card Turno Manhã -->
                             <div class="delays-shift-card shift-card-morning">
                                 <div class="delays-shift-header">
@@ -3672,6 +3781,19 @@
                         </div>
                         <div class="delays-justifications-grid" id="delaysMonthlyJustificationsGrid"></div>
                     </div>
+                </div>
+
+                <!-- BANNER DE FILTRO ATIVO POR HORÁRIO CLICADO NO GRÁFICO DINÂMICO -->
+                <div id="delaysHourlyFilterBanner" class="delays-hour-filter-banner" style="display: none; margin-top: 18px; margin-bottom: -10px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="pulse-indicator-cyan"></span>
+                        <span style="font-size: 0.78rem; color: #f1f5f9;">
+                            Filtrando equipes das horas selecionadas no gráfico: <strong id="delaysHourlyFilterHoursList" class="font-mono text-cyan" style="font-size: 0.85rem; letter-spacing: 0.05em;"></strong>
+                        </span>
+                    </div>
+                    <button type="button" class="btn-clear-hour-filter" onclick="clearDelaysHourlyFilter()">
+                        <i data-lucide="x" style="width: 12px; height: 12px;"></i> Limpar Filtro Horário
+                    </button>
                 </div>
 
                 <!-- 5. TABELA ANALÍTICA DETALHADA FORENSE (CLUSTER COLAPSÁVEL + TELA CHEIA + SELETOR DE COLUNAS) -->
