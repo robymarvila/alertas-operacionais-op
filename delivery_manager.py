@@ -711,17 +711,11 @@ class DeliveryManager:
                                 date_ref=cached_date
                             )
                             t.update(s_info)
-                            # Se for após as 04:30 da manhã e o turno for da noite anterior (20h/22h) já inativo, descarta
-                            if (now.hour > 4 or (now.hour == 4 and now.minute >= 31)) and not t.get("is_active", True) and t.get("shift_code") in ["20:00", "22:00"]:
-                                continue
-                            # Se a equipe não está ativa e nunca foi vista ativa hoje no dia operacional, descarta
+                            has_marc_load = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
+                            if has_marc_load or t.get("is_active", True):
+                                t["seen_active_today"] = True
+                            # Se a equipe não está ativa e nunca foi vista ativa hoje no dia operacional, descarta (registro fantasma)
                             if not t.get("is_active", True) and not t.get("seen_active_today"):
-                                continue
-                            # Se a equipe estiver inativa e pertencer a um turno futuro cujo horário de início ainda não ocorreu hoje, descarta
-                            now_min_check = now.hour * 60 + now.minute
-                            sc_chk = t.get("shift_code", "08:00")
-                            sc_start_chk = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc_chk, 480)
-                            if not t.get("is_active", True) and sc_start_chk > now_min_check:
                                 continue
                             if t.get("hora_a_caminho"):
                                 h_raw = str(t["hora_a_caminho"]).strip()
@@ -780,19 +774,24 @@ class DeliveryManager:
 
         # Sincronização Inteligente no Boot com a Nuvem Supabase
         try:
-            from supabase_client import fetch_latest_delivery_snapshot_from_supabase, fetch_bid_records_by_date
+            from supabase_client import fetch_delivery_records_by_date, fetch_latest_delivery_snapshot_from_supabase, fetch_bid_records_by_date
             current_op_date = self.get_operational_date()
-            cloud_snap = fetch_latest_delivery_snapshot_from_supabase(date_ref=current_op_date)
-            if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
-                c_date = cloud_snap.get("date_ref")
-                if c_date and c_date == current_op_date:
-                    src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase (Boot)"
-                    cap_at = cloud_snap.get("captured_at")
-                    print(f"[DELIVERY] Boot sync: Hidratando {len(cloud_snap['data'])} equipes do Supabase ({cap_at})...", flush=True)
-                    self.process_raw_enel_records(cloud_snap["data"], source_label=src_lbl, captured_at=cap_at)
+            if len(self.daily_accumulated_teams) < 50:
+                cloud_recs = fetch_delivery_records_by_date(current_op_date)
+                if cloud_recs and len(cloud_recs) >= len(self.daily_accumulated_teams):
+                    print(f"[DELIVERY] Boot sync: Hidratando {len(cloud_recs)} equipes consolidadas do Supabase...", flush=True)
+                    self.process_raw_enel_records(cloud_recs, source_label="Nuvem Supabase (Boot)")
                     self.save_local_cache()
-                else:
-                    print(f"[DELIVERY] Boot sync: Snapshot da nuvem ignorado (data {c_date} != {current_op_date}). Acumulador inicia limpo.", flush=True)
+            else:
+                # Se o cache local já carregou equipes consolidadas, apenas atualiza o estado das ativas mais recentes
+                cloud_snap = fetch_latest_delivery_snapshot_from_supabase(date_ref=current_op_date)
+                if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
+                    c_date = cloud_snap.get("date_ref")
+                    if c_date and c_date == current_op_date:
+                        src_lbl = cloud_snap.get("sync_source") or "Nuvem Supabase (Boot)"
+                        cap_at = cloud_snap.get("captured_at")
+                        self.process_raw_enel_records(cloud_snap["data"], source_label=src_lbl, captured_at=cap_at)
+                        self.save_local_cache()
 
             # Hidrata também o BID para o dia corrente
             current_op = self.get_operational_date()
@@ -1513,8 +1512,10 @@ class DeliveryManager:
                 "raw_shift": str(shift_raw),
                 "last_seen_time": now.strftime("%H:%M:%S")
             }
-            if is_active_val:
+            has_marc_val = bool(hora_marc and str(hora_marc).strip() not in ["--", "-", "None", "nan", "", "--:--"])
+            if is_active_val or has_marc_val:
                 team_obj["seen_active_today"] = True
+            if is_active_val:
                 # Se a equipe já existia no acumulado com valores ricos e team_obj veio com vazios (ex: sync de nuvem):
                 if team_code in self.daily_accumulated_teams:
                     prev = self.daily_accumulated_teams[team_code]
@@ -1534,7 +1535,7 @@ class DeliveryManager:
             else:
                 # Atualiza com as informações mais recentes mantendo first_seen_time
                 existing = self.daily_accumulated_teams[team_code]
-                if is_active_val:
+                if is_active_val or has_marc_val:
                     existing["seen_active_today"] = True
                 f_seen = existing.get("first_seen_time", now.strftime("%H:%M:%S"))
                 for k, v in team_obj.items():
@@ -1551,24 +1552,17 @@ class DeliveryManager:
 
         # Marca equipes acumuladas que saíram da lista ativa nesta coleta
         active_codes = set(active_dict.keys())
-        now_min = now.hour * 60 + now.minute
         for code, t in list(self.daily_accumulated_teams.items()):
             if code not in active_codes:
+                has_m_chk = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
+                if has_m_chk:
+                    t["seen_active_today"] = True
                 # Se a equipe nunca foi vista ativa hoje no dia operacional, purga imediatamente (registro fantasma)
                 if not t.get("seen_active_today"):
                     del self.daily_accumulated_teams[code]
                     continue
                 t["is_active"] = False
                 t["status"] = "Deslogada / Turno Concluído"
-                # Se for após as 04:30 e for turno da noite anterior (20h/22h), descarta do acumulado do dia atual
-                if (now.hour > 4 or (now.hour == 4 and now.minute >= 31)) and t.get("shift_code") in ["20:00", "22:00"]:
-                    del self.daily_accumulated_teams[code]
-                    continue
-                # Se a equipe estiver inativa e pertencer a um turno futuro cujo início ainda não ocorreu hoje, descarta
-                sc_cand = t.get("shift_code", "08:00")
-                sc_min = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc_cand, 480)
-                if sc_min > now_min:
-                    del self.daily_accumulated_teams[code]
 
         self.active_teams = active_processed
 
@@ -3510,19 +3504,7 @@ class DeliveryManager:
                     return False
             elif mode == "realtime":
                 if not has_marc and not is_active:
-                    # Se não tem marcação e não está ativa, descarta apenas se o turno for futuro
-                    raw_sc = str(t_obj.get("shift_code") or "08:00").strip()
-                    t_turno = str(t_obj.get("turno") or "").lower()
-                    if "tarde" in t_turno or raw_sc in ["11:30", "12:00", "12:30", "13:00", "14:00", "15:00", "15:30"]:
-                        sc_canon = "12:00" if raw_sc in ["11:30", "12:00", "12:30", "13:00"] else "14:00"
-                    elif "noite" in t_turno or raw_sc in ["18:00", "18:30", "19:00", "20:00", "20:30", "21:00", "22:00"]:
-                        sc_canon = "20:00" if raw_sc in ["18:00", "18:30", "19:00", "20:00", "20:30", "21:00"] else "22:00"
-                    else:
-                        sc_canon = "06:00" if raw_sc in ["06:00", "06:30", "07:00", "07:30"] else "08:00"
-
-                    sc_start_min = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc_canon, 480)
-                    if sc_start_min > current_clock_minutes:
-                        return False
+                    return False
 
             code = str(t_obj.get("team_code") or "").strip().upper()
             b_raw = str(t_obj.get("base_display") or t_obj.get("base_name") or t_obj.get("base_code") or "").upper()
@@ -3949,30 +3931,26 @@ class DeliveryManager:
         is_today = (date_ref == today_op)
         teams_list = []
         if is_today:
-            # Combina equipes do Supabase (para persistência e resiliência a reinicialização de containers)
-            # com o acumulador diário em memória e as equipes ativas
-            teams_dict = {}
-            try:
-                from supabase_client import fetch_delivery_records_by_date
-                supa_recs = fetch_delivery_records_by_date(today_op) or []
-                for r in supa_recs:
-                    c = str(r.get("team_code") or "").strip().upper()
-                    if c:
-                        teams_dict[c] = r
-            except Exception as e_sup:
-                logger.warning(f"[Delays Analytics] Erro ao carregar registros do Supabase para {today_op}: {e_sup}")
+            # 1. Utiliza o acumulador diário em memória (mais recente e higienizado da operação)
+            teams_dict = dict(self.daily_accumulated_teams)
 
-            # 2. Mescla com acumulador diário em memória (mais recente)
-            for c, t in self.daily_accumulated_teams.items():
-                code = str(c or "").strip().upper()
-                if code:
-                    teams_dict[code] = t
-
-            # 3. Mescla com equipes ativas no momento
+            # 2. Mescla com equipes ativas no momento
             for t in (self.active_teams or []):
                 code = str(t.get("team_code") or "").strip().upper()
-                if code:
+                if code and code not in teams_dict:
                     teams_dict[code] = t
+
+            # 3. Fallback SOMENTE se o acumulador em memória e cache local estiver vazio (ex: boot frio)
+            if not teams_dict:
+                try:
+                    from supabase_client import fetch_delivery_records_by_date
+                    supa_recs = fetch_delivery_records_by_date(today_op) or []
+                    for r in supa_recs:
+                        c = str(r.get("team_code") or "").strip().upper()
+                        if c:
+                            teams_dict[c] = r
+                except Exception as e_sup:
+                    logger.warning(f"[Delays Analytics] Erro ao carregar registros do Supabase para {today_op}: {e_sup}")
 
             teams_list = list(teams_dict.values())
         elif date_ref in self._delays_history_records_cache:

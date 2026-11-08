@@ -682,9 +682,50 @@ def fetch_latest_delivery_snapshot_from_supabase(date_ref: str = None) -> dict:
 def fetch_delivery_records_by_date(date_str: str) -> list:
     """Busca registros históricos consolidados de equipes entregues para uma data específica (YYYY-MM-DD)."""
     try:
-        # Busca direta por date_ref para capturar TODAS as equipes do dia (manhã, tarde e noite)
+        # 1. Tenta recuperar o snapshot consolidado da data a partir de sessão representativa
+        try:
+            dt_obj = datetime.fromisoformat(date_str)
+            next_day = (dt_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+        except Exception:
+            next_day = date_str
+
+        # Busca sessão consolidada até as 23:59 BRT (03:00 UTC do dia seguinte)
+        sess_url = f"{BASE_REST_URL}/team_delivery_sessions?date_ref=eq.{date_str}&captured_at=lte.{next_day}T03:00:00&order=captured_at.desc&limit=1"
+        resp_s = requests.get(sess_url, headers=get_headers(), timeout=6)
+        if resp_s.status_code == 200 and resp_s.json():
+            s_id = resp_s.json()[0].get("id")
+            if s_id:
+                rec_url = f"{BASE_REST_URL}/team_delivery_records?session_id=eq.{s_id}&limit=1000"
+                resp_rec = requests.get(rec_url, headers=get_headers(), timeout=8)
+                if resp_rec.status_code == 200 and resp_rec.json():
+                    records = resp_rec.json()
+                    if len(records) >= 30:
+                        seen = {}
+                        for r in records:
+                            code = str(r.get("team_code") or "").strip().upper()
+                            if code and code not in seen:
+                                seen[code] = r
+                        return list(seen.values())
+
+        # 2. Fallback via última sessão qualquer gravada na data
+        sess_url_fb = f"{BASE_REST_URL}/team_delivery_sessions?date_ref=eq.{date_str}&order=captured_at.desc&limit=1"
+        resp_s_fb = requests.get(sess_url_fb, headers=get_headers(), timeout=5)
+        if resp_s_fb.status_code == 200 and resp_s_fb.json():
+            last_sess_id = resp_s_fb.json()[0].get("id")
+            if last_sess_id:
+                rec_url = f"{BASE_REST_URL}/team_delivery_records?session_id=eq.{last_sess_id}&limit=1000"
+                resp_rec = requests.get(rec_url, headers=get_headers(), timeout=8)
+                if resp_rec.status_code == 200 and resp_rec.json():
+                    seen = {}
+                    for r in resp_rec.json():
+                        code = str(r.get("team_code") or "").strip().upper()
+                        if code and code not in seen:
+                            seen[code] = r
+                    return list(seen.values())
+
+        # 3. Fallback direto por date_ref mantendo apenas equipes com marcação válida ou ativas
         endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&limit=2000"
-        resp = requests.get(endpoint, headers=get_headers(), timeout=12)
+        resp = requests.get(endpoint, headers=get_headers(), timeout=10)
         if resp.status_code == 200:
             raw = resp.json() or []
             if raw:
@@ -694,27 +735,14 @@ def fetch_delivery_records_by_date(date_str: str) -> list:
                     if not code:
                         continue
                     r_has_marc = bool(r.get("marcacao") and str(r.get("marcacao")).strip() not in ["--", "-", "", "None", "nan", "--:--"])
+                    r_active = bool(r.get("is_active", False))
+                    if not r_has_marc and not r_active:
+                        continue
                     if code not in seen:
                         seen[code] = r
                     elif r_has_marc and not bool(seen[code].get("marcacao") and str(seen[code].get("marcacao")).strip() not in ["--", "-", "", "None", "nan", "--:--"]):
                         seen[code] = r
                 return list(seen.values())
-
-        # Fallback via última sessão caso a busca ampla não retorne
-        sess_url = f"{BASE_REST_URL}/team_delivery_sessions?date_ref=eq.{date_str}&order=captured_at.desc&limit=1"
-        resp_s = requests.get(sess_url, headers=get_headers(), timeout=5)
-        if resp_s.status_code == 200 and resp_s.json():
-            last_sess_id = resp_s.json()[0].get("id")
-            if last_sess_id:
-                rec_url = f"{BASE_REST_URL}/team_delivery_records?session_id=eq.{last_sess_id}&limit=2000"
-                resp_rec = requests.get(rec_url, headers=get_headers(), timeout=10)
-                if resp_rec.status_code == 200 and resp_rec.json():
-                    seen = {}
-                    for r in resp_rec.json():
-                        code = str(r.get("team_code") or "").strip().upper()
-                        if code and code not in seen:
-                            seen[code] = r
-                    return list(seen.values())
         return []
     except Exception as e:
         print(f"[SUPABASE FETCH DATE ERROR] {e}")
