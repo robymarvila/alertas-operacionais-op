@@ -680,9 +680,27 @@ def fetch_latest_delivery_snapshot_from_supabase(date_ref: str = None) -> dict:
         return {"status": "error", "message": str(e), "data": [], "date_ref": date_ref}
 
 def fetch_delivery_records_by_date(date_str: str) -> list:
-    """Busca registros históricos de equipes entregues para uma data específica (YYYY-MM-DD)."""
+    """Busca registros históricos consolidados de equipes entregues para uma data específica (YYYY-MM-DD)."""
     try:
-        # Tenta buscar a sessão de entrega consolidada mais recente da data (altamente otimizado via índice de sessão)
+        # Busca direta por date_ref para capturar TODAS as equipes do dia (manhã, tarde e noite)
+        endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&limit=2000"
+        resp = requests.get(endpoint, headers=get_headers(), timeout=12)
+        if resp.status_code == 200:
+            raw = resp.json() or []
+            if raw:
+                seen = {}
+                for r in raw:
+                    code = str(r.get("team_code") or "").strip().upper()
+                    if not code:
+                        continue
+                    r_has_marc = bool(r.get("marcacao") and str(r.get("marcacao")).strip() not in ["--", "-", "", "None", "nan", "--:--"])
+                    if code not in seen:
+                        seen[code] = r
+                    elif r_has_marc and not bool(seen[code].get("marcacao") and str(seen[code].get("marcacao")).strip() not in ["--", "-", "", "None", "nan", "--:--"]):
+                        seen[code] = r
+                return list(seen.values())
+
+        # Fallback via última sessão caso a busca ampla não retorne
         sess_url = f"{BASE_REST_URL}/team_delivery_sessions?date_ref=eq.{date_str}&order=captured_at.desc&limit=1"
         resp_s = requests.get(sess_url, headers=get_headers(), timeout=5)
         if resp_s.status_code == 200 and resp_s.json():
@@ -693,22 +711,10 @@ def fetch_delivery_records_by_date(date_str: str) -> list:
                 if resp_rec.status_code == 200 and resp_rec.json():
                     seen = {}
                     for r in resp_rec.json():
-                        code = r.get("team_code")
+                        code = str(r.get("team_code") or "").strip().upper()
                         if code and code not in seen:
                             seen[code] = r
                     return list(seen.values())
-
-        # Fallback sem order by captured_at (para evitar timeout no PostgREST caso não haja sessão)
-        endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&limit=2000"
-        resp = requests.get(endpoint, headers=get_headers(), timeout=15)
-        if resp.status_code == 200:
-            raw = resp.json() or []
-            seen = {}
-            for r in raw:
-                code = r.get("team_code")
-                if code and code not in seen:
-                    seen[code] = r
-            return list(seen.values())
         return []
     except Exception as e:
         print(f"[SUPABASE FETCH DATE ERROR] {e}")

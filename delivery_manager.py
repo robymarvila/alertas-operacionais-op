@@ -819,8 +819,10 @@ class DeliveryManager:
                 "bid_cache": self.bid_cache,
                 "last_bid_sync": self.last_bid_sync
             }
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            tmp_file = f"{CACHE_FILE}.tmp"
+            with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_file, CACHE_FILE)
         except Exception as e:
             print(f"[WARN] Falha ao salvar cache diário de entrega: {e}")
 
@@ -3487,13 +3489,17 @@ class DeliveryManager:
                 return c_data
 
         now_dt = datetime.now(BR_TZ)
-        current_clock_minutes = now_dt.hour * 60 + now_dt.minute
+        is_post_midnight_op = (now_dt.hour < 4 or (now_dt.hour == 4 and now_dt.minute <= 30))
+        if is_post_midnight_op:
+            current_clock_minutes = (now_dt.hour + 24) * 60 + now_dt.minute
+        else:
+            current_clock_minutes = now_dt.hour * 60 + now_dt.minute
 
         def _matches_filters(t_obj, pricing):
             # 0. Regra Executiva/Operacional:
             # - No modo TEMPO REAL (HOJE):
-            #   Considerar somente equipes que efetivamente logaram (possuem marcação) ou que estão ativas no portal da Enel.
-            #   Descartar equipes inativas de turnos futuros (cujo horário de início ainda não ocorreu hoje).
+            #   Considerar todas as equipes que efetivamente logaram (possuem marcação) ou que estão ativas no portal.
+            #   Equipes sem marcação (apenas programadas) de turnos futuros (cujo horário ainda não iniciou) são descartadas.
             # - Nos modos HISTÓRICO DIA A DIA e ACUMULADO DO MÊS:
             #   Desconsiderar equipes apenas programadas que não efetuaram login (mostrar somente equipes que logaram).
             has_marc = bool(t_obj.get("marcacao") and str(t_obj.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
@@ -3504,21 +3510,19 @@ class DeliveryManager:
                     return False
             elif mode == "realtime":
                 if not has_marc and not is_active:
-                    return False
+                    # Se não tem marcação e não está ativa, descarta apenas se o turno for futuro
+                    raw_sc = str(t_obj.get("shift_code") or "08:00").strip()
+                    t_turno = str(t_obj.get("turno") or "").lower()
+                    if "tarde" in t_turno or raw_sc in ["11:30", "12:00", "12:30", "13:00", "14:00", "15:00", "15:30"]:
+                        sc_canon = "12:00" if raw_sc in ["11:30", "12:00", "12:30", "13:00"] else "14:00"
+                    elif "noite" in t_turno or raw_sc in ["18:00", "18:30", "19:00", "20:00", "20:30", "21:00", "22:00"]:
+                        sc_canon = "20:00" if raw_sc in ["18:00", "18:30", "19:00", "20:00", "20:30", "21:00"] else "22:00"
+                    else:
+                        sc_canon = "06:00" if raw_sc in ["06:00", "06:30", "07:00", "07:30"] else "08:00"
 
-                # Trava Temporal: se o turno é futuro e a equipe não está ativa no portal agora, descarta
-                raw_sc = str(t_obj.get("shift_code") or "08:00").strip()
-                t_turno = str(t_obj.get("turno") or "").lower()
-                if "tarde" in t_turno or raw_sc in ["11:30", "12:00", "12:30", "13:00", "14:00", "15:00", "15:30"]:
-                    sc_canon = "12:00" if raw_sc in ["11:30", "12:00", "12:30", "13:00"] else "14:00"
-                elif "noite" in t_turno or raw_sc in ["18:00", "18:30", "19:00", "20:00", "20:30", "21:00", "22:00"]:
-                    sc_canon = "20:00" if raw_sc in ["18:00", "18:30", "19:00", "20:00", "20:30", "21:00"] else "22:00"
-                else:
-                    sc_canon = "06:00" if raw_sc in ["06:00", "06:30", "07:00", "07:30"] else "08:00"
-
-                sc_start_min = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc_canon, 480)
-                if sc_start_min > current_clock_minutes and not is_active:
-                    return False
+                    sc_start_min = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc_canon, 480)
+                    if sc_start_min > current_clock_minutes:
+                        return False
 
             code = str(t_obj.get("team_code") or "").strip().upper()
             b_raw = str(t_obj.get("base_display") or t_obj.get("base_name") or t_obj.get("base_code") or "").upper()
@@ -3945,17 +3949,32 @@ class DeliveryManager:
         is_today = (date_ref == today_op)
         teams_list = []
         if is_today:
-            # Combina equipes acumuladas do dia e ativas no momento
-            teams_dict = dict(self.daily_accumulated_teams)
-            for t in (self.active_teams or []):
-                code = t.get("team_code")
-                if code and code not in teams_dict:
-                    teams_dict[code] = t
-            if teams_dict:
-                teams_list = list(teams_dict.values())
-            else:
+            # Combina equipes do Supabase (para persistência e resiliência a reinicialização de containers)
+            # com o acumulador diário em memória e as equipes ativas
+            teams_dict = {}
+            try:
                 from supabase_client import fetch_delivery_records_by_date
-                teams_list = fetch_delivery_records_by_date(today_op) or []
+                supa_recs = fetch_delivery_records_by_date(today_op) or []
+                for r in supa_recs:
+                    c = str(r.get("team_code") or "").strip().upper()
+                    if c:
+                        teams_dict[c] = r
+            except Exception as e_sup:
+                logger.warning(f"[Delays Analytics] Erro ao carregar registros do Supabase para {today_op}: {e_sup}")
+
+            # 2. Mescla com acumulador diário em memória (mais recente)
+            for c, t in self.daily_accumulated_teams.items():
+                code = str(c or "").strip().upper()
+                if code:
+                    teams_dict[code] = t
+
+            # 3. Mescla com equipes ativas no momento
+            for t in (self.active_teams or []):
+                code = str(t.get("team_code") or "").strip().upper()
+                if code:
+                    teams_dict[code] = t
+
+            teams_list = list(teams_dict.values())
         elif date_ref in self._delays_history_records_cache:
             teams_list = self._delays_history_records_cache[date_ref]
         else:
@@ -4111,11 +4130,13 @@ class DeliveryManager:
                 turno_key = "Manhã"
                 sc = "06:00" if sc in ["06:00", "06:30", "07:00", "07:30"] else "08:00"
 
+            t_has_marc = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
+
             # Trava Temporal Absoluta em Tempo Real:
-            # Turnos cujo horário de início ainda não ocorreu hoje (ex: turnos da tarde/noite durante a manhã)
-            # JAMAIS podem computar atraso antes do seu horário de início!
+            # Se a equipe JÁ LOGOU (possui marcação), o atraso dela é real e histórico! JAMAIS deve ser zerado.
+            # A trava de turno futuro SÓ se aplica para equipes SEM MARCAÇÃO (programadas) cujo horário de turno ainda não começou hoje!
             sc_start_min = {"06:00": 360, "08:00": 480, "12:00": 720, "14:00": 840, "20:00": 1200, "22:00": 1320}.get(sc, 480)
-            if mode == "realtime" and sc_start_min > current_clock_minutes:
+            if mode == "realtime" and not t_has_marc and sc_start_min > current_clock_minutes:
                 d_min = 0
                 loss = 0.0
 
@@ -4138,7 +4159,6 @@ class DeliveryManager:
 
             macro_r = just.get("macro_reason") if just else "Sem Justificativa Registrada"
             sub_r = just.get("sub_reason") if just else "--"
-            t_has_marc = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
             st_login_val = "LOGADA" if t_has_marc else "PROGRAMADA"
 
             ut_val = str(t.get("ut") or "").strip()
