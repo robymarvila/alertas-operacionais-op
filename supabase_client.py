@@ -494,7 +494,14 @@ def push_delivery_snapshot_to_supabase(delivery_data: dict, sync_source="Portal 
                 session_id = s_data[0].get("id")
 
         # Persiste o universo completo do dia nesta sessão: equipes ativas (is_active=True) e concluídas (is_active=False)
-        teams_to_save = daily_total if daily_total and len(daily_total) >= len(active_teams) else active_teams
+        candidates = daily_total if daily_total and len(daily_total) >= len(active_teams) else active_teams
+        teams_to_save = [t for t in candidates if t.get("is_active", True) or t.get("seen_active_today")]
+        if now.hour < 18:
+            # Antes das 18h, descarta equipes inativas que pertençam ao turno noturno da noite anterior
+            teams_to_save = [
+                t for t in teams_to_save
+                if not (not t.get("is_active", True) and (t.get("shift_code") in ["20:00", "22:00"] or str(t.get("turno", "")).lower() == "noite"))
+            ]
 
         if teams_to_save and len(teams_to_save) > 0:
             records_payload = []
@@ -682,6 +689,16 @@ def fetch_latest_delivery_snapshot_from_supabase(date_ref: str = None) -> dict:
 def fetch_delivery_records_by_date(date_str: str) -> list:
     """Busca registros históricos consolidados de equipes entregues para uma data específica (YYYY-MM-DD)."""
     try:
+        def _clean_night_rollover(recs):
+            now_br = datetime.now(BR_TZ)
+            today_iso = now_br.strftime("%Y-%m-%d")
+            if date_str == today_iso and now_br.hour < 18:
+                return [
+                    r for r in recs
+                    if not (not r.get("is_active", False) and (r.get("shift_code") in ["20:00", "22:00"] or str(r.get("turno", "")).lower() == "noite"))
+                ]
+            return recs
+
         # 1. Tenta recuperar o snapshot consolidado da data a partir de sessão representativa
         try:
             dt_obj = datetime.fromisoformat(date_str)
@@ -705,7 +722,7 @@ def fetch_delivery_records_by_date(date_str: str) -> list:
                             code = str(r.get("team_code") or "").strip().upper()
                             if code and code not in seen:
                                 seen[code] = r
-                        return list(seen.values())
+                        return _clean_night_rollover(list(seen.values()))
 
         # 2. Fallback via última sessão qualquer gravada na data
         sess_url_fb = f"{BASE_REST_URL}/team_delivery_sessions?date_ref=eq.{date_str}&order=captured_at.desc&limit=1"
@@ -721,7 +738,7 @@ def fetch_delivery_records_by_date(date_str: str) -> list:
                         code = str(r.get("team_code") or "").strip().upper()
                         if code and code not in seen:
                             seen[code] = r
-                    return list(seen.values())
+                    return _clean_night_rollover(list(seen.values()))
 
         # 3. Fallback direto por date_ref mantendo apenas equipes com marcação válida ou ativas
         endpoint = f"{BASE_REST_URL}/team_delivery_records?date_ref=eq.{date_str}&limit=2000"
@@ -742,7 +759,7 @@ def fetch_delivery_records_by_date(date_str: str) -> list:
                         seen[code] = r
                     elif r_has_marc and not bool(seen[code].get("marcacao") and str(seen[code].get("marcacao")).strip() not in ["--", "-", "", "None", "nan", "--:--"]):
                         seen[code] = r
-                return list(seen.values())
+                return _clean_night_rollover(list(seen.values()))
         return []
     except Exception as e:
         print(f"[SUPABASE FETCH DATE ERROR] {e}")

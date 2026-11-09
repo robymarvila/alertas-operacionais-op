@@ -352,7 +352,8 @@ def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 mi
             print(f"[{ts_end}] [CDP ENEL] <<< CICLO FINALIZADO: Nenhuma equipe retornada na tabela ({elapsed}s).", flush=True)
             return res
 
-        # Consolida no delivery_manager
+        # Consolida no delivery_manager garantindo virada operacional
+        delivery_manager.check_and_apply_operational_rollover()
         consolidated = delivery_manager.process_raw_enel_records(records, source_label=source_label)
 
         # Persiste no Supabase

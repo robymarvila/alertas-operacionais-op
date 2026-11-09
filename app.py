@@ -890,6 +890,7 @@ def get_engine_details(engine_key):
         if last_sync and "-" in str(last_sync) and "T" in str(last_sync):
             last_sync = format_datetime_br(last_sync)
 
+        delivery_manager.check_and_apply_operational_rollover()
         op_date = delivery_manager.get_operational_date()
         bid_records = [
             v for v in delivery_manager.bid_cache.values()
@@ -2227,6 +2228,7 @@ def get_teams_data():
     Sincroniza automaticamente com o Supabase quando houver novidade na nuvem
     ou quando o usuário solicitar atualização direta.
     """
+    delivery_manager.check_and_apply_operational_rollover()
     op_date = delivery_manager.get_operational_date()
     force_refresh = (
         request.args.get('force') in ['true', '1'] or
@@ -3366,6 +3368,7 @@ def cloud_pull_sync_worker(interval_seconds=25):
     time.sleep(4)
     while True:
         try:
+            delivery_manager.check_and_apply_operational_rollover()
             op_date = delivery_manager.get_operational_date()
 
             # 1. Sincroniza Entrega de Equipes (Enel SP)

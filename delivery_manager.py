@@ -570,7 +570,25 @@ def classify_and_price_team(team_dict: dict, date_ref: str = None) -> dict:
         cat_display = "Veículo Leve"
 
     rate = CONTRACT_HOURLY_RATES[reg_key][cat_key]
-    d_min = int(team_dict.get("turno_x_login_minutos") or 0)
+    d_min = team_dict.get("turno_x_login_minutos")
+    if d_min is None or d_min == 0:
+        marc = str(team_dict.get("marcacao") or team_dict.get("marcacao_login") or "").strip()
+        sc = str(team_dict.get("shift_code") or team_dict.get("horario_previsto") or "").strip()
+        if ":" in marc and ":" in sc and marc not in ["--", "-", "None", "nan", "--:--"]:
+            try:
+                m_h, m_m = map(int, marc.split(":")[:2])
+                s_h, s_m = map(int, sc.split(":")[:2])
+                diff = (m_h * 60 + m_m) - (s_h * 60 + s_m)
+                if diff < -720: diff += 1440
+                elif diff > 720: diff -= 1440
+                d_min = diff
+            except Exception:
+                d_min = 0
+        else:
+            d_min = 0
+    else:
+        d_min = int(d_min)
+
     financial_loss = round((d_min / 60.0) * rate, 2) if d_min > 0 else 0.0
 
     return {
@@ -601,6 +619,33 @@ class DeliveryManager:
         if dt.hour < 4 or (dt.hour == 4 and dt.minute <= 30):
             return (dt.date() - timedelta(days=1)).isoformat()
         return dt.date().isoformat()
+
+    def check_and_apply_operational_rollover(self, dt=None) -> bool:
+        """
+        Garante que a virada operacional das 04:31 seja executada de forma atômica
+        e consistente em todo o sistema. Se a data operacional atual diferir de
+        self.current_date_str, purga acumuladores de ontem e inicializa o novo dia limpo.
+        """
+        if dt is None:
+            dt = datetime.now(BR_TZ)
+        op_date = self.get_operational_date(dt)
+        if op_date != getattr(self, "current_date_str", None):
+            old_date = getattr(self, "current_date_str", "INICIAL")
+            print(f"[DELIVERY ROLLOVER] >>> VIRADA OPERACIONAL DETECTADA: {old_date} -> {op_date} às {dt.strftime('%H:%M:%S')} BRT. Reiniciando acumuladores diários...", flush=True)
+            self.current_date_str = op_date
+            self.daily_accumulated_teams = {}
+            # Mantém apenas as equipes que estão fisicamente ativas no momento
+            self.active_teams = [t for t in (self.active_teams or []) if t.get("is_active", True)]
+            self.daily_team_order_history = {}
+            self.daily_delay_justifications = {}
+            self.intraday_curve = {}
+            self._delays_analytics_cache = {}
+            self._delays_history_records_cache = {}
+            self._daily_audit_cache = {}
+            self._daily_audit_cache_ts = {}
+            self.save_local_cache()
+            return True
+        return False
 
     def __init__(self):
         # 14 Bases Oficiais com empresas e regiões oficiais
@@ -711,11 +756,16 @@ class DeliveryManager:
                                 date_ref=cached_date
                             )
                             t.update(s_info)
-                            has_marc_load = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
-                            if has_marc_load or t.get("is_active", True):
+                            if t.get("is_active", True):
                                 t["seen_active_today"] = True
                             # Se a equipe não está ativa e nunca foi vista ativa hoje no dia operacional, descarta (registro fantasma)
                             if not t.get("is_active", True) and not t.get("seen_active_today"):
+                                continue
+                            # Antes das 18:00, turnos noturnos concluídos (20:00 e 22:00) pertencem à noite anterior
+                            if now.hour < 18 and not t.get("is_active", False) and (t.get("shift_code") in ["20:00", "22:00"] or str(t.get("turno", "")).lower() == "noite"):
+                                continue
+                            # Durante as primeiras horas do dia (antes das 12:00), turnos diurnos não podem estar concluídos
+                            if now.hour < 12 and not t.get("is_active", False) and t.get("shift_code") in ["06:00", "08:00", "12:00", "14:00"]:
                                 continue
                             if t.get("hora_a_caminho"):
                                 h_raw = str(t["hora_a_caminho"]).strip()
@@ -779,9 +829,11 @@ class DeliveryManager:
             if len(self.daily_accumulated_teams) < 50:
                 cloud_recs = fetch_delivery_records_by_date(current_op_date)
                 if cloud_recs and len(cloud_recs) >= len(self.daily_accumulated_teams):
-                    print(f"[DELIVERY] Boot sync: Hidratando {len(cloud_recs)} equipes consolidadas do Supabase...", flush=True)
-                    self.process_raw_enel_records(cloud_recs, source_label="Nuvem Supabase (Boot)")
-                    self.save_local_cache()
+                    valid_cloud_recs = [r for r in cloud_recs if r.get("is_active", False)]
+                    if valid_cloud_recs:
+                        print(f"[DELIVERY] Boot sync: Hidratando {len(valid_cloud_recs)} equipes ativas do Supabase...", flush=True)
+                        self.process_raw_enel_records(valid_cloud_recs, source_label="Nuvem Supabase (Boot)")
+                        self.save_local_cache()
             else:
                 # Se o cache local já carregou equipes consolidadas, apenas atualiza o estado das ativas mais recentes
                 cloud_snap = fetch_latest_delivery_snapshot_from_supabase(date_ref=current_op_date)
@@ -1174,15 +1226,7 @@ class DeliveryManager:
         e adiciona de forma cumulativa e deduplicada ao histórico diário (Equipes TOTAL).
         """
         now = datetime.now(BR_TZ)
-        op_date = self.get_operational_date(now)
-        
-        # Se virou o dia, reinicia o acumulado diário
-        if op_date != self.current_date_str:
-            print(f"[DELIVERY] Virada de dia operacional detectada ({self.current_date_str} -> {op_date}). Reiniciando acumulador diário das 04:31...")
-            self.current_date_str = op_date
-            self.daily_accumulated_teams = {}
-            self.daily_team_order_history = {}
-            self.intraday_curve = {}
+        self.check_and_apply_operational_rollover(now)
 
         if captured_at:
             from supabase_client import format_datetime_br
@@ -1513,9 +1557,8 @@ class DeliveryManager:
                 "last_seen_time": now.strftime("%H:%M:%S")
             }
             has_marc_val = bool(hora_marc and str(hora_marc).strip() not in ["--", "-", "None", "nan", "", "--:--"])
-            if is_active_val or has_marc_val:
-                team_obj["seen_active_today"] = True
             if is_active_val:
+                team_obj["seen_active_today"] = True
                 # Se a equipe já existia no acumulado com valores ricos e team_obj veio com vazios (ex: sync de nuvem):
                 if team_code in self.daily_accumulated_teams:
                     prev = self.daily_accumulated_teams[team_code]
@@ -1526,7 +1569,7 @@ class DeliveryManager:
 
             # Acumula no histórico do dia
             if team_code not in self.daily_accumulated_teams:
-                # Se vier inativa em carga de snapshot e nunca foi vista ativa hoje no dia operacional, não adiciona
+                # Se vier inativa em carga de snapshot e nunca foi vista ativa hoje no dia operacional, descarta categoricamente
                 if not is_active_val and not team_obj.get("seen_active_today"):
                     continue
                 team_copy = dict(team_obj)
@@ -1535,7 +1578,7 @@ class DeliveryManager:
             else:
                 # Atualiza com as informações mais recentes mantendo first_seen_time
                 existing = self.daily_accumulated_teams[team_code]
-                if is_active_val or has_marc_val:
+                if is_active_val:
                     existing["seen_active_today"] = True
                 f_seen = existing.get("first_seen_time", now.strftime("%H:%M:%S"))
                 for k, v in team_obj.items():
@@ -1554,9 +1597,11 @@ class DeliveryManager:
         active_codes = set(active_dict.keys())
         for code, t in list(self.daily_accumulated_teams.items()):
             if code not in active_codes:
-                has_m_chk = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
-                if has_m_chk:
-                    t["seen_active_today"] = True
+                # Se a equipe for do turno noturno e deslogou durante o período diurno (antes das 18:00),
+                # ela pertence ao turno da noite anterior e não deve permanecer no acumulador do novo dia!
+                if now.hour < 18 and (t.get("shift_code") in ["20:00", "22:00"] or str(t.get("turno", "")).lower() == "noite"):
+                    del self.daily_accumulated_teams[code]
+                    continue
                 # Se a equipe nunca foi vista ativa hoje no dia operacional, purga imediatamente (registro fantasma)
                 if not t.get("seen_active_today"):
                     del self.daily_accumulated_teams[code]
@@ -1723,9 +1768,8 @@ class DeliveryManager:
         Retorna a reconciliação forense completa entre Equipes Brasil (Logadas/Ativas)
         e a Visão Operacional BidTech (Checklists & Em Operação).
         """
+        self.check_and_apply_operational_rollover()
         current_op = self.get_operational_date()
-        if current_op != self.current_date_str:
-            self.current_date_str = current_op
 
         if not date_str:
             date_str = current_op
@@ -3448,6 +3492,7 @@ class DeliveryManager:
                 return "Santo André", "Leste"
             return "Outras Bases", "Norte"
 
+        self.check_and_apply_operational_rollover()
         today_op = self.get_operational_date()
         if mode == "realtime":
             date_ref = today_op
@@ -3581,7 +3626,9 @@ class DeliveryManager:
                 status_matched = False
                 for ss in selected_statuses:
                     ss_u = ss.upper()
-                    if ss_u in ["LOGADA", "LOGADO"] and has_marc:
+                    if ss_u in ["LOGADA", "LOGADO"] and has_marc and is_active:
+                        status_matched = True; break
+                    elif ss_u in ["DESLOGADA", "DESLOGADO", "CONCLUIDO", "CONCLUÍDO"] and not is_active:
                         status_matched = True; break
                     elif ss_u in ["PROGRAMADA", "PROGRAMADO", "SEM_LOGIN"] and not has_marc:
                         status_matched = True; break
@@ -3947,7 +3994,8 @@ class DeliveryManager:
                     supa_recs = fetch_delivery_records_by_date(today_op) or []
                     for r in supa_recs:
                         c = str(r.get("team_code") or "").strip().upper()
-                        if c:
+                        # No modo realtime, apenas carregar equipes ativas para não ressuscitar inativas de dias anteriores
+                        if c and r.get("is_active", False):
                             teams_dict[c] = r
                 except Exception as e_sup:
                     logger.warning(f"[Delays Analytics] Erro ao carregar registros do Supabase para {today_op}: {e_sup}")
@@ -4108,6 +4156,14 @@ class DeliveryManager:
                 turno_key = "Manhã"
                 sc = "06:00" if sc in ["06:00", "06:30", "07:00", "07:30"] else "08:00"
 
+            # Trava para Turnos Noturnos da Noite Anterior em Tempo Real:
+            # Em modo realtime durante o período diurno (antes das 18:00):
+            # O turno da noite de HOJE ainda não começou.
+            # Equipes do turno noturno (20:00/22:00) herdadas da noite anterior pertencem
+            # a ontem e NÃO devem figurar nos indicadores, cards ou tabela de hoje.
+            if mode == "realtime" and now_dt.hour < 18 and turno_key == "Noite":
+                continue
+
             t_has_marc = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
 
             # Trava Temporal Absoluta em Tempo Real:
@@ -4137,7 +4193,13 @@ class DeliveryManager:
 
             macro_r = just.get("macro_reason") if just else "Sem Justificativa Registrada"
             sub_r = just.get("sub_reason") if just else "--"
-            st_login_val = "LOGADA" if t_has_marc else "PROGRAMADA"
+            is_active_flag = bool(t.get("is_active", False))
+            if not is_active_flag and t_has_marc:
+                st_login_val = "DESLOGADA"
+            elif is_active_flag and t_has_marc:
+                st_login_val = "LOGADA"
+            else:
+                st_login_val = "PROGRAMADA"
 
             ut_val = str(t.get("ut") or "").strip()
             if not ut_val or ut_val in ["--", "-", "None", "nan", ""]:
@@ -4176,6 +4238,8 @@ class DeliveryManager:
                     "login_time": t.get("login_time") or "--",
                     "marcacao": t.get("marcacao") or "--",
                     "status_login": st_login_val,
+                    "is_active": is_active_flag,
+                    "status_operacional": t.get("status", "Logada" if is_active_flag else "Deslogada / Turno Concluído"),
                     "delay_minutes": d_min,
                     "delay_str": f"+{d_min} min",
                     "rate_hour": pricing["rate_hour"],
@@ -4283,6 +4347,8 @@ class DeliveryManager:
                     "login_time": t.get("login_time") or "--",
                     "marcacao": t.get("marcacao") or "--",
                     "status_login": st_login_val,
+                    "is_active": is_active_flag,
+                    "status_operacional": t.get("status", "Logada" if is_active_flag else "Deslogada / Turno Concluído"),
                     "delay_minutes": d_min if t_has_marc else 0,
                     "delay_str": f"{d_min} min" if (t_has_marc and d_min < 0) else ("No Prazo" if t_has_marc else "Programada"),
                     "rate_hour": pricing["rate_hour"],

@@ -19808,9 +19808,14 @@ function renderDelaysTable(teams) {
                </span>`
             : `<span class="badge-turno-login-pontual">${t.delay_str}</span>`;
 
-        const statusLoginBadge = t.status_login === 'LOGADA'
+        const isLogged = t.is_active && t.status_login === 'LOGADA';
+        const isLoggedOut = !t.is_active || t.status_login === 'DESLOGADA';
+        const hasMarcOrLogin = (t.marcacao && t.marcacao !== '--' && t.marcacao !== '--:--') || (t.login_time && t.login_time !== '--' && t.login_time !== '--:--');
+        const statusLoginBadge = isLogged
             ? `<span class="badge-status-login badge-status-logada">LOGADA</span>`
-            : `<span class="badge-status-login badge-status-programada">PROGRAMADA</span>`;
+            : (isLoggedOut && hasMarcOrLogin)
+                ? `<span class="badge-status-login badge-status-deslogada">DESLOGADA</span>`
+                : `<span class="badge-status-login badge-status-programada">PROGRAMADA</span>`;
 
         return `
             <tr>
