@@ -7946,8 +7946,20 @@ function renderDeliveryTable() {
         const tempoAtivoHtml = computeTempoAtivoBadge(t.marcacao, t.shift_slot, t.login_time, isAct, statusEB, terminoVal);
         const turnoXLoginHtml = computeTurnoXLoginBadge(t.marcacao, t.shift_slot, t.login_time, t.turno_x_login, t.turno_x_login_minutos);
 
-                // Justificativa de Atraso integrada no clique do horario em atraso
-        const justObj = (t.delay_justification) || (deliveryState.delayJustifications && deliveryState.delayJustifications[t.team_code]);
+        // Justificativa de Atraso integrada no clique do horario em atraso (estritamente se houver atraso e pertencer a data de hoje)
+        const curOpDate = (deliveryState && deliveryState.date) || getOperationalDate();
+        let justObj = null;
+        if (t.turno_x_login_minutos > 0) {
+            if (t.delay_justification && (t.delay_justification.date_ref === curOpDate || !t.delay_justification.date_ref)) {
+                justObj = t.delay_justification;
+            } else if (deliveryState && deliveryState.delayJustifications) {
+                const mapJ = deliveryState.delayJustifications[curOpDate] || deliveryState.delayJustifications;
+                const cand = mapJ[t.team_code];
+                if (cand && (cand.date_ref === curOpDate || !cand.date_ref)) {
+                    justObj = cand;
+                }
+            }
+        }
         let turnoXLoginCellContent = turnoXLoginHtml;
         if (t.turno_x_login_minutos > 0) {
             if (justObj && justObj.macro_reason) {
@@ -17543,10 +17555,18 @@ window.openDelayJustificationModal = function(teamCode, shiftSlot, delayMinutes,
     const modal = document.getElementById('delayJustificationModal');
     if (!modal) return;
 
+    // Determina com precisão a data em que o atraso ocorreu
+    let targetDate = getOperationalDate();
+    if (window.delaysState && delaysState.mode === 'daily' && delaysState.date) {
+        targetDate = delaysState.date;
+    } else if (window.deliveryState && deliveryState.date) {
+        targetDate = deliveryState.date;
+    }
+
     document.getElementById('delayFormTeamCode').value = teamCode;
-    document.getElementById('delayFormDateRef').value = (deliveryState && deliveryState.date) || getOperationalDate();
+    document.getElementById('delayFormDateRef').value = targetDate;
     document.getElementById('delayModalTeamCode').textContent = teamCode;
-    document.getElementById('delayModalShift').textContent = `${shiftSlot || '--'} (${marcacao || '--'})`;
+    document.getElementById('delayModalShift').textContent = `${shiftSlot || '--'} (${marcacao || '--'}) - Data: ${targetDate}`;
     document.getElementById('delayModalMinutes').textContent = `+${delayMinutes || 0} min`;
 
     const savedUser = localStorage.getItem('last_delay_justifier_name') || '';
@@ -17555,7 +17575,34 @@ window.openDelayJustificationModal = function(teamCode, shiftSlot, delayMinutes,
         userInp.value = savedUser;
     }
 
-    const justObj = (deliveryState && deliveryState.delayJustifications && deliveryState.delayJustifications[teamCode]) || null;
+    // Busca se já existe justificativa gravada EXCLUSIVAMENTE para ESTA data específica
+    let justObj = null;
+    if (window.delaysState && delaysState.data && delaysState.data.teams) {
+        const found = delaysState.data.teams.find(x => x.team_code === teamCode);
+        if (found && found.has_justification) {
+            justObj = {
+                macro_reason: found.macro_reason,
+                sub_reason: found.sub_reason,
+                observation: found.observation,
+                user_name: found.user_name,
+                date_ref: targetDate
+            };
+        }
+    }
+    if (!justObj && window.deliveryState && deliveryState.delayJustifications) {
+        const dateMap = deliveryState.delayJustifications[targetDate] || {};
+        const cand = dateMap[teamCode] || deliveryState.delayJustifications[teamCode];
+        if (cand && (cand.date_ref === targetDate)) {
+            justObj = cand;
+        }
+    }
+    if (!justObj && window.deliveryState && deliveryState.dailyTotalTeams) {
+        const tObj = deliveryState.dailyTotalTeams.find(x => x.team_code === teamCode);
+        if (tObj && tObj.delay_justification && tObj.delay_justification.date_ref === targetDate && tObj.turno_x_login_minutos > 0) {
+            justObj = tObj.delay_justification;
+        }
+    }
+
     const macroSel = document.getElementById('delayFormMacroReason');
     const obsText = document.getElementById('delayFormObservation');
 
@@ -17646,18 +17693,26 @@ window.submitDelayJustification = async function(event) {
         const res = await resp.json();
         if (resp.ok && res.status === 'success') {
             if (!deliveryState.delayJustifications) deliveryState.delayJustifications = {};
-            deliveryState.delayJustifications[teamCode] = res.justification;
+            if (!deliveryState.delayJustifications[dateRef]) deliveryState.delayJustifications[dateRef] = {};
+            deliveryState.delayJustifications[dateRef][teamCode] = res.justification;
 
-            const tAct = (deliveryState.activeTeams || []).find(x => x.team_code === teamCode);
-            if (tAct) tAct.delay_justification = res.justification;
-            const tTot = (deliveryState.dailyTotalTeams || []).find(x => x.team_code === teamCode);
-            if (tTot) tTot.delay_justification = res.justification;
+            const currOp = getOperationalDate();
+            if (dateRef === currOp) {
+                const tAct = (deliveryState.activeTeams || []).find(x => x.team_code === teamCode);
+                if (tAct && tAct.turno_x_login_minutos > 0) tAct.delay_justification = res.justification;
+                const tTot = (deliveryState.dailyTotalTeams || []).find(x => x.team_code === teamCode);
+                if (tTot && tTot.turno_x_login_minutos > 0) tTot.delay_justification = res.justification;
+            }
 
             closeDelayJustificationModal();
-            showToast(`Justificativa da equipe ${teamCode} salva com sucesso!`, 'success');
+            showToast(`Justificativa da equipe ${teamCode} salva com sucesso para ${dateRef}!`, 'success');
 
             if (typeof renderDeliveryTable === 'function') {
                 renderDeliveryTable();
+            }
+
+            if (typeof loadDelaysAnalytics === 'function') {
+                loadDelaysAnalytics(true);
             }
 
             if (typeof loadTvDelaysData === 'function') {
@@ -17666,7 +17721,7 @@ window.submitDelayJustification = async function(event) {
 
             try {
                 const bc = new BroadcastChannel('cco_delivery_channel');
-                bc.postMessage({ type: 'DELAY_JUSTIFICATION_SAVED', teamCode: teamCode });
+                bc.postMessage({ type: 'DELAY_JUSTIFICATION_SAVED', teamCode: teamCode, dateRef: dateRef });
                 bc.close();
             } catch(e) {}
         } else {
@@ -19235,6 +19290,13 @@ function renderDelaysMonthlyChart(dailyTrend) {
     });
 }
 
+function formatDelaysMinutes(totalMinutes) {
+    const m = Math.max(0, Math.floor(totalMinutes || 0));
+    const h = Math.floor(m / 60);
+    const rem = m % 60;
+    return `${String(h).padStart(2, '0')}h ${String(rem).padStart(2, '0')}m`;
+}
+
 function renderDelaysJustificationsList(containerId, justList) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -19249,20 +19311,27 @@ function renderDelaysJustificationsList(containerId, justList) {
         const isUnjustified = !j.has_justification;
         const icon = isUnjustified ? 'alert-triangle' : 'file-check';
         const colorClass = isUnjustified ? 'text-amber' : 'text-emerald';
+        const rawMacro = j.macro_reason || '';
+        const macroEnc = encodeURIComponent(rawMacro).replace(/'/g, "%27");
 
         return `
-            <div class="delays-just-card">
+            <div class="delays-just-card" data-macro="${macroEnc}" onclick="openMacroJustificationModal(this.getAttribute('data-macro'))" title="Clique para abrir o ranking de submotivos e detalhamento">
                 <div class="delays-just-card-header">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <i data-lucide="${icon}" class="${colorClass}" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
                         <div>
-                            <strong class="delays-just-title">${j.macro_reason}</strong>
+                            <strong class="delays-just-title">${rawMacro}</strong>
                             <div style="font-size: 0.68rem; color: #94a3b8;">${j.qtd_equipes} equipes • Submotivo frequente: <i>${j.top_sub_reason || '--'}</i></div>
                         </div>
                     </div>
-                    <div style="text-align: right;">
-                        <strong class="delays-just-loss font-mono">${j.perda_reais_str}</strong>
-                        <div class="font-mono text-amber" style="font-size: 0.7rem;">${j.tempo_str}</div>
+                    <div style="text-align: right; display: flex; align-items: center; gap: 6px;">
+                        <div>
+                            <strong class="delays-just-loss font-mono">${j.perda_reais_str}</strong>
+                            <div class="font-mono text-amber" style="font-size: 0.7rem;">${j.tempo_str}</div>
+                        </div>
+                        <span class="delays-just-btn-pill">
+                            Detalhes ↗
+                        </span>
                     </div>
                 </div>
                 <div class="delays-just-sub-row">
@@ -19277,6 +19346,460 @@ function renderDelaysJustificationsList(containerId, justList) {
 
     if (window.lucide) lucide.createIcons();
 }
+
+// ==========================================================================
+// MODAL ULTRA-PREMIUM: RANKING DE SUBMOTIVOS & IMPACTO FINANCEIRO
+// ==========================================================================
+delaysState.currentMacroModal = null;
+delaysState.activeSubFilter = '';
+
+window.openMacroJustificationModal = function(macroReasonEncoded) {
+    const modal = document.getElementById('modalMacroJustification');
+    if (!modal) {
+        console.error('[MACRO MODAL] Elemento #modalMacroJustification não encontrado no DOM!');
+        return;
+    }
+
+    try {
+        const macroReason = decodeURIComponent(macroReasonEncoded || '').trim();
+        console.log('[MACRO MODAL] Abrindo modal para causa raiz:', macroReason);
+
+        if (!macroReason) return;
+
+        // Localiza o objeto de justificativa no estado consolidado
+        const summaryList = (delaysState.data && delaysState.data.justifications_summary) || [];
+        let macroObj = summaryList.find(x => String(x.macro_reason || '').trim().toUpperCase() === macroReason.toUpperCase());
+
+        // Se não encontrou no summary (ou teams estiver vazio), tenta sintetizar a partir de delaysState.data.teams
+        const allTeams = (delaysState.data && delaysState.data.teams) || [];
+        const matchedTeams = allTeams.filter(t => {
+            const m = String(t.macro_reason || '').trim().toUpperCase();
+            return m === macroReason.toUpperCase() || (!t.macro_reason && macroReason === 'Sem Justificativa Registrada');
+        });
+
+        if (!macroObj) {
+            let totalLoss = 0;
+            let totalMin = 0;
+            matchedTeams.forEach(t => {
+                totalLoss += (t.financial_loss || 0);
+                totalMin += (t.delay_minutes || 0);
+            });
+            macroObj = {
+                macro_reason: macroReason,
+                has_justification: matchedTeams.some(t => t.has_justification),
+                qtd_equipes: matchedTeams.length,
+                tempo_min: totalMin,
+                tempo_str: formatDelaysMinutes(totalMin),
+                perda_reais: totalLoss,
+                perda_reais_str: 'R$ ' + totalLoss.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                pct_perda: 0,
+                teams: matchedTeams,
+                sub_reasons_list: []
+            };
+        } else if (!macroObj.teams || macroObj.teams.length === 0) {
+            macroObj.teams = matchedTeams;
+        }
+
+        // Se sub_reasons_list não veio pronta ou vazia, agrupa dinamicamente a partir das equipes
+        if (!macroObj.sub_reasons_list || macroObj.sub_reasons_list.length === 0) {
+            const subMap = {};
+            const teamsToGroup = (macroObj.teams && macroObj.teams.length > 0) ? macroObj.teams : matchedTeams;
+            teamsToGroup.forEach(tm => {
+                const sName = (tm.sub_reason && tm.sub_reason !== '--') ? tm.sub_reason : (tm.has_justification ? 'Sem Submotivo' : 'Não Justificado');
+                if (!subMap[sName]) {
+                    subMap[sName] = {
+                        sub_reason: sName,
+                        qtd_equipes: 0,
+                        tempo_min: 0,
+                        perda_reais: 0.0,
+                        teams: []
+                    };
+                }
+                subMap[sName].qtd_equipes += 1;
+                subMap[sName].tempo_min += (tm.delay_minutes || 0);
+                subMap[sName].perda_reais += (tm.financial_loss || 0);
+                subMap[sName].teams.push(tm);
+            });
+
+            const list = Object.values(subMap).map(s => {
+                s.perda_reais = Math.round(s.perda_reais * 100) / 100;
+                s.perda_reais_str = 'R$ ' + s.perda_reais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                s.tempo_str = formatDelaysMinutes(s.tempo_min);
+                s.pct_macro_loss = macroObj.perda_reais > 0 ? Math.round((s.perda_reais / macroObj.perda_reais) * 1000) / 10 : 0;
+                s.pct_macro_teams = macroObj.qtd_equipes > 0 ? Math.round((s.qtd_equipes / macroObj.qtd_equipes) * 1000) / 10 : 0;
+                return s;
+            });
+            list.sort((a, b) => b.perda_reais - a.perda_reais || b.qtd_equipes - a.qtd_equipes);
+            macroObj.sub_reasons_list = list;
+            macroObj.top_sub_reason = list.length > 0 ? list[0].sub_reason : '--';
+        }
+
+        delaysState.currentMacroModal = macroObj;
+        delaysState.activeSubFilter = '';
+
+        // 1. Título e Header
+        const elTitle = document.getElementById('macroJustTitle');
+        const elSubtitle = document.getElementById('macroJustSubtitle');
+        const elTypeBadge = document.getElementById('macroJustTypeBadge');
+        const elScopeBadge = document.getElementById('macroJustScopeBadge');
+        const elIconWrap = document.getElementById('macroJustHeaderIconWrap');
+        const elIcon = document.getElementById('macroJustHeaderIcon');
+
+        if (elTitle) elTitle.textContent = macroObj.macro_reason;
+        if (elSubtitle) {
+            elSubtitle.textContent = `Detalhamento por submotivos, volume de equipes e impacto financeiro contratual`;
+        }
+
+        if (elTypeBadge) {
+            if (!macroObj.has_justification) {
+                elTypeBadge.textContent = 'PENDENTE DE JUSTIFICATIVA';
+                elTypeBadge.style.background = 'rgba(244, 63, 94, 0.15)';
+                elTypeBadge.style.color = '#fb7185';
+                elTypeBadge.style.borderColor = 'rgba(244, 63, 94, 0.3)';
+            } else {
+                elTypeBadge.textContent = 'CAUSA-RAIZ AUDITADA';
+                elTypeBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                elTypeBadge.style.color = '#34d399';
+                elTypeBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+            }
+        }
+
+        if (elScopeBadge) {
+            let scTxt = 'VISÃO HOJE';
+            if (delaysState.mode === 'daily') {
+                scTxt = `DATA: ${delaysState.date}`;
+            } else if (delaysState.mode === 'monthly') {
+                scTxt = `MÊS: ${delaysState.month}`;
+            }
+            elScopeBadge.textContent = scTxt;
+        }
+
+        // Configura ícone e tema visual do Macro
+        let iconName = 'layers';
+        let themeClass = 'theme-blue';
+        const upperMacro = macroReason.toUpperCase();
+        if (upperMacro.includes('LOGISTICA')) {
+            iconName = 'package';
+            themeClass = 'theme-amber';
+        } else if (upperMacro.includes('TI') || upperMacro.includes('SISTEMA')) {
+            iconName = 'laptop';
+            themeClass = 'theme-blue';
+        } else if (upperMacro.includes('VEÍCULO') || upperMacro.includes('VEICULO') || upperMacro.includes('FROTA')) {
+            iconName = 'truck';
+            themeClass = 'theme-rose';
+        } else if (upperMacro.includes('SESMT') || upperMacro.includes('SEGURANÇA')) {
+            iconName = 'shield-check';
+            themeClass = 'theme-emerald';
+        } else if (upperMacro.includes('CCO')) {
+            iconName = 'radio';
+            themeClass = 'theme-purple';
+        } else if (upperMacro.includes('ABS')) {
+            iconName = 'users';
+            themeClass = 'theme-amber';
+        } else if (upperMacro.includes('SEM JUSTIFICATIVA')) {
+            iconName = 'alert-triangle';
+            themeClass = 'theme-rose';
+        }
+
+        if (elIconWrap) {
+            elIconWrap.className = `macro-just-icon-badge ${themeClass}`;
+        }
+        if (elIcon) {
+            elIcon.setAttribute('data-lucide', iconName);
+        }
+
+        // 2. Preenchimento de KPIs
+        const elKpiTeams = document.getElementById('macroKpiTeams');
+        const elKpiTeamsMeta = document.getElementById('macroKpiTeamsMeta');
+        const elKpiHours = document.getElementById('macroKpiHours');
+        const elKpiHoursMeta = document.getElementById('macroKpiHoursMeta');
+        const elKpiLoss = document.getElementById('macroKpiLoss');
+        const elKpiLossMeta = document.getElementById('macroKpiLossMeta');
+        const elKpiTopSub = document.getElementById('macroKpiTopSub');
+        const elKpiTopSubMeta = document.getElementById('macroKpiTopSubMeta');
+
+        if (elKpiTeams) elKpiTeams.textContent = macroObj.qtd_equipes || 0;
+        if (elKpiTeamsMeta) elKpiTeamsMeta.textContent = `${macroObj.qtd_equipes || 0} equipes em atraso no período`;
+        if (elKpiHours) elKpiHours.textContent = macroObj.tempo_str || '00h 00m';
+        if (elKpiHoursMeta) {
+            const avgMin = macroObj.qtd_equipes > 0 ? Math.round(macroObj.tempo_min / macroObj.qtd_equipes) : 0;
+            elKpiHoursMeta.textContent = `Média: ${avgMin} min por equipe afetada`;
+        }
+        if (elKpiLoss) elKpiLoss.textContent = macroObj.perda_reais_str || 'R$ 0,00';
+        if (elKpiLossMeta) elKpiLossMeta.textContent = `${macroObj.pct_perda || 0}% do custo global de atrasos`;
+        if (elKpiTopSub) elKpiTopSub.textContent = macroObj.top_sub_reason || '--';
+        if (elKpiTopSubMeta) {
+            const topItem = (macroObj.sub_reasons_list && macroObj.sub_reasons_list[0]) || null;
+            elKpiTopSubMeta.textContent = topItem ? `${topItem.qtd_equipes} eq. (${topItem.perda_reais_str})` : 'Maior ofensor do grupo';
+        }
+
+        // 3. Renderiza Ranking de Submotivos
+        renderMacroModalSubreasonsList(macroObj.sub_reasons_list || []);
+
+        // 4. Popula Select de Submotivos para filtro
+        const elSubFilter = document.getElementById('macroModalSubFilter');
+        if (elSubFilter) {
+            elSubFilter.innerHTML = '<option value="">Todos os Submotivos</option>' + 
+                (macroObj.sub_reasons_list || []).map(s => `<option value="${encodeURIComponent(s.sub_reason)}">${s.sub_reason} (${s.qtd_equipes})</option>`).join('');
+            elSubFilter.value = '';
+        }
+
+        // 5. Reseta campo de busca
+        const searchInput = document.getElementById('macroModalSearchInput');
+        if (searchInput) searchInput.value = '';
+
+        // 6. Renderiza Tabela de Equipes
+        renderMacroModalTeamsTable(macroObj.teams || []);
+
+        // 7. Rodapé do modal
+        const elFooterInfo = document.getElementById('macroModalFooterInfo');
+        if (elFooterInfo) {
+            elFooterInfo.textContent = `CCO • ${macroObj.qtd_equipes} equipes • Prejuízo: ${macroObj.perda_reais_str}`;
+        }
+    } catch (err) {
+        console.error('[MACRO MODAL] Erro ao preparar modal:', err);
+    }
+
+    // Exibe o modal com a classe active obrigatória
+    modal.style.display = 'flex';
+    void modal.offsetWidth;
+    modal.classList.add('active');
+
+    if (window.lucide) {
+        try { lucide.createIcons(); } catch(e) {}
+    }
+};
+
+function renderMacroModalSubreasonsList(subList) {
+    const container = document.getElementById('macroSubReasonsList');
+    if (!container) return;
+
+    if (!subList || subList.length === 0) {
+        container.innerHTML = '<div style="padding: 14px; text-align: center; color: #64748b; font-size: 0.78rem;">Nenhum submotivo registrado para esta causa raiz.</div>';
+        return;
+    }
+
+    container.innerHTML = subList.map((s, idx) => {
+        const posClass = idx === 0 ? 'pos-1' : (idx === 1 ? 'pos-2' : (idx === 2 ? 'pos-3' : ''));
+        const sEnc = encodeURIComponent(s.sub_reason);
+        const isSelected = delaysState.activeSubFilter === s.sub_reason;
+        const pctLoss = s.pct_macro_loss || 0;
+
+        return `
+            <div class="subreason-rank-card ${isSelected ? 'selected' : ''}" id="subCard_${sEnc.replace(/[^a-zA-Z0-9]/g, '_')}" onclick="selectMacroModalSubreason('${sEnc}')" title="Clique para filtrar a tabela de equipes por ${s.sub_reason}">
+                <div class="subreason-card-top">
+                    <div class="subreason-title-group">
+                        <span class="subreason-rank-pos ${posClass}">#${idx + 1}</span>
+                        <div>
+                            <span class="subreason-name">${s.sub_reason}</span>
+                            <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 1px;">
+                                Representa <strong>${pctLoss}%</strong> da perda financeira deste motivo
+                            </div>
+                        </div>
+                    </div>
+                    <div class="subreason-stats-pills">
+                        <span class="subreason-pill pill-teams font-mono">
+                            <i data-lucide="users" style="width: 11px; height: 11px;"></i> ${s.qtd_equipes} ${s.qtd_equipes === 1 ? 'equipe' : 'equipes'}
+                        </span>
+                        <span class="subreason-pill pill-time font-mono">
+                            <i data-lucide="clock" style="width: 11px; height: 11px;"></i> ${s.tempo_str}
+                        </span>
+                        <span class="subreason-pill pill-loss font-mono">
+                            ${s.perda_reais_str}
+                        </span>
+                    </div>
+                </div>
+                <div class="subreason-bar-wrap">
+                    <div class="subreason-bar-fill" style="width: ${Math.min(100, Math.max(3, pctLoss))}%;"></div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+window.selectMacroModalSubreason = function(subReasonEncoded) {
+    const subReason = decodeURIComponent(subReasonEncoded || '').trim();
+    const elSubFilter = document.getElementById('macroModalSubFilter');
+
+    if (delaysState.activeSubFilter === subReason) {
+        // Desseleciona (volta para todos)
+        delaysState.activeSubFilter = '';
+        if (elSubFilter) elSubFilter.value = '';
+    } else {
+        delaysState.activeSubFilter = subReason;
+        if (elSubFilter) elSubFilter.value = subReasonEncoded;
+    }
+
+    // Atualiza classes de seleção visual nos cards
+    const cards = document.querySelectorAll('.subreason-rank-card');
+    cards.forEach(c => c.classList.remove('selected'));
+    if (delaysState.activeSubFilter) {
+        const activeCard = document.getElementById(`subCard_${subReasonEncoded.replace(/[^a-zA-Z0-9]/g, '_')}`);
+        if (activeCard) activeCard.classList.add('selected');
+    }
+
+    filterMacroModalTeams();
+};
+
+window.filterMacroModalTeams = function() {
+    if (!delaysState.currentMacroModal) return;
+
+    const allTeams = delaysState.currentMacroModal.teams || [];
+    const searchInput = document.getElementById('macroModalSearchInput');
+    const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
+    const elSubFilter = document.getElementById('macroModalSubFilter');
+    const filterSub = elSubFilter ? decodeURIComponent(elSubFilter.value || '').trim().toUpperCase() : '';
+
+    const filtered = allTeams.filter(tm => {
+        // Filtro de texto por equipe, base, responsável ou observação
+        if (searchVal) {
+            const code = String(tm.team_code || '').toUpperCase();
+            const base = String(tm.base || '').toUpperCase();
+            const obs = String(tm.observation || '').toUpperCase();
+            const user = String(tm.user_name || '').toUpperCase();
+            if (!code.includes(searchVal) && !base.includes(searchVal) && !obs.includes(searchVal) && !user.includes(searchVal)) {
+                return false;
+            }
+        }
+        // Filtro por submotivo
+        if (filterSub) {
+            const sub = String(tm.sub_reason || '').toUpperCase();
+            if (sub !== filterSub && !(filterSub === 'SEM SUBMOTIVO' && (!tm.sub_reason || tm.sub_reason === '--'))) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    renderMacroModalTeamsTable(filtered, allTeams.length);
+};
+
+function renderMacroModalTeamsTable(teams, totalOriginal) {
+    const tbody = document.getElementById('macroTeamsTableBody');
+    const badgeCount = document.getElementById('macroTeamsCountBadge');
+    if (!tbody) return;
+
+    const tot = totalOriginal !== undefined ? totalOriginal : teams.length;
+    if (badgeCount) {
+        badgeCount.textContent = teams.length === tot ? `${teams.length} equipes` : `${teams.length} de ${tot} equipes`;
+    }
+
+    if (!teams || teams.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align: center; padding: 24px; color: #64748b; font-size: 0.78rem;">
+                    Nenhuma equipe localizada com os filtros selecionados.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = teams.map(tm => {
+        const dMin = tm.delay_minutes || 0;
+        const lossVal = tm.financial_loss || 0;
+        const lossStr = tm.financial_loss_str || ('R$ ' + lossVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+        const marc = tm.marcacao && tm.marcacao !== '--' ? tm.marcacao : (tm.login_time || '--:--');
+        const prev = tm.horario_previsto || tm.shift_code || '--';
+        const rateStr = tm.rate_hour_str || (tm.rate_hour ? 'R$ ' + tm.rate_hour.toFixed(2) + '/h' : '--');
+        const sub = tm.sub_reason || '--';
+        const user = tm.user_name || '';
+        const obs = tm.observation || '';
+        const auditText = [user ? `Por: <strong>${user}</strong>` : '', obs ? `Obs: <em>${obs}</em>` : ''].filter(Boolean).join(' • ') || '<span style="color: #64748b;">Sem observações</span>';
+
+        return `
+            <tr>
+                <td>
+                    <span class="macro-team-badge font-mono">${tm.team_code}</span>
+                </td>
+                <td>
+                    <span style="font-weight: 600; color: #f1f5f9;">${tm.base || '--'}</span>
+                    <div style="font-size: 0.65rem; color: #64748b;">${tm.region || tm.ut || ''}</div>
+                </td>
+                <td>
+                    <span style="font-weight: 600; color: #e2e8f0;">${tm.turno || '--'}</span>
+                    <div class="font-mono" style="font-size: 0.68rem; color: #94a3b8;">Prev: ${prev}</div>
+                </td>
+                <td class="font-mono text-amber" style="font-weight: 700;">
+                    ${marc}
+                </td>
+                <td class="font-mono text-rose" style="font-weight: 700;">
+                    +${dMin} min
+                </td>
+                <td class="font-mono" style="color: #94a3b8; font-size: 0.72rem;">
+                    ${rateStr}
+                </td>
+                <td class="font-mono text-rose-neon" style="font-weight: 800;">
+                    ${lossStr}
+                </td>
+                <td>
+                    <span class="macro-subreason-badge">${sub}</span>
+                </td>
+                <td style="font-size: 0.7rem; color: #94a3b8; max-width: 220px;">
+                    ${auditText}
+                </td>
+                <td style="text-align: center;">
+                    <button type="button" class="btn-table-action-sm ${tm.has_justification ? 'btn-justificado' : 'btn-action-justificar'}" 
+                            onclick="event.stopPropagation(); openDelayJustificationModal('${tm.team_code}', '${prev}', ${dMin}, '${marc}')"
+                            title="Editar / Revisar Justificativa">
+                        <i data-lucide="${tm.has_justification ? 'check-circle' : 'file-edit'}" style="width: 12px; height: 12px;"></i>
+                        <span>${tm.has_justification ? 'Editar' : 'Justificar'}</span>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+window.closeMacroJustificationModal = function() {
+    const modal = document.getElementById('modalMacroJustification');
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 200);
+    }
+    delaysState.currentMacroModal = null;
+    delaysState.activeSubFilter = '';
+};
+
+window.copyMacroModalReport = function() {
+    const m = delaysState.currentMacroModal;
+    if (!m) return;
+
+    let text = `RELATÓRIO DE ATRASOS & CAUSA-RAIZ CCO\n`;
+    text += `Macro Motivo: ${m.macro_reason}\n`;
+    text += `Recorte: ${delaysState.mode === 'monthly' ? `Mês ${delaysState.month}` : `Data ${delaysState.date || getOperationalDate()}`}\n`;
+    text += `Total de Equipes: ${m.qtd_equipes} | Horas Perdidas: ${m.tempo_str} | Prejuízo Estimado: ${m.perda_reais_str}\n\n`;
+    text += `RANKING DE SUBMOTIVOS:\n`;
+    (m.sub_reasons_list || []).forEach((s, idx) => {
+        text += `#${idx + 1} - ${s.sub_reason}: ${s.qtd_equipes} equipes | ${s.tempo_str} | ${s.perda_reais_str} (${s.pct_macro_loss}% do macro)\n`;
+    });
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('Resumo executivo copiado para a área de transferência!', 'success');
+        }).catch(() => {
+            showToast('Não foi possível copiar automaticamente.', 'warning');
+        });
+    } else {
+        showToast('Área de transferência não suportada pelo navegador.', 'warning');
+    }
+};
+
+// Listener global para fechar com tecla ESC
+document.addEventListener('keydown', function(evt) {
+    if (evt.key === 'Escape') {
+        const modal = document.getElementById('modalMacroJustification');
+        if (modal && modal.style.display !== 'none' && modal.style.display !== '') {
+            closeMacroJustificationModal();
+        }
+    }
+});
 
 window.drillDownToDay = function(dateStr) {
     delaysState.date = dateStr;

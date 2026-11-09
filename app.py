@@ -2540,10 +2540,10 @@ def export_teams_excel():
             "Status BID": t.get("status_bid", "--"),
             "UT": t.get("ut", ""),
             "Filial": t.get("filial", ""),
-            "Justificativa Atraso (Macro)": (t.get("delay_justification") or delivery_manager.daily_delay_justifications.get(t.get("team_code"), {})).get("macro_reason", "--"),
-            "Justificativa Atraso (Submotivo)": (t.get("delay_justification") or delivery_manager.daily_delay_justifications.get(t.get("team_code"), {})).get("sub_reason", "--"),
-            "Justificativa Responsável": (t.get("delay_justification") or delivery_manager.daily_delay_justifications.get(t.get("team_code"), {})).get("user_name", "--"),
-            "Justificativa Observação": (t.get("delay_justification") or delivery_manager.daily_delay_justifications.get(t.get("team_code"), {})).get("observation", "--")
+            "Justificativa Atraso (Macro)": (t.get("delay_justification", {}) if (int(t.get("turno_x_login_minutos") or 0) > 0 and isinstance(t.get("delay_justification"), dict) and str(t.get("delay_justification", {}).get("date_ref") or op_date) == op_date) else {}).get("macro_reason", "--"),
+            "Justificativa Atraso (Submotivo)": (t.get("delay_justification", {}) if (int(t.get("turno_x_login_minutos") or 0) > 0 and isinstance(t.get("delay_justification"), dict) and str(t.get("delay_justification", {}).get("date_ref") or op_date) == op_date) else {}).get("sub_reason", "--"),
+            "Justificativa Responsável": (t.get("delay_justification", {}) if (int(t.get("turno_x_login_minutos") or 0) > 0 and isinstance(t.get("delay_justification"), dict) and str(t.get("delay_justification", {}).get("date_ref") or op_date) == op_date) else {}).get("user_name", "--"),
+            "Justificativa Observação": (t.get("delay_justification", {}) if (int(t.get("turno_x_login_minutos") or 0) > 0 and isinstance(t.get("delay_justification"), dict) and str(t.get("delay_justification", {}).get("date_ref") or op_date) == op_date) else {}).get("observation", "--")
         })
 
     import pandas as pd
@@ -2827,7 +2827,15 @@ def export_bid_reconciliation_excel():
     excel_rows = []
     for r in rows:
         tc = str(r.get("team_code") or "").strip().upper()
-        just = (justifications or {}).get(tc) or (delivery_manager.daily_delay_justifications or {}).get(tc) or (r.get("delay_justification") or {}) or {}
+        d_min_bid = int(r.get("turno_x_login_minutos") or 0)
+        just_cand = (justifications or {}).get(tc)
+        just = {}
+        if d_min_bid > 0 and just_cand and str(just_cand.get("date_ref") or date_str) == date_str:
+            just = just_cand
+        elif d_min_bid > 0 and r.get("delay_justification"):
+            t_j = r.get("delay_justification")
+            if isinstance(t_j, dict) and str(t_j.get("date_ref") or date_str) == date_str:
+                just = t_j
         marc = str(r.get("marcacao_eb") or "").strip()
         is_active = r.get("is_eb_active", True)
         status_eb = str(r.get("status_eb") or "")

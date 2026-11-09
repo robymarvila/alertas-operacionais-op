@@ -7262,11 +7262,166 @@
     </div>
 </div>
 
+<!-- ============================================================= -->
+<!-- MODAL ULTRA-PREMIUM: RANKING DE SUBMOTIVOS & IMPACTO FINANCEIRO -->
+<!-- ============================================================= -->
+<div class="modal-backdrop" id="modalMacroJustification" style="display: none;" onclick="if (event.target === this) closeMacroJustificationModal()">
+    <div class="modal-card glass-card macro-just-modal-card" onclick="event.stopPropagation()">
+        <!-- Header Executivo Glassmorphism -->
+        <div class="macro-just-header">
+            <div class="macro-just-header-left">
+                <div class="macro-just-icon-badge theme-blue" id="macroJustHeaderIconWrap">
+                    <i data-lucide="layers" id="macroJustHeaderIcon" style="width: 24px; height: 24px;"></i>
+                </div>
+                <div>
+                    <div class="macro-just-header-tagline">
+                        <span class="macro-just-pill-badge" id="macroJustTypeBadge">CAUSA-RAIZ OPERACIONAL</span>
+                        <span class="macro-just-scope-badge" id="macroJustScopeBadge">VISÃO DIÁRIA</span>
+                    </div>
+                    <h3 class="macro-just-title" id="macroJustTitle">CARREGANDO...</h3>
+                    <p class="macro-just-subtitle" id="macroJustSubtitle">Detalhamento hierárquico por submotivos, volume de equipes e perdas financeiras</p>
+                </div>
+            </div>
+            <div class="macro-just-header-right">
+                <button type="button" class="btn-close-macro-modal" onclick="closeMacroJustificationModal()" title="Fechar (ESC)">
+                    <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="macro-just-body">
+            <!-- Grid de KPIs Ultra Premium -->
+            <div class="macro-just-kpis-grid">
+                <!-- KPI 1: Equipes Afetadas -->
+                <div class="macro-kpi-card">
+                    <div class="macro-kpi-header">
+                        <span class="macro-kpi-label">Equipes Afetadas</span>
+                        <div class="macro-kpi-icon-wrap kpi-blue">
+                            <i data-lucide="users"></i>
+                        </div>
+                    </div>
+                    <div class="macro-kpi-value font-mono" id="macroKpiTeams">0</div>
+                    <div class="macro-kpi-meta" id="macroKpiTeamsMeta">0% dos atrasos do período</div>
+                </div>
+
+                <!-- KPI 2: Horas Perdidas -->
+                <div class="macro-kpi-card">
+                    <div class="macro-kpi-header">
+                        <span class="macro-kpi-label">Horas Perdidas</span>
+                        <div class="macro-kpi-icon-wrap kpi-amber">
+                            <i data-lucide="clock"></i>
+                        </div>
+                    </div>
+                    <div class="macro-kpi-value font-mono" id="macroKpiHours">00h 00m</div>
+                    <div class="macro-kpi-meta" id="macroKpiHoursMeta">Tempo total ocioso</div>
+                </div>
+
+                <!-- KPI 3: Impacto Financeiro Total -->
+                <div class="macro-kpi-card">
+                    <div class="macro-kpi-header">
+                        <span class="macro-kpi-label">Prejuízo Financeiro</span>
+                        <div class="macro-kpi-icon-wrap kpi-rose">
+                            <i data-lucide="dollar-sign"></i>
+                        </div>
+                    </div>
+                    <div class="macro-kpi-value font-mono text-rose-neon" id="macroKpiLoss">R$ 0,00</div>
+                    <div class="macro-kpi-meta" id="macroKpiLossMeta">0% da perda contratual</div>
+                </div>
+
+                <!-- KPI 4: Ofensor Principal (Submotivo Top 1) -->
+                <div class="macro-kpi-card">
+                    <div class="macro-kpi-header">
+                        <span class="macro-kpi-label">Principal Submotivo</span>
+                        <div class="macro-kpi-icon-wrap kpi-purple">
+                            <i data-lucide="flame"></i>
+                        </div>
+                    </div>
+                    <div class="macro-kpi-value macro-kpi-sub-title" id="macroKpiTopSub">--</div>
+                    <div class="macro-kpi-meta font-mono" id="macroKpiTopSubMeta">Submotivo #1 do ranking</div>
+                </div>
+            </div>
+
+            <!-- SEÇÃO 1: RANKING DOS SUBMOTIVOS -->
+            <div class="macro-section-wrap">
+                <div class="macro-section-header">
+                    <div class="macro-section-title-wrap">
+                        <i data-lucide="bar-chart-2" class="text-amber" style="width: 16px; height: 16px;"></i>
+                        <h4>RANKING DOS SUBMOTIVOS & IMPACTO FINANCEIRO</h4>
+                    </div>
+                    <span class="macro-section-hint">Ordenado por impacto financeiro decrescente • Clique em um submotivo para filtrar a tabela</span>
+                </div>
+
+                <div class="macro-subreasons-list" id="macroSubReasonsList">
+                    <!-- Renderizado dinamicamente via JS -->
+                </div>
+            </div>
+
+            <!-- SEÇÃO 2: AUDITORIA E DETALHAMENTO DE EQUIPES -->
+            <div class="macro-section-wrap" style="margin-top: 14px;">
+                <div class="macro-section-header" style="flex-wrap: wrap; gap: 10px;">
+                    <div class="macro-section-title-wrap">
+                        <i data-lucide="list-checks" class="text-cyan" style="width: 16px; height: 16px;"></i>
+                        <h4>EQUIPES AFETADAS & AUDITORIA OPERACIONAL</h4>
+                        <span class="macro-badge-counter font-mono" id="macroTeamsCountBadge">0 equipes</span>
+                    </div>
+                    <!-- Filtros Rápidos da Tabela -->
+                    <div class="macro-table-actions">
+                        <div class="macro-search-box">
+                            <i data-lucide="search"></i>
+                            <input type="text" id="macroModalSearchInput" placeholder="Buscar equipe ou base..." oninput="filterMacroModalTeams()">
+                        </div>
+                        <select id="macroModalSubFilter" onchange="filterMacroModalTeams()" class="macro-sub-select">
+                            <option value="">Todos os Submotivos</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="macro-table-container">
+                    <table class="macro-teams-table">
+                        <thead>
+                            <tr>
+                                <th>EQUIPE</th>
+                                <th>BASE / UT</th>
+                                <th>TURNO</th>
+                                <th>MARCAÇÃO</th>
+                                <th>ATRASO</th>
+                                <th>VALOR HORA</th>
+                                <th>PERDA (R$)</th>
+                                <th>SUBMOTIVO</th>
+                                <th>RESPONSÁVEL / OBSERVAÇÃO</th>
+                                <th style="text-align: center;">AÇÃO</th>
+                            </tr>
+                        </thead>
+                        <tbody id="macroTeamsTableBody">
+                            <!-- Inserido dinamicamente via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer do Modal -->
+        <div class="macro-just-footer">
+            <div class="macro-footer-info font-mono" id="macroModalFooterInfo">
+                Sistema CCO • Gestão de Atrasos e Turnos
+            </div>
+            <div class="macro-footer-actions">
+                <button type="button" class="btn-macro-action" onclick="copyMacroModalReport()" title="Copiar resumo para área de transferência">
+                    <i data-lucide="copy" style="width: 14px; height: 14px;"></i> Copiar Resumo
+                </button>
+                <button type="button" class="btn-macro-primary" onclick="closeMacroJustificationModal()">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Notification Container -->
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.9.2-fix-syntax-delays"></script>
+<script src="/static/js/app.js?v=5.9.5-fix-modal-active"></script>
 
 </body>
 </html>

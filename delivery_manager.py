@@ -634,8 +634,10 @@ class DeliveryManager:
             print(f"[DELIVERY ROLLOVER] >>> VIRADA OPERACIONAL DETECTADA: {old_date} -> {op_date} às {dt.strftime('%H:%M:%S')} BRT. Reiniciando acumuladores diários...", flush=True)
             self.current_date_str = op_date
             self.daily_accumulated_teams = {}
-            # Mantém apenas as equipes que estão fisicamente ativas no momento
+            # Mantém apenas as equipes que estão fisicamente ativas no momento, limpando justificativas do dia anterior
             self.active_teams = [t for t in (self.active_teams or []) if t.get("is_active", True)]
+            for t in self.active_teams:
+                t["delay_justification"] = None
             self.daily_team_order_history = {}
             self.daily_delay_justifications = {}
             self.intraday_curve = {}
@@ -1547,7 +1549,7 @@ class DeliveryManager:
                 "termino": shift_info.get("termino", "--"),
                 "turno_x_login": shift_info.get("turno_x_login", "--"),
                 "turno_x_login_minutos": shift_info.get("turno_x_login_minutos", 0),
-                "delay_justification": self.daily_delay_justifications.get(team_code),
+                "delay_justification": (self.daily_delay_justifications.get(team_code) if int(shift_info.get("turno_x_login_minutos") or 0) > 0 else None),
                 "shift_hours": shift_info.get("shift_hours", 8),
                 "shift_slot": shift_info["shift_slot"],
                 "shift_code": shift_info["shift_code"],
@@ -1583,6 +1585,9 @@ class DeliveryManager:
                 f_seen = existing.get("first_seen_time", now.strftime("%H:%M:%S"))
                 for k, v in team_obj.items():
                     if k == "first_seen_time":
+                        continue
+                    if k == "delay_justification":
+                        existing[k] = v
                         continue
                     # Se o novo valor for vazio/None/-- mas o existente já tinha valor operacional válido, preserva!
                     if v in ["--", None, "", -9999] and existing.get(k) not in ["--", None, "", -9999]:
@@ -1658,12 +1663,18 @@ class DeliveryManager:
 
         for t in total_list:
             c = t.get("team_code")
-            if c in self.daily_delay_justifications:
+            d_min = int(t.get("turno_x_login_minutos") or 0)
+            if d_min > 0 and c in self.daily_delay_justifications:
                 t["delay_justification"] = self.daily_delay_justifications[c]
+            else:
+                t["delay_justification"] = None
         for t in active_list:
             c = t.get("team_code")
-            if c in self.daily_delay_justifications:
+            d_min = int(t.get("turno_x_login_minutos") or 0)
+            if d_min > 0 and c in self.daily_delay_justifications:
                 t["delay_justification"] = self.daily_delay_justifications[c]
+            else:
+                t["delay_justification"] = None
 
         metrics_active = self._build_metrics_breakdown(active_list)
         metrics_total = self._build_metrics_breakdown(total_list)
@@ -3166,63 +3177,71 @@ class DeliveryManager:
         """
         Sincroniza e hidrata as justificativas de atraso diretamente da tabela relacional
         public.team_delay_justifications do Supabase.
-        Garante que mesmo após reboot do servidor ou refresh no front-end, todos os dados persistam com integridade.
+        Cada justificativa é estritamente vinculada ao par (date_ref, team_code).
+        Apenas equipes com atraso comprovado (turno_x_login_minutos > 0) recebem justificativa.
         """
+        current_op = self.get_operational_date()
         if not date_ref:
-            date_ref = self.get_operational_date()
+            date_ref = current_op
 
         now_ts = time.time()
         last_sync = getattr(self, "_last_just_sync_ts", 0)
         # Se for hoje e não for forçado, respeita intervalo de 4s caso já tenha dados em memória
-        if not force and self.daily_delay_justifications and (now_ts - last_sync < 4) and (date_ref == self.get_operational_date()):
+        if not force and self.daily_delay_justifications and (now_ts - last_sync < 4) and (date_ref == current_op):
             return dict(self.daily_delay_justifications)
 
         try:
             from supabase_client import fetch_team_delay_justifications
             cloud_justs = fetch_team_delay_justifications(date_ref)
-            if cloud_justs:
-                if date_ref == self.get_operational_date():
-                    self.daily_delay_justifications.update(cloud_justs)
-                    self._last_just_sync_ts = now_ts
-                    # Aplica a justificativa em cada equipe acumulada e ativa
-                    for code, just in self.daily_delay_justifications.items():
-                        c_upper = code.strip().upper()
-                        if c_upper in self.daily_accumulated_teams:
-                            self.daily_accumulated_teams[c_upper]["delay_justification"] = dict(just)
-                        for t in self.active_teams:
-                            if t.get("team_code") == c_upper:
-                                t["delay_justification"] = dict(just)
-                    return dict(self.daily_delay_justifications)
-                return cloud_justs
+            if date_ref == current_op:
+                self.daily_delay_justifications = dict(cloud_justs) if cloud_justs else {}
+                self._last_just_sync_ts = now_ts
+                # Aplica a justificativa EXCLUSIVAMENTE em equipes acumuladas e ativas com atraso (> 0)
+                for code, t in list(self.daily_accumulated_teams.items()):
+                    d_min = int(t.get("turno_x_login_minutos") or 0)
+                    t["delay_justification"] = dict(self.daily_delay_justifications[code]) if (d_min > 0 and code in self.daily_delay_justifications) else None
+                for t in self.active_teams:
+                    c_code = t.get("team_code")
+                    d_min = int(t.get("turno_x_login_minutos") or 0)
+                    t["delay_justification"] = dict(self.daily_delay_justifications[c_code]) if (d_min > 0 and c_code in self.daily_delay_justifications) else None
+                return dict(self.daily_delay_justifications)
             else:
-                if date_ref == self.get_operational_date():
-                    self._last_just_sync_ts = now_ts
-                    return dict(self.daily_delay_justifications)
-                return {}
+                return dict(cloud_justs) if cloud_justs else {}
         except Exception as e:
             print(f"[WARN] Falha ao sincronizar justificativas de atraso com Supabase: {e}", flush=True)
-            return dict(self.daily_delay_justifications) if date_ref == self.get_operational_date() else {}
+            return dict(self.daily_delay_justifications) if date_ref == current_op else {}
 
     def save_delay_justification(self, team_code: str, user_name: str, macro_reason: str, sub_reason: str, observation: str = "", date_ref: str = None) -> dict:
         """
         Registra ou edita uma justificativa de atraso de entrada/login de uma equipe.
-        Persiste no cache diário em memória, em disco e sincroniza com o Supabase.
+        Estritamente vinculada ao dia em que o atraso ocorreu (date_ref) e à equipe (team_code).
         """
         code = str(team_code).strip().upper()
+        current_op = self.get_operational_date()
         if not date_ref:
-            date_ref = self.get_operational_date()
+            date_ref = current_op
 
         team = self.daily_accumulated_teams.get(code)
         shift_code = "08:00"
         delay_minutes = 0
-        if team:
-            shift_code = team.get("shift_code") or "08:00"
-            delay_minutes = int(team.get("turno_x_login_minutos") or 0)
+
+        if date_ref == current_op:
+            if team:
+                shift_code = team.get("shift_code") or "08:00"
+                delay_minutes = int(team.get("turno_x_login_minutos") or 0)
+            else:
+                for t in self.active_teams:
+                    if t.get("team_code") == code:
+                        shift_code = t.get("shift_code") or "08:00"
+                        delay_minutes = int(t.get("turno_x_login_minutos") or 0)
+                        break
         else:
-            for t in self.active_teams:
-                if t.get("team_code") == code:
-                    shift_code = t.get("shift_code") or "08:00"
-                    delay_minutes = int(t.get("turno_x_login_minutos") or 0)
+            from supabase_client import fetch_delivery_records_by_date
+            hist_recs = fetch_delivery_records_by_date(date_ref) or []
+            for r in hist_recs:
+                if str(r.get("team_code") or "").strip().upper() == code:
+                    shift_code = r.get("shift_code") or "08:00"
+                    delay_minutes = int(r.get("turno_x_login_minutos") or 0)
                     break
 
         now_str = datetime.now(BR_TZ).strftime("%d/%m/%Y %H:%M:%S")
@@ -3238,16 +3257,18 @@ class DeliveryManager:
             "updated_at": now_str
         }
 
-        self.daily_delay_justifications[code] = just_record
+        # Apenas atualiza a memória local de HOJE se a justificativa for de HOJE
+        if date_ref == current_op:
+            self.daily_delay_justifications[code] = just_record
+            if team:
+                team["delay_justification"] = dict(just_record) if delay_minutes > 0 else None
+            for t in self.active_teams:
+                if t.get("team_code") == code:
+                    t["delay_justification"] = dict(just_record) if delay_minutes > 0 else None
+            self.save_local_cache()
 
-        # Atualiza a referência direta na equipe acumulada e ativa
-        if team:
-            team["delay_justification"] = dict(just_record)
-        for t in self.active_teams:
-            if t.get("team_code") == code:
-                t["delay_justification"] = dict(just_record)
-
-        self.save_local_cache()
+        # Invalida cache analítico para recálculo instantâneo
+        self._delays_analytics_cache = {}
 
         # Sincronização assíncrona com Supabase
         def _async_push():
@@ -3256,6 +3277,9 @@ class DeliveryManager:
                 save_team_delay_justification(dict(just_record))
             except Exception as sb_err:
                 print(f"[WARN] Falha ao enviar justificativa ao Supabase: {sb_err}", flush=True)
+
+        threading.Thread(target=_async_push, daemon=True).start()
+        return {"status": "success", "justification": just_record}
 
         threading.Thread(target=_async_push, daemon=True).start()
         return {"status": "success", "justification": just_record}
@@ -3353,7 +3377,15 @@ class DeliveryManager:
             d_min = int(t.get("turno_x_login_minutos") or 0)
             shifts_data[sc]["total"] += 1
 
-            just = justifications.get(code) or t.get("delay_justification")
+            just = None
+            if d_min > 0:
+                cand = (justifications or {}).get(code)
+                if cand and str(cand.get("date_ref") or date_ref) == date_ref:
+                    just = cand
+                elif t.get("delay_justification"):
+                    t_just = t.get("delay_justification")
+                    if isinstance(t_just, dict) and str(t_just.get("date_ref") or date_ref) == date_ref:
+                        just = t_just
 
             if d_min > 0:
                 shifts_data[sc]["atrasadas"] += 1
@@ -3812,6 +3844,32 @@ class DeliveryManager:
                         just_data = just_by_date_team.get((d_str, code)) or t.get("delay_justification") or {}
                         macro = just_data.get("macro_reason") or "Sem Justificativa Registrada"
                         sub = just_data.get("sub_reason") or "--"
+                        effective_sub = sub if (sub and sub != "--") else ("Sem Submotivo" if bool(just_data.get("macro_reason")) else "Não Justificado")
+
+                        monthly_team_item = {
+                            "ut": f"UT {str(pricing['contract_regiao']).title()}",
+                            "team_code": code,
+                            "base": matched_base,
+                            "region": pricing["contract_regiao"],
+                            "vehicle_type": pricing["contract_cat_display"],
+                            "turno": t_shift_key,
+                            "horario_previsto": s_time,
+                            "login_time": t.get("login_time") or "--",
+                            "marcacao": t.get("marcacao") or t.get("login_time") or "--",
+                            "status_login": "EM ATRASO",
+                            "delay_minutes": d_min,
+                            "delay_str": f"+{d_min} min",
+                            "rate_hour": pricing["rate_hour"],
+                            "rate_hour_str": pricing["rate_hour_str"],
+                            "financial_loss": loss,
+                            "financial_loss_str": pricing["financial_loss_str"],
+                            "macro_reason": macro,
+                            "sub_reason": effective_sub,
+                            "user_name": just_data.get("user_name"),
+                            "observation": just_data.get("observation"),
+                            "has_justification": bool(just_data.get("macro_reason")),
+                            "date": d_str
+                        }
 
                         if macro not in justifications_monthly_accum:
                             justifications_monthly_accum[macro] = {
@@ -3820,13 +3878,27 @@ class DeliveryManager:
                                 "sub_reasons": {},
                                 "qtd_equipes": 0,
                                 "tempo_min": 0,
-                                "perda_reais": 0.0
+                                "perda_reais": 0.0,
+                                "teams": []
                             }
                         justifications_monthly_accum[macro]["qtd_equipes"] += 1
                         justifications_monthly_accum[macro]["tempo_min"] += d_min
                         justifications_monthly_accum[macro]["perda_reais"] += loss
-                        if sub and sub != "--":
-                            justifications_monthly_accum[macro]["sub_reasons"][sub] = justifications_monthly_accum[macro]["sub_reasons"].get(sub, 0) + 1
+                        justifications_monthly_accum[macro]["teams"].append(monthly_team_item)
+
+                        if effective_sub not in justifications_monthly_accum[macro]["sub_reasons"]:
+                            justifications_monthly_accum[macro]["sub_reasons"][effective_sub] = {
+                                "sub_reason": effective_sub,
+                                "qtd_equipes": 0,
+                                "tempo_min": 0,
+                                "perda_reais": 0.0,
+                                "teams": []
+                            }
+                        s_m_bucket = justifications_monthly_accum[macro]["sub_reasons"][effective_sub]
+                        s_m_bucket["qtd_equipes"] += 1
+                        s_m_bucket["tempo_min"] += d_min
+                        s_m_bucket["perda_reais"] += loss
+                        s_m_bucket["teams"].append(monthly_team_item)
                     else:
                         d_no_prazo += 1
                         d_tempo_no_prazo += abs(d_min)
@@ -3880,15 +3952,25 @@ class DeliveryManager:
             # Formata Justificativas Mensais
             just_monthly_list = sorted(justifications_monthly_accum.values(), key=lambda x: x["perda_reais"], reverse=True)
             for jm in just_monthly_list:
+                jm["perda_reais"] = round(jm["perda_reais"], 2)
                 jm["perda_reais_str"] = _fmt_brl(jm["perda_reais"])
                 jm["tempo_str"] = _fmt_hm(jm["tempo_min"])
                 jm["pct_perda"] = round((jm["perda_reais"] / tot_monthly_perda_financeira * 100), 1) if tot_monthly_perda_financeira > 0 else 0.0
-                # Top sub reason
-                if jm["sub_reasons"]:
-                    top_sub = max(jm["sub_reasons"].items(), key=lambda item: item[1])[0]
-                    jm["top_sub_reason"] = top_sub
-                else:
-                    jm["top_sub_reason"] = "--"
+
+                sub_list = []
+                for s_name, s_data in jm["sub_reasons"].items():
+                    s_data["perda_reais"] = round(s_data["perda_reais"], 2)
+                    s_data["perda_reais_str"] = _fmt_brl(s_data["perda_reais"])
+                    s_data["tempo_str"] = _fmt_hm(s_data["tempo_min"])
+                    s_data["pct_macro_loss"] = round((s_data["perda_reais"] / jm["perda_reais"] * 100), 1) if jm["perda_reais"] > 0 else 0.0
+                    s_data["pct_macro_teams"] = round((s_data["qtd_equipes"] / jm["qtd_equipes"] * 100), 1) if jm["qtd_equipes"] > 0 else 0.0
+                    s_data["teams"] = sorted(s_data["teams"], key=lambda tm: (tm["financial_loss"], tm["delay_minutes"]), reverse=True)
+                    sub_list.append(s_data)
+
+                sub_list = sorted(sub_list, key=lambda x: (x["perda_reais"], x["qtd_equipes"]), reverse=True)
+                jm["sub_reasons_list"] = sub_list
+                jm["top_sub_reason"] = sub_list[0]["sub_reason"] if sub_list else "--"
+                jm["teams"] = sorted(jm["teams"], key=lambda tm: (tm["financial_loss"], tm["delay_minutes"]), reverse=True)
 
             # Prepara enriquecimento de equipes para tabela mensal (top reincidentes)
             monthly_table_teams = []
@@ -4187,7 +4269,15 @@ class DeliveryManager:
             shifts_structure[turno_key]["total"] += 1
             shifts_structure[turno_key]["horarios"][sc]["total"] += 1
 
-            just = justifications.get(code) or t.get("delay_justification")
+            just = None
+            if d_min > 0:
+                cand = (justifications or {}).get(code)
+                if cand and str(cand.get("date_ref") or date_ref) == date_ref:
+                    just = cand
+                elif t.get("delay_justification"):
+                    t_just = t.get("delay_justification")
+                    if isinstance(t_just, dict) and str(t_just.get("date_ref") or date_ref) == date_ref:
+                        just = t_just
             b_raw = str(t.get("base_display") or t.get("base_name") or t.get("base_code") or "").upper()
             base_std, _ = _identify_base(code, b_raw)
 
@@ -4263,13 +4353,28 @@ class DeliveryManager:
                         "sub_reasons": {},
                         "qtd_equipes": 0,
                         "tempo_min": 0,
-                        "perda_reais": 0.0
+                        "perda_reais": 0.0,
+                        "teams": []
                     }
                 justifications_daily_accum[macro_r]["qtd_equipes"] += 1
                 justifications_daily_accum[macro_r]["tempo_min"] += d_min
                 justifications_daily_accum[macro_r]["perda_reais"] += loss
-                if sub_r and sub_r != "--":
-                    justifications_daily_accum[macro_r]["sub_reasons"][sub_r] = justifications_daily_accum[macro_r]["sub_reasons"].get(sub_r, 0) + 1
+                justifications_daily_accum[macro_r]["teams"].append(team_entry)
+
+                effective_sub_r = sub_r if (sub_r and sub_r != "--") else ("Sem Submotivo" if bool(just) else "Não Justificado")
+                if effective_sub_r not in justifications_daily_accum[macro_r]["sub_reasons"]:
+                    justifications_daily_accum[macro_r]["sub_reasons"][effective_sub_r] = {
+                        "sub_reason": effective_sub_r,
+                        "qtd_equipes": 0,
+                        "tempo_min": 0,
+                        "perda_reais": 0.0,
+                        "teams": []
+                    }
+                s_bucket = justifications_daily_accum[macro_r]["sub_reasons"][effective_sub_r]
+                s_bucket["qtd_equipes"] += 1
+                s_bucket["tempo_min"] += d_min
+                s_bucket["perda_reais"] += loss
+                s_bucket["teams"].append(team_entry)
 
                 # Acumula na Curva Horaria Dinamica pela Hora da Marcacao/Login (Termino da Ociosidade)
                 h_str, h_num = _extract_hour(t.get("marcacao") or t.get("login_time"))
@@ -4380,14 +4485,25 @@ class DeliveryManager:
         # TOP Justificativas Diarias
         just_daily_list = sorted(justifications_daily_accum.values(), key=lambda x: x["perda_reais"], reverse=True)
         for jd in just_daily_list:
+            jd["perda_reais"] = round(jd["perda_reais"], 2)
             jd["perda_reais_str"] = _fmt_brl(jd["perda_reais"])
             jd["tempo_str"] = _fmt_hm(jd["tempo_min"])
             jd["pct_perda"] = round((jd["perda_reais"] / total_perda_financeira * 100), 1) if total_perda_financeira > 0 else 0.0
-            if jd["sub_reasons"]:
-                top_sub = max(jd["sub_reasons"].items(), key=lambda item: item[1])[0]
-                jd["top_sub_reason"] = top_sub
-            else:
-                jd["top_sub_reason"] = "--"
+
+            sub_list = []
+            for s_name, s_data in jd["sub_reasons"].items():
+                s_data["perda_reais"] = round(s_data["perda_reais"], 2)
+                s_data["perda_reais_str"] = _fmt_brl(s_data["perda_reais"])
+                s_data["tempo_str"] = _fmt_hm(s_data["tempo_min"])
+                s_data["pct_macro_loss"] = round((s_data["perda_reais"] / jd["perda_reais"] * 100), 1) if jd["perda_reais"] > 0 else 0.0
+                s_data["pct_macro_teams"] = round((s_data["qtd_equipes"] / jd["qtd_equipes"] * 100), 1) if jd["qtd_equipes"] > 0 else 0.0
+                s_data["teams"] = sorted(s_data["teams"], key=lambda tm: (tm["financial_loss"], tm["delay_minutes"]), reverse=True)
+                sub_list.append(s_data)
+
+            sub_list = sorted(sub_list, key=lambda x: (x["perda_reais"], x["qtd_equipes"]), reverse=True)
+            jd["sub_reasons_list"] = sub_list
+            jd["top_sub_reason"] = sub_list[0]["sub_reason"] if sub_list else "--"
+            jd["teams"] = sorted(jd["teams"], key=lambda tm: (tm["financial_loss"], tm["delay_minutes"]), reverse=True)
 
         custo_medio_atrasada = (total_perda_financeira / total_atrasadas) if total_atrasadas > 0 else 0.0
 
