@@ -3845,6 +3845,7 @@ class DeliveryManager:
                         macro = just_data.get("macro_reason") or "Sem Justificativa Registrada"
                         sub = just_data.get("sub_reason") or "--"
                         effective_sub = sub if (sub and sub != "--") else ("Sem Submotivo" if bool(just_data.get("macro_reason")) else "Não Justificado")
+                        h_prev = str(t.get("horario_previsto") or t.get("shift_code") or t.get("inicio_turno") or "--")
 
                         monthly_team_item = {
                             "ut": f"UT {str(pricing['contract_regiao']).title()}",
@@ -3853,7 +3854,8 @@ class DeliveryManager:
                             "region": pricing["contract_regiao"],
                             "vehicle_type": pricing["contract_cat_display"],
                             "turno": t_shift_key,
-                            "horario_previsto": s_time,
+                            "horario_previsto": h_prev,
+                            "shift_code": h_prev,
                             "login_time": t.get("login_time") or "--",
                             "marcacao": t.get("marcacao") or t.get("login_time") or "--",
                             "status_login": "EM ATRASO",
