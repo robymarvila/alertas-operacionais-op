@@ -5,7 +5,7 @@ Executa 100% em segundo plano a cada 2 minutos:
 1. Conecta-se à aba ativa da Enel SP no Microsoft Edge / Chrome.
 2. Atualiza a página (F5) para buscar os dados mais recentes da Enel.
 3. Localiza o elemento <select onchange="setPageSize(this.value)"> e seleciona 500 linhas.
-4. Extrai a tabela de equipes (UT, Base, Veículo, Equipe, Motorista, Turno, Status, Placa).
+4. Extrai a tabela de equipes (UT, Base, Filial, Veículo, Equipe, Tipo, GPS, Status, Placa, Início descanso, Ordem, Hora a caminho, Turno programado, Marcação).
 5. Consolida no delivery_manager e sincroniza automaticamente com o Supabase.
 """
 
@@ -148,7 +148,6 @@ def extrair_dados_enel_via_cdp():
         current_title = str(client.evaluate("document.title") or "")
 
         if "login.microsoftonline.com" in current_url or "entrar em sua conta" in current_title.lower():
-            client.close()
             return {
                 "status": "warning",
                 "message": "Aba da Enel aguardando autenticação Microsoft SSO. Conclua o login na aba do Edge."
@@ -198,40 +197,54 @@ def extrair_dados_enel_via_cdp():
         else:
             time.sleep(0.5)
 
-        # 4. Extrai todas as linhas da tabela (14 colunas oficiais com Marcação e Desvio)
+        # 4. Extrai todas as linhas da tabela (14 colunas oficiais com Turno Programado e Marcação)
         js_extract = """
         (() => {
             const allTables = Array.from(document.querySelectorAll('table'));
             const mainTable = allTables.find(t => t.innerText && t.innerText.includes('EQUIPE')) || document.querySelector('table');
-            const headers = mainTable ? Array.from(mainTable.querySelectorAll('thead th, [role="columnheader"]')).map(h => h.innerText.trim()) : [];
+            
+            const findHeaders = () => {
+                if (!mainTable) return [];
+                let hEls = Array.from(mainTable.querySelectorAll('thead th, thead td, [role="columnheader"]'));
+                if (hEls.length === 0) {
+                    const firstRow = mainTable.querySelector('tr');
+                    if (firstRow) {
+                        hEls = Array.from(firstRow.querySelectorAll('th, td'));
+                    }
+                }
+                return hEls.map(h => h.innerText ? h.innerText.trim() : '');
+            };
+            const headers = findHeaders();
             const rows = mainTable ? Array.from(mainTable.querySelectorAll('tbody tr, [role="row"]')) : [];
             const results = [];
 
             // Mapeamento dinâmico de cabeçalhos
             const colMap = {};
             headers.forEach((h, idx) => {
-                const cleanH = h.toUpperCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+                const cleanH = h.toUpperCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').trim();
                 if (cleanH.includes('UT') && colMap['ut'] === undefined) colMap['ut'] = idx;
                 else if (cleanH.includes('BASE') && colMap['base'] === undefined) colMap['base'] = idx;
                 else if (cleanH.includes('FILIAL') && colMap['filial'] === undefined) colMap['filial'] = idx;
                 else if (cleanH.includes('VEIC') && colMap['veiculo'] === undefined) colMap['veiculo'] = idx;
                 else if (cleanH.includes('EQUIPE') && colMap['equipe'] === undefined) colMap['equipe'] = idx;
                 else if (cleanH.includes('TIPO') && colMap['tipo'] === undefined) colMap['tipo'] = idx;
-                else if (cleanH.includes('MOTORISTA') && colMap['motorista'] === undefined) colMap['motorista'] = idx;
-                else if (cleanH.includes('TURNO') && colMap['turno'] === undefined) colMap['turno'] = idx;
-                else if (cleanH.includes('MARCA') && colMap['marcacao'] === undefined) colMap['marcacao'] = idx;
-                else if (cleanH.includes('DESVIO') && colMap['desvio'] === undefined) colMap['desvio'] = idx;
                 else if (cleanH.includes('GPS') && colMap['gps'] === undefined) colMap['gps'] = idx;
                 else if (cleanH.includes('STATUS') && colMap['status'] === undefined) colMap['status'] = idx;
                 else if (cleanH.includes('PLACA') && colMap['placa'] === undefined) colMap['placa'] = idx;
-                else if (cleanH.includes('DESCANSO') && colMap['descanso'] === undefined) colMap['descanso'] = idx;
+                else if ((cleanH.includes('DESCANSO') || cleanH.includes('INICIO')) && colMap['descanso'] === undefined) colMap['descanso'] = idx;
                 else if (cleanH.includes('ORDEM') && colMap['ordem'] === undefined) colMap['ordem'] = idx;
                 else if (cleanH.includes('CAMINHO') && colMap['hora_a_caminho'] === undefined) colMap['hora_a_caminho'] = idx;
+                else if ((cleanH.includes('TURNO') || cleanH.includes('PROGRAMAD')) && colMap['turno'] === undefined) colMap['turno'] = idx;
+                else if (cleanH.includes('MARCA') && colMap['marcacao'] === undefined) colMap['marcacao'] = idx;
+                else if (cleanH.includes('DESVIO') && colMap['desvio'] === undefined) colMap['desvio'] = idx;
+                else if (cleanH.includes('MOTORISTA') && colMap['motorista'] === undefined) colMap['motorista'] = idx;
             });
 
             rows.forEach(r => {
                 const cells = Array.from(r.querySelectorAll('td, [role="cell"]')).map(c => c.innerText.trim());
                 if (cells.length >= 8) {
+                    if (cells[4] && cells[4].toUpperCase().includes('EQUIPE')) return;
+
                     const getVal = (key, fallbackIdx) => {
                         if (colMap[key] !== undefined && colMap[key] < cells.length && cells[colMap[key]]) {
                             return cells[colMap[key]];
@@ -244,18 +257,34 @@ def extrair_dados_enel_via_cdp():
                         if (h && idx < cells.length) obj[h] = cells[idx] || '';
                     });
 
-                    // Extração estruturada das 14 colunas oficiais
+                    // Extração estruturada das 14 colunas oficiais (Nova Sequência CDP EquipesBrasil):
+                    // 0: UT | 1: Base | 2: Filial | 3: Veículo | 4: Equipe | 5: Tipo | 6: GPS | 7: Status
+                    // 8: Placa | 9: Início descanso | 10: Ordem | 11: Hora a caminho | 12: Turno programado | 13: Marcação
                     obj['UT'] = getVal('ut', 0);
                     obj['BASE'] = getVal('base', 1);
                     obj['FILIAL'] = getVal('filial', 2);
                     obj['VEÍCULO'] = getVal('veiculo', 3);
+                    obj['VEICULO'] = obj['VEÍCULO'];
                     obj['EQUIPE'] = getVal('equipe', 4);
                     obj['TIPO'] = getVal('tipo', 5);
-                    obj['MOTORISTA'] = getVal('motorista', 6);
-                    obj['TURNO'] = getVal('turno', 7);
+                    obj['GPS'] = getVal('gps', 6);
+                    obj['STATUS'] = getVal('status', 7) || 'Logada';
+                    obj['PLACA'] = getVal('placa', 8);
+                    obj['INICIO_DESCANSO'] = getVal('descanso', 9);
+                    obj['INÍCIO DESCANSO'] = obj['INICIO_DESCANSO'];
+                    obj['ORDEM'] = getVal('ordem', 10);
+                    obj['HORA_A_CAMINHO'] = getVal('hora_a_caminho', 11);
+                    obj['HORA A CAMINHO'] = obj['HORA_A_CAMINHO'];
 
-                    // Coluna Marcação e Desvio
-                    const rawMarcacao = getVal('marcacao', 8);
+                    // Coluna Turno Programado (Índice 12 - Nova Coluna "Turno programado")
+                    const valTurno = getVal('turno', 12);
+                    obj['TURNO'] = valTurno;
+                    obj['TURNO PROGRAMADO'] = valTurno;
+                    obj['TURNO_PROGRAMADO'] = valTurno;
+                    obj['Turno programado'] = valTurno;
+
+                    // Coluna Marcação e Desvio (Índice 13)
+                    const rawMarcacao = getVal('marcacao', 13);
                     let horaMarcacao = rawMarcacao;
                     let desvioStr = getVal('desvio', -1);
 
@@ -263,22 +292,17 @@ def extrair_dados_enel_via_cdp():
                     if (rawMarcacao && rawMarcacao.includes('(')) {
                         const parts = rawMarcacao.split('(');
                         horaMarcacao = parts[0].trim();
-                        if (!desvioStr) {
+                        if (!desvioStr || desvioStr === '--') {
                             desvioStr = '(' + parts.slice(1).join('(').trim();
                             desvioStr = desvioStr.replace(/^[()]+|[()]+$/g, '').trim();
                         }
                     }
 
                     obj['MARCACAO'] = horaMarcacao || '--';
+                    obj['MARCAÇÃO'] = horaMarcacao || '--';
                     obj['DESVIO'] = desvioStr || '--';
                     obj['RAW_MARCACAO'] = rawMarcacao || '--';
-
-                    obj['GPS'] = getVal('gps', 9);
-                    obj['STATUS'] = getVal('status', 10) || 'Logada';
-                    obj['PLACA'] = getVal('placa', 11);
-                    obj['INICIO_DESCANSO'] = getVal('descanso', 12);
-                    obj['ORDEM'] = getVal('ordem', 13);
-                    obj['HORA_A_CAMINHO'] = getVal('hora_a_caminho', 14);
+                    obj['MOTORISTA'] = getVal('motorista', -1) || '--';
 
                     results.push(obj);
                 }
@@ -292,7 +316,6 @@ def extrair_dados_enel_via_cdp():
         })()
         """
         extracted = client.evaluate(js_extract)
-        client.close()
 
         if not extracted or not extracted.get('data'):
             return {
@@ -308,11 +331,12 @@ def extrair_dados_enel_via_cdp():
         }
 
     except Exception as err:
-        client.close()
         return {
             "status": "error",
             "message": f"Erro durante a extração via CDP: {str(err)}"
         }
+    finally:
+        client.close()
 
 def executar_ciclo_sincronizacao_enel(source_label="Rotina Automática CDP (2 min)"):
     """
@@ -436,4 +460,5 @@ def enel_background_worker(interval_seconds=120, stop_event=None):
 if __name__ == "__main__":
     print("Testando extração imediata via CDP...")
     result = executar_ciclo_sincronizacao_enel(source_label="Teste Manual CDP")
-    print(json.dumps({k: v for k, v in result.items() if k != 'data'}, indent=2, ensure_ascii=False))
+    if isinstance(result, dict):
+        print(json.dumps({k: v for k, v in result.items() if k != 'data'}, indent=2, ensure_ascii=False))

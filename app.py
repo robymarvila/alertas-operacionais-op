@@ -2499,9 +2499,11 @@ def sync_teams_records():
 @app.route('/api/delivery/export_excel', methods=['GET'])
 def export_teams_excel():
     """Gera e faz download de planilha Excel (.xlsx) das equipes entregues."""
-    delivery_manager.hydrate_delay_justifications(delivery_manager.get_operational_date(), force=True)
+    delivery_manager.check_and_apply_operational_rollover()
+    op_date = delivery_manager.get_operational_date()
+    delivery_manager.hydrate_delay_justifications(op_date, force=True)
     if not delivery_manager.active_teams and not delivery_manager.daily_accumulated_teams:
-        cloud_snap = fetch_latest_delivery_snapshot_from_supabase()
+        cloud_snap = fetch_latest_delivery_snapshot_from_supabase(date_ref=op_date)
         if cloud_snap.get("status") == "success" and cloud_snap.get("data"):
             delivery_manager.process_raw_enel_records(cloud_snap["data"], source_label="Nuvem Supabase", captured_at=cloud_snap.get("captured_at"))
 
@@ -2650,6 +2652,23 @@ def get_delivery_delays_analytics():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route('/api/delivery/delays/team_monthly_details', methods=['GET'])
+def get_delivery_team_monthly_details():
+    """
+    Retorna o dossiê analítico completo dia a dia e Pareto de uma equipe no mês.
+    """
+    try:
+        team_code = request.args.get("team_code", "").strip().upper()
+        month_ref = request.args.get("month") or delivery_manager.get_operational_date()[:7]
+        if not team_code:
+            return jsonify({"status": "error", "message": "Código da equipe é obrigatório."}), 400
+
+        details = delivery_manager.get_team_monthly_dossier(team_code, month_ref)
+        return jsonify(details)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/delivery/delays/export_excel', methods=['GET'])
 def export_delivery_delays_excel():
     """
@@ -2746,6 +2765,29 @@ def export_delivery_delays_excel():
                         "Impacto Contratual (%)": j.get("pct_perda")
                     })
                 pd.DataFrame(just_rows).to_excel(writer, index=False, sheet_name='Top_Justificativas_Mes')
+
+                # Aba 5: Auditoria Analítica Completa de Todas as Equipes do Mês
+                all_teams_rows = []
+                for t in data.get("teams", []):
+                    all_teams_rows.append({
+                        "UT": t.get("ut") or f"UT {str(t.get('region', '')).title()}",
+                        "Base": t.get("base"),
+                        "Código Equipe": t.get("team_code"),
+                        "Frota": t.get("vehicle_type"),
+                        "Turno": t.get("turno"),
+                        "Turno Previsto (Moda)": t.get("shift_code"),
+                        "Dias Ativos": t.get("days_worked") or t.get("dias_trabalhados"),
+                        "Dias com Atraso": t.get("days_with_delay") or t.get("dias_atraso"),
+                        "Status Pontualidade": t.get("status_login"),
+                        "Tempo Total Atraso": t.get("delay_str"),
+                        "Tempo Total Atraso (min)": t.get("delay_minutes"),
+                        "Valor da Hora Contrato (R$)": t.get("rate_hour"),
+                        "Perda Financeira Acumulada (R$)": t.get("financial_loss"),
+                        "Motivo Predominante": t.get("macro_reason"),
+                        "Submotivo / Resumo": t.get("sub_reason")
+                    })
+                pd.DataFrame(all_teams_rows).to_excel(writer, index=False, sheet_name='Auditoria_Equipes_Mes')
+
                 filename = f"Relatorio_Mensal_Atrasos_Custos_{month_ref}.xlsx"
             else:
                 # Modo Realtime ou Daily: Lista detalhada nominal

@@ -86,7 +86,7 @@ const appState = {
     regions: {},
     summary: {},
     auditLog: [],
-    
+
     // Visão Atual (Hub de Módulos vs Módulo Específico)
     currentView: 'hub', // 'hub' ou 'module'
 
@@ -103,17 +103,17 @@ const appState = {
     searchQuery: '',
     historySearchQuery: '',
     viewMode: 'table', // 'table' ou 'cards'
-    
+
     // Ordenação da Tabela
     sortField: 'code',
     sortAsc: true,
-    
+
     // Auto-refresh Timer (2 Minutos = 120 segundos)
     refreshIntervalSeconds: 120,
     secondsRemaining: 120,
     timerId: null,
     isPaused: false,
-    
+
     // Gráficos Chart.js
     donutChart: null,
     barChart: null
@@ -414,6 +414,12 @@ function navigateToView(viewName) {
     if (adminView) adminView.style.display = (viewName === 'admin') ? 'block' : 'none';
     if (tvView) tvView.style.display = (viewName === 'tv') ? 'flex' : 'none';
 
+    // Isolamento defensivo das subtelas quando fora do módulo de Entrega
+    if (viewName !== 'delivery') {
+        const scrDelays = document.getElementById('deliveryScreenDelays');
+        if (scrDelays) scrDelays.style.display = 'none';
+    }
+
     if (viewName === 'hub') {
         updateHubCard();
         updateDeliveryHubCard();
@@ -453,7 +459,7 @@ function navigateToView(viewName) {
 
 function updateHubCard() {
     const summary = appState.summary || {};
-    
+
     // Timestamps
     const hubTrboEl = document.getElementById('hubCardSyncTrbonet');
     const hubPwEl = document.getElementById('hubCardSyncPoweron');
@@ -536,7 +542,7 @@ function initClock() {
         const now = new Date();
         const timeStr = now.toLocaleTimeString('pt-BR', { hour12: false });
         const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        
+
         const clockEl = document.getElementById('digitalClock');
         const dateEl = document.getElementById('digitalDate');
         const clockModuleEl = document.getElementById('digitalClockModule');
@@ -557,7 +563,7 @@ function initClock() {
 async function fetchDashboardData(isManual = false) {
     const refreshIcon = document.getElementById('refreshIcon');
     if (refreshIcon && isManual) refreshIcon.classList.add('spin-animation');
-    
+
     const liveStatus = document.getElementById('liveStatusText');
     const liveBadge = document.getElementById('liveStatusBadge');
 
@@ -565,7 +571,7 @@ async function fetchDashboardData(isManual = false) {
         const url = isManual ? `/api/data?_=${Date.now()}` : '/api/data';
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-        
+
         const result = await response.json();
         if (result.status === 'success') {
             appState.teams = result.data.teams || [];
@@ -676,7 +682,7 @@ async function syncUnifiedLive() {
         } else if (response.status === 202 || result?.status === 'queued') {
             const cmdId = result.command_id;
             showToast('Ordem enviada ao Robô Local Windows via Nuvem! Aguardando execução...', 'info');
-            
+
             let completed = false;
             if (cmdId) {
                 for (let attempt = 1; attempt <= 15; attempt++) {
@@ -784,7 +790,7 @@ async function syncPowerOnCalendar() {
 // ==========================================================================
 function startAutoRefreshTimer() {
     if (appState.timerId) clearInterval(appState.timerId);
-    
+
     appState.secondsRemaining = appState.refreshIntervalSeconds;
     const circle = document.getElementById('timerProgressCircle');
     const label = document.getElementById('timerSeconds');
@@ -848,7 +854,7 @@ let realtimeSyncChannel = null;
 // Sincronização Instantânea Entre Abas (Zero Latência BroadcastChannel)
 try {
     const ccoDeliveryBroadcast = new BroadcastChannel('cco_delivery_channel');
-    ccoDeliveryBroadcast.onmessage = function(ev) {
+    ccoDeliveryBroadcast.onmessage = function (ev) {
         if (ev.data && ev.data.type === 'DELAY_JUSTIFICATION_SAVED') {
             if (typeof loadTvDelaysData === 'function') {
                 loadTvDelaysData();
@@ -858,7 +864,7 @@ try {
             }
         }
     };
-} catch(e) {}
+} catch (e) { }
 
 function setRealtimeBadgeStatus(status) {
     const badges = [
@@ -899,7 +905,7 @@ function initSupabaseRealtime(retryCount = 0) {
         if (supabaseClient && realtimeSyncChannel) {
             try {
                 supabaseClient.removeChannel(realtimeSyncChannel);
-            } catch (ignore) {}
+            } catch (ignore) { }
             realtimeSyncChannel = null;
         }
 
@@ -1252,7 +1258,7 @@ function updateKPIs() {
 function animateCount(elementId, targetValue) {
     const el = document.getElementById(elementId);
     if (!el) return;
-    
+
     const startVal = parseInt(el.textContent.replace(/\D/g, '')) || 0;
     const duration = 300;
     const startTime = performance.now();
@@ -1768,7 +1774,7 @@ function setViewMode(mode) {
 function clearAllFilters() {
     appState.selectedBases.clear();
     appState.selectedBases.add('ALL');
-    
+
     if (!appState.selectedStatuses) {
         appState.selectedStatuses = new Set(['ALL']);
     } else {
@@ -1792,10 +1798,10 @@ function clearAllFilters() {
 
     appState.currentStatusFilter = 'ALL';
     appState.searchQuery = '';
-    
+
     const input = document.getElementById('searchInput');
     if (input) input.value = '';
-    
+
     const btnClear = document.getElementById('btnClearSearch');
     if (btnClear) btnClear.style.display = 'none';
 
@@ -1851,7 +1857,7 @@ function getFilteredTeams() {
     // Filtro por Texto de Busca
     if (appState.searchQuery) {
         const q = appState.searchQuery;
-        filtered = filtered.filter(t => 
+        filtered = filtered.filter(t =>
             t.code.toUpperCase().includes(q) ||
             t.base.toUpperCase().includes(q) ||
             (t.vehicle_type && t.vehicle_type.toUpperCase().includes(q)) ||
@@ -1912,12 +1918,12 @@ function renderTableView(teams) {
     }
 
     tbody.innerHTML = teams.map(t => {
-        const gpsIcon = t.trbonet 
-            ? (t.gps ? '<span class="status-indicator-pill pill-gps"><i data-lucide="navigation"></i> Com GPS</span>' 
-                     : '<span class="status-indicator-pill pill-nogps"><i data-lucide="radio-tower"></i> Sem GPS</span>')
+        const gpsIcon = t.trbonet
+            ? (t.gps ? '<span class="status-indicator-pill pill-gps"><i data-lucide="navigation"></i> Com GPS</span>'
+                : '<span class="status-indicator-pill pill-nogps"><i data-lucide="radio-tower"></i> Sem GPS</span>')
             : '<span class="text-muted">--</span>';
 
-        const powerOnBadge = t.poweron 
+        const powerOnBadge = t.poweron
             ? '<span class="badge-status badge-success"><i data-lucide="check"></i> Em Turno</span>'
             : '<span class="badge-status badge-muted"><i data-lucide="minus"></i> Fora de Escala</span>';
 
@@ -2219,7 +2225,7 @@ function renderHistoryTable() {
 
     if (appState.historySearchQuery) {
         const q = appState.historySearchQuery;
-        teams = teams.filter(t => 
+        teams = teams.filter(t =>
             t.code.toUpperCase().includes(q) ||
             t.base.toUpperCase().includes(q) ||
             t.region.toUpperCase().includes(q)
@@ -2505,7 +2511,7 @@ function exportLiveTeamsExcel() {
     } else if (appState && appState.teams) {
         teams = appState.teams;
     }
-    
+
     if (!teams || teams.length === 0) {
         showToast('Nenhuma equipe encontrada com os filtros selecionados para exportar.', 'warning');
         const exportMenu = document.getElementById('exportMenu');
@@ -2683,7 +2689,7 @@ function showToast(message, type = 'info') {
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    
+
     let iconName = 'info';
     if (type === 'success') iconName = 'check-circle-2';
     if (type === 'danger') iconName = 'alert-octagon';
@@ -3012,7 +3018,7 @@ async function initAuditDatePicker() {
                 longhand: ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
             }
         },
-        onDayCreate: function(dObj, dStr, fp, dayElem) {
+        onDayCreate: function (dObj, dStr, fp, dayElem) {
             if (!dayElem || !dayElem.dateObj) return;
             const y = dayElem.dateObj.getFullYear();
             const m = String(dayElem.dateObj.getMonth() + 1).padStart(2, '0');
@@ -3023,7 +3029,7 @@ async function initAuditDatePicker() {
                 dayElem.setAttribute('title', 'Dados gravados no banco de auditoria');
             }
         },
-        onChange: function(selectedDates, dateStr) {
+        onChange: function (selectedDates, dateStr) {
             if (selectedDates && selectedDates.length > 0) {
                 auditState.selectedDates = selectedDates.map(d => {
                     const y = d.getFullYear();
@@ -3838,9 +3844,9 @@ function renderCalendarModalKpiSummary() {
             </div>
             <div class="kpi-filter-hint-row">
                 <span style="font-size: 0.65rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">
-                    ${isConnected 
-                        ? `<span class="text-emerald" style="font-weight: 700;">● Conectado TRBOnet (${s.checksOn}x)</span>` 
-                        : '<span class="text-rose" style="font-weight: 700;">● Sem rádio no dia</span>'}
+                    ${isConnected
+            ? `<span class="text-emerald" style="font-weight: 700;">● Conectado TRBOnet (${s.checksOn}x)</span>`
+            : '<span class="text-rose" style="font-weight: 700;">● Sem rádio no dia</span>'}
                 </span>
             </div>
         </div>
@@ -4408,7 +4414,7 @@ function applyAuditFilters() {
             filtered = filtered.filter(item => {
                 const wasOn = !!item.was_online_trbonet;
                 const isUnreg = isAuditItemUnregistered(item);
-                
+
                 if (isUnreg) {
                     return connSet.has('NAO_CADASTRADO');
                 } else if (wasOn) {
@@ -4453,7 +4459,7 @@ function updateAuditKPIs() {
         const total = list.length;
         const onlineCount = list.filter(i => i.was_online_trbonet).length;
         const percent = total > 0 ? ((onlineCount / total) * 100).toFixed(1) : '0.0';
-        
+
         let avgUptime = 0;
         if (total > 0) {
             const sumUptime = list.reduce((acc, curr) => acc + (parseFloat(curr.uptime_percentage) || 0), 0);
@@ -4610,7 +4616,7 @@ function renderAuditTable() {
             const wasOnline = item.was_online_trbonet;
             const wasPw = item.was_in_poweron;
             const isUnregistered = isAuditItemUnregistered(item);
-            
+
             let statusBadge = '';
             if (isUnregistered) {
                 statusBadge = '<span class="status-badge badge-unregistered" title="Código de rádio inexistente / não cadastrado no TRBOnet"><i data-lucide="alert-circle"></i> NÃO CADASTRADO</span>';
@@ -4624,8 +4630,8 @@ function renderAuditTable() {
                 statusBadge = '<span class="status-badge badge-offline-gray">DESCONECTADO</span>';
             }
 
-            const pwBadge = wasPw 
-                ? '<span class="text-emerald font-bold"><i data-lucide="check"></i> Em Escala</span>' 
+            const pwBadge = wasPw
+                ? '<span class="text-emerald font-bold"><i data-lucide="check"></i> Em Escala</span>'
                 : '<span class="text-secondary">--</span>';
 
             const baseInfo = getAuditBaseInfo(item.base_code);
@@ -4707,7 +4713,7 @@ function renderAuditTable() {
             const capturedTime = item.captured_at ? new Date(item.captured_at).toLocaleTimeString('pt-BR') : '--:--:--';
             const baseInfo = getAuditBaseInfo(item.base_code);
             const basePill = `<span class="audit-base-pill" title="${baseInfo.name}"><span class="base-code-tag">${item.base_code || '--'}</span> ${baseInfo.short}</span>`;
-            
+
             let stBadge = '';
             if (item.status === 'CONFORME') {
                 stBadge = '<span class="status-badge badge-online-gps">Conforme</span>';
@@ -4760,7 +4766,7 @@ async function openTeamTimelineModal(teamCode) {
     if (teamTitle) teamTitle.textContent = `LINHA DO TEMPO: EQUIPE ${teamCode}`;
     if (subtitle) subtitle.textContent = `Histórico de transmissões e coletas registradas no dia ${dateVal || 'hoje'}`;
     if (stream) stream.innerHTML = '<div style="text-align: center; padding: 30px;"><i data-lucide="loader" class="spin-animation" style="width: 32px; height: 32px; color: var(--brand-cyan);"></i><p style="margin-top: 10px; color: var(--text-secondary);">Consultando histórico no Supabase...</p></div>';
-    
+
     if (modal) modal.classList.add('active');
     initIcons();
 
@@ -5126,7 +5132,7 @@ function updateAuthUI() {
     if (isAuth) {
         if (loginForm) loginForm.style.display = 'none';
         if (activeBox) activeBox.style.display = 'flex';
-        
+
         const nameEl = document.getElementById('activeUserName');
         const emailEl = document.getElementById('activeUserEmail');
         const matEl = document.getElementById('activeUserMatricula');
@@ -5201,7 +5207,7 @@ function openAuthModal() {
 
 function switchAuthTab(tab) {
     authState.activeTab = tab;
-    
+
     document.querySelectorAll('.auth-tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.auth-tab-pane').forEach(pane => pane.classList.remove('active'));
 
@@ -5420,7 +5426,7 @@ function renderAdminUsersTable(users) {
     initIcons();
 }
 
-window.approveUser = async function(userId) {
+window.approveUser = async function (userId) {
     try {
         const resp = await fetch('/api/auth/approve_user', {
             method: 'POST',
@@ -5442,7 +5448,7 @@ window.approveUser = async function(userId) {
     }
 };
 
-window.rejectUser = async function(userId) {
+window.rejectUser = async function (userId) {
     try {
         const resp = await fetch('/api/auth/reject_user', {
             method: 'POST',
@@ -5464,7 +5470,7 @@ window.rejectUser = async function(userId) {
     }
 };
 
-window.deleteUser = async function(userId, userName = '') {
+window.deleteUser = async function (userId, userName = '') {
     try {
         const resp = await fetch('/api/auth/delete_user', {
             method: 'POST',
@@ -6470,7 +6476,7 @@ function renderDeliveryCharts() {
 
             const shiftSubtitle = document.getElementById('deliveryShiftChartSubtitle');
             if (shiftSubtitle) {
-                shiftSubtitle.textContent = isTotalMode 
+                shiftSubtitle.textContent = isTotalMode
                     ? 'Total Acumulado de Equipes por Faixa Horária (Ativas + Encerradas)'
                     : 'Entrada de Equipes Ativas por Faixa Horária de Login';
             }
@@ -6696,7 +6702,7 @@ function renderDeliveryCharts() {
                             padding: 12,
                             cornerRadius: 10,
                             callbacks: {
-                                title: function(context) {
+                                title: function (context) {
                                     if (!context || !context.length) return '';
                                     const raw = context[0].label;
                                     return Array.isArray(raw) ? raw.join(' ') : raw;
@@ -7227,10 +7233,10 @@ function renderDeliveryColPickerList() {
         </div>
         <div style="display: flex; flex-direction: column; gap: 3px;">
             ${dynamicCols.map((c, idx) => {
-                const isChecked = visCols.has(c.id);
-                const isFirst = idx === 0;
-                const isLast = idx === dynamicCols.length - 1;
-                return `
+        const isChecked = visCols.has(c.id);
+        const isFirst = idx === 0;
+        const isLast = idx === dynamicCols.length - 1;
+        return `
                     <div class="col-picker-item draggable" draggable="true"
                          data-col-id="${c.id}"
                          ondragstart="handleDeliveryColDragStart(event, '${c.id}')"
@@ -7247,7 +7253,7 @@ function renderDeliveryColPickerList() {
                         </div>
                     </div>
                 `;
-            }).join('')}
+    }).join('')}
         </div>
     `;
 
@@ -7557,11 +7563,11 @@ function computeStatusDescansoBadge(marcacao, horaDesc, isActive, statusEB, logi
             if (offset < 0) offset += 1440;
 
             if (offset >= 240 && offset <= 300) {
-                return `<span class="badge-status-descanso-conforme" title="Conforme: Descanso iniciado dentro da 4ª e 5ª hora de trabalho (${Math.floor(offset/60)}h ${offset%60}m decorridos)"><i data-lucide="check-circle" style="width:11px;height:11px;"></i> CONFORME</span>`;
+                return `<span class="badge-status-descanso-conforme" title="Conforme: Descanso iniciado dentro da 4ª e 5ª hora de trabalho (${Math.floor(offset / 60)}h ${offset % 60}m decorridos)"><i data-lucide="check-circle" style="width:11px;height:11px;"></i> CONFORME</span>`;
             } else if (offset > 300) {
-                return `<span class="badge-status-descanso-naoconforme" title="Não Conforme: Descanso iniciado após a 5ª hora de trabalho (${Math.floor(offset/60)}h ${offset%60}m decorridos)"><i data-lucide="alert-triangle" style="width:11px;height:11px;"></i> NÃO CONFORME</span>`;
+                return `<span class="badge-status-descanso-naoconforme" title="Não Conforme: Descanso iniciado após a 5ª hora de trabalho (${Math.floor(offset / 60)}h ${offset % 60}m decorridos)"><i data-lucide="alert-triangle" style="width:11px;height:11px;"></i> NÃO CONFORME</span>`;
             } else {
-                return `<span class="badge-status-descanso-naoconforme" title="Não Conforme: Descanso iniciado antes da 4ª hora de trabalho (${Math.floor(offset/60)}h ${offset%60}m decorridos)"><i data-lucide="alert-circle" style="width:11px;height:11px;"></i> NÃO CONFORME</span>`;
+                return `<span class="badge-status-descanso-naoconforme" title="Não Conforme: Descanso iniciado antes da 4ª hora de trabalho (${Math.floor(offset / 60)}h ${offset % 60}m decorridos)"><i data-lucide="alert-circle" style="width:11px;height:11px;"></i> NÃO CONFORME</span>`;
             }
         }
     }
@@ -7574,11 +7580,11 @@ function computeStatusDescansoBadge(marcacao, horaDesc, isActive, statusEB, logi
 
     // Ainda não atingiu a 4ª hora de trabalho (< 240 minutos)
     if (elapsedWork < 240) {
-        return `<span class="badge-status-descanso-noprazo" title="Ainda não atingiu a 4ª e 5ª hora de trabalho (${Math.floor(elapsedWork/60)}h ${elapsedWork%60}m decorridos)"><i data-lucide="clock" style="width:11px;height:11px;"></i> NO PRAZO</span>`;
+        return `<span class="badge-status-descanso-noprazo" title="Ainda não atingiu a 4ª e 5ª hora de trabalho (${Math.floor(elapsedWork / 60)}h ${elapsedWork % 60}m decorridos)"><i data-lucide="clock" style="width:11px;height:11px;"></i> NO PRAZO</span>`;
     }
 
     // Passou da 4ª/5ª hora e não iniciou descanso
-    return `<span class="badge-status-descanso-iniciar" title="Atenção Operacional: Ultrapassou a 4ª/5ª hora (${Math.floor(elapsedWork/60)}h ${elapsedWork%60}m) e precisa iniciar o descanso imediatamente!"><i data-lucide="alert-triangle" style="width:11px;height:11px;"></i> INICIAR DESCANSO</span>`;
+    return `<span class="badge-status-descanso-iniciar" title="Atenção Operacional: Ultrapassou a 4ª/5ª hora (${Math.floor(elapsedWork / 60)}h ${elapsedWork % 60}m) e precisa iniciar o descanso imediatamente!"><i data-lucide="alert-triangle" style="width:11px;height:11px;"></i> INICIAR DESCANSO</span>`;
 }
 
 /**
@@ -7663,7 +7669,7 @@ function toggleDeliveryAlertPulse() {
     deliveryState.alertPulseEnabled = !deliveryState.alertPulseEnabled;
     try {
         localStorage.setItem('delivery_alert_pulse_enabled', deliveryState.alertPulseEnabled ? 'true' : 'false');
-    } catch(e) {}
+    } catch (e) { }
     updateAlertPulseButtonsUI();
     renderDeliveryTable();
 }
@@ -7685,7 +7691,7 @@ function toggleOnlineBidAlertPulse() {
     onlineBidState.alertPulseEnabled = !onlineBidState.alertPulseEnabled;
     try {
         localStorage.setItem('online_bid_alert_pulse_enabled', onlineBidState.alertPulseEnabled ? 'true' : 'false');
-    } catch(e) {}
+    } catch (e) { }
     updateAlertPulseButtonsUI();
     renderOnlineBidTable();
 }
@@ -8000,9 +8006,9 @@ function renderDeliveryTable() {
             veiculo: `<td>${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal')
                 ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>`
                 : (t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste')
-                ? `<span class="badge-vehicle-stc-leste" style="font-size: 0.72rem;">STC LESTE</span>`
-                : `<span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type || t.veiculo_portal || '--'}</span>`
-            }</td>`,
+                    ? `<span class="badge-vehicle-stc-leste" style="font-size: 0.72rem;">STC LESTE</span>`
+                    : `<span style="font-size: 0.75rem; font-weight: 800; color: var(--text-primary);">${t.vehicle_type || t.veiculo_portal || '--'}</span>`
+                }</td>`,
             equipe: `<td><button type="button" class="team-badge clickable-team-badge" onclick="event.stopPropagation(); openDeliveryTeamModal('${t.team_code}')" title="Clique para ver Diagnóstico Completo, TRBOnet e Histórico de Ordens" style="cursor: pointer; transition: all 0.2s ease;">${t.team_code}</button></td>`,
             turno_prog: `<td><span class="shift-pill ${t.shift_pill_class}" style="font-size: 0.74rem;">${t.shift_slot}</span></td>`,
             marcacao: `<td><span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.8rem; color: #38bdf8;">${marcacaoVal}</span></td>`,
@@ -8181,8 +8187,8 @@ async function openDeliveryTeamModal(teamCode) {
 
     // Busca rápida nos dados locais em memória (<1ms) para pré-preencher
     const localTeam = (deliveryState.filteredTeams || []).find(t => t.team_code === code) ||
-                      (deliveryState.activeTeams || []).find(t => t.team_code === code) ||
-                      (deliveryState.dailyTotalTeams || []).find(t => t.team_code === code);
+        (deliveryState.activeTeams || []).find(t => t.team_code === code) ||
+        (deliveryState.dailyTotalTeams || []).find(t => t.team_code === code);
 
     if (localTeam) {
         if (baseBadgeEl) baseBadgeEl.textContent = localTeam.base_display || localTeam.base_name || `Base ${localTeam.base_code}`;
@@ -8195,7 +8201,7 @@ async function openDeliveryTeamModal(teamCode) {
         if (utFilialEl) utFilialEl.textContent = `${localTeam.ut || '--'} • ${localTeam.filial || '--'}`;
         if (gpsEbEl) gpsEbEl.textContent = localTeam.gps_update_str || '--';
         if (descansoEl) descansoEl.textContent = localTeam.data_inicio_descanso ? `${localTeam.data_inicio_descanso} ${localTeam.hora_inicio_descanso || ''}` : '--';
-        
+
         if (statusOperEl) {
             statusOperEl.innerHTML = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 800;">${localTeam.status_equipes_brasil || localTeam.status || 'Ativa'}</span>`;
         }
@@ -8366,10 +8372,10 @@ async function openDeliveryTeamModal(teamCode) {
                                 </td>
                                 <td>
                                     <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; font-weight: 700; color: #f59e0b;">${(() => {
-                                        if (!o.hora_a_caminho || ['--', '-', 'None'].includes(o.hora_a_caminho)) return '--';
-                                        const m = String(o.hora_a_caminho).match(/\b(\d{1,2}:\d{2})\b/);
-                                        return m ? m[1].padStart(5, '0') : o.hora_a_caminho;
-                                    })()}</span>
+                                if (!o.hora_a_caminho || ['--', '-', 'None'].includes(o.hora_a_caminho)) return '--';
+                                const m = String(o.hora_a_caminho).match(/\b(\d{1,2}:\d{2})\b/);
+                                return m ? m[1].padStart(5, '0') : o.hora_a_caminho;
+                            })()}</span>
                                 </td>
                                 <td>
                                     <span style="font-size: 0.74rem; font-weight: 700; color: #10b981;">${o.status || 'Atendida'}</span>
@@ -8498,7 +8504,7 @@ async function reloadAuditAvailableDates() {
             const wfMonthSel = document.getElementById('wfFilterMonth');
             if (wfMonthSel && deliveryState.availableAuditMonths.length > 0) {
                 const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-                
+
                 const optionsHtml = deliveryState.availableAuditMonths.map(m => {
                     const val = typeof m === 'object' ? m.value : m;
                     let label = typeof m === 'object' ? m.label : null;
@@ -8589,7 +8595,7 @@ async function initHistoryDatePicker() {
                 longhand: ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
             }
         },
-        onDayCreate: function(dObj, dStr, fp, dayElem) {
+        onDayCreate: function (dObj, dStr, fp, dayElem) {
             if (!dayElem || !dayElem.dateObj) return;
             const y = dayElem.dateObj.getFullYear();
             const m = String(dayElem.dateObj.getMonth() + 1).padStart(2, '0');
@@ -8600,7 +8606,7 @@ async function initHistoryDatePicker() {
                 dayElem.setAttribute('title', 'Dados gravados no banco de auditoria');
             }
         },
-        onChange: function(selectedDates) {
+        onChange: function (selectedDates) {
             const dates = selectedDates.map(d => {
                 const y = d.getFullYear();
                 const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -8849,17 +8855,17 @@ function renderDailyAuditTable() {
     let filteredTeams = data.teams;
 
     if (filterKey === 'both') {
-        filteredTeams = data.teams.filter(t => 
-            t.status_conciliacao === 'CONCILIADO_TOTAL' || 
-            t.status_conciliacao === 'CONCILIADO_AMBOS' || 
+        filteredTeams = data.teams.filter(t =>
+            t.status_conciliacao === 'CONCILIADO_TOTAL' ||
+            t.status_conciliacao === 'CONCILIADO_AMBOS' ||
             t.status_conciliacao === 'TURNO_EM_ANDAMENTO' ||
             (t.spotfire_reconciled && t.status_conciliacao !== 'APENAS_SPOTFIRE')
         );
     } else if (filterKey === 'spotfire_only') {
         filteredTeams = data.teams.filter(t => t.status_conciliacao === 'APENAS_SPOTFIRE');
     } else if (filterKey === 'eb_only') {
-        filteredTeams = data.teams.filter(t => 
-            t.status_conciliacao === 'APENAS_EQUIPESBRASIL' || 
+        filteredTeams = data.teams.filter(t =>
+            t.status_conciliacao === 'APENAS_EQUIPESBRASIL' ||
             t.status_conciliacao === 'AGUARDANDO_SPOTFIRE'
         );
     } else if (filterKey === 'logoff') {
@@ -9311,7 +9317,7 @@ function formatDateTimeBR(val) {
             const pad = n => String(n).padStart(2, '0');
             return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
         }
-    } catch (e) {}
+    } catch (e) { }
     return str.replace('T', ' ');
 }
 
@@ -9350,7 +9356,7 @@ async function loadTargetsComparativeAudit(targetDate = null, targetRegion = nul
             const isAvg = !!data.is_average;
             const numDays = data.num_days || 1;
             const avgBadge = isAvg ? ` <span style="font-size: 0.72rem; font-weight: 600; color: #38bdf8; text-transform: none; margin-left: 6px;">(MÉDIA ${numDays} DIAS)</span>` : '';
-            
+
             const cards = document.querySelectorAll('.targets-table-card .targets-card-header');
             if (cards && cards.length >= 3) {
                 cards[0].innerHTML = `BASES${avgBadge}`;
@@ -9382,7 +9388,7 @@ async function loadTargetsComparativeAudit(targetDate = null, targetRegion = nul
 
 function initPeriodFiltersControls(uniqueDimensions) {
     if (!uniqueDimensions) return;
-    
+
     // Região (Multi-seleção)
     const regList = document.getElementById('wfFilterRegionList');
     if (regList) {
@@ -9560,8 +9566,8 @@ function initPeriodFiltersControls(uniqueDimensions) {
 
 function updateFilterPillLabel(filterType, allCount, selectedCount, firstSelectedValue) {
     const labelId = filterType === 'region' ? 'wfFilterRegionLabel' :
-                    filterType === 'base' ? 'wfFilterBaseLabel' :
-                    filterType === 'shift' ? 'wfFilterShiftLabel' : 'wfFilterVehicleLabel';
+        filterType === 'base' ? 'wfFilterBaseLabel' :
+            filterType === 'shift' ? 'wfFilterShiftLabel' : 'wfFilterVehicleLabel';
     const el = document.getElementById(labelId);
     if (!el) return;
 
@@ -9632,8 +9638,8 @@ function setupPeriodFilterDropdowns() {
             const action = btn.getAttribute('data-action');
             const filterType = btn.getAttribute('data-filter');
             const listId = filterType === 'region' ? 'wfFilterRegionList' :
-                           filterType === 'base' ? 'wfFilterBaseList' :
-                           filterType === 'shift' ? 'wfFilterShiftList' : 'wfFilterVehicleList';
+                filterType === 'base' ? 'wfFilterBaseList' :
+                    filterType === 'shift' ? 'wfFilterShiftList' : 'wfFilterVehicleList';
             const container = document.getElementById(listId);
             if (!container) return;
 
@@ -9662,9 +9668,9 @@ function applyWorkforcePeriodFilters() {
     const f = deliveryState.periodFilters || { regions: [], bases: [], shifts: [], vehicles: [] };
 
     const hasFilters = (f.regions && f.regions.length > 0) ||
-                       (f.bases && f.bases.length > 0) ||
-                       (f.shifts && f.shifts.length > 0) ||
-                       (f.vehicles && f.vehicles.length > 0);
+        (f.bases && f.bases.length > 0) ||
+        (f.shifts && f.shifts.length > 0) ||
+        (f.vehicles && f.vehicles.length > 0);
 
     let days = [];
     let filtered = [];
@@ -9804,7 +9810,7 @@ function applyWorkforcePeriodFilters() {
     });
 
     if (window.lucide) {
-        try { lucide.createIcons(); } catch (e) {}
+        try { lucide.createIcons(); } catch (e) { }
     }
 }
 
@@ -9824,7 +9830,7 @@ async function loadWorkforceMonthlyChart(targetMonth = null) {
     try {
         const resp = await fetch(`/api/delivery/monthly?month=${monthVal}`);
         const data = await resp.json();
-        
+
         if (data.status !== 'success') {
             console.warn('[WORKFORCE] Resposta com status não-sucesso:', data.message);
             return;
@@ -9973,7 +9979,7 @@ function renderWorkforceMonthlyChart(monthlyData) {
                 legend: { display: false },
                 tooltip: {
                     enabled: false,
-                    external: function(context) {
+                    external: function (context) {
                         const tooltipEl = document.getElementById('workforceCustomTooltip');
                         if (!tooltipEl) return;
                         const tooltipModel = context.tooltip;
@@ -10291,7 +10297,7 @@ async function triggerEnelCdpCapture() {
     const btn = document.getElementById('btnTriggerEnelCdp');
     const btnText = document.getElementById('triggerEnelCdpText');
     const originalText = btnText ? btnText.textContent : 'Disparar Coleta Imediata Agora (Robô CDP)';
-    
+
     if (btnText) btnText.textContent = 'Robô CDP: Lendo equipes na Enel...';
     if (btn) btn.disabled = true;
 
@@ -10305,18 +10311,18 @@ async function triggerEnelCdpCapture() {
             console.error('[CDP CAPTURE ERROR] Resposta não-JSON:', resp.status);
             throw new Error(`Servidor respondeu com status ${resp.status} (${resp.statusText}).`);
         }
-        
+
         if (resp.ok && data.status === 'success') {
             showToast(`Sucesso! ${data.message || 'Dados sincronizados com o Supabase!'}`, 'success');
             await loadDeliveryData(false);
             if (typeof loadOnlineXBidData === 'function') {
-                loadOnlineXBidData().catch(() => {});
+                loadOnlineXBidData().catch(() => { });
             }
             closeModal('deliveryCollectModal');
         } else if (resp.status === 202 || data?.status === 'queued') {
             const cmdId = data.command_id;
             showToast('Ordem enviada ao Robô Local via Nuvem! Aguardando extração...', 'info');
-            
+
             // Polling inteligente de até 30 segundos (15 tentativas a cada 2s)
             let completed = false;
             if (cmdId) {
@@ -10331,7 +10337,7 @@ async function triggerEnelCdpCapture() {
                                 showToast('Coleta concluída pelo robô local com sucesso!', 'success');
                                 await loadDeliveryData(false);
                                 if (typeof loadOnlineXBidData === 'function') {
-                                    loadOnlineXBidData().catch(() => {});
+                                    loadOnlineXBidData().catch(() => { });
                                 }
                                 closeModal('deliveryCollectModal');
                                 completed = true;
@@ -10352,7 +10358,7 @@ async function triggerEnelCdpCapture() {
                 showToast('Comando em processamento pelo robô local. Os dados serão atualizados em instantes via Realtime!', 'info');
                 await loadDeliveryData(false);
                 if (typeof loadOnlineXBidData === 'function') {
-                    loadOnlineXBidData().catch(() => {});
+                    loadOnlineXBidData().catch(() => { });
                 }
                 closeModal('deliveryCollectModal');
             }
@@ -10989,9 +10995,9 @@ async function openEngineDetailsModal(engineKey) {
     currentSelectedEngine = engineKey;
     const modal = document.getElementById('modalEngineDetails');
     if (!modal) return;
-    
+
     modal.classList.add('active');
-    
+
     // Elementos do Modal
     const titleEl = document.getElementById('engineDetailTitle');
     const subtitleEl = document.getElementById('engineDetailSubtitle');
@@ -11039,7 +11045,7 @@ async function openEngineDetailsModal(engineKey) {
             if (badgeBox) { badgeBox.style.background = 'rgba(16, 185, 129, 0.15)'; badgeBox.style.borderColor = 'rgba(16, 185, 129, 0.35)'; }
             if (commTagEl) commTagEl.textContent = 'UIAutomation Local (Windows)';
             if (actionText) actionText.textContent = data.action_label || 'Atualizar / Sincronizar Rádios Agora';
-            
+
             const totalRadios = summ.total_radios ?? data.radios_total ?? 0;
             const withGps = summ.online_with_gps ?? data.radios_with_gps ?? 0;
             const compRate = summ.compliance_rate ?? (data.compliance_summary?.conformes ?? 0);
@@ -11656,7 +11662,7 @@ function generateBrowserFingerprint() {
         ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
         ctx.fillText("CCO-ALPITEL-2026", 4, 17);
         const dataUrl = canvas.toDataURL();
-        
+
         let hash = 0;
         const str = dataUrl + navigator.userAgent + screen.width + 'x' + screen.height + Intl.DateTimeFormat().resolvedOptions().timeZone;
         for (let i = 0; i < str.length; i++) {
@@ -12554,8 +12560,8 @@ function filterOnlineBidTable() {
             const os = (r.ordem_servico || '').toLowerCase();
             const baseDisp = (r.base_display || '').toLowerCase();
             const matchSearch = team.includes(search) || plate.includes(search) || plateEb.includes(search) ||
-                                plateBid.includes(search) || driver.includes(search) || members.includes(search) ||
-                                os.includes(search) || baseDisp.includes(search);
+                plateBid.includes(search) || driver.includes(search) || members.includes(search) ||
+                os.includes(search) || baseDisp.includes(search);
             if (!matchSearch) return false;
         }
 
@@ -12956,7 +12962,7 @@ function exportOnlineXBidExcel() {
         const rows = list.map(r => {
             const marcacaoVal = r.marcacao_eb && r.marcacao_eb !== '--' ? r.marcacao_eb : (r.login_time || '--');
             const terminoVal = r.termino && r.termino !== '--' ? r.termino : computeTeamTermino(marcacaoVal, r.login_time_eb || r.login_time, r.turno, r.vehicle_type, r.geo, r.base_display);
-            
+
             // Tempo Ativo formatado
             let tempoAtivoText = '--';
             const taHtml = computeTempoAtivoBadge(r.marcacao_eb, r.turno, r.login_time_eb || r.login_time, r.is_eb_active, r.status_eb, terminoVal);
@@ -13560,7 +13566,7 @@ function renderMobileDeliveryCards(list) {
     feed.innerHTML = list.map(t => {
         const isAct = t.is_active;
         const statusEB = t.status_equipes_brasil || t.status || (isAct ? 'Logada' : 'Turno Concluído');
-        
+
         let borderClass = 'status-border-sem-eb';
         let statusPillStyle = 'background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3);';
 
@@ -13811,7 +13817,7 @@ window.openClusterNodeDetailsModal = openClusterNodeDetailsModal;
 // ==============================================================================
 
 if (typeof window.formatDateTimeBr !== 'function') {
-    window.formatDateTimeBr = typeof formatDateTimeBR === 'function' ? formatDateTimeBR : function(val) {
+    window.formatDateTimeBr = typeof formatDateTimeBR === 'function' ? formatDateTimeBR : function (val) {
         if (!val || val === '--') return '--/--/---- --:--:--';
         try {
             const d = new Date(val);
@@ -14079,7 +14085,7 @@ async function loadPriorizadorData(forceRefresh = false) {
 
             // Atualiza KPI cards visuais
             updatePriorizadorKpiCards();
-            
+
             // Aplica filtros e renderiza
             applyPriorizadorFilters();
 
@@ -14129,7 +14135,7 @@ function recalculatePriorizadorKpis(payload = {}) {
     k.total_ordens = filteredList.length;
     k.total_ci = filteredList.reduce((acc, o) => acc + (Number(o.ci) || 0), 0);
     k.total_chi = Math.round(filteredList.reduce((acc, o) => acc + (Number(o.chi) || 0), 0) * 100) / 100;
-    
+
     // Prioridade Estrita
     k.total_prio1 = filteredList.filter(o => o.prioridade_rank === 1).length;
     k.total_prio2 = filteredList.filter(o => o.prioridade_rank === 2).length;
@@ -14699,7 +14705,7 @@ function initPriorizadorDatePicker() {
                 longhand: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
             }
         },
-        onChange: function(selectedDates, dateStr) {
+        onChange: function (selectedDates, dateStr) {
             if (dateStr) {
                 priorizadorState.filters.datePreset = 'CUSTOM';
                 priorizadorState.filters.dateSelected = dateStr;
@@ -15139,19 +15145,19 @@ window.parseDataDesligamento = parseDataDesligamento;
 
 function getOrderElapsedSeconds(order) {
     if (!order) return 0;
-    
+
     // Tenta data_desligamento
     const d = parseDataDesligamento(order.data_desligamento);
     if (d) {
         const diffMs = Date.now() - d.getTime();
         return Math.max(0, Math.floor(diffMs / 1000));
     }
-    
+
     // Fallback: se dur_min existir (duração em minutos registrada na carga)
     if (order.dur_min !== undefined && order.dur_min !== null && !isNaN(Number(order.dur_min))) {
         return Math.max(0, Math.floor(Number(order.dur_min) * 60));
     }
-    
+
     return 0;
 }
 window.getOrderElapsedSeconds = getOrderElapsedSeconds;
@@ -15189,7 +15195,7 @@ let priorizadorLiveClockInterval = null;
 
 function startPriorizadorLiveClock() {
     if (priorizadorLiveClockInterval) return;
-    
+
     priorizadorLiveClockInterval = setInterval(() => {
         const badges = document.querySelectorAll('.prio-time-badge[data-desligamento]');
         if (!badges || badges.length === 0) return;
@@ -15343,7 +15349,7 @@ function renderPriorizadorTable() {
     tbody.innerHTML = list.map(o => {
         const critClass = o.criticidade_badge_class || 'badge-convencional';
         const critLabel = o.criticidade_label || 'CONVENCIONAL';
-        
+
         let rowClass = '';
         if (o.prioridade_rank === 1 || o.nivel_criticidade === 'CRITICO_MAXIMO') rowClass = 'row-critico-maximo';
         else if (o.prioridade_rank === 2 || o.nivel_criticidade === 'EQ_CRITICO') rowClass = 'row-eq-critico';
@@ -15911,7 +15917,7 @@ window.closePriorizadorDossierModal = closePriorizadorDossierModal;
 window.closePriorizadorTimelineModal = closePriorizadorDossierModal; // Alias de compatibilidade
 
 // Listener global de tecla Escape para fechar o Dossiê
-window.addEventListener('keydown', function(e) {
+window.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' || e.key === 'Esc') {
         const modal = document.getElementById('modalPriorizadorDossier');
         if (modal && (modal.classList.contains('active') || modal.style.display === 'flex')) {
@@ -16078,11 +16084,11 @@ async function submitPriorizadorDossierNote(event) {
         if (resp.ok && res.status === 'success') {
             showToast('Apontamento registrado com sucesso no diário!', 'success');
             document.getElementById('textareaDossierObservacao').value = '';
-            
+
             // Recarrega o dossiê da OS
             await openPriorizadorDossierModal(ordem);
             switchDossierModalTab('diario');
-            
+
             // Recarrega lista geral para atualizar supervisor no card/tabela
             await loadPriorizadorData(false);
         } else {
@@ -16356,7 +16362,7 @@ function updateTvClockDisplay() {
     const clkEl = document.getElementById('tvDigitalClock');
     const dtEl = document.getElementById('tvDigitalDate');
     const now = new Date();
-    
+
     if (clkEl) {
         clkEl.textContent = now.toLocaleTimeString('pt-BR', { hour12: false });
     }
@@ -16471,7 +16477,7 @@ async function loadTvDashboardData(isManual = false) {
             loadTvDelaysData();
         }
 
-                if (prioRes && (prioRes.status === 'success' || Array.isArray(prioRes.active_orders) || Array.isArray(prioRes.orders))) {
+        if (prioRes && (prioRes.status === 'success' || Array.isArray(prioRes.active_orders) || Array.isArray(prioRes.orders))) {
             tvDashboardState.priorizadorData = prioRes;
             hasPrioSuccess = true;
             if (prioBadge) {
@@ -16719,7 +16725,7 @@ function renderTvFleetChart(items, totalAtivas) {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             const lbl = context.label || '';
                             const val = context.raw || 0;
                             const pctVal = totalAtivas > 0 ? Math.round((val / totalAtivas) * 100) : 0;
@@ -16957,12 +16963,12 @@ function renderTvHourlyChart(teams, serverCurve) {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             const lbl = context.dataset.label || '';
                             const val = context.raw || 0;
                             return ` ${lbl}: ${val} equipes`;
                         },
-                        afterBody: function(contexts) {
+                        afterBody: function (contexts) {
                             if (!contexts || contexts.length === 0) return '';
                             const idx = contexts[0].dataIndex;
                             const tot = totalsPerShift[idx] || 0;
@@ -17029,7 +17035,7 @@ function renderTvPriorizadorSection() {
         if (desp.includes('>=80') || desp.includes('MAIOR_80') || (desp.includes('LOCAL') && dur >= 80)) {
             local80 += 1;
         }
-        
+
         if (desp.includes('AGUARD') || desp.includes('PEND') || desp.includes('SEM ATEND')) {
             aguardDesp += 1;
             semAtend += 1;
@@ -17188,7 +17194,7 @@ function renderTvBaseChart(baseCountMap) {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             return ` ${context.raw} ordens em aberto nesta base`;
                         }
                     }
@@ -17334,7 +17340,7 @@ function renderTvTop5Orders() {
     grid.innerHTML = top5.map((os, idx) => {
         const osNum = os.ordem || os.numero_os || os.os || `ORD-${idx + 1}`;
         const isCrit = isCriticaOrder(os);
-        const prioTag = isCrit 
+        const prioTag = isCrit
             ? (os.criticidade_label ? String(os.criticidade_label).replace(/^[⚡🔴\s]+/g, '') : (Number(os.prioridade_rank) === 1 ? 'P1 ELEVADA' : 'REDE: BF'))
             : 'EM ABERTO';
         const prioClass = isCrit ? 'prio-critica' : 'prio-aberta';
@@ -17551,16 +17557,20 @@ const DELAY_JUSTIFICATION_TAXONOMY = {
     ]
 };
 
-window.openDelayJustificationModal = function(teamCode, shiftSlot, delayMinutes, marcacao) {
+window.openDelayJustificationModal = function (teamCode, shiftSlot, delayMinutes, marcacao, targetDateOverride = null) {
     const modal = document.getElementById('delayJustificationModal');
     if (!modal) return;
 
     // Determina com precisão a data em que o atraso ocorreu
-    let targetDate = getOperationalDate();
-    if (window.delaysState && delaysState.mode === 'daily' && delaysState.date) {
-        targetDate = delaysState.date;
-    } else if (window.deliveryState && deliveryState.date) {
-        targetDate = deliveryState.date;
+    let targetDate = targetDateOverride;
+    if (!targetDate) {
+        if (window.delaysState && delaysState.mode === 'daily' && delaysState.date) {
+            targetDate = delaysState.date;
+        } else if (window.deliveryState && deliveryState.date) {
+            targetDate = deliveryState.date;
+        } else {
+            targetDate = getOperationalDate();
+        }
     }
 
     document.getElementById('delayFormTeamCode').value = teamCode;
@@ -17577,7 +17587,19 @@ window.openDelayJustificationModal = function(teamCode, shiftSlot, delayMinutes,
 
     // Busca se já existe justificativa gravada EXCLUSIVAMENTE para ESTA data específica
     let justObj = null;
-    if (window.delaysState && delaysState.data && delaysState.data.teams) {
+    if (typeof currentMonthlyTeamData !== 'undefined' && currentMonthlyTeamData && currentMonthlyTeamData.team_code === teamCode && currentMonthlyTeamData.daily_records) {
+        const foundRec = currentMonthlyTeamData.daily_records.find(r => r.date === targetDate);
+        if (foundRec && foundRec.has_justification) {
+            justObj = {
+                macro_reason: foundRec.macro_reason,
+                sub_reason: foundRec.sub_reason,
+                observation: foundRec.observation,
+                user_name: foundRec.user_name,
+                date_ref: targetDate
+            };
+        }
+    }
+    if (!justObj && window.delaysState && delaysState.data && delaysState.data.teams) {
         const found = delaysState.data.teams.find(x => x.team_code === teamCode);
         if (found && found.has_justification) {
             justObj = {
@@ -17625,7 +17647,7 @@ window.openDelayJustificationModal = function(teamCode, shiftSlot, delayMinutes,
     if (window.lucide) lucide.createIcons();
 };
 
-window.closeDelayJustificationModal = function() {
+window.closeDelayJustificationModal = function () {
     const modal = document.getElementById('delayJustificationModal');
     if (modal) {
         modal.classList.remove('active');
@@ -17635,7 +17657,7 @@ window.closeDelayJustificationModal = function() {
     }
 };
 
-window.handleMacroReasonChange = function() {
+window.handleMacroReasonChange = function () {
     const macroSel = document.getElementById('delayFormMacroReason');
     const subSel = document.getElementById('delayFormSubReason');
     if (!macroSel || !subSel) return;
@@ -17653,7 +17675,7 @@ window.handleMacroReasonChange = function() {
         options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
 };
 
-window.submitDelayJustification = async function(event) {
+window.submitDelayJustification = async function (event) {
     if (event) event.preventDefault();
     const teamCode = document.getElementById('delayFormTeamCode').value;
     const dateRef = document.getElementById('delayFormDateRef').value || getOperationalDate();
@@ -17719,11 +17741,16 @@ window.submitDelayJustification = async function(event) {
                 loadTvDelaysData();
             }
 
+            const mModal = document.getElementById('monthlyTeamDetailsModal');
+            if (mModal && mModal.style.display !== 'none' && typeof openMonthlyTeamDetailsModal === 'function') {
+                openMonthlyTeamDetailsModal(teamCode);
+            }
+
             try {
                 const bc = new BroadcastChannel('cco_delivery_channel');
                 bc.postMessage({ type: 'DELAY_JUSTIFICATION_SAVED', teamCode: teamCode, dateRef: dateRef });
                 bc.close();
-            } catch(e) {}
+            } catch (e) { }
         } else {
             showToast(res.message || 'Falha ao salvar justificativa.', 'error');
         }
@@ -17739,7 +17766,7 @@ window.submitDelayJustification = async function(event) {
     }
 };
 
-window.setTvSecondaryView = function(viewMode) {
+window.setTvSecondaryView = function (viewMode) {
     const boxPrio = document.getElementById('tvViewPriorizadorBox');
     const boxDelays = document.getElementById('tvViewDelaysBox');
     const btnPrio = document.getElementById('tvBtnViewPriorizador');
@@ -17792,14 +17819,14 @@ window.setTvSecondaryView = function(viewMode) {
         }
         if (tvDashboardState && tvDashboardState.charts && tvDashboardState.charts.baseChart) {
             setTimeout(() => {
-                try { tvDashboardState.charts.baseChart.resize(); } catch(e){}
+                try { tvDashboardState.charts.baseChart.resize(); } catch (e) { }
             }, 60);
         }
     }
     if (window.lucide) lucide.createIcons();
 };
 
-window.loadTvDelaysData = async function() {
+window.loadTvDelaysData = async function () {
     try {
         const scope = (tvDashboardState && tvDashboardState.geoScope) ? tvDashboardState.geoScope : 'ALL';
         const resp = await fetch(`/api/tv/delay_summary?scope=${encodeURIComponent(scope)}&_=${Date.now()}`);
@@ -17812,7 +17839,7 @@ window.loadTvDelaysData = async function() {
     }
 };
 
-window.renderTvDelaySection = function(data) {
+window.renderTvDelaySection = function (data) {
     if (!data) return;
 
     // 1. Mini Cards
@@ -17878,11 +17905,11 @@ window.renderTvDelaySection = function(data) {
         } else {
             elMacroList.innerHTML = macros.map(m => {
                 const icon = (m.macro_reason === 'PROBLEMAS TI' ? '💻' :
-                             m.macro_reason === 'PROBLEMAS VEÍCULO' ? '🚚' :
-                             m.macro_reason === 'PROBLEMAS LOGISTICA' ? '📦' :
-                             m.macro_reason === 'PROBLEMAS SESMT' ? '🦺' :
-                             m.macro_reason === 'PROBLEMAS CCO' ? '📡' :
-                             m.macro_reason === 'PROBLEMAS ABS' ? '👥' : '⚠️');
+                    m.macro_reason === 'PROBLEMAS VEÍCULO' ? '🚚' :
+                        m.macro_reason === 'PROBLEMAS LOGISTICA' ? '📦' :
+                            m.macro_reason === 'PROBLEMAS SESMT' ? '🦺' :
+                                m.macro_reason === 'PROBLEMAS CCO' ? '📡' :
+                                    m.macro_reason === 'PROBLEMAS ABS' ? '👥' : '⚠️');
                 const cleanName = m.macro_reason.replace('PROBLEMAS ', '');
                 return `
                     <div class="tv-macro-reason-bar-item">
@@ -17952,11 +17979,13 @@ const delaysState = {
     data: null,
     searchTerm: '',
     isLoading: false,
-    chartInstance: null
+    chartInstance: null,
+    selectedCardShift: null, // 'Manhã' | 'Tarde' | 'Noite' ou null
+    selectedCardSlot: null    // '07:00' | '07:30' etc. ou null
 };
 
 // Alternador de Modo de Horizonte Temporal (Realtime, Diária, Mensal)
-window.setDelaysHorizonMode = async function(mode) {
+window.setDelaysHorizonMode = async function (mode) {
     delaysState.mode = mode;
     const btnRt = document.getElementById('btnDelaysModeRealtime');
     const btnDay = document.getElementById('btnDelaysModeDaily');
@@ -18040,7 +18069,7 @@ window.setDelaysHorizonMode = async function(mode) {
     await loadDelaysAnalytics();
 };
 
-window.setDelaysScope = function(scope) {
+window.setDelaysScope = function (scope) {
     delaysState.geoScope = scope;
     const btnAll = document.getElementById('btnDelaysScopeAll');
     const btnNorte = document.getElementById('btnDelaysScopeNorte');
@@ -18053,7 +18082,7 @@ window.setDelaysScope = function(scope) {
     loadDelaysAnalytics();
 };
 
-window.toggleDelaysStcLeste = function() {
+window.toggleDelaysStcLeste = function () {
     delaysState.includeStcLeste = !delaysState.includeStcLeste;
     const pill = document.getElementById('btnToggleStcLestePill');
     const txt = document.getElementById('delaysStcStatusText');
@@ -18069,7 +18098,7 @@ window.toggleDelaysStcLeste = function() {
     loadDelaysAnalytics();
 };
 
-window.stepDelaysDate = function(delta) {
+window.stepDelaysDate = function (delta) {
     if (!delaysState.date) delaysState.date = getOperationalDate();
     const parts = delaysState.date.split('-');
     const curr = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
@@ -18092,7 +18121,7 @@ window.stepDelaysDate = function(delta) {
     loadDelaysAnalytics(true);
 };
 
-window.goDelaysToday = function() {
+window.goDelaysToday = function () {
     const todayOp = getOperationalDate();
     delaysState.date = todayOp;
     const picker = document.getElementById('delaysDatePicker');
@@ -18103,7 +18132,7 @@ window.goDelaysToday = function() {
     loadDelaysAnalytics(true);
 };
 
-window.onDelaysDateChange = function() {
+window.onDelaysDateChange = function () {
     const picker = document.getElementById('delaysDatePicker');
     if (picker && picker.value) {
         const todayOp = getOperationalDate();
@@ -18120,7 +18149,7 @@ window.onDelaysDateChange = function() {
     }
 };
 
-window.onDelaysMonthChange = function() {
+window.onDelaysMonthChange = function () {
     const picker = document.getElementById('delaysMonthPicker');
     if (picker && picker.value) {
         delaysState.month = picker.value;
@@ -18131,17 +18160,17 @@ window.onDelaysMonthChange = function() {
 // =========================================================================
 // HANDLERS MULTI-SELECT POPOVERS (PADRÃO EQUIPES LOGADAS x CHECKLIST)
 // =========================================================================
-window.toggleDelaysPopover = function(filterType) {
+window.toggleDelaysPopover = function (filterType) {
     const menu = document.getElementById(`delays${filterType}Menu`);
     const trigger = document.getElementById(`btnDelays${filterType}Trigger`);
     if (!menu) return;
     const isVisible = menu.classList.contains('active');
-    
+
     // Fecha todos os outros popovers abertos na tela
     document.querySelectorAll('#deliveryScreenDelays .period-filter-popover').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('#deliveryScreenDelays .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('#deliveryScreenDelays .dropdown-popover-container').forEach(c => c.classList.remove('active'));
-    
+
     if (!isVisible) {
         menu.classList.add('active');
         if (trigger) {
@@ -18155,7 +18184,7 @@ window.toggleDelaysPopover = function(filterType) {
 // Aliases para compatibilidade
 window.toggleDelaysDropdown = window.toggleDelaysPopover;
 
-window.selectAllDelaysMulti = function(filterType, selectAll) {
+window.selectAllDelaysMulti = function (filterType, selectAll) {
     const menu = document.getElementById(`delays${filterType}Menu`);
     if (!menu) return;
     const checkboxes = menu.querySelectorAll('input[type="checkbox"]');
@@ -18163,7 +18192,7 @@ window.selectAllDelaysMulti = function(filterType, selectAll) {
     onDelaysMultiChange(filterType);
 };
 
-window.onDelaysMultiChange = function(filterType) {
+window.onDelaysMultiChange = function (filterType) {
     const menu = document.getElementById(`delays${filterType}Menu`);
     if (!menu) return;
     const checkboxes = Array.from(menu.querySelectorAll('input[type="checkbox"]:checked'));
@@ -18195,7 +18224,7 @@ function updateDelaysMultiLabel(filterType, vals) {
 }
 
 // Fechar popovers ao clicar fora
-document.addEventListener('click', function(e) {
+document.addEventListener('click', function (e) {
     if (!e.target.closest('#deliveryScreenDelays .dropdown-popover-container')) {
         document.querySelectorAll('#deliveryScreenDelays .period-filter-popover').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('#deliveryScreenDelays .period-filter-pill-btn').forEach(b => b.classList.remove('active'));
@@ -18214,7 +18243,7 @@ async function populateDelaysMonthPicker() {
         const data = await resp.json();
         const months = data.months || [];
         if (months.length > 0) {
-            picker.innerHTML = months.map(m => 
+            picker.innerHTML = months.map(m =>
                 `<option value="${m.value}" ${m.value === delaysState.month ? 'selected' : ''}>${m.label}</option>`
             ).join('');
 
@@ -18223,7 +18252,7 @@ async function populateDelaysMonthPicker() {
                 picker.value = months[0].value;
             }
         }
-    } catch(e) {
+    } catch (e) {
         picker.innerHTML = `
             <option value="2026-11" selected>Novembro/2026</option>
             <option value="2026-10">Outubro/2026</option>
@@ -18232,7 +18261,7 @@ async function populateDelaysMonthPicker() {
     }
 }
 
-window.loadDelaysAnalytics = async function(forceRefresh = false) {
+window.loadDelaysAnalytics = async function (forceRefresh = false) {
     if (delaysState.isLoading) return;
     delaysState.isLoading = true;
 
@@ -18296,6 +18325,13 @@ window.loadDelaysAnalytics = async function(forceRefresh = false) {
 
 function renderDelaysScreen(data) {
     if (!data) return;
+
+    // Reseta filtros locais de seleção por clique ao carregar novos dados
+    if (delaysHourlyState && delaysHourlyState.selectedHours) delaysHourlyState.selectedHours.clear();
+    delaysState.selectedCardShift = null;
+    delaysState.selectedCardSlot = null;
+    if (typeof updateShiftCardsVisualState === 'function') updateShiftCardsVisualState();
+    if (typeof updateDelaysActiveFiltersBanner === 'function') updateDelaysActiveFiltersBanner();
 
     // 1. Atualiza KPIs Globais
     // KPI 1: Perda Financeira Estimada
@@ -18361,7 +18397,7 @@ function renderDelaysScreen(data) {
 
     // 3. Renderiza Tabela Analítica com Cabeçalho Dinâmico
     renderDelaysTableHead();
-    renderDelaysTable(data.teams || []);
+    renderDelaysTable(getDelaysCombinedFilteredTeams());
 
     if (window.lucide) lucide.createIcons();
 }
@@ -18396,19 +18432,19 @@ function renderDelaysDailyShifts(shifts, data) {
 
     if (elSlotsTot) {
         elSlotsTot.innerHTML = `
-            <div class="delays-slot-row-item">
+            <div class="delays-slot-row-item" onclick="event.stopPropagation(); toggleDelaysShiftCardFilter('Manhã')" style="cursor: pointer;" title="Filtrar equipes do Turno Manhã">
                 <span class="delays-slot-tag" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">Manhã</span>
                 <span class="text-rose font-mono"><b>${sManha.atrasadas || 0}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${sManha.no_prazo || 0}</b> prazo</span>
                 <span class="font-mono text-rose" style="font-weight: 700;">${sManha.perda_financeira_str || 'R$ 0,00'}</span>
             </div>
-            <div class="delays-slot-row-item">
+            <div class="delays-slot-row-item" onclick="event.stopPropagation(); toggleDelaysShiftCardFilter('Tarde')" style="cursor: pointer;" title="Filtrar equipes do Turno Tarde">
                 <span class="delays-slot-tag" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">Tarde</span>
                 <span class="text-rose font-mono"><b>${sTarde.atrasadas || 0}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${sTarde.no_prazo || 0}</b> prazo</span>
                 <span class="font-mono text-rose" style="font-weight: 700;">${sTarde.perda_financeira_str || 'R$ 0,00'}</span>
             </div>
-            <div class="delays-slot-row-item">
+            <div class="delays-slot-row-item" onclick="event.stopPropagation(); toggleDelaysShiftCardFilter('Noite')" style="cursor: pointer;" title="Filtrar equipes do Turno Noite">
                 <span class="delays-slot-tag" style="background: rgba(192, 132, 252, 0.2); color: #c084fc;">Noite</span>
                 <span class="text-rose font-mono"><b>${sNoite.atrasadas || 0}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${sNoite.no_prazo || 0}</b> prazo</span>
@@ -18431,7 +18467,7 @@ function renderDelaysDailyShifts(shifts, data) {
 
     if (elSlotsM && sManha.horarios) {
         elSlotsM.innerHTML = Object.values(sManha.horarios).map(h => `
-            <div class="delays-slot-row-item">
+            <div class="delays-slot-row-item" onclick="event.stopPropagation(); toggleDelaysSlotFilter('${h.shift_code}')" style="cursor: pointer;" title="Filtrar equipes do horário ${h.shift_code}">
                 <span class="delays-slot-tag">${h.shift_code}</span>
                 <span class="text-rose font-mono"><b>${h.atrasadas}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${h.no_prazo}</b> prazo</span>
@@ -18455,7 +18491,7 @@ function renderDelaysDailyShifts(shifts, data) {
 
     if (elSlotsT && sTarde.horarios) {
         elSlotsT.innerHTML = Object.values(sTarde.horarios).map(h => `
-            <div class="delays-slot-row-item">
+            <div class="delays-slot-row-item" onclick="event.stopPropagation(); toggleDelaysSlotFilter('${h.shift_code}')" style="cursor: pointer;" title="Filtrar equipes do horário ${h.shift_code}">
                 <span class="delays-slot-tag">${h.shift_code}</span>
                 <span class="text-rose font-mono"><b>${h.atrasadas}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${h.no_prazo}</b> prazo</span>
@@ -18479,7 +18515,7 @@ function renderDelaysDailyShifts(shifts, data) {
 
     if (elSlotsN && sNoite.horarios) {
         elSlotsN.innerHTML = Object.values(sNoite.horarios).map(h => `
-            <div class="delays-slot-row-item">
+            <div class="delays-slot-row-item" onclick="event.stopPropagation(); toggleDelaysSlotFilter('${h.shift_code}')" style="cursor: pointer;" title="Filtrar equipes do horário ${h.shift_code}">
                 <span class="delays-slot-tag">${h.shift_code}</span>
                 <span class="text-rose font-mono"><b>${h.atrasadas}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${h.no_prazo}</b> prazo</span>
@@ -18652,7 +18688,7 @@ function stepDelaysHourlyPlayer() {
 
     const peakBadge = document.getElementById('delaysHourlyPeakBadge');
     const isPeak = (delaysHourlyState.metric === 'loss' && delaysHourlyState.peakLoss && delaysHourlyState.peakLoss.hour === item.hour_str) ||
-                   (delaysHourlyState.metric === 'time' && delaysHourlyState.peakDelay && delaysHourlyState.peakDelay.hour === item.hour_str);
+        (delaysHourlyState.metric === 'time' && delaysHourlyState.peakDelay && delaysHourlyState.peakDelay.hour === item.hour_str);
 
     if (peakBadge) {
         if (isPeak && item.total_loss > 0) {
@@ -18666,8 +18702,20 @@ function stepDelaysHourlyPlayer() {
 }
 
 function getTeamMarcacaoHour(t) {
+    if (!t) return null;
+    if (t.marcacao_hour && t.marcacao_hour !== '--' && t.marcacao_hour !== '--:--') {
+        return t.marcacao_hour;
+    }
     const raw = String(t.marcacao || t.login_time || '').trim();
-    if (!raw || ['--', '-', 'None', 'nan', '', '--:--'].includes(raw)) return null;
+    if (!raw || ['--', '-', 'None', 'nan', '', '--:--'].includes(raw)) {
+        if (t.shift_code && t.shift_code.includes(':')) {
+            const sh = parseInt(t.shift_code.split(':')[0], 10);
+            if (!isNaN(sh) && sh >= 0 && sh <= 23) {
+                return `${String(sh).padStart(2, '0')}:00`;
+            }
+        }
+        return '08:00';
+    }
     let timeStr = raw;
     if (timeStr.includes(' ')) timeStr = timeStr.split(' ')[1];
     else if (timeStr.includes('T')) timeStr = timeStr.split('T')[1];
@@ -18677,45 +18725,191 @@ function getTeamMarcacaoHour(t) {
             return `${String(h).padStart(2, '0')}:00`;
         }
     }
-    return null;
+    return '08:00';
 }
 
-function applyDelaysHourlyFilter() {
-    const banner = document.getElementById('delaysHourlyFilterBanner');
-    const listEl = document.getElementById('delaysHourlyFilterHoursList');
+function getDelaysCombinedFilteredTeams() {
     const allTeams = (delaysState.data && delaysState.data.teams) || [];
+    let result = allTeams;
 
-    if (delaysHourlyState.selectedHours.size > 0) {
-        const sortedSelected = Array.from(delaysHourlyState.selectedHours).sort();
-        if (banner) banner.style.display = 'flex';
-        if (listEl) listEl.textContent = sortedSelected.join(', ');
+    // 1. Filtro por Turno Clicado no Card
+    if (delaysState.selectedCardShift && delaysState.selectedCardShift !== 'TOTAL') {
+        const targetTurno = delaysState.selectedCardShift.toLowerCase();
+        result = result.filter(t => {
+            const tTurno = (t.turno || '').toLowerCase();
+            return tTurno.includes(targetTurno);
+        });
+    }
 
-        const filtered = allTeams.filter(t => {
+    // 2. Filtro por Slot de Horário Clicado no Card
+    if (delaysState.selectedCardSlot) {
+        result = result.filter(t => {
+            const sc = String(t.shift_code || '').trim();
+            return sc === delaysState.selectedCardSlot;
+        });
+    }
+
+    // 3. Filtro por Horas Clicadas no Gráfico Dinâmico
+    if (delaysHourlyState.selectedHours && delaysHourlyState.selectedHours.size > 0) {
+        result = result.filter(t => {
             const h = getTeamMarcacaoHour(t);
             return h && delaysHourlyState.selectedHours.has(h);
         });
+    }
 
-        renderDelaysTable(filtered);
+    return result;
+}
+
+function updateDelaysActiveFiltersBanner() {
+    const banner = document.getElementById('delaysHourlyFilterBanner');
+    const listEl = document.getElementById('delaysHourlyFilterHoursList');
+    if (!banner || !listEl) return;
+
+    const parts = [];
+    if (delaysHourlyState.selectedHours && delaysHourlyState.selectedHours.size > 0) {
+        const sorted = Array.from(delaysHourlyState.selectedHours).sort();
+        parts.push(`Hora(s): <strong>${sorted.join(', ')}</strong>`);
+    }
+    if (delaysState.selectedCardShift && delaysState.selectedCardShift !== 'TOTAL') {
+        parts.push(`Turno: <strong>${delaysState.selectedCardShift}</strong>`);
+    }
+    if (delaysState.selectedCardSlot) {
+        parts.push(`Horário Previsto: <strong>${delaysState.selectedCardSlot}</strong>`);
+    }
+
+    if (parts.length > 0) {
+        banner.style.display = 'flex';
+        listEl.innerHTML = parts.join(' &nbsp;•&nbsp; ');
     } else {
-        if (banner) banner.style.display = 'none';
-        renderDelaysTable(allTeams);
-    }
-
-    if (delaysHourlyState.chartInstance) {
-        renderDelaysHourlyDynamicChart(
-            delaysHourlyState.curveData,
-            delaysHourlyState.peakLoss,
-            delaysHourlyState.peakDelay,
-            delaysHourlyState.trendProjection,
-            true
-        );
+        banner.style.display = 'none';
+        listEl.innerHTML = '';
     }
 }
 
-function clearDelaysHourlyFilter() {
-    delaysHourlyState.selectedHours.clear();
+function updateShiftCardsVisualState() {
+    const cards = [
+        { id: 'shiftCardTotal', name: 'TOTAL' },
+        { id: 'shiftCardManha', name: 'Manhã' },
+        { id: 'shiftCardTarde', name: 'Tarde' },
+        { id: 'shiftCardNoite', name: 'Noite' }
+    ];
+
+    cards.forEach(c => {
+        const el = document.getElementById(c.id);
+        if (!el) return;
+        if (delaysState.selectedCardShift === c.name) {
+            el.classList.add('selected-shift-card');
+        } else {
+            el.classList.remove('selected-shift-card');
+        }
+    });
+
+    document.querySelectorAll('.delays-slot-row-item').forEach(el => {
+        const tag = el.querySelector('.delays-slot-tag');
+        if (tag && delaysState.selectedCardSlot && tag.textContent.trim() === delaysState.selectedCardSlot) {
+            el.classList.add('selected-slot-item');
+        } else {
+            el.classList.remove('selected-slot-item');
+        }
+    });
+}
+
+function updateDelaysHourlyChartSelection() {
+    const chart = delaysHourlyState.chartInstance;
+    if (!chart || !delaysHourlyState.curveData || delaysHourlyState.curveData.length === 0) return;
+
+    const data = delaysHourlyState.curveData;
+    const hasSelection = delaysHourlyState.selectedHours.size > 0;
+    const ctx = chart.ctx;
+
+    // Gradientes Base
+    const gradNorte = ctx.createLinearGradient(0, 0, 0, 260);
+    gradNorte.addColorStop(0, 'rgba(0, 242, 254, 0.85)');
+    gradNorte.addColorStop(1, 'rgba(2, 132, 199, 0.20)');
+
+    const gradLeste = ctx.createLinearGradient(0, 0, 0, 260);
+    gradLeste.addColorStop(0, 'rgba(192, 132, 252, 0.85)');
+    gradLeste.addColorStop(1, 'rgba(147, 51, 234, 0.20)');
+
+    const bgNorte = data.map(d => {
+        if (!hasSelection) return gradNorte;
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? 'rgba(0, 242, 254, 0.95)' : 'rgba(0, 242, 254, 0.15)';
+    });
+
+    const borderNorte = data.map(d => {
+        if (!hasSelection) return '#00f2fe';
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? '#ffffff' : 'rgba(0, 242, 254, 0.2)';
+    });
+
+    const bgLeste = data.map(d => {
+        if (!hasSelection) return gradLeste;
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? 'rgba(192, 132, 252, 0.95)' : 'rgba(192, 132, 252, 0.15)';
+    });
+
+    const borderLeste = data.map(d => {
+        if (!hasSelection) return '#c084fc';
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? '#ffffff' : 'rgba(192, 132, 252, 0.2)';
+    });
+
+    const borderWidthArr = data.map(d => {
+        if (!hasSelection) return 1.5;
+        return delaysHourlyState.selectedHours.has(d.hour_str) ? 2.5 : 1.0;
+    });
+
+    if (chart.data.datasets[1]) {
+        chart.data.datasets[1].backgroundColor = bgNorte;
+        chart.data.datasets[1].borderColor = borderNorte;
+        chart.data.datasets[1].borderWidth = borderWidthArr;
+    }
+    if (chart.data.datasets[2]) {
+        chart.data.datasets[2].backgroundColor = bgLeste;
+        chart.data.datasets[2].borderColor = borderLeste;
+        chart.data.datasets[2].borderWidth = borderWidthArr;
+    }
+
+    chart.update('none');
+}
+
+function applyDelaysHourlyFilter() {
+    const filtered = getDelaysCombinedFilteredTeams();
+    renderDelaysTable(filtered);
+    updateDelaysActiveFiltersBanner();
+    updateDelaysHourlyChartSelection();
+}
+
+window.toggleDelaysShiftCardFilter = function (shiftName) {
+    if (shiftName === 'TOTAL') {
+        delaysState.selectedCardShift = null;
+        delaysState.selectedCardSlot = null;
+    } else {
+        delaysState.selectedCardSlot = null;
+        if (delaysState.selectedCardShift === shiftName) {
+            delaysState.selectedCardShift = null;
+        } else {
+            delaysState.selectedCardShift = shiftName;
+        }
+    }
+    updateShiftCardsVisualState();
     applyDelaysHourlyFilter();
-}
+};
+
+window.toggleDelaysSlotFilter = function (slotCode) {
+    if (delaysState.selectedCardSlot === slotCode) {
+        delaysState.selectedCardSlot = null;
+    } else {
+        delaysState.selectedCardSlot = slotCode;
+    }
+    updateShiftCardsVisualState();
+    applyDelaysHourlyFilter();
+};
+
+window.clearDelaysHourlyFilter = function () {
+    delaysHourlyState.selectedHours.clear();
+    delaysState.selectedCardShift = null;
+    delaysState.selectedCardSlot = null;
+    updateShiftCardsVisualState();
+    applyDelaysHourlyFilter();
+};
 
 function showCustomHourlyTooltip(chart, idx, item) {
     let tooltipEl = document.getElementById('delaysHourlyChartTooltip');
@@ -18983,16 +19177,27 @@ function renderDelaysHourlyDynamicChart(curveData, peakLoss, peakDelay, trendPro
                 mode: 'index',
                 intersect: false
             },
-            onClick: function(event, elements) {
+            onClick: function (event, elements) {
                 if (elements && elements.length > 0) {
                     const idx = elements[0].index;
-                    const clickedHour = delaysHourlyState.curveData[idx].hour_str;
-                    if (delaysHourlyState.selectedHours.has(clickedHour)) {
-                        delaysHourlyState.selectedHours.delete(clickedHour);
-                    } else {
-                        delaysHourlyState.selectedHours.add(clickedHour);
+                    const item = delaysHourlyState.curveData[idx];
+                    if (item && item.hour_str) {
+                        const clickedHour = item.hour_str;
+                        if (delaysHourlyState.selectedHours.has(clickedHour)) {
+                            delaysHourlyState.selectedHours.delete(clickedHour);
+                        } else {
+                            delaysHourlyState.selectedHours.add(clickedHour);
+                        }
+                        setTimeout(() => {
+                            applyDelaysHourlyFilter();
+                        }, 0);
                     }
-                    applyDelaysHourlyFilter();
+                }
+            },
+            onHover: function (event, elements) {
+                const target = event.native && event.native.target;
+                if (target) {
+                    target.style.cursor = (elements && elements.length > 0) ? 'pointer' : 'default';
                 }
             },
             animation: {
@@ -19005,7 +19210,7 @@ function renderDelaysHourlyDynamicChart(curveData, peakLoss, peakDelay, trendPro
                 },
                 tooltip: {
                     enabled: false,
-                    external: function(context) {
+                    external: function (context) {
                         const tooltipModel = context.tooltip;
                         const tooltipEl = document.getElementById('delaysHourlyChartTooltip');
                         if (tooltipModel.opacity === 0) {
@@ -19053,7 +19258,7 @@ function renderDelaysHourlyDynamicChart(curveData, peakLoss, peakDelay, trendPro
                             family: "'JetBrains Mono', monospace",
                             size: 11
                         },
-                        callback: function(val) {
+                        callback: function (val) {
                             if (isLoss) {
                                 return val >= 1000 ? `R$ ${(val / 1000).toFixed(1)}k` : `R$ ${val}`;
                             } else {
@@ -19232,8 +19437,16 @@ function renderDelaysMonthlyChart(dailyTrend) {
                     const idx = activeEls[0].index;
                     const dObj = dailyTrend[idx];
                     if (dObj && dObj.date) {
-                        drillDownToDay(dObj.date);
+                        setTimeout(() => {
+                            drillDownToDay(dObj.date);
+                        }, 0);
                     }
+                }
+            },
+            onHover: (evt, activeEls) => {
+                const target = evt.native && evt.native.target;
+                if (target) {
+                    target.style.cursor = (activeEls && activeEls.length > 0) ? 'pointer' : 'default';
                 }
             },
             plugins: {
@@ -19251,9 +19464,9 @@ function renderDelaysMonthlyChart(dailyTrend) {
                     borderWidth: 1,
                     padding: 10,
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             if (context.dataset.yAxisID === 'yLoss') {
-                                return `Perda: R$ ${context.parsed.y.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                                return `Perda: R$ ${context.parsed.y.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                             }
                             return `Atraso: ${context.parsed.y}h`;
                         }
@@ -19272,7 +19485,7 @@ function renderDelaysMonthlyChart(dailyTrend) {
                     ticks: {
                         color: '#f43f5e',
                         font: { family: 'JetBrains Mono', size: 10 },
-                        callback: val => 'R$ ' + (val >= 1000 ? Math.round(val/1000) + 'k' : val)
+                        callback: val => 'R$ ' + (val >= 1000 ? Math.round(val / 1000) + 'k' : val)
                     }
                 },
                 yHours: {
@@ -19353,7 +19566,7 @@ function renderDelaysJustificationsList(containerId, justList) {
 delaysState.currentMacroModal = null;
 delaysState.activeSubFilter = '';
 
-window.openMacroJustificationModal = function(macroReasonEncoded) {
+window.openMacroJustificationModal = function (macroReasonEncoded) {
     const modal = document.getElementById('modalMacroJustification');
     if (!modal) {
         console.error('[MACRO MODAL] Elemento #modalMacroJustification não encontrado no DOM!');
@@ -19539,7 +19752,7 @@ window.openMacroJustificationModal = function(macroReasonEncoded) {
         // 4. Popula Select de Submotivos para filtro
         const elSubFilter = document.getElementById('macroModalSubFilter');
         if (elSubFilter) {
-            elSubFilter.innerHTML = '<option value="">Todos os Submotivos</option>' + 
+            elSubFilter.innerHTML = '<option value="">Todos os Submotivos</option>' +
                 (macroObj.sub_reasons_list || []).map(s => `<option value="${encodeURIComponent(s.sub_reason)}">${s.sub_reason} (${s.qtd_equipes})</option>`).join('');
             elSubFilter.value = '';
         }
@@ -19566,7 +19779,7 @@ window.openMacroJustificationModal = function(macroReasonEncoded) {
     modal.classList.add('active');
 
     if (window.lucide) {
-        try { lucide.createIcons(); } catch(e) {}
+        try { lucide.createIcons(); } catch (e) { }
     }
 };
 
@@ -19619,7 +19832,7 @@ function renderMacroModalSubreasonsList(subList) {
     if (window.lucide) lucide.createIcons();
 }
 
-window.selectMacroModalSubreason = function(subReasonEncoded) {
+window.selectMacroModalSubreason = function (subReasonEncoded) {
     const subReason = decodeURIComponent(subReasonEncoded || '').trim();
     const elSubFilter = document.getElementById('macroModalSubFilter');
 
@@ -19643,7 +19856,7 @@ window.selectMacroModalSubreason = function(subReasonEncoded) {
     filterMacroModalTeams();
 };
 
-window.filterMacroModalTeams = function() {
+window.filterMacroModalTeams = function () {
     if (!delaysState.currentMacroModal) return;
 
     const allTeams = delaysState.currentMacroModal.teams || [];
@@ -19755,7 +19968,7 @@ function renderMacroModalTeamsTable(teams, totalOriginal) {
     if (window.lucide) lucide.createIcons();
 }
 
-window.closeMacroJustificationModal = function() {
+window.closeMacroJustificationModal = function () {
     const modal = document.getElementById('modalMacroJustification');
     if (modal) {
         modal.classList.remove('active');
@@ -19767,7 +19980,7 @@ window.closeMacroJustificationModal = function() {
     delaysState.activeSubFilter = '';
 };
 
-window.copyMacroModalReport = function() {
+window.copyMacroModalReport = function () {
     const m = delaysState.currentMacroModal;
     if (!m) return;
 
@@ -19792,7 +20005,7 @@ window.copyMacroModalReport = function() {
 };
 
 // Listener global para fechar com tecla ESC
-document.addEventListener('keydown', function(evt) {
+document.addEventListener('keydown', function (evt) {
     if (evt.key === 'Escape') {
         const modal = document.getElementById('modalMacroJustification');
         if (modal && modal.style.display !== 'none' && modal.style.display !== '') {
@@ -19801,7 +20014,7 @@ document.addEventListener('keydown', function(evt) {
     }
 });
 
-window.drillDownToDay = function(dateStr) {
+window.drillDownToDay = function (dateStr) {
     delaysState.date = dateStr;
     const picker = document.getElementById('delaysDatePicker');
     if (picker) {
@@ -19983,10 +20196,10 @@ function renderDelaysColPickerList() {
         </div>
         <div class="col-picker-dynamic-section" id="delaysColPickerDynamicList">
             ${reorderOrder.map((colId, index) => {
-                const c = reorderMap.get(colId);
-                if (!c) return '';
-                const isChecked = visCols.has(c.id);
-                return `
+        const c = reorderMap.get(colId);
+        if (!c) return '';
+        const isChecked = visCols.has(c.id);
+        return `
                     <div class="col-picker-item draggable" draggable="true"
                          data-col-id="${c.id}"
                          ondragstart="handleDelaysColDragStart(event, '${c.id}')"
@@ -20000,7 +20213,7 @@ function renderDelaysColPickerList() {
                         <label for="chkDelCol_${c.id}" style="cursor: grab; flex: 1; user-select: none; margin: 0; font-size: 0.78rem;">${c.label}</label>
                     </div>
                 `;
-            }).join('')}
+    }).join('')}
         </div>
     `;
 
@@ -20274,16 +20487,16 @@ function renderDelaysTableHead() {
     thead.innerHTML = `
         <tr>
             ${activeCols.map(col => {
-                const isActive = sortCol === col.id;
-                let arrow = '<span class="delays-sort-icon">⇅</span>';
-                if (isActive) {
-                    arrow = sortDir === 'asc' ? '<span class="delays-sort-icon">▲</span>' : '<span class="delays-sort-icon">▼</span>';
-                }
-                const alignRight = ['tempo_atraso', 'valor_hora', 'perda_financeira'].includes(col.id);
-                const alignCenter = ['acoes', 'status_login', 'turno', 'horario_previsto', 'login_efetivo'].includes(col.id);
-                const styleAlign = alignRight ? 'text-align: right;' : (alignCenter ? 'text-align: center;' : 'text-align: left;');
-                
-                return `
+        const isActive = sortCol === col.id;
+        let arrow = '<span class="delays-sort-icon">⇅</span>';
+        if (isActive) {
+            arrow = sortDir === 'asc' ? '<span class="delays-sort-icon">▲</span>' : '<span class="delays-sort-icon">▼</span>';
+        }
+        const alignRight = ['tempo_atraso', 'valor_hora', 'perda_financeira'].includes(col.id);
+        const alignCenter = ['acoes', 'status_login', 'turno', 'horario_previsto', 'login_efetivo'].includes(col.id);
+        const styleAlign = alignRight ? 'text-align: right;' : (alignCenter ? 'text-align: center;' : 'text-align: left;');
+
+        return `
                     <th style="${styleAlign} cursor: pointer;" onclick="sortDelaysTable('${col.id}')" title="Clique para ordenar por ${col.label}">
                         <div class="delays-th-sort-btn ${isActive ? 'active' : ''}" style="${alignRight ? 'justify-content: flex-end;' : (alignCenter ? 'justify-content: center;' : 'justify-content: flex-start;')}">
                             <span>${col.label}</span>
@@ -20291,7 +20504,7 @@ function renderDelaysTableHead() {
                         </div>
                     </th>
                 `;
-            }).join('')}
+    }).join('')}
         </tr>
     `;
     updateDelaysColCountPill();
@@ -20340,56 +20553,96 @@ function renderDelaysTable(teams) {
                 ? `<span class="badge-status-login badge-status-deslogada">DESLOGADA</span>`
                 : `<span class="badge-status-login badge-status-programada">PROGRAMADA</span>`;
 
+        const isMonthlyMode = delaysState.mode === 'monthly';
+        const rowClickAttr = isMonthlyMode 
+            ? `onclick="openMonthlyTeamDetailsModal('${t.team_code}')" title="Clique para abrir o Dossiê Analítico da equipe ${t.team_code} (Gráfico Diário & Pareto)"` 
+            : '';
+        const rowClass = isMonthlyMode ? 'delays-table-clickable-row' : '';
+
         return `
-            <tr>
+            <tr class="${rowClass}" ${rowClickAttr} style="${isMonthlyMode ? 'cursor: pointer;' : ''}">
                 ${activeCols.map(col => {
-                    switch (col.id) {
-                        case 'ut':
-                            return `<td class="font-mono text-cyan" style="font-weight: 700;">${t.ut || (t.region ? 'UT ' + t.region.charAt(0).toUpperCase() + t.region.slice(1).toLowerCase() : '--')}</td>`;
-                        case 'base':
-                            return `<td><span style="font-weight: 600; color: #cbd5e1;">${t.base || '--'}</span></td>`;
-                        case 'equipe':
-                            return `<td><strong class="font-mono text-cyan" style="cursor: pointer;" onclick="openDelayJustificationModal('${t.team_code}', '${t.shift_code}', ${t.delay_minutes}, '${t.marcacao}')" title="Clique para gerenciar justificativa">${t.team_code}</strong></td>`;
-                        case 'regiao':
-                            return `<td><span class="badge-subtle">${t.region || '--'}</span></td>`;
-                        case 'frota':
-                            return `<td>${t.vehicle_type || '--'}</td>`;
-                        case 'turno':
-                            return `<td style="text-align: center;"><span class="badge-tag-turno">${t.turno || '--'}</span></td>`;
-                        case 'horario_previsto':
-                            return `<td class="font-mono" style="text-align: center;">${t.shift_code || '--'}</td>`;
-                        case 'login_efetivo':
-                            const valMarc = (t.marcacao && t.marcacao !== '--') ? t.marcacao : (t.login_time && t.login_time !== '--' ? t.login_time : '--:--');
-                            return `<td class="font-mono" style="text-align: center; color: ${valMarc !== '--:--' ? '#38bdf8' : '#64748b'}; font-weight: 700;">${valMarc}</td>`;
-                        case 'status_login':
-                            return `<td style="text-align: center;">${statusLoginBadge}</td>`;
-                        case 'tempo_atraso':
-                            return `<td style="text-align: right;">${delayBadge}</td>`;
-                        case 'valor_hora':
-                            return `<td class="font-mono" style="text-align: right; color: #94a3b8;">${t.rate_hour_str || '--'}</td>`;
-                        case 'perda_financeira':
-                            return `<td class="font-mono ${isDelay ? 'text-rose' : ''}" style="text-align: right; font-weight: 700;">${t.financial_loss_str || 'R$ 0,00'}</td>`;
-                        case 'macro_motivo':
-                            return `<td>${t.macro_reason && t.macro_reason !== '--' ? `<span class="badge badge-tag-amber">${t.macro_reason}</span>` : '<span style="color:#64748b;">--</span>'}</td>`;
-                        case 'sub_motivo':
-                            return `<td style="color: #94a3b8; font-size: 0.72rem;">${t.sub_reason || '--'}</td>`;
-                        case 'acoes':
-                            return `
-                                <td style="text-align: center;">
-                                    ${isDelay ? `
-                                    <button class="btn-table-action-sm btn-action-justificar ${t.has_justification ? 'btn-justificado' : ''}" 
-                                            onclick="event.stopPropagation(); openDelayJustificationModal('${t.team_code}', '${t.shift_code}', ${t.delay_minutes}, '${t.marcacao}')" 
-                                            title="${t.has_justification ? 'Editar Justificativa' : 'Registrar Justificativa'}">
-                                        <i data-lucide="${t.has_justification ? 'check-circle' : 'file-edit'}" style="width: 12px; height: 12px;"></i>
-                                        <span>${t.has_justification ? 'Editar' : 'Justificar'}</span>
-                                    </button>
-                                    ` : '<span style="color: #64748b; font-size: 0.7rem;">--</span>'}
-                                </td>
-                            `;
-                        default:
-                            return `<td>--</td>`;
+            switch (col.id) {
+                case 'ut':
+                    return `<td class="font-mono text-cyan" style="font-weight: 700;">${t.ut || (t.region ? 'UT ' + t.region.charAt(0).toUpperCase() + t.region.slice(1).toLowerCase() : '--')}</td>`;
+                case 'base':
+                    return `<td><span style="font-weight: 600; color: #cbd5e1;">${t.base || '--'}</span></td>`;
+                case 'equipe':
+                    return `<td><strong class="font-mono text-cyan" style="cursor: pointer;" ${isMonthlyMode ? `onclick="openMonthlyTeamDetailsModal('${t.team_code}')"` : `onclick="openDelayJustificationModal('${t.team_code}', '${t.shift_code}', ${t.delay_minutes}, '${t.marcacao}')"`} title="Clique para gerenciar ou visualizar">${t.team_code}</strong></td>`;
+                case 'regiao':
+                    return `<td><span class="badge-subtle">${t.region || '--'}</span></td>`;
+                case 'frota':
+                    return `<td>${t.vehicle_type || '--'}</td>`;
+                case 'turno':
+                    return `<td style="text-align: center;"><span class="badge-tag-turno">${t.turno || '--'}</span></td>`;
+                case 'horario_previsto':
+                    const shiftVal = t.shift_code || '--';
+                    const shiftTitle = isMonthlyMode ? 'Turno mais frequente (modal) da equipe no mês' : 'Horário previsto do turno';
+                    return `<td class="font-mono" style="text-align: center; font-weight: 700; color: #38bdf8;" title="${shiftTitle}">${shiftVal}</td>`;
+                case 'login_efetivo':
+                    if (isMonthlyMode) {
+                        const dWorked = t.days_worked || 0;
+                        const dDelay = t.days_with_delay || 0;
+                        const pctPunct = dWorked > 0 ? Math.round(((dWorked - dDelay) / dWorked) * 100) : 100;
+                        return `<td class="font-mono" style="text-align: center; color: ${dDelay > 0 ? '#fb7185' : '#34d399'}; font-weight: 700;" title="${dWorked} dias ativos, ${dDelay} com atraso">${pctPunct}% pontual</td>`;
                     }
-                }).join('')}
+                    const valMarc = (t.marcacao && t.marcacao !== '--') ? t.marcacao : (t.login_time && t.login_time !== '--' ? t.login_time : '--:--');
+                    return `<td class="font-mono" style="text-align: center; color: ${valMarc !== '--:--' ? '#38bdf8' : '#64748b'}; font-weight: 700;">${valMarc}</td>`;
+                case 'status_login':
+                    if (isMonthlyMode) {
+                        const dDelay = t.days_with_delay || 0;
+                        if (dDelay === 0) {
+                            return `<td style="text-align: center;"><span class="badge-status-login badge-status-logada" style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3);">100% PONTUAL</span></td>`;
+                        } else if (t.recurrent || dDelay >= 3) {
+                            return `<td style="text-align: center;"><span class="badge-status-login badge-status-deslogada" style="background: rgba(244,63,94,0.15); color: #f43f5e; border: 1px solid rgba(244,63,94,0.3); font-weight: 700;">REINCIDENTE (${dDelay}d)</span></td>`;
+                        } else {
+                            return `<td style="text-align: center;"><span class="badge-status-login badge-status-programada" style="background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); font-weight: 600;">C/ ATRASO (${dDelay}d)</span></td>`;
+                        }
+                    }
+                    return `<td style="text-align: center;">${statusLoginBadge}</td>`;
+                case 'tempo_atraso':
+                    if (isMonthlyMode) {
+                        return `<td style="text-align: right;"><span class="${isDelay ? 'badge-turno-login-atraso' : 'badge-turno-login-pontual'}">${t.delay_str || '00:00'}</span></td>`;
+                    }
+                    return `<td style="text-align: right;">${delayBadge}</td>`;
+                case 'valor_hora':
+                    return `<td class="font-mono" style="text-align: right; color: #cbd5e1; font-weight: 600;">${t.rate_hour_str || '--'}</td>`;
+                case 'perda_financeira':
+                    return `<td class="font-mono ${isDelay ? 'text-rose' : ''}" style="text-align: right; font-weight: 700;">${t.financial_loss_str || 'R$ 0,00'}</td>`;
+                case 'macro_motivo':
+                    return `<td>${t.macro_reason && t.macro_reason !== '--' ? `<span class="badge badge-tag-amber">${t.macro_reason}</span>` : '<span style="color:#64748b;">--</span>'}</td>`;
+                case 'sub_motivo':
+                    return `<td style="color: #94a3b8; font-size: 0.72rem;">${t.sub_reason || '--'}</td>`;
+                case 'acoes':
+                    if (isMonthlyMode) {
+                        return `
+                            <td style="text-align: center;">
+                                <button class="btn-table-action-sm" 
+                                        onclick="event.stopPropagation(); openMonthlyTeamDetailsModal('${t.team_code}')" 
+                                        title="Abrir Dossiê Analítico da equipe ${t.team_code}" 
+                                        style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #38bdf8; font-weight: 700; padding: 3px 8px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                                    <i data-lucide="bar-chart-2" style="width: 12px; height: 12px;"></i>
+                                    <span>Dossiê</span>
+                                </button>
+                            </td>
+                        `;
+                    }
+                    return `
+                        <td style="text-align: center;">
+                            ${isDelay ? `
+                            <button class="btn-table-action-sm btn-action-justificar ${t.has_justification ? 'btn-justificado' : ''}" 
+                                    onclick="event.stopPropagation(); openDelayJustificationModal('${t.team_code}', '${t.shift_code}', ${t.delay_minutes}, '${t.marcacao}')" 
+                                    title="${t.has_justification ? 'Editar Justificativa' : 'Registrar Justificativa'}">
+                                <i data-lucide="${t.has_justification ? 'check-circle' : 'file-edit'}" style="width: 12px; height: 12px;"></i>
+                                <span>${t.has_justification ? 'Editar' : 'Justificar'}</span>
+                            </button>
+                            ` : '<span style="color: #64748b; font-size: 0.7rem;">--</span>'}
+                        </td>
+                    `;
+                default:
+                    return `<td>--</td>`;
+            }
+        }).join('')}
             </tr>
         `;
     }).join('');
@@ -20398,7 +20651,7 @@ function renderDelaysTable(teams) {
 }
 
 
-window.filterDelaysTable = function() {
+window.filterDelaysTable = function () {
     const input = document.getElementById('delaysSearchInput');
     const term = (input ? input.value : '').toLowerCase().trim();
     if (!delaysState.data || !delaysState.data.teams) return;
@@ -20410,18 +20663,18 @@ window.filterDelaysTable = function() {
 
     const filtered = delaysState.data.teams.filter(t => {
         return (t.team_code && t.team_code.toLowerCase().includes(term)) ||
-               (t.base && t.base.toLowerCase().includes(term)) ||
-               (t.vehicle_type && t.vehicle_type.toLowerCase().includes(term)) ||
-               (t.macro_reason && t.macro_reason.toLowerCase().includes(term)) ||
-               (t.sub_reason && t.sub_reason.toLowerCase().includes(term)) ||
-               (t.user_name && t.user_name.toLowerCase().includes(term)) ||
-               (t.observation && t.observation.toLowerCase().includes(term));
+            (t.base && t.base.toLowerCase().includes(term)) ||
+            (t.vehicle_type && t.vehicle_type.toLowerCase().includes(term)) ||
+            (t.macro_reason && t.macro_reason.toLowerCase().includes(term)) ||
+            (t.sub_reason && t.sub_reason.toLowerCase().includes(term)) ||
+            (t.user_name && t.user_name.toLowerCase().includes(term)) ||
+            (t.observation && t.observation.toLowerCase().includes(term));
     });
 
     renderDelaysTable(filtered);
 };
 
-window.exportDelaysExcel = function() {
+window.exportDelaysExcel = function () {
     const params = new URLSearchParams({
         mode: delaysState.mode,
         date: delaysState.date,
@@ -20456,7 +20709,7 @@ window.handleDelaysColDragEnd = handleDelaysColDragEnd;
 // Listener para atualização Realtime automática da tela de ATRASOS E TURNOS
 try {
     const ccoDelaysBroadcast = new BroadcastChannel('cco_delivery_channel');
-    ccoDelaysBroadcast.onmessage = function(ev) {
+    ccoDelaysBroadcast.onmessage = function (ev) {
         if (ev.data && ev.data.type === 'DELAY_JUSTIFICATION_SAVED') {
             const scrDelays = document.getElementById('deliveryScreenDelays');
             if (scrDelays && scrDelays.style.display !== 'none') {
@@ -20464,4 +20717,467 @@ try {
             }
         }
     };
-} catch(e) {}
+} catch (e) { }
+
+// =========================================================================
+// MODAL DOSSIÊ MENSAL DA EQUIPE: GRÁFICO DIÁRIO, PARETO & DIAS ATIVOS
+// =========================================================================
+let currentMonthlyTeamData = null;
+let monthlyTeamChartInstance = null;
+let currentMonthlyTeamView = 'finance';
+
+function populateMonthlyTeamHeaderAndKpis(team) {
+    if (!team) return;
+    const elCode = document.getElementById('mTeamCode');
+    if (elCode) elCode.textContent = team.team_code || '--';
+    const elTitle = document.getElementById('mTeamTitle');
+    if (elTitle) elTitle.textContent = `DOSSIÊ ANALÍTICO: ${team.team_code}`;
+    const elBase = document.getElementById('mTeamBase');
+    if (elBase) elBase.textContent = team.base || '--';
+    const elReg = document.getElementById('mTeamRegion');
+    if (elReg) elReg.textContent = team.region || '--';
+    const elVeh = document.getElementById('mTeamVehicle');
+    if (elVeh) elVeh.textContent = team.vehicle_type || '--';
+    const elMonth = document.getElementById('mTeamMonth');
+    if (elMonth) elMonth.textContent = delaysState.month || (new Date().toISOString().slice(0, 7));
+
+    const statusBadge = document.getElementById('mTeamStatusBadge');
+    if (statusBadge) {
+        const daysDelay = team.days_with_delay || 0;
+        if (daysDelay === 0) {
+            statusBadge.className = 'badge-status-login badge-status-logada';
+            statusBadge.textContent = '100% PONTUAL';
+            statusBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+            statusBadge.style.color = '#10b981';
+            statusBadge.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        } else if (team.recurrent || daysDelay >= 3) {
+            statusBadge.className = 'badge-status-login badge-status-deslogada';
+            statusBadge.textContent = `REINCIDENTE (${daysDelay}d c/ atraso)`;
+            statusBadge.style.background = 'rgba(244, 63, 94, 0.15)';
+            statusBadge.style.color = '#f43f5e';
+            statusBadge.style.border = '1px solid rgba(244, 63, 94, 0.3)';
+        } else {
+            statusBadge.className = 'badge-status-login badge-status-programada';
+            statusBadge.textContent = `COM ATRASO (${daysDelay}d)`;
+            statusBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+            statusBadge.style.color = '#f59e0b';
+            statusBadge.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+        }
+    }
+
+    const elShift = document.getElementById('mTeamModalShift');
+    if (elShift) elShift.textContent = team.shift_code || '--';
+    const elRate = document.getElementById('mTeamHourlyRate');
+    if (elRate) elRate.textContent = team.rate_hour_str || '--';
+
+    const daysWorked = team.days_worked || 0;
+    const daysDelay = team.days_with_delay || 0;
+    const punctuality = daysWorked > 0 ? Math.round(((daysWorked - daysDelay) / daysWorked) * 100) : 100;
+    const delayPct = daysWorked > 0 ? Math.round((daysDelay / daysWorked) * 100) : 0;
+
+    const elWorked = document.getElementById('mTeamDaysWorked');
+    if (elWorked) elWorked.textContent = `${daysWorked} dias`;
+    const elPunct = document.getElementById('mTeamPunctualityRate');
+    if (elPunct) elPunct.textContent = `${punctuality}% de pontualidade no mês`;
+
+    const elDaysDelay = document.getElementById('mTeamDaysDelay');
+    if (elDaysDelay) elDaysDelay.textContent = `${daysDelay} dias`;
+    const elDelayPct = document.getElementById('mTeamDelayPercent');
+    if (elDelayPct) elDelayPct.textContent = `${delayPct}% dos dias trabalhados`;
+
+    const elTotalDelay = document.getElementById('mTeamTotalDelayTime');
+    if (elTotalDelay) elTotalDelay.textContent = team.delay_str || '00:00';
+    const elTotalLoss = document.getElementById('mTeamTotalLoss');
+    if (elTotalLoss) elTotalLoss.textContent = team.financial_loss_str || 'R$ 0,00';
+}
+
+window.openMonthlyTeamDetailsModal = async function(teamCode) {
+    if (!teamCode) return;
+    const modal = document.getElementById('monthlyTeamDetailsModal');
+    if (!modal) return;
+
+    // Reset de visualização do gráfico
+    currentMonthlyTeamView = 'finance';
+    ['btnMTeamViewFinance', 'btnMTeamViewHours', 'btnMTeamViewCombined'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('active');
+    });
+    const defaultBtn = document.getElementById('btnMTeamViewFinance');
+    if (defaultBtn) defaultBtn.classList.add('active');
+
+    // Abre o modal IMEDIATAMENTE (display flex + classe active para transição suave de opacidade)
+    modal.style.display = 'flex';
+    void modal.offsetWidth;
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    // Inicialização preliminar caso a equipe já esteja nos dados em memória
+    const localTeam = (delaysState.data && delaysState.data.teams)
+        ? delaysState.data.teams.find(t => t.team_code === teamCode)
+        : null;
+
+    if (localTeam) {
+        currentMonthlyTeamData = localTeam;
+        populateMonthlyTeamHeaderAndKpis(localTeam);
+        if (localTeam.daily_records && localTeam.daily_records.length > 0) {
+            try { renderMonthlyTeamDailyChart(localTeam, currentMonthlyTeamView); } catch (e) { console.error('Erro chart local:', e); }
+            try { renderMonthlyTeamPareto(localTeam); } catch (e) { console.error('Erro pareto local:', e); }
+            try { renderMonthlyTeamDailyTable(localTeam); } catch (e) { console.error('Erro tabela local:', e); }
+        } else {
+            const tbody = document.getElementById('mTeamDailyTableBody');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 25px; color: #38bdf8;"><i data-lucide="loader" class="spin" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 6px;"></i> Carregando histórico diário e causas-raiz da equipe...</td></tr>`;
+            const paretoContainer = document.getElementById('mTeamParetoListContainer');
+            if (paretoContainer) paretoContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: #94a3b8; font-size: 0.8rem;"><i data-lucide="loader" class="spin" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 6px;"></i> Analisando Pareto...</div>`;
+        }
+    } else {
+        const elCode = document.getElementById('mTeamCode');
+        if (elCode) elCode.textContent = teamCode;
+        const tbody = document.getElementById('mTeamDailyTableBody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 25px; color: #38bdf8;"><i data-lucide="loader" class="spin" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 6px;"></i> Carregando histórico da equipe ${teamCode}...</td></tr>`;
+    }
+
+    if (window.lucide) lucide.createIcons();
+
+    // Carrega dados completos do dossiê (histórico dia a dia e Pareto) via endpoint backend
+    const monthRef = delaysState.month || (new Date().toISOString().slice(0, 7));
+    try {
+        const resp = await fetch(`/api/delivery/delays/team_monthly_details?team_code=${encodeURIComponent(teamCode)}&month=${monthRef}`);
+        const data = await resp.json();
+        if (data && (data.status === 'ok' || data.status === 'success') && data.team) {
+            currentMonthlyTeamData = data.team;
+            populateMonthlyTeamHeaderAndKpis(data.team);
+            try { renderMonthlyTeamDailyChart(data.team, currentMonthlyTeamView); } catch (e) { console.error('Erro chart api:', e); }
+            try { renderMonthlyTeamPareto(data.team); } catch (e) { console.error('Erro pareto api:', e); }
+            try { renderMonthlyTeamDailyTable(data.team); } catch (e) { console.error('Erro tabela api:', e); }
+        }
+    } catch (err) {
+        console.warn('Erro ao carregar detalhes completos da equipe via API:', err);
+    }
+
+    if (window.lucide) lucide.createIcons();
+};
+
+window.closeMonthlyTeamDetailsModal = function() {
+    const modal = document.getElementById('monthlyTeamDetailsModal');
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 200);
+    }
+    document.body.style.overflow = '';
+    if (monthlyTeamChartInstance) {
+        monthlyTeamChartInstance.destroy();
+        monthlyTeamChartInstance = null;
+    }
+};
+
+window.setMonthlyTeamChartView = function(viewType) {
+    currentMonthlyTeamView = viewType;
+    ['btnMTeamViewFinance', 'btnMTeamViewHours', 'btnMTeamViewCombined'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('active');
+    });
+    if (viewType === 'finance') {
+        const b = document.getElementById('btnMTeamViewFinance');
+        if (b) b.classList.add('active');
+    } else if (viewType === 'hours') {
+        const b = document.getElementById('btnMTeamViewHours');
+        if (b) b.classList.add('active');
+    } else if (viewType === 'combined') {
+        const b = document.getElementById('btnMTeamViewCombined');
+        if (b) b.classList.add('active');
+    }
+    if (currentMonthlyTeamData) {
+        renderMonthlyTeamDailyChart(currentMonthlyTeamData, viewType);
+    }
+};
+
+function renderMonthlyTeamDailyChart(team, viewType = 'finance') {
+    const canvas = document.getElementById('monthlyTeamDailyChart');
+    if (!canvas || !window.Chart) return;
+
+    if (monthlyTeamChartInstance) {
+        monthlyTeamChartInstance.destroy();
+        monthlyTeamChartInstance = null;
+    }
+
+    const records = team.daily_records || [];
+    if (records.length === 0) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+    }
+
+    const labels = records.map(r => r.date_display || (r.date ? r.date.slice(8, 10) + '/' + r.date.slice(5, 7) : 'Dia'));
+    const losses = records.map(r => r.financial_loss || 0);
+    const delaysMin = records.map(r => r.delay_minutes || 0);
+
+    const bgColorsLoss = losses.map(l => l > 0 ? '#f43f5e' : 'rgba(16, 185, 129, 0.4)');
+    const bgColorsDelay = delaysMin.map(m => m > 0 ? '#f59e0b' : 'rgba(16, 185, 129, 0.4)');
+
+    let datasets = [];
+    let scales = {
+        x: {
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#94a3b8', font: { family: "'JetBrains Mono', monospace", size: 10 } }
+        }
+    };
+
+    if (viewType === 'finance') {
+        datasets = [{
+            type: 'bar',
+            label: 'Perda Financeira (R$)',
+            data: losses,
+            backgroundColor: bgColorsLoss,
+            borderColor: losses.map(l => l > 0 ? '#e11d48' : '#10b981'),
+            borderWidth: 1.5,
+            borderRadius: 5,
+            maxBarThickness: 32
+        }];
+        scales.y = {
+            beginAtZero: true,
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: {
+                color: '#94a3b8',
+                font: { family: "'JetBrains Mono', monospace", size: 10 },
+                callback: v => 'R$ ' + v.toLocaleString('pt-BR')
+            }
+        };
+    } else if (viewType === 'hours') {
+        datasets = [{
+            type: 'bar',
+            label: 'Atraso em Minutos (min)',
+            data: delaysMin,
+            backgroundColor: bgColorsDelay,
+            borderColor: delaysMin.map(m => m > 0 ? '#d97706' : '#10b981'),
+            borderWidth: 1.5,
+            borderRadius: 5,
+            maxBarThickness: 32
+        }];
+        scales.y = {
+            beginAtZero: true,
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: {
+                color: '#94a3b8',
+                font: { family: "'JetBrains Mono', monospace", size: 10 },
+                callback: v => v + ' min'
+            }
+        };
+    } else { // combined
+        datasets = [
+            {
+                type: 'bar',
+                label: 'Atraso (min)',
+                data: delaysMin,
+                backgroundColor: 'rgba(245, 158, 11, 0.65)',
+                borderColor: '#f59e0b',
+                borderWidth: 1,
+                borderRadius: 4,
+                yAxisID: 'yDelay',
+                maxBarThickness: 24,
+                order: 2
+            },
+            {
+                type: 'line',
+                label: 'Perda Financeira (R$)',
+                data: losses,
+                borderColor: '#38bdf8',
+                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                borderWidth: 2,
+                pointBackgroundColor: '#38bdf8',
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                tension: 0.25,
+                yAxisID: 'yLoss',
+                order: 1
+            }
+        ];
+        scales.yDelay = {
+            type: 'linear',
+            position: 'left',
+            beginAtZero: true,
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: {
+                color: '#fbbf24',
+                font: { family: "'JetBrains Mono', monospace", size: 9 },
+                callback: v => v + 'm'
+            }
+        };
+        scales.yLoss = {
+            type: 'linear',
+            position: 'right',
+            beginAtZero: true,
+            grid: { drawOnChartArea: false },
+            ticks: {
+                color: '#38bdf8',
+                font: { family: "'JetBrains Mono', monospace", size: 9 },
+                callback: v => 'R$ ' + v.toLocaleString('pt-BR')
+            }
+        };
+    }
+
+    monthlyTeamChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    display: viewType === 'combined',
+                    labels: { color: '#94a3b8', font: { size: 11 } }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleColor: '#38bdf8',
+                    bodyColor: '#e2e8f0',
+                    borderColor: 'rgba(56, 189, 248, 0.3)',
+                    borderWidth: 1,
+                    padding: 10,
+                    callbacks: {
+                        title: (items) => {
+                            const idx = items[0].dataIndex;
+                            const r = records[idx];
+                            return `${r.date} (${r.date_display || ''})`;
+                        },
+                        afterTitle: (items) => {
+                            const idx = items[0].dataIndex;
+                            const r = records[idx];
+                            return `Previsto: ${r.shift_code || '--'} | Marcação: ${r.marcacao || '--'}`;
+                        },
+                        afterBody: (items) => {
+                            const idx = items[0].dataIndex;
+                            const r = records[idx];
+                            if (r.macro_reason && r.macro_reason !== '--') {
+                                return [`Justificativa: ${r.macro_reason}`, r.sub_reason ? `Sub: ${r.sub_reason}` : ''];
+                            }
+                            return r.delay_minutes > 0 ? ['Atraso sem justificativa registrada'] : ['Dia 100% Pontual'];
+                        }
+                    }
+                }
+            },
+            scales
+        }
+    });
+}
+
+function renderMonthlyTeamPareto(team) {
+    const container = document.getElementById('mTeamParetoListContainer');
+    const badge = document.getElementById('mTeamParetoBadge');
+    if (!container) return;
+
+    const pareto = team.pareto_justifications || [];
+    if (badge) {
+        badge.textContent = `${pareto.length} ${pareto.length === 1 ? 'causa identificada' : 'causas identificadas'}`;
+    }
+
+    if (pareto.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 16px; text-align: center; color: #10b981; font-size: 0.82rem; font-weight: 700; background: rgba(16, 185, 129, 0.08); border: 1px dashed rgba(16, 185, 129, 0.25); border-radius: 8px;">
+                <i data-lucide="check-circle" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 6px;"></i>
+                Excelente: Esta equipe não possui registros de atraso no mês (100% pontual).
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = pareto.map(item => {
+        const isVital = item.is_vital_few;
+        const pillBadge = isVital
+            ? `<span class="pareto-pill-80" title="Causa Vital dentro dos 80% do impacto acumulado">VITAL 80%</span>`
+            : `<span class="pareto-pill-other">SECUNDÁRIO</span>`;
+
+        return `
+            <div class="pareto-row-item">
+                <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                    ${pillBadge}
+                    <div style="min-width: 0;">
+                        <strong style="color: #f8fafc; font-size: 0.82rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${item.macro_reason}
+                        </strong>
+                        <span style="font-size: 0.7rem; color: #94a3b8; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${item.sub_reason || 'Sem submotivo especificado'}
+                        </span>
+                    </div>
+                </div>
+
+                <div style="flex: 1; max-width: 280px; min-width: 140px; margin: 0 14px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.68rem; margin-bottom: 3px;">
+                        <span style="color: #cbd5e1; font-weight: 700;">${item.percentage_loss}% do total</span>
+                        <span class="font-mono" style="color: #94a3b8;">Acum: ${item.cumulative_percentage}%</span>
+                    </div>
+                    <div class="pareto-bar-track">
+                        <div class="pareto-bar-fill" style="width: ${Math.min(100, item.percentage_loss)}%; background: ${isVital ? '#f43f5e' : '#38bdf8'};"></div>
+                    </div>
+                </div>
+
+                <div style="text-align: right; flex-shrink: 0; min-width: 110px;">
+                    <strong class="font-mono text-rose" style="font-size: 0.85rem; display: block;">${item.financial_loss_str}</strong>
+                    <span class="font-mono text-amber" style="font-size: 0.7rem;">${item.occurrences}x • ${Math.round(item.delay_minutes / 60)}h atraso</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderMonthlyTeamDailyTable(team) {
+    const tbody = document.getElementById('mTeamDailyTableBody');
+    const countBadge = document.getElementById('mTeamDaysTableCount');
+    if (!tbody) return;
+
+    const records = team.daily_records || [];
+    if (countBadge) {
+        countBadge.textContent = `${records.length} ${records.length === 1 ? 'registro ativo' : 'registros ativos'}`;
+    }
+
+    if (records.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 20px; color: #94a3b8;">Nenhum registro diário encontrado para esta equipe.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = records.map(r => {
+        const isDelay = (r.delay_minutes || 0) > 0;
+        const statusBadge = isDelay
+            ? `<span class="badge-turno-login-atraso">${r.delay_str || ('+' + r.delay_minutes + ' min')}</span>`
+            : `<span class="badge-turno-login-pontual">00:00</span>`;
+
+        const macroBadge = (r.macro_reason && r.macro_reason !== '--')
+            ? `<span class="badge badge-tag-amber" style="font-size: 0.7rem; padding: 2px 6px;">${r.macro_reason}</span>`
+            : `<span style="color: #64748b;">--</span>`;
+
+        const actionBtn = isDelay
+            ? `
+                <button type="button" class="btn-table-action-sm ${r.has_justification ? 'btn-justificado' : 'btn-action-justificar'}" 
+                        onclick="event.stopPropagation(); openDelayJustificationModal('${team.team_code}', '${r.shift_code}', ${r.delay_minutes}, '${r.marcacao}', '${r.date}')"
+                        title="${r.has_justification ? 'Editar Justificativa do dia ' + r.date : 'Registrar Justificativa do dia ' + r.date}">
+                    <i data-lucide="${r.has_justification ? 'check-circle' : 'file-edit'}" style="width: 11px; height: 11px;"></i>
+                    <span>${r.has_justification ? 'Editar' : 'Justificar'}</span>
+                </button>
+            `
+            : `<span style="color: #64748b; font-size: 0.7rem;">--</span>`;
+
+        return `
+            <tr>
+                <td class="font-mono text-cyan" style="text-align: center; font-weight: 700;">${r.date_display || (r.date ? r.date.slice(8, 10) + '/' + r.date.slice(5, 7) : '--')}</td>
+                <td class="font-mono" style="text-align: center; font-weight: 600; color: #38bdf8;">${r.shift_code || '--'}</td>
+                <td class="font-mono" style="text-align: center; font-weight: 600; color: ${r.marcacao && r.marcacao !== '--' ? '#f1f5f9' : '#64748b'};">${r.marcacao || '--:--'}</td>
+                <td style="text-align: center;">${statusBadge}</td>
+                <td class="font-mono" style="text-align: right; color: #cbd5e1;">${r.rate_hour_str || team.rate_hour_str || '--'}</td>
+                <td class="font-mono ${isDelay ? 'text-rose' : ''}" style="text-align: right; font-weight: 700;">${r.financial_loss_str || 'R$ 0,00'}</td>
+                <td>${macroBadge}</td>
+                <td style="color: #94a3b8; font-size: 0.72rem;">${r.sub_reason || '--'}</td>
+                <td style="color: #94a3b8; font-size: 0.72rem;">${r.user_name || '--'}</td>
+                <td style="color: #94a3b8; font-size: 0.72rem; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.observation || ''}">${r.observation || '--'}</td>
+                <td style="text-align: center;">${actionBtn}</td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+window.openMonthlyTeamDetailsModal = openMonthlyTeamDetailsModal;
+window.closeMonthlyTeamDetailsModal = closeMonthlyTeamDetailsModal;
+window.setMonthlyTeamChartView = setMonthlyTeamChartView;

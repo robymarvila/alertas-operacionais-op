@@ -6,6 +6,7 @@ agrupamento hierárquico das 14 bases por região (Norte e Leste) e auditoria hi
 """
 
 from datetime import datetime, date, timedelta, timezone
+from collections import Counter
 import json
 import logging
 import os
@@ -1246,43 +1247,99 @@ class DeliveryManager:
             hora_desc_input = None
 
             if isinstance(rec, dict):
-                team_code = str(rec.get("EQUIPE") or rec.get("equipe") or rec.get("code") or rec.get("team_code") or "").strip().upper()
-                shift_raw = rec.get("TURNO") or rec.get("turno") or rec.get("shift") or rec.get("login_time") or rec.get("shift_slot") or ""
-                driver = rec.get("MOTORISTA") or rec.get("motorista") or rec.get("driver") or "--"
-                vehicle_desc = rec.get("VEÍCULO") or rec.get("VEICULO") or rec.get("tipo_veiculo") or rec.get("vehicle_type") or ""
-                tipo_oper = rec.get("TIPO") or rec.get("tipo") or rec.get("tipo_operacional") or ""
-                status_oper = rec.get("STATUS") or rec.get("status") or "Logada"
-                plate = rec.get("PLACA") or rec.get("placa") or rec.get("plate") or "--"
-                ut = rec.get("UT") or rec.get("ut") or "--"
-                base_raw = rec.get("BASE") or rec.get("base") or rec.get("base_name") or rec.get("base_code") or "--"
-                filial = rec.get("FILIAL") or rec.get("filial") or "--"
-                gps_raw = rec.get("GPS") or rec.get("gps") or rec.get("gps_update_str") or "--"
+                team_code = str(
+                    rec.get("EQUIPE") or rec.get("Equipe") or rec.get("equipe") or
+                    rec.get("code") or rec.get("team_code") or ""
+                ).strip().upper()
+                shift_raw = (
+                    rec.get("TURNO PROGRAMADO") or rec.get("Turno programado") or rec.get("turno programado") or
+                    rec.get("TURNO_PROGRAMADO") or rec.get("turno_programado") or
+                    rec.get("TURNO") or rec.get("Turno") or rec.get("turno") or
+                    rec.get("shift") or rec.get("login_time") or rec.get("shift_slot") or ""
+                )
+                driver = rec.get("MOTORISTA") or rec.get("Motorista") or rec.get("motorista") or rec.get("driver") or "--"
+                vehicle_desc = (
+                    rec.get("VEÍCULO") or rec.get("Veículo") or rec.get("veículo") or
+                    rec.get("VEICULO") or rec.get("Veiculo") or rec.get("veiculo") or
+                    rec.get("tipo_veiculo") or rec.get("vehicle_type") or ""
+                )
+                tipo_oper = rec.get("TIPO") or rec.get("Tipo") or rec.get("tipo") or rec.get("tipo_operacional") or ""
+                status_oper = rec.get("STATUS") or rec.get("Status") or rec.get("status") or "Logada"
+                plate = rec.get("PLACA") or rec.get("Placa") or rec.get("placa") or rec.get("plate") or "--"
+                ut = rec.get("UT") or rec.get("Ut") or rec.get("ut") or "--"
+                base_raw = (
+                    rec.get("BASE") or rec.get("Base") or rec.get("base") or
+                    rec.get("base_name") or rec.get("base_code") or "--"
+                )
+                filial = rec.get("FILIAL") or rec.get("Filial") or rec.get("filial") or "--"
+                gps_raw = rec.get("GPS") or rec.get("Gps") or rec.get("gps") or rec.get("gps_update_str") or "--"
                 gps_min_input = rec.get("gps_update_minutes")
-                descanso_raw = rec.get("INICIO_DESCANSO") or rec.get("INÍCIO DESCANSO") or rec.get("inicio_descanso") or "--"
+                descanso_raw = (
+                    rec.get("INICIO_DESCANSO") or rec.get("INÍCIO DESCANSO") or rec.get("Início descanso") or
+                    rec.get("inicio_descanso") or rec.get("Inicio descanso") or "--"
+                )
                 data_desc_input = rec.get("data_inicio_descanso")
                 hora_desc_input = rec.get("hora_inicio_descanso")
-                ordem_raw = rec.get("ORDEM") or rec.get("ordem") or rec.get("ordem_servico") or "--"
-                hora_a_caminho_raw = rec.get("HORA_A_CAMINHO") or rec.get("hora_a_caminho") or rec.get("HORA A CAMINHO") or "--"
-                marcacao_raw = rec.get("MARCACAO") or rec.get("marcacao") or rec.get("MARCAÇÃO") or rec.get("marcação") or rec.get("RAW_MARCACAO") or "--"
+                ordem_raw = (
+                    rec.get("ORDEM") or rec.get("Ordem") or rec.get("ordem") or
+                    rec.get("ordem_servico") or "--"
+                )
+                hora_a_caminho_raw = (
+                    rec.get("HORA_A_CAMINHO") or rec.get("HORA A CAMINHO") or rec.get("Hora a caminho") or
+                    rec.get("hora_a_caminho") or "--"
+                )
+                marcacao_raw = (
+                    rec.get("MARCACAO") or rec.get("Marcacao") or rec.get("marcacao") or
+                    rec.get("MARCAÇÃO") or rec.get("Marcação") or rec.get("marcação") or
+                    rec.get("RAW_MARCACAO") or "--"
+                )
                 desvio_raw = rec.get("DESVIO") or rec.get("desvio") or "--"
                 is_act_input = rec.get("is_active")
                 is_active_val = bool(is_act_input) if is_act_input is not None else True
             elif isinstance(rec, (list, tuple)) and len(rec) >= 5:
+                # 0: UT, 1: Base, 2: Filial, 3: Veículo, 4: Equipe, 5: Tipo
                 ut = rec[0] if len(rec) > 0 else "--"
                 base_raw = rec[1] if len(rec) > 1 else "--"
                 filial = rec[2] if len(rec) > 2 else "--"
                 vehicle_desc = rec[3] if len(rec) > 3 else "--"
                 team_code = str(rec[4]).strip().upper() if len(rec) > 4 else ""
                 tipo_oper = rec[5] if len(rec) > 5 else "--"
-                driver = rec[6] if len(rec) > 6 else "--"
-                shift_raw = rec[7] if len(rec) > 7 else "--"
-                marcacao_raw = rec[8] if len(rec) > 8 else "--"
-                gps_raw = rec[9] if len(rec) > 9 else "--"
-                status_oper = rec[10] if len(rec) > 10 else "Logada"
-                plate = rec[11] if len(rec) > 11 else "--"
-                descanso_raw = rec[12] if len(rec) > 12 else "--"
-                ordem_raw = rec[13] if len(rec) > 13 else "--"
-                hora_a_caminho_raw = rec[14] if len(rec) > 14 else "--"
+
+                # Detecta se é o novo layout oficial de 14 colunas ou o layout legado de 15 colunas
+                if len(rec) == 14:
+                    # Nova Sequência Oficial CDP EquipesBrasil (14 colunas):
+                    # 0: UT, 1: Base, 2: Filial, 3: Veículo, 4: Equipe, 5: Tipo, 6: GPS, 7: Status,
+                    # 8: Placa, 9: Início descanso, 10: Ordem, 11: Hora a caminho, 12: Turno programado, 13: Marcação
+                    driver = "--"
+                    gps_raw = rec[6] if len(rec) > 6 else "--"
+                    status_oper = rec[7] if len(rec) > 7 else "Logada"
+                    plate = rec[8] if len(rec) > 8 else "--"
+                    descanso_raw = rec[9] if len(rec) > 9 else "--"
+                    ordem_raw = rec[10] if len(rec) > 10 else "--"
+                    hora_a_caminho_raw = rec[11] if len(rec) > 11 else "--"
+                    shift_raw = rec[12] if len(rec) > 12 else "--"
+                    marcacao_raw = rec[13] if len(rec) > 13 else "--"
+                elif len(rec) >= 15:
+                    # Layout legado (15 colunas com Motorista na posição 6)
+                    driver = rec[6] if len(rec) > 6 else "--"
+                    shift_raw = rec[7] if len(rec) > 7 else "--"
+                    marcacao_raw = rec[8] if len(rec) > 8 else "--"
+                    gps_raw = rec[9] if len(rec) > 9 else "--"
+                    status_oper = rec[10] if len(rec) > 10 else "Logada"
+                    plate = rec[11] if len(rec) > 11 else "--"
+                    descanso_raw = rec[12] if len(rec) > 12 else "--"
+                    ordem_raw = rec[13] if len(rec) > 13 else "--"
+                    hora_a_caminho_raw = rec[14] if len(rec) > 14 else "--"
+                else:
+                    driver = "--"
+                    shift_raw = "--"
+                    marcacao_raw = "--"
+                    gps_raw = "--"
+                    status_oper = "Logada"
+                    plate = "--"
+                    descanso_raw = "--"
+                    ordem_raw = "--"
+                    hora_a_caminho_raw = "--"
                 desvio_raw = "--"
                 is_active_val = True
             else:
@@ -3809,9 +3866,55 @@ class DeliveryManager:
                             "dias_trabalhados": 0,
                             "dias_atraso": 0,
                             "tempo_atraso_min": 0,
-                            "perda_financeira": 0.0
+                            "perda_financeira": 0.0,
+                            "shift_counts": Counter(),
+                            "rate_counts": Counter(),
+                            "daily_records": []
                         }
                     teams_recurrent[code]["dias_trabalhados"] += 1
+
+                    h_prev = str(t.get("shift_code") or t.get("horario_previsto") or t.get("inicio_turno") or "--").strip()
+                    if h_prev and h_prev not in ["--", "-", "None", "nan", ""]:
+                        teams_recurrent[code]["shift_counts"][h_prev] += 1
+
+                    r_hour = pricing["rate_hour"]
+                    r_hour_str = pricing["rate_hour_str"]
+                    r_key = f"{r_hour}|{r_hour_str}"
+                    teams_recurrent[code]["rate_counts"][r_key] += 1
+
+                    # Extrai Justificativa do dia se houver
+                    just_data = just_by_date_team.get((d_str, code)) or t.get("delay_justification") or {}
+                    macro = just_data.get("macro_reason") or ("Sem Justificativa Registrada" if d_min > 0 else "--")
+                    sub = just_data.get("sub_reason") or "--"
+                    effective_sub = sub if (sub and sub != "--") else ("Sem Submotivo" if bool(just_data.get("macro_reason")) else ("Não Justificado" if d_min > 0 else "--"))
+
+                    day_num = int(d_str.split("-")[-1]) if "-" in d_str else 0
+                    login_val = t.get("login_time") or "--"
+                    marc_val = t.get("marcacao") or t.get("login_time") or "--"
+                    has_effective_marc = bool(t.get("marcacao") and str(t.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
+
+                    teams_recurrent[code]["daily_records"].append({
+                        "date": d_str,
+                        "date_display": f"{d_str[8:10]}/{d_str[5:7]}",
+                        "day": day_num,
+                        "horario_previsto": h_prev,
+                        "shift_code": h_prev,
+                        "turno": t_shift_key,
+                        "marcacao": marc_val,
+                        "login_time": login_val,
+                        "delay_minutes": d_min,
+                        "delay_str": f"+{d_min} min" if d_min > 0 else ("No Prazo" if (d_min <= 0 and has_effective_marc) else "--"),
+                        "is_delay": d_min > 0,
+                        "rate_hour": r_hour,
+                        "rate_hour_str": r_hour_str,
+                        "financial_loss": loss,
+                        "financial_loss_str": pricing["financial_loss_str"],
+                        "macro_reason": macro,
+                        "sub_reason": effective_sub,
+                        "has_justification": bool(just_data.get("macro_reason")),
+                        "user_name": just_data.get("user_name") or "--",
+                        "observation": just_data.get("observation") or "--"
+                    })
 
                     if d_min > 0:
                         d_atrasadas += 1
@@ -3841,12 +3944,6 @@ class DeliveryManager:
                         teams_recurrent[code]["perda_financeira"] += loss
 
                         # Acumula Justificativa Mensal
-                        just_data = just_by_date_team.get((d_str, code)) or t.get("delay_justification") or {}
-                        macro = just_data.get("macro_reason") or "Sem Justificativa Registrada"
-                        sub = just_data.get("sub_reason") or "--"
-                        effective_sub = sub if (sub and sub != "--") else ("Sem Submotivo" if bool(just_data.get("macro_reason")) else "Não Justificado")
-                        h_prev = str(t.get("horario_previsto") or t.get("shift_code") or t.get("inicio_turno") or "--")
-
                         monthly_team_item = {
                             "ut": f"UT {str(pricing['contract_regiao']).title()}",
                             "team_code": code,
@@ -3856,13 +3953,13 @@ class DeliveryManager:
                             "turno": t_shift_key,
                             "horario_previsto": h_prev,
                             "shift_code": h_prev,
-                            "login_time": t.get("login_time") or "--",
-                            "marcacao": t.get("marcacao") or t.get("login_time") or "--",
+                            "login_time": login_val,
+                            "marcacao": marc_val,
                             "status_login": "EM ATRASO",
                             "delay_minutes": d_min,
                             "delay_str": f"+{d_min} min",
-                            "rate_hour": pricing["rate_hour"],
-                            "rate_hour_str": pricing["rate_hour_str"],
+                            "rate_hour": r_hour,
+                            "rate_hour_str": r_hour_str,
                             "financial_loss": loss,
                             "financial_loss_str": pricing["financial_loss_str"],
                             "macro_reason": macro,
@@ -3936,10 +4033,23 @@ class DeliveryManager:
                     "perda_financeira_str": _fmt_brl(d_perda_fin)
                 })
 
-            top_recurrent = sorted(teams_recurrent.values(), key=lambda x: (x["perda_financeira"], x["tempo_atraso_min"]), reverse=True)[:15]
-            for tr in top_recurrent:
-                tr["perda_financeira_str"] = _fmt_brl(tr["perda_financeira"])
-                tr["tempo_atraso_str"] = _fmt_hm(tr["tempo_atraso_min"])
+            # Ordena TODAS as equipes do mês por perda financeira e tempo de atraso
+            all_recurrent_sorted = sorted(teams_recurrent.values(), key=lambda x: (x["perda_financeira"], x["tempo_atraso_min"], x["dias_atraso"]), reverse=True)
+            top_recurrent = []
+            for tr in all_recurrent_sorted[:15]:
+                top_recurrent.append({
+                    "ut": f"UT {str(tr.get('region', 'Norte')).title()}",
+                    "team_code": tr["team_code"],
+                    "base": tr["base"],
+                    "region": tr["region"],
+                    "vehicle_type": tr["vehicle_type"],
+                    "dias_trabalhados": tr["dias_trabalhados"],
+                    "dias_atraso": tr["dias_atraso"],
+                    "tempo_atraso_min": tr["tempo_atraso_min"],
+                    "tempo_atraso_str": _fmt_hm(tr["tempo_atraso_min"]),
+                    "perda_financeira": round(tr["perda_financeira"], 2),
+                    "perda_financeira_str": _fmt_brl(tr["perda_financeira"])
+                })
 
             bases_list = sorted(bases_accum.values(), key=lambda x: x["perda_reais"], reverse=True)
             for b in bases_list:
@@ -3974,29 +4084,127 @@ class DeliveryManager:
                 jm["top_sub_reason"] = sub_list[0]["sub_reason"] if sub_list else "--"
                 jm["teams"] = sorted(jm["teams"], key=lambda tm: (tm["financial_loss"], tm["delay_minutes"]), reverse=True)
 
-            # Prepara enriquecimento de equipes para tabela mensal (top reincidentes)
+            # Prepara enriquecimento de equipes para tabela mensal (TODAS AS EQUIPES DO MÊS)
             monthly_table_teams = []
-            for r in top_recurrent:
+            for r in all_recurrent_sorted:
+                # 1. Horário de turno modal (mais frequente da equipe no mês)
+                modal_shift = r["shift_counts"].most_common(1)[0][0] if r.get("shift_counts") else "--"
+
+                # 2. Valor da hora modal da equipe baseado na tipologia de frota contratual
+                if r.get("rate_counts"):
+                    modal_rate_key = r["rate_counts"].most_common(1)[0][0]
+                    if isinstance(modal_rate_key, tuple):
+                        modal_rate_hour, modal_rate_hour_str = modal_rate_key
+                    elif "|" in str(modal_rate_key):
+                        parts = str(modal_rate_key).split("|", 1)
+                        try:
+                            modal_rate_hour = float(parts[0])
+                        except Exception:
+                            modal_rate_hour = 0.0
+                        modal_rate_hour_str = parts[1]
+                    else:
+                        modal_rate_hour = 0.0
+                        modal_rate_hour_str = str(modal_rate_key)
+                else:
+                    modal_rate_hour = 0.0
+                    modal_rate_hour_str = "--"
+
+                # 3. Ordena os registros diários cronologicamente
+                daily_recs = sorted(r.get("daily_records", []), key=lambda x: x["date"])
+
+                # 4. Constrói análise de Pareto das justificativas da equipe
+                just_groups = {}
+                tot_team_loss = r["perda_financeira"]
+                cum_loss = 0.0
+                for entry in daily_recs:
+                    if entry.get("is_delay"):
+                        mk = entry.get("macro_reason") or "Sem Justificativa Registrada"
+                        if mk not in just_groups:
+                            just_groups[mk] = {
+                                "macro_reason": mk,
+                                "count": 0,
+                                "tempo_min": 0,
+                                "loss": 0.0,
+                                "sub_reasons": {}
+                            }
+                        just_groups[mk]["count"] += 1
+                        just_groups[mk]["tempo_min"] += entry.get("delay_minutes", 0)
+                        just_groups[mk]["loss"] += entry.get("financial_loss", 0.0)
+
+                        sk = entry.get("sub_reason") or "--"
+                        if sk not in just_groups[mk]["sub_reasons"]:
+                            just_groups[mk]["sub_reasons"][sk] = 0
+                        just_groups[mk]["sub_reasons"][sk] += 1
+
+                sorted_justs = sorted(just_groups.values(), key=lambda x: (x["loss"], x["count"]), reverse=True)
+                pareto_list = []
+                for item in sorted_justs:
+                    cum_loss += item["loss"]
+                    pct_loss = round((item["loss"] / tot_team_loss * 100), 1) if tot_team_loss > 0 else 0.0
+                    pct_cum = round((cum_loss / tot_team_loss * 100), 1) if tot_team_loss > 0 else 0.0
+                    top_sub = max(item["sub_reasons"], key=item["sub_reasons"].get) if item["sub_reasons"] else "--"
+                    pareto_list.append({
+                        "macro_reason": item["macro_reason"],
+                        "sub_reason": top_sub,
+                        "top_sub_reason": top_sub,
+                        "count": item["count"],
+                        "occurrences": item["count"],
+                        "tempo_min": item["tempo_min"],
+                        "delay_minutes": item["tempo_min"],
+                        "tempo_str": _fmt_hm(item["tempo_min"]),
+                        "loss": round(item["loss"], 2),
+                        "financial_loss": round(item["loss"], 2),
+                        "loss_str": _fmt_brl(item["loss"]),
+                        "financial_loss_str": _fmt_brl(item["loss"]),
+                        "pct_loss": pct_loss,
+                        "percentage_loss": pct_loss,
+                        "pct_cum_loss": min(100.0, pct_cum),
+                        "cumulative_percentage": min(100.0, pct_cum),
+                        "is_vital_few": (pct_cum <= 80.0 or (pct_cum - pct_loss) < 80.0)
+                    })
+
+                t_name = "Manhã"
+                if modal_shift and ":" in modal_shift:
+                    try:
+                        sh_h = int(modal_shift.split(":")[0])
+                        if sh_h < 12: t_name = "Manhã"
+                        elif sh_h < 18: t_name = "Tarde"
+                        else: t_name = "Noite"
+                    except Exception:
+                        t_name = "Manhã"
+
+                is_pontual = (r["dias_atraso"] == 0)
+                status_st = "100% PONTUAL" if is_pontual else ("REINCIDENTE" if r["dias_atraso"] > 1 else "ATRASO EVENTUAL")
+                top_macro = pareto_list[0]["macro_reason"] if pareto_list else ("Pontual" if is_pontual else "Sem Justificativa")
+                top_sub = pareto_list[0]["top_sub_reason"] if pareto_list else ("Sem Atrasos" if is_pontual else "--")
+
                 monthly_table_teams.append({
                     "ut": f"UT {str(r.get('region', 'Norte')).title()}",
                     "team_code": r["team_code"],
                     "base": r["base"],
                     "region": r["region"],
                     "vehicle_type": r["vehicle_type"],
-                    "turno": "Mensal",
-                    "shift_code": "--",
+                    "turno": t_name,
+                    "horario_previsto": modal_shift,
+                    "shift_code": modal_shift,
                     "login_time": f"{r['dias_atraso']}/{r['dias_trabalhados']}d atraso",
                     "marcacao": "--",
-                    "status_login": "REINCIDENTE",
+                    "status_login": status_st,
                     "delay_minutes": r["tempo_atraso_min"],
-                    "delay_str": r["tempo_atraso_str"],
-                    "rate_hour": 0.0,
-                    "rate_hour_str": "--",
+                    "delay_str": _fmt_hm(r["tempo_atraso_min"]) if r["tempo_atraso_min"] > 0 else "0 min",
+                    "rate_hour": modal_rate_hour,
+                    "rate_hour_str": modal_rate_hour_str,
                     "financial_loss": r["perda_financeira"],
-                    "financial_loss_str": r["perda_financeira_str"],
-                    "macro_reason": "Reincidência Mensal",
-                    "sub_reason": f"{r['dias_atraso']} dias em atraso",
-                    "has_justification": False
+                    "financial_loss_str": _fmt_brl(r["perda_financeira"]),
+                    "macro_reason": top_macro,
+                    "sub_reason": f"{r['dias_atraso']}d atraso em {r['dias_trabalhados']}d",
+                    "has_justification": any(d.get("has_justification") for d in daily_recs),
+                    "days_worked": r["dias_trabalhados"],
+                    "days_with_delay": r["dias_atraso"],
+                    "dias_trabalhados": r["dias_trabalhados"],
+                    "dias_atraso": r["dias_atraso"],
+                    "daily_records": daily_recs,
+                    "pareto_justifications": pareto_list
                 })
 
             custo_medio_mensal_atrasada = (tot_monthly_perda_financeira / tot_monthly_atrasadas) if tot_monthly_atrasadas > 0 else 0.0
@@ -4802,6 +5010,30 @@ class DeliveryManager:
             "comparison_label": comparison_label,
             "reference_days": prev_3_dates,
             "curve": projected_curve
+        }
+
+    def get_team_monthly_dossier(self, team_code: str, month_ref: str = None) -> dict:
+        """
+        Retorna o dossiê analítico completo de uma equipe no mês selecionado (timeline dia a dia e Pareto).
+        """
+        if not month_ref:
+            month_ref = self.get_operational_date()[:7]
+        team_code = normalize_team_code(team_code)
+
+        analytics = self.get_delays_and_shifts_analytics(mode="monthly", month_ref=month_ref)
+        teams = analytics.get("teams", [])
+        found = next((t for t in teams if normalize_team_code(t.get("team_code")) == team_code), None)
+        if found:
+            return {
+                "status": "success",
+                "team": found,
+                "month_ref": month_ref
+            }
+        return {
+            "status": "warning",
+            "message": f"Equipe {team_code} não encontrada nos registros ativos de {month_ref}.",
+            "team": None,
+            "month_ref": month_ref
         }
 
 
