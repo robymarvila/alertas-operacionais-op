@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-11-10T14:35:03.165262",
-  "total_cadastrados": 1450,
-  "total_online": 215,
-  "total_desligados": 1258,
+  "updated_at": "2026-11-11T06:21:20.424915",
+  "total_cadastrados": 1449,
+  "total_online": 92,
+  "total_desligados": 1358,
   "codes": [
     "COD001",
     "COD002",
@@ -834,7 +834,6 @@
     "ENA209",
     "ENA210",
     "ENA211",
-    "ENA212",
     "ENA213",
     "ENA214",
     "ENA215",

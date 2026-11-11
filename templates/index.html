@@ -33,7 +33,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.9.1-fix-footer-zindex">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.9.13-tv-delays-balanced-bottom-grid">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -5698,96 +5698,161 @@
                     </div>
                     </div><!-- /tvViewPriorizadorBox -->
 
-                    <!-- CONTAINER 2: NOVA VISÃO DE GESTÃO DE ATRASOS & PONTUALIDADE POR TURNO -->
-                    <div id="tvViewDelaysBox" style="display: none;">
-                        <!-- MINI CARDS CONSOLIDADOS (4 CARDS) -->
-                        <div class="tv-prio-kpis-grid">
-                            <!-- Card 1: TOTAL EQUIPES EM ATRASO -->
-                            <div class="tv-kpi-card" style="border-left: 3px solid #f43f5e; background: rgba(244, 63, 94, 0.08);">
+                    <!-- CONTAINER 2: NOVA VISÃO DE GESTÃO DE ATRASOS & PONTUALIDADE POR TURNO (ONE PAGE ULTRA PREMIUM) -->
+                    <div id="tvViewDelaysBox" class="tv-view-delays-container" style="display: none;">
+                        <!-- MINI CARDS CONSOLIDADOS (5 CARDS: PERDA FINANCEIRA, ATRASADAS, HORAS PERDIDAS, PONTUAIS, TEMPO NO PRAZO) -->
+                        <div class="tv-delays-kpis-grid">
+                            <!-- Card 1: PERDA FINANCEIRA ESTIMADA DO DIA -->
+                            <div class="tv-kpi-card tv-kpi-loss-card">
                                 <div class="tv-kpi-card-header">
-                                    <span class="tv-kpi-label">EQUIPES EM ATRASO</span>
+                                    <span class="tv-kpi-label">PERDA FINANCEIRA</span>
+                                    <span class="tv-kpi-tag-tipo badge-tag-rose">OCIOSIDADE</span>
+                                </div>
+                                <div class="tv-kpi-val-row">
+                                    <span class="tv-kpi-value text-rose font-mono" id="tvKpiDelayTotalPerda">R$ 0,00</span>
+                                </div>
+                                <span class="tv-kpi-sub-target" id="tvKpiDelaySubPerda">Média: R$ 0,00/eq</span>
+                            </div>
+
+                            <!-- Card 2: TOTAL EQUIPES EM ATRASO -->
+                            <div class="tv-kpi-card tv-kpi-delayed-card">
+                                <div class="tv-kpi-card-header">
+                                    <span class="tv-kpi-label">EQUIPES C/ ATRASO</span>
                                     <span class="tv-kpi-tag-tipo badge-tag-rose">ATRASADAS</span>
                                 </div>
                                 <div class="tv-kpi-val-row">
                                     <span class="tv-kpi-value text-rose font-mono" id="tvKpiDelayTotalAtraso">--</span>
-                                    <span class="tv-kpi-sub-target" id="tvKpiDelaySubAtraso">--</span>
                                 </div>
+                                <span class="tv-kpi-sub-target" id="tvKpiDelaySubAtraso">--% das equipes</span>
                             </div>
 
-                            <!-- Card 2: TEMPO TOTAL DE ATRASO SOMADO -->
-                            <div class="tv-kpi-card" style="border-left: 3px solid #f59e0b; background: rgba(245, 158, 11, 0.08);">
+                            <!-- Card 3: HORAS PERDIDAS EM ATRASO -->
+                            <div class="tv-kpi-card tv-kpi-delay-time-card">
                                 <div class="tv-kpi-card-header">
-                                    <span class="tv-kpi-label">TEMPO TOTAL ATRASO</span>
-                                    <span class="tv-kpi-tag-tipo badge-tag-amber">HORAS PERDIDAS</span>
+                                    <span class="tv-kpi-label">HORAS PERDIDAS</span>
+                                    <span class="tv-kpi-tag-tipo badge-tag-amber">HORAS ATRASO</span>
                                 </div>
                                 <div class="tv-kpi-val-row">
-                                    <span class="tv-kpi-value text-amber font-mono" id="tvKpiDelayTempoTotalAtraso">--</span>
-                                    <span class="tv-kpi-sub-target">Somatório do Dia</span>
+                                    <span class="tv-kpi-value text-amber font-mono" id="tvKpiDelayTempoTotalAtraso">--h --m</span>
                                 </div>
+                                <span class="tv-kpi-sub-target" id="tvKpiDelaySubMediaAtraso">Média: -- min</span>
                             </div>
 
-                            <!-- Card 3: EQUIPES NO PRAZO -->
-                            <div class="tv-kpi-card" style="border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.08);">
+                            <!-- Card 4: EQUIPES NO PRAZO -->
+                            <div class="tv-kpi-card tv-kpi-punctual-card">
                                 <div class="tv-kpi-card-header">
                                     <span class="tv-kpi-label">EQUIPES NO PRAZO</span>
-                                    <span class="tv-kpi-tag-tipo badge-tag-cyan">PONTUAIS</span>
+                                    <span class="tv-kpi-tag-tipo badge-tag-emerald">PONTUAIS</span>
                                 </div>
                                 <div class="tv-kpi-val-row">
                                     <span class="tv-kpi-value text-emerald font-mono" id="tvKpiDelayTotalNoPrazo">--</span>
-                                    <span class="tv-kpi-sub-target" id="tvKpiDelaySubNoPrazo">--</span>
+                                </div>
+                                <span class="tv-kpi-sub-target" id="tvKpiDelaySubNoPrazo">--% pontualidade</span>
+                            </div>
+
+                            <!-- Card 5: TEMPO NO PRAZO SOMADO -->
+                            <div class="tv-kpi-card tv-kpi-ontime-card">
+                                <div class="tv-kpi-card-header">
+                                    <span class="tv-kpi-label">TEMPO NO PRAZO</span>
+                                    <span class="tv-kpi-tag-tipo badge-tag-cyan">SALDO PONTUAL</span>
+                                </div>
+                                <div class="tv-kpi-val-row">
+                                    <span class="tv-kpi-value text-cyan font-mono" id="tvKpiDelayTempoTotalNoPrazo">--h --m</span>
+                                </div>
+                                <span class="tv-kpi-sub-target" id="tvKpiDelaySubMediaNoPrazo">Tempo adiantado</span>
+                            </div>
+                        </div>
+
+                        <!-- SUB-GRID DE GRÁFICOS: EVOLUÇÃO ACUMULADA HORA A HORA (PERDA FINANCEIRA R$ + HORAS PERDIDAS) -->
+                        <div class="tv-delays-charts-subgrid">
+                            <!-- Gráfico 1: Evolução Acumulada de Perda Financeira (R$) -->
+                            <div class="tv-delays-chart-card tv-delays-chart-card-loss">
+                                <div class="tv-chart-header" style="margin-bottom: 2px; padding-bottom: 2px; display: flex; justify-content: space-between; align-items: center;">
+                                    <div class="tv-chart-title-wrap" style="display: flex; align-items: center; gap: 5px;">
+                                        <i data-lucide="trending-up" class="mini-icon text-rose" style="width: 13px; height: 13px;"></i>
+                                        <span style="font-size: 0.72rem; font-weight: 800; color: #f8fafc; letter-spacing: 0.02em;">EVOLUÇÃO ACUMULADA: PERDA FINANCEIRA</span>
+                                    </div>
+                                    <span class="tv-chart-metric-pill badge-tag-rose" id="tvDelayChartLossHeaderBadge" style="font-size: 0.64rem; font-family: 'JetBrains Mono', monospace; font-weight: 700; padding: 1px 6px; border-radius: 4px;">
+                                        Atual: R$ 0,00
+                                    </span>
+                                </div>
+                                <div class="tv-delays-chart-canvas-wrap">
+                                    <canvas id="tvDelayLossCumulativeChart"></canvas>
                                 </div>
                             </div>
 
-                            <!-- Card 4: TEMPO NO PRAZO SOMADO -->
-                            <div class="tv-kpi-card" style="border-left: 3px solid #38bdf8; background: rgba(56, 189, 248, 0.08);">
-                                <div class="tv-kpi-card-header">
-                                    <span class="tv-kpi-label">TEMPO NO PRAZO</span>
-                                    <span class="tv-kpi-tag-tipo badge-tag-purple">SALDO PONTUAL</span>
+                            <!-- Gráfico 2: Evolução Acumulada de Horas Perdidas (Tempo) -->
+                            <div class="tv-delays-chart-card tv-delays-chart-card-time">
+                                <div class="tv-chart-header" style="margin-bottom: 2px; padding-bottom: 2px; display: flex; justify-content: space-between; align-items: center;">
+                                    <div class="tv-chart-title-wrap" style="display: flex; align-items: center; gap: 5px;">
+                                        <i data-lucide="clock" class="mini-icon text-amber" style="width: 13px; height: 13px;"></i>
+                                        <span style="font-size: 0.72rem; font-weight: 800; color: #f8fafc; letter-spacing: 0.02em;">EVOLUÇÃO ACUMULADA: HORAS PERDIDAS</span>
+                                    </div>
+                                    <span class="tv-chart-metric-pill badge-tag-amber" id="tvDelayChartTimeHeaderBadge" style="font-size: 0.64rem; font-family: 'JetBrains Mono', monospace; font-weight: 700; padding: 1px 6px; border-radius: 4px;">
+                                        Atual: 00h 00m
+                                    </span>
                                 </div>
-                                <div class="tv-kpi-val-row">
-                                    <span class="tv-kpi-value text-cyan font-mono" id="tvKpiDelayTempoTotalNoPrazo">--</span>
-                                    <span class="tv-kpi-sub-target">Tempo Adiantado</span>
+                                <div class="tv-delays-chart-canvas-wrap">
+                                    <canvas id="tvDelayTimeCumulativeChart"></canvas>
                                 </div>
                             </div>
                         </div>
 
                         <!-- GRID DE FAIXAS HORÁRIAS DE TURNOS (MANHÃ: 06h, 08h | TARDE: 12h, 14h | NOITE: 20h, 22h) -->
-                        <div style="background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px; margin-top: 10px;">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-                                <div style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 800; color: #f8fafc;">
+                        <div class="tv-delays-shifts-wrapper">
+                            <div class="tv-delays-shifts-header">
+                                <div style="display: flex; align-items: center; gap: 6px;">
                                     <i data-lucide="clock-3" style="width: 14px; height: 14px; color: #38bdf8;"></i>
-                                    <span>PONTUALIDADE POR FAIXA HORÁRIA DE ENTRADA</span>
+                                    <span style="font-size: 0.78rem; font-weight: 800; color: #f8fafc; letter-spacing: 0.02em;">PONTUALIDADE & IMPACTO FINANCEIRO POR TURNO</span>
                                 </div>
-                                <span style="font-size: 0.7rem; color: #94a3b8;">Turnos Manhã, Tarde e Noite</span>
+                                <span style="font-size: 0.68rem; color: #94a3b8;">Visão Integrada com Custos por Faixa Horária</span>
                             </div>
 
-                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                                <!-- Manhã (06:00 e 08:00) -->
-                                <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 8px;">
-                                    <div style="font-size: 0.72rem; font-weight: 800; color: #38bdf8; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 3px;">
-                                        ☀️ MANHÃ
+                            <div class="tv-delays-shifts-grid">
+                                <!-- Coluna Turno Manhã -->
+                                <div class="tv-shift-column tv-shift-column-manha">
+                                    <div class="tv-shift-column-header">
+                                        <div style="display: flex; align-items: center; gap: 5px;">
+                                            <span style="font-size: 0.76rem; font-weight: 800; color: #38bdf8;">☀️ MANHÃ</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span class="font-mono text-rose" style="font-size: 0.72rem; font-weight: 800;" id="tvDelayShiftLossManha">R$ 0,00</span>
+                                            <span style="font-size: 0.62rem; color: #94a3b8;" id="tvDelayShiftMetaManha">0 eq</span>
+                                        </div>
                                     </div>
-                                    <div style="display: flex; flex-direction: column; gap: 6px;" id="tvDelayShiftsManha">
+                                    <div class="tv-shift-slots-container" id="tvDelayShiftsManha">
                                         <!-- Inserido dinamicamente via JS -->
                                     </div>
                                 </div>
 
-                                <!-- Tarde (12:00 e 14:00) -->
-                                <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 8px;">
-                                    <div style="font-size: 0.72rem; font-weight: 800; color: #f59e0b; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 3px;">
-                                        🌤️ TARDE
+                                <!-- Coluna Turno Tarde -->
+                                <div class="tv-shift-column tv-shift-column-tarde">
+                                    <div class="tv-shift-column-header">
+                                        <div style="display: flex; align-items: center; gap: 5px;">
+                                            <span style="font-size: 0.76rem; font-weight: 800; color: #f59e0b;">🌤️ TARDE</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span class="font-mono text-rose" style="font-size: 0.72rem; font-weight: 800;" id="tvDelayShiftLossTarde">R$ 0,00</span>
+                                            <span style="font-size: 0.62rem; color: #94a3b8;" id="tvDelayShiftMetaTarde">0 eq</span>
+                                        </div>
                                     </div>
-                                    <div style="display: flex; flex-direction: column; gap: 6px;" id="tvDelayShiftsTarde">
+                                    <div class="tv-shift-slots-container" id="tvDelayShiftsTarde">
                                         <!-- Inserido dinamicamente via JS -->
                                     </div>
                                 </div>
 
-                                <!-- Noite (20:00 e 22:00) -->
-                                <div style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 8px;">
-                                    <div style="font-size: 0.72rem; font-weight: 800; color: #c084fc; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 3px;">
-                                        🌙 NOITE
+                                <!-- Coluna Turno Noite -->
+                                <div class="tv-shift-column tv-shift-column-noite">
+                                    <div class="tv-shift-column-header">
+                                        <div style="display: flex; align-items: center; gap: 5px;">
+                                            <span style="font-size: 0.76rem; font-weight: 800; color: #c084fc;">🌙 NOITE</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <span class="font-mono text-rose" style="font-size: 0.72rem; font-weight: 800;" id="tvDelayShiftLossNoite">R$ 0,00</span>
+                                            <span style="font-size: 0.62rem; color: #94a3b8;" id="tvDelayShiftMetaNoite">0 eq</span>
+                                        </div>
                                     </div>
-                                    <div style="display: flex; flex-direction: column; gap: 6px;" id="tvDelayShiftsNoite">
+                                    <div class="tv-shift-slots-container" id="tvDelayShiftsNoite">
                                         <!-- Inserido dinamicamente via JS -->
                                     </div>
                                 </div>
@@ -5795,25 +5860,29 @@
                         </div>
 
                         <!-- SUB-GRID INFERIOR: PRINCIPAIS MACRO MOTIVOS + TOP 5 EQUIPES -->
-                        <div class="tv-charts-subgrid" style="margin-top: 10px;">
+                        <div class="tv-delays-bottom-grid">
                             <!-- Box 1: Principais Macro Motivos -->
-                            <div class="tv-chart-box" style="padding: 10px;">
-                                <div class="tv-chart-header" style="margin-bottom: 6px;">
-                                    <i data-lucide="pie-chart" class="mini-icon text-cyan"></i>
-                                    <span>PRINCIPAIS MOTIVOS DE ATRASO</span>
+                            <div class="tv-delays-bottom-card">
+                                <div class="tv-chart-header" style="margin-bottom: 4px; padding-bottom: 4px;">
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <i data-lucide="pie-chart" class="mini-icon text-cyan" style="width: 14px; height: 14px;"></i>
+                                        <span style="font-size: 0.78rem; font-weight: 800; color: #f8fafc;">MOTIVOS DE ATRASO & IMPACTO FINANCEIRO</span>
+                                    </div>
                                 </div>
-                                <div id="tvDelayMacroReasonsList" style="display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow-y: auto; padding-right: 4px;">
+                                <div id="tvDelayMacroReasonsList" class="tv-delays-scroll-list">
                                     <!-- Inserido dinamicamente via JS -->
                                 </div>
                             </div>
 
                             <!-- Box 2: TOP 5 Equipes que Mais Atrasaram -->
-                            <div class="tv-chart-box" style="padding: 10px;">
-                                <div class="tv-chart-header" style="margin-bottom: 6px;">
-                                    <i data-lucide="alert-triangle" class="mini-icon text-rose"></i>
-                                    <span>TOP 5 EQUIPES QUE MAIS ATRASARAM</span>
+                            <div class="tv-delays-bottom-card">
+                                <div class="tv-chart-header" style="margin-bottom: 4px; padding-bottom: 4px;">
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <i data-lucide="alert-triangle" class="mini-icon text-rose" style="width: 14px; height: 14px;"></i>
+                                        <span style="font-size: 0.78rem; font-weight: 800; color: #f8fafc;">TOP 5 EQUIPES C/ MAIOR ATRASO & CUSTO</span>
+                                    </div>
                                 </div>
-                                <div id="tvDelayTop5TeamsList" style="display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow-y: auto; padding-right: 4px;">
+                                <div id="tvDelayTop5TeamsList" class="tv-delays-scroll-list">
                                     <!-- Inserido dinamicamente via JS -->
                                 </div>
                             </div>
@@ -7527,7 +7596,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.9.8-nav-transition-fix"></script>
+<script src="/static/js/app.js?v=5.9.13-tv-delays-balanced-bottom-grid"></script>
 
 </body>
 </html>

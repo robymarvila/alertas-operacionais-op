@@ -17791,14 +17791,20 @@ window.setTvSecondaryView = function (viewMode) {
         if (btnDelays) btnDelays.classList.add('active');
 
         if (mainTitle) mainTitle.textContent = 'GESTÃO DE ATRASOS & TURNOS';
-        if (subTitle) subTitle.textContent = `Equipes Logadas Online (${scopeLabel}) • Pontualidade & Turnos`;
+        if (subTitle) subTitle.textContent = `Acumulado do Dia Operacional (${scopeLabel}) • Turnos & Perda Financeira`;
         if (iconWrap) iconWrap.className = 'tv-section-icon icon-rose';
         if (iconEl) iconEl.setAttribute('data-lucide', 'clock');
         if (statusBadge) {
             statusBadge.className = 'tv-metric-badge badge-emerald';
-            statusBadge.innerHTML = '<i data-lucide="radio"></i> Tempo Real';
+            statusBadge.innerHTML = '<i data-lucide="activity"></i> Dia Operacional';
         }
         loadTvDelaysData();
+        if (tvDashboardState && tvDashboardState.charts) {
+            setTimeout(() => {
+                try { if (tvDashboardState.charts.delayLossCumulativeChart) tvDashboardState.charts.delayLossCumulativeChart.resize(); } catch (e) { }
+                try { if (tvDashboardState.charts.delayTimeCumulativeChart) tvDashboardState.charts.delayTimeCumulativeChart.resize(); } catch (e) { }
+            }, 60);
+        }
     } else {
         if (boxPrio) boxPrio.style.display = 'flex';
         if (boxDelays) boxDelays.style.display = 'none';
@@ -17839,42 +17845,437 @@ window.loadTvDelaysData = async function () {
     }
 };
 
+window.renderTvDelayCumulativeCharts = function (hourlyCurve) {
+    if (!hourlyCurve || !Array.isArray(hourlyCurve) || hourlyCurve.length === 0) return;
+    if (!window.Chart) return;
+
+    const lossCanvas = document.getElementById('tvDelayLossCumulativeChart');
+    const timeCanvas = document.getElementById('tvDelayTimeCumulativeChart');
+    if (!lossCanvas || !timeCanvas) return;
+
+    // Detect latest hour with activity or default to current hour
+    let lastActiveIdx = -1;
+    for (let i = 0; i < hourlyCurve.length; i++) {
+        const item = hourlyCurve[i];
+        if ((item.total_loss && item.total_loss > 0) || (item.total_delay_min && item.total_delay_min > 0) || (item.count_teams && item.count_teams > 0)) {
+            lastActiveIdx = i;
+        }
+    }
+    const currentHourStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const currentHourNum = parseInt(currentHourStr.split(':')[0], 10);
+    if (lastActiveIdx === -1) {
+        lastActiveIdx = hourlyCurve.findIndex(c => c.hour_num === currentHourNum);
+        if (lastActiveIdx === -1) lastActiveIdx = 0;
+    }
+
+    const labels = hourlyCurve.map(c => c.hour_str);
+    let runningLoss = 0;
+    let runningDelayMin = 0;
+
+    const lossCumulativeData = [];
+    const timeCumulativeHours = [];
+    const cumulativeMinutesArr = [];
+    const updatedFlags = [];
+    const hourLossInc = [];
+    const hourDelayInc = [];
+
+    for (let i = 0; i < hourlyCurve.length; i++) {
+        const item = hourlyCurve[i];
+        const hasUpdate = ((item.total_loss && item.total_loss > 0) || (item.total_delay_min && item.total_delay_min > 0));
+        runningLoss += (item.total_loss || 0);
+        runningDelayMin += (item.total_delay_min || 0);
+
+        updatedFlags.push(hasUpdate || i === lastActiveIdx);
+        hourLossInc.push(item.total_loss || 0);
+        hourDelayInc.push(item.total_delay_min || 0);
+        cumulativeMinutesArr.push(runningDelayMin);
+
+        if (i <= lastActiveIdx) {
+            lossCumulativeData.push(Math.round(runningLoss * 100) / 100);
+            timeCumulativeHours.push(Math.round((runningDelayMin / 60) * 10) / 10);
+        } else {
+            lossCumulativeData.push(null);
+            timeCumulativeHours.push(null);
+        }
+    }
+
+    // Update Header Badges
+    const activeHourStr = hourlyCurve[lastActiveIdx] ? hourlyCurve[lastActiveIdx].hour_str : '--:--';
+    const activeLossVal = lossCumulativeData[lastActiveIdx] || 0;
+    const activeDelayMin = cumulativeMinutesArr[lastActiveIdx] || 0;
+    const activeDelayStr = `${String(Math.floor(activeDelayMin / 60)).padStart(2, '0')}h ${String(activeDelayMin % 60).padStart(2, '0')}m`;
+
+    const elLossBadge = document.getElementById('tvDelayChartLossHeaderBadge');
+    if (elLossBadge) {
+        elLossBadge.textContent = `Atual (${activeHourStr}): R$ ${activeLossVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    const elTimeBadge = document.getElementById('tvDelayChartTimeHeaderBadge');
+    if (elTimeBadge) {
+        elTimeBadge.textContent = `Atual (${activeHourStr}): ${activeDelayStr}`;
+    }
+
+    if (!tvDashboardState.charts) tvDashboardState.charts = {};
+
+    // 1. Chart: Perda Financeira Acumulada
+    if (tvDashboardState.charts.delayLossCumulativeChart) {
+        tvDashboardState.charts.delayLossCumulativeChart.destroy();
+        tvDashboardState.charts.delayLossCumulativeChart = null;
+    }
+
+    const lossCtx = lossCanvas.getContext('2d');
+    const gradLoss = lossCtx.createLinearGradient(0, 0, 0, 95);
+    gradLoss.addColorStop(0, 'rgba(244, 63, 94, 0.35)');
+    gradLoss.addColorStop(1, 'rgba(244, 63, 94, 0.01)');
+
+    const pointRadiiLoss = hourlyCurve.map((_, i) => updatedFlags[i] && i <= lastActiveIdx ? 4 : 0);
+    const pointHoverRadiiLoss = hourlyCurve.map((_, i) => i <= lastActiveIdx ? 6 : 0);
+
+    const tvDelayCumulativeLossPlugin = {
+        id: 'tvDelayCumulativeLossLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            const meta = chart.getDatasetMeta(0);
+            if (!meta || !meta.data) return;
+
+            meta.data.forEach((point, idx) => {
+                if (!point || point.skip) return;
+                const val = chart.data.datasets[0].data[idx];
+                if (val === null || val === undefined) return;
+                if (!updatedFlags[idx] || idx > lastActiveIdx) return;
+
+                const xPos = point.x;
+                const yPos = point.y;
+                const valStr = 'R$ ' + Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                ctx.save();
+                ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+                const textWidth = ctx.measureText(valStr).width;
+                const padX = 5;
+                const pillW = textWidth + padX * 2;
+                const pillH = 14;
+                const pillX = Math.max(3, Math.min(xPos - pillW / 2, chart.width - pillW - 3));
+                const pillY = Math.max(2, yPos - pillH - 5);
+
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+                ctx.strokeStyle = '#f43f5e';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+                } else {
+                    ctx.rect(pillX, pillY, pillW, pillH);
+                }
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#fecdd3';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(valStr, pillX + pillW / 2, pillY + pillH / 2);
+                ctx.restore();
+            });
+        }
+    };
+
+    tvDashboardState.charts.delayLossCumulativeChart = new Chart(lossCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Perda Acumulada',
+                data: lossCumulativeData,
+                borderColor: '#f43f5e',
+                backgroundColor: gradLoss,
+                borderWidth: 2,
+                fill: true,
+                tension: 0.35,
+                pointRadius: pointRadiiLoss,
+                pointHoverRadius: pointHoverRadiiLoss,
+                pointBackgroundColor: '#f43f5e',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 1.5,
+                spanGaps: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+                padding: { top: 16, bottom: 2, left: 2, right: 8 }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    borderColor: '#f43f5e',
+                    borderWidth: 1,
+                    titleFont: { size: 10, family: 'JetBrains Mono' },
+                    bodyFont: { size: 9, family: 'JetBrains Mono' },
+                    padding: 6,
+                    displayColors: false,
+                    callbacks: {
+                        title: (items) => `Horário: ${items[0].label}`,
+                        label: (item) => {
+                            const idx = item.dataIndex;
+                            const cumVal = item.raw;
+                            const inc = hourLossInc[idx] || 0;
+                            return [
+                                `Acumulado: R$ ${Number(cumVal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                                `Nesta hora: +R$ ${Number(inc).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            ];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: { size: 8, family: 'JetBrains Mono' },
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 9
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                    ticks: {
+                        color: '#64748b',
+                        font: { size: 8, family: 'JetBrains Mono' },
+                        callback: (v) => v >= 1000 ? `R$ ${(v / 1000).toFixed(1)}k` : `R$ ${v}`
+                    }
+                }
+            }
+        },
+        plugins: [tvDelayCumulativeLossPlugin]
+    });
+
+    // 2. Chart: Horas Perdidas Acumuladas
+    if (tvDashboardState.charts.delayTimeCumulativeChart) {
+        tvDashboardState.charts.delayTimeCumulativeChart.destroy();
+        tvDashboardState.charts.delayTimeCumulativeChart = null;
+    }
+
+    const timeCtx = timeCanvas.getContext('2d');
+    const gradTime = timeCtx.createLinearGradient(0, 0, 0, 95);
+    gradTime.addColorStop(0, 'rgba(245, 158, 11, 0.35)');
+    gradTime.addColorStop(1, 'rgba(245, 158, 11, 0.01)');
+
+    const pointRadiiTime = hourlyCurve.map((_, i) => updatedFlags[i] && i <= lastActiveIdx ? 4 : 0);
+    const pointHoverRadiiTime = hourlyCurve.map((_, i) => i <= lastActiveIdx ? 6 : 0);
+
+    const tvDelayCumulativeTimePlugin = {
+        id: 'tvDelayCumulativeTimeLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            const meta = chart.getDatasetMeta(0);
+            if (!meta || !meta.data) return;
+
+            meta.data.forEach((point, idx) => {
+                if (!point || point.skip) return;
+                const val = chart.data.datasets[0].data[idx];
+                if (val === null || val === undefined) return;
+                if (!updatedFlags[idx] || idx > lastActiveIdx) return;
+
+                const totMin = cumulativeMinutesArr[idx];
+                const h = Math.floor(totMin / 60);
+                const m = totMin % 60;
+                const timeStr = `${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m`;
+
+                const xPos = point.x;
+                const yPos = point.y;
+
+                ctx.save();
+                ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+                const textWidth = ctx.measureText(timeStr).width;
+                const padX = 5;
+                const pillW = textWidth + padX * 2;
+                const pillH = 14;
+                const pillX = Math.max(3, Math.min(xPos - pillW / 2, chart.width - pillW - 3));
+                const pillY = Math.max(2, yPos - pillH - 5);
+
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+                } else {
+                    ctx.rect(pillX, pillY, pillW, pillH);
+                }
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#fde68a';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(timeStr, pillX + pillW / 2, pillY + pillH / 2);
+                ctx.restore();
+            });
+        }
+    };
+
+    tvDashboardState.charts.delayTimeCumulativeChart = new Chart(timeCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Tempo Acumulado',
+                data: timeCumulativeHours,
+                borderColor: '#f59e0b',
+                backgroundColor: gradTime,
+                borderWidth: 2,
+                fill: true,
+                tension: 0.35,
+                pointRadius: pointRadiiTime,
+                pointHoverRadius: pointHoverRadiiTime,
+                pointBackgroundColor: '#f59e0b',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 1.5,
+                spanGaps: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+                padding: { top: 16, bottom: 2, left: 2, right: 8 }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    borderColor: '#f59e0b',
+                    borderWidth: 1,
+                    titleFont: { size: 10, family: 'JetBrains Mono' },
+                    bodyFont: { size: 9, family: 'JetBrains Mono' },
+                    padding: 6,
+                    displayColors: false,
+                    callbacks: {
+                        title: (items) => `Horário: ${items[0].label}`,
+                        label: (item) => {
+                            const idx = item.dataIndex;
+                            const totMin = cumulativeMinutesArr[idx];
+                            const incMin = hourDelayInc[idx] || 0;
+                            return [
+                                `Acumulado: ${String(Math.floor(totMin / 60)).padStart(2, '0')}h ${String(totMin % 60).padStart(2, '0')}m`,
+                                `Nesta hora: +${String(Math.floor(incMin / 60)).padStart(2, '0')}h ${String(incMin % 60).padStart(2, '0')}m`
+                            ];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: { size: 8, family: 'JetBrains Mono' },
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 9
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                    ticks: {
+                        color: '#64748b',
+                        font: { size: 8, family: 'JetBrains Mono' },
+                        callback: (v) => `${v}h`
+                    }
+                }
+            }
+        },
+        plugins: [tvDelayCumulativeTimePlugin]
+    });
+};
+
 window.renderTvDelaySection = function (data) {
     if (!data) return;
 
-    // 1. Mini Cards
+    // 1. Mini Cards (5 Cards: Perda Financeira, Atrasadas, Horas Perdidas, Pontuais, Tempo no Prazo)
+    const elTotPerda = document.getElementById('tvKpiDelayTotalPerda');
+    const elSubPerda = document.getElementById('tvKpiDelaySubPerda');
+    if (elTotPerda) elTotPerda.textContent = data.total_perda_financeira_str || 'R$ 0,00';
+    if (elSubPerda) elSubPerda.textContent = `Média: ${data.custo_medio_atrasada_str || 'R$ 0,00'}/eq`;
+
     const elTotAtraso = document.getElementById('tvKpiDelayTotalAtraso');
     const elSubAtraso = document.getElementById('tvKpiDelaySubAtraso');
+    if (elTotAtraso) elTotAtraso.textContent = data.total_atrasadas || 0;
+    const pctAtr = (data.total_equipes > 0) ? ((data.total_atrasadas / data.total_equipes) * 100).toFixed(1) : '0.0';
+    if (elSubAtraso) elSubAtraso.textContent = `${pctAtr}% das equipes`;
+
     const elTempoAtraso = document.getElementById('tvKpiDelayTempoTotalAtraso');
+    const elSubMediaAtraso = document.getElementById('tvKpiDelaySubMediaAtraso');
+    if (elTempoAtraso) elTempoAtraso.textContent = data.total_tempo_atraso_str || '00h 00m';
+    if (elSubMediaAtraso) elSubMediaAtraso.textContent = `Média: ${data.media_tempo_atrasada_str || '00 min'}`;
+
     const elTotNoPrazo = document.getElementById('tvKpiDelayTotalNoPrazo');
     const elSubNoPrazo = document.getElementById('tvKpiDelaySubNoPrazo');
-    const elTempoNoPrazo = document.getElementById('tvKpiDelayTempoTotalNoPrazo');
-
-    if (elTotAtraso) elTotAtraso.textContent = data.total_atrasadas || 0;
-    if (elSubAtraso) elSubAtraso.textContent = `${(100 - (data.taxa_pontualidade_geral || 0)).toFixed(1)}% das equipes`;
-    if (elTempoAtraso) elTempoAtraso.textContent = data.total_tempo_atraso_str || '00h 00m';
     if (elTotNoPrazo) elTotNoPrazo.textContent = data.total_no_prazo || 0;
-    if (elSubNoPrazo) elSubNoPrazo.textContent = `${(data.taxa_pontualidade_geral || 0)}% no prazo`;
-    if (elTempoNoPrazo) elTempoNoPrazo.textContent = data.total_tempo_no_prazo_str || '00h 00m';
+    if (elSubNoPrazo) elSubNoPrazo.textContent = `${data.taxa_pontualidade_geral || 0}% pontual`;
 
-    // 2. Faixas Horárias de Turnos
+    const elTempoNoPrazo = document.getElementById('tvKpiDelayTempoTotalNoPrazo');
+    const elSubMediaNoPrazo = document.getElementById('tvKpiDelaySubMediaNoPrazo');
+    if (elTempoNoPrazo) elTempoNoPrazo.textContent = data.total_tempo_no_prazo_str || '00h 00m';
+    if (elSubMediaNoPrazo) elSubMediaNoPrazo.textContent = `Média: ${data.media_tempo_no_prazo_str || '00 min'}`;
+
+    // 2. Gráficos Crescentes Hora a Hora (Perda Financeira Acumulada + Horas Perdidas Acumuladas)
+    try {
+        renderTvDelayCumulativeCharts(data.hourly_loss_curve || []);
+    } catch (chartErr) {
+        console.error('Erro ao renderizar gráficos crescentes de atrasos TV:', chartErr);
+    }
+
+    // 2. Colunas e Faixas Horárias de Turnos
+    const shiftsByPeriod = data.shifts_by_period || {};
+    const sManha = shiftsByPeriod['Manhã'] || {};
+    const sTarde = shiftsByPeriod['Tarde'] || {};
+    const sNoite = shiftsByPeriod['Noite'] || {};
+
+    const elLossM = document.getElementById('tvDelayShiftLossManha');
+    const elMetaM = document.getElementById('tvDelayShiftMetaManha');
+    if (elLossM) elLossM.textContent = sManha.perda_financeira_str || 'R$ 0,00';
+    if (elMetaM) elMetaM.textContent = `${sManha.total || 0} eq • ${sManha.atrasadas || 0} atr`;
+
+    const elLossT = document.getElementById('tvDelayShiftLossTarde');
+    const elMetaT = document.getElementById('tvDelayShiftMetaTarde');
+    if (elLossT) elLossT.textContent = sTarde.perda_financeira_str || 'R$ 0,00';
+    if (elMetaT) elMetaT.textContent = `${sTarde.total || 0} eq • ${sTarde.atrasadas || 0} atr`;
+
+    const elLossN = document.getElementById('tvDelayShiftLossNoite');
+    const elMetaN = document.getElementById('tvDelayShiftMetaNoite');
+    if (elLossN) elLossN.textContent = sNoite.perda_financeira_str || 'R$ 0,00';
+    if (elMetaN) elMetaN.textContent = `${sNoite.total || 0} eq • ${sNoite.atrasadas || 0} atr`;
+
     const shifts = data.shifts || {};
     const renderShiftCard = (s) => {
         if (!s) return '';
         const pct = s.taxa_pontualidade || 0;
         const barColor = pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#f43f5e';
         const hasAtraso = (s.atrasadas || 0) > 0;
+        const perdaStr = s.perda_financeira_str || (s.perda_financeira > 0 ? `R$ ${s.perda_financeira.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'R$ 0,00');
         return `
             <div class="tv-shift-slot-card ${hasAtraso ? 'has-delay' : 'all-punctual'}">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="font-size: 0.76rem; color: #f8fafc; font-family: 'JetBrains Mono', monospace;">${s.label}</strong>
-                    <span style="font-size: 0.68rem; font-weight: 800; color: ${barColor};">${pct}%</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <strong style="font-size: 0.76rem; color: #f8fafc; font-family: 'JetBrains Mono', monospace;">${s.label || s.shift_code}</strong>
+                        <span style="font-size: 0.64rem; color: #94a3b8; font-family: 'JetBrains Mono', monospace;">(${s.total || 0} eq)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.70rem; font-weight: 800; color: #fb7185;">${perdaStr}</span>
+                        <span style="font-size: 0.70rem; font-weight: 800; color: ${barColor};">${pct}%</span>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.7rem;">
-                    <span style="color: #f43f5e; font-weight: 700;">Atraso: ${s.atrasadas} (${s.tempo_atraso_str})</span>
-                    <span style="color: #10b981; font-weight: 700;">Prazo: ${s.no_prazo}</span>
+                <div style="display: flex; justify-content: space-between; font-size: 0.66rem; margin-bottom: 3px;">
+                    <span style="color: #f43f5e; font-weight: 700;">Atr: ${s.atrasadas || 0} (${s.tempo_atraso_str || '00m'})</span>
+                    <span style="color: #10b981; font-weight: 700;">Prazo: ${s.no_prazo || 0}</span>
                 </div>
-                <div style="height: 4px; background: rgba(255,255,255,0.08); border-radius: 9999px; overflow: hidden; margin-top: 2px;">
+                <div style="height: 4px; background: rgba(255,255,255,0.08); border-radius: 9999px; overflow: hidden;">
                     <div style="height: 100%; width: ${pct}%; background: ${barColor}; border-radius: 9999px;"></div>
                 </div>
             </div>
@@ -17901,32 +18302,54 @@ window.renderTvDelaySection = function (data) {
     if (elMacroList) {
         const macros = (data.macro_motivos || []).filter(m => m.qtd_equipes > 0);
         if (macros.length === 0) {
-            elMacroList.innerHTML = '<div style="color: #94a3b8; font-size: 0.75rem; text-align: center; padding: 15px;">Nenhum atraso registrado no momento.</div>';
+            elMacroList.innerHTML = '<div style="color: #94a3b8; font-size: 0.72rem; text-align: center; padding: 12px;">Nenhum atraso registrado no momento.</div>';
         } else {
-            elMacroList.innerHTML = macros.map(m => {
+            let html = macros.map(m => {
                 const icon = (m.macro_reason === 'PROBLEMAS TI' ? '💻' :
                     m.macro_reason === 'PROBLEMAS VEÍCULO' ? '🚚' :
                         m.macro_reason === 'PROBLEMAS LOGISTICA' ? '📦' :
                             m.macro_reason === 'PROBLEMAS SESMT' ? '🦺' :
                                 m.macro_reason === 'PROBLEMAS CCO' ? '📡' :
                                     m.macro_reason === 'PROBLEMAS ABS' ? '👥' : '⚠️');
-                const cleanName = m.macro_reason.replace('PROBLEMAS ', '');
+                const cleanName = (m.macro_reason || 'OUTROS').replace('PROBLEMAS ', '');
+                const perdaReaisStr = m.perda_reais_str || (m.perda_reais > 0 ? `R$ ${m.perda_reais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'R$ 0,00');
                 return `
                     <div class="tv-macro-reason-bar-item">
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem;">
-                            <span style="font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 4px;">
-                                <span>${icon}</span> <span>${cleanName}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem; margin-bottom: 2px;">
+                            <span style="font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50%;">
+                                <span>${icon}</span> <span title="${cleanName}">${cleanName}</span>
                             </span>
-                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; color: ${m.color};">
-                                ${m.qtd_equipes} eq (${m.tempo_str})
-                            </span>
+                            <div style="display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.66rem;">
+                                <span style="color: #fb7185; font-weight: 800;">${perdaReaisStr}</span>
+                                <span style="color: ${m.color || '#38bdf8'}; font-weight: 700;">${m.qtd_equipes} eq (${m.tempo_str || '00m'})</span>
+                            </div>
                         </div>
-                        <div style="height: 5px; background: rgba(255,255,255,0.08); border-radius: 9999px; overflow: hidden;">
-                            <div style="height: 100%; width: ${m.percentual_tempo || 0}%; background: ${m.color}; border-radius: 9999px;"></div>
+                        <div style="height: 4px; background: rgba(255,255,255,0.08); border-radius: 9999px; overflow: hidden;">
+                            <div style="height: 100%; width: ${m.percentual_tempo || 0}%; background: ${m.color || '#38bdf8'}; border-radius: 9999px;"></div>
                         </div>
                     </div>
                 `;
             }).join('');
+
+            if (macros.length <= 2 && data.total_atrasadas > 0) {
+                html += `
+                    <div class="tv-macro-audit-panel" style="margin-top: 4px; padding: 5px 8px; background: rgba(30, 41, 59, 0.45); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; display: flex; flex-direction: column; gap: 3px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem;">
+                            <span style="color: #94a3b8; font-weight: 700;">AUDITORIA DE PENDÊNCIAS</span>
+                            <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; font-weight: 800; color: #fb7185;">${data.total_atrasadas} eq c/ atraso</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.66rem;">
+                            <span style="color: #cbd5e1;">Status CCO:</span>
+                            <span style="color: #f59e0b; font-weight: 700;">Aguardando Justificativa</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.66rem;">
+                            <span style="color: #cbd5e1;">Impacto Financeiro Total:</span>
+                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; color: #fb7185;">${data.total_perda_financeira_str || 'R$ 0,00'}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            elMacroList.innerHTML = html;
         }
     }
 
@@ -17935,21 +18358,23 @@ window.renderTvDelaySection = function (data) {
     if (elTop5) {
         const top5 = data.top5_atrasos || [];
         if (top5.length === 0) {
-            elTop5.innerHTML = '<div style="color: #94a3b8; font-size: 0.75rem; text-align: center; padding: 15px;">Nenhuma equipe em atraso hoje!</div>';
+            elTop5.innerHTML = '<div style="color: #94a3b8; font-size: 0.72rem; text-align: center; padding: 12px;">Nenhuma equipe em atraso hoje!</div>';
         } else {
             elTop5.innerHTML = top5.map((t, idx) => {
                 const justBadge = t.has_justification
-                    ? `<span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700;">${t.macro_reason.replace('PROBLEMAS ', '')}</span>`
-                    : `<span style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700;">Pendente</span>`;
+                    ? `<span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 1px 5px; border-radius: 4px; font-size: 0.62rem; font-weight: 700;">${(t.macro_reason || 'JUSTIFICADO').replace('PROBLEMAS ', '')}</span>`
+                    : `<span style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); padding: 1px 5px; border-radius: 4px; font-size: 0.62rem; font-weight: 700;">Pendente</span>`;
+                const lossStr = t.financial_loss_str || (t.financial_loss > 0 ? `R$ ${t.financial_loss.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'R$ 0,00');
                 return `
                     <div class="tv-top5-delay-item">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="font-size: 0.7rem; font-weight: 800; color: #f59e0b; width: 14px;">${idx + 1}º</span>
-                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.78rem; color: #38bdf8;">${t.team_code}</span>
-                            <small style="font-size: 0.68rem; color: #94a3b8;">${t.base} (${t.turno})</small>
+                        <div style="display: flex; align-items: center; gap: 5px; min-width: 0;">
+                            <span style="font-size: 0.68rem; font-weight: 800; color: #f59e0b; width: 14px; flex-shrink: 0;">${idx + 1}º</span>
+                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.74rem; color: #38bdf8; flex-shrink: 0;">${t.team_code}</span>
+                            <small style="font-size: 0.64rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.base} • ${t.turno}</small>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.8rem; color: #f43f5e;">${t.delay_str}</span>
+                        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.68rem; color: #fb7185;">${lossStr}</span>
+                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 0.70rem; color: #f43f5e;">${t.delay_str}</span>
                             ${justBadge}
                         </div>
                     </div>

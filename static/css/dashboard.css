@@ -17690,25 +17690,224 @@ tr.tr-alert-gravissimo-60.alert-pulse-enabled {
     box-sizing: border-box;
 }
 
-#tvViewDelaysBox {
+#tvViewDelaysBox,
+.tv-view-delays-container {
     display: none;
     flex-direction: column;
     flex: 1 1 0%;
     min-height: 0;
     height: 100%;
-    gap: 8px;
+    gap: 6px;
     box-sizing: border-box;
+    overflow-x: hidden !important;
+    overflow-y: hidden !important;
+    width: 100%;
+    max-width: 100%;
+}
+
+.tv-delays-kpis-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+    flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tv-delays-kpis-grid .tv-kpi-card {
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    min-height: 48px;
+}
+
+.tv-kpi-loss-card {
+    border-left: 3px solid #f43f5e !important;
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.14), rgba(15, 23, 42, 0.6)) !important;
+}
+
+.tv-kpi-delayed-card {
+    border-left: 3px solid #f43f5e !important;
+    background: rgba(244, 63, 94, 0.07) !important;
+}
+
+.tv-kpi-delay-time-card {
+    border-left: 3px solid #f59e0b !important;
+    background: rgba(245, 158, 11, 0.07) !important;
+}
+
+.tv-kpi-punctual-card {
+    border-left: 3px solid #10b981 !important;
+    background: rgba(16, 185, 129, 0.07) !important;
+}
+
+.tv-kpi-ontime-card {
+    border-left: 3px solid #38bdf8 !important;
+    background: rgba(56, 189, 248, 0.07) !important;
+}
+
+/* SUB-GRID DE GRÁFICOS CRESCENTES HORA A HORA (PERDA FINANCEIRA & HORAS PERDIDAS) */
+.tv-delays-charts-subgrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    flex: 1 1 0%;
+    min-height: 200px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tv-delays-chart-card {
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 6px 10px 4px 10px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    box-sizing: border-box;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.tv-delays-chart-card-loss {
+    border-top: 2px solid #f43f5e;
+}
+
+.tv-delays-chart-card-time {
+    border-top: 2px solid #f59e0b;
+}
+
+.tv-delays-chart-canvas-wrap {
+    position: relative;
+    flex: 1 1 0%;
+    min-height: 0;
+    height: 100%;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tv-delays-chart-canvas-wrap canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+.tv-delays-shifts-wrapper {
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 5px 8px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    width: 100%;
+}
+
+.tv-delays-shifts-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    flex-wrap: nowrap;
+}
+
+.tv-delays-shifts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tv-shift-column {
+    background: rgba(30, 41, 59, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 4px 6px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.tv-shift-column-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 2px;
+    margin-bottom: 3px;
+    min-width: 0;
+}
+
+.tv-shift-slots-container {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.tv-shift-slot-card {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 5px;
+    padding: 3px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+/* CARDS INFERIORES: MOTIVOS DE ATRASO & TOP 5 (DIMENSIONAMENTO PERFEITO PARA ELIMINAR ESPAÇO VAZIO) */
+.tv-delays-bottom-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    flex-shrink: 0;
+    height: 165px;
+    min-height: 160px;
+    max-height: 175px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tv-delays-bottom-card {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.tv-delays-scroll-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1 1 0%;
+    min-height: 0;
+    height: 100%;
     overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
-#tvViewDelaysBox .tv-chart-box {
-    flex: 1;
-    min-height: 250px;
+.tv-delays-scroll-list::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
 }
 
-#tvViewDelaysBox #tvDelayMacroReasonsList,
-#tvViewDelaysBox #tvDelayTop5TeamsList {
-    max-height: 320px !important;
+.tv-delays-scroll-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
 }
 
 .tv-view-toggle-pill {
@@ -17821,20 +18020,28 @@ tr.tr-alert-gravissimo-60.alert-pulse-enabled {
     background: rgba(15, 23, 42, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: 4px 8px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    flex-shrink: 0;
 }
 
 .tv-top5-delay-item {
     background: rgba(15, 23, 42, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: 4px 8px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    flex-shrink: 0;
 }
 
 /* Badge de Atraso Clicável e Estado Justificado */

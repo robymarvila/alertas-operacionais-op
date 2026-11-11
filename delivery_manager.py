@@ -3343,169 +3343,65 @@ class DeliveryManager:
 
     def get_delay_analytics_summary(self, date_ref: str = None, geo_scope: str = "ALL") -> dict:
         """
-        Gera os dados analíticos consolidados de pontualidade e atrasos por turno
-        para a visão alternativa de Gestão de Atrasos no Painel da TV.
+        Retorna o consolidado analítico de atrasos, pontualidade e perda financeira
+        para a visão da TV, 100% alinhado com as regras do módulo ATRASOS E TURNOS
+        (acumulando o dia inteiro até as 04:31, incluindo equipes ativas e deslogadas).
         """
         if not date_ref:
             date_ref = self.get_operational_date()
 
-        is_today = (date_ref == self.get_operational_date())
-        teams_list = []
-        if is_today:
-            # Painel TV / ONLINE REAL TIME: somente equipes ativas no momento (is_active == True)
-            if self.active_teams:
-                teams_list = [t for t in self.active_teams if t.get("is_active", True)]
-            else:
-                teams_list = [t for t in self.daily_accumulated_teams.values() if t.get("is_active", True)]
-        else:
-            from supabase_client import fetch_delivery_records_by_date
-            teams_list = fetch_delivery_records_by_date(date_ref)
+        analytics = self.get_delays_and_shifts_analytics(
+            mode="realtime",
+            date_ref=date_ref,
+            geo_scope=geo_scope,
+            include_stc_leste=True
+        )
 
-        # Filtragem por Escopo Regional (ALL, NORTE, LESTE)
-        scope_clean = str(geo_scope or "ALL").strip().upper()
-        BASES_NORTE = ["FAGUNDES", "CAJATI", "VILA MEDEIROS", "NORTE"]
+        # Mapa direto por código de horário ("06:00", "08:00", "12:00", "14:00", "20:00", "22:00")
+        shifts_by_code = {}
+        shifts_raw = analytics.get("shifts", {})
+        for shift_key, shift_data in shifts_raw.items():
+            for h_code, h_data in shift_data.get("horarios", {}).items():
+                tot = h_data.get("total", 0)
+                no_p = h_data.get("no_prazo", 0)
+                pct = round((no_p / tot * 100), 1) if tot > 0 else 100.0
+                shifts_by_code[h_code] = {
+                    "periodo": shift_key,
+                    "shift_code": h_code,
+                    "label": h_code,
+                    "atrasadas": h_data.get("atrasadas", 0),
+                    "no_prazo": no_p,
+                    "total": tot,
+                    "tempo_atraso_min": h_data.get("tempo_atraso_min", 0),
+                    "tempo_atraso_str": h_data.get("tempo_atraso_str", "00h 00m"),
+                    "perda_financeira": h_data.get("perda_financeira", 0.0),
+                    "perda_financeira_str": h_data.get("perda_financeira_str", "R$ 0,00"),
+                    "taxa_pontualidade": pct
+                }
 
-        if scope_clean == "NORTE":
-            filtered_teams = []
-            for t in teams_list:
-                b = str(t.get("base_name") or t.get("base_display") or t.get("base_code") or "").upper()
-                r = str(t.get("region") or "").upper()
-                if any(nb in b for nb in BASES_NORTE) or "NORTE" in r:
-                    filtered_teams.append(t)
-            teams_list = filtered_teams
-        elif scope_clean == "LESTE":
-            filtered_teams = []
-            for t in teams_list:
-                b = str(t.get("base_name") or t.get("base_display") or t.get("base_code") or "").upper()
-                r = str(t.get("region") or "").upper()
-                is_norte = any(nb in b for nb in BASES_NORTE) or "NORTE" in r
-                if not is_norte:
-                    filtered_teams.append(t)
-            teams_list = filtered_teams
+        # Converte justifications_summary para macro_motivos
+        macro_motivos = []
+        for j in analytics.get("justifications_summary", []):
+            macro_motivos.append({
+                "macro_reason": j.get("macro_reason"),
+                "qtd_equipes": j.get("qtd_equipes", 0),
+                "tempo_str": j.get("tempo_str", "00h 00m"),
+                "perda_reais": j.get("perda_reais", 0.0),
+                "perda_reais_str": j.get("perda_reais_str", "R$ 0,00"),
+                "percentual_tempo": j.get("pct_perda", 0.0),
+                "color": "#38bdf8"
+            })
 
-        justifications = self.hydrate_delay_justifications(date_ref, force=True)
+        top5 = analytics.get("top_teams", [])[:5]
 
-        def _fmt_hm(mins):
-            if not mins or mins <= 0:
-                return "00h 00m"
-            h = mins // 60
-            m = mins % 60
-            return f"{h:02d}h {m:02d}m"
-
-        shifts_data = {
-            "06:00": {"periodo": "Manhã", "shift_code": "06:00", "label": "06:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
-            "08:00": {"periodo": "Manhã", "shift_code": "08:00", "label": "08:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
-            "12:00": {"periodo": "Tarde", "shift_code": "12:00", "label": "12:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
-            "14:00": {"periodo": "Tarde", "shift_code": "14:00", "label": "14:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
-            "20:00": {"periodo": "Noite", "shift_code": "20:00", "label": "20:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0},
-            "22:00": {"periodo": "Noite", "shift_code": "22:00", "label": "22:00", "atrasadas": 0, "no_prazo": 0, "total": 0, "tempo_atraso_min": 0, "tempo_no_prazo_min": 0}
-        }
-
-        total_atrasadas = 0
-        total_no_prazo = 0
-        total_tempo_atraso_min = 0
-        total_tempo_no_prazo_min = 0
-        delayed_teams = []
-
-        macro_reasons_stats = {
-            "PROBLEMAS TI": {"macro_reason": "PROBLEMAS TI", "icon": "laptop", "color": "#38bdf8", "qtd_equipes": 0, "tempo_min": 0},
-            "PROBLEMAS VEÍCULO": {"macro_reason": "PROBLEMAS VEÍCULO", "icon": "truck", "color": "#f59e0b", "qtd_equipes": 0, "tempo_min": 0},
-            "PROBLEMAS LOGISTICA": {"macro_reason": "PROBLEMAS LOGISTICA", "icon": "package", "color": "#ec4899", "qtd_equipes": 0, "tempo_min": 0},
-            "PROBLEMAS SESMT": {"macro_reason": "PROBLEMAS SESMT", "icon": "shield-check", "color": "#10b981", "qtd_equipes": 0, "tempo_min": 0},
-            "PROBLEMAS CCO": {"macro_reason": "PROBLEMAS CCO", "icon": "radio", "color": "#818cf8", "qtd_equipes": 0, "tempo_min": 0},
-            "PROBLEMAS ABS": {"macro_reason": "PROBLEMAS ABS", "icon": "user-x", "color": "#f43f5e", "qtd_equipes": 0, "tempo_min": 0},
-            "NÃO JUSTIFICADO": {"macro_reason": "NÃO JUSTIFICADO", "icon": "help-circle", "color": "#94a3b8", "qtd_equipes": 0, "tempo_min": 0}
-        }
-
-        for t in teams_list:
-            code = t.get("team_code")
-            if not code:
-                continue
-            sc = t.get("shift_code") or "08:00"
-            if sc not in shifts_data:
-                slot = str(t.get("shift_slot") or "")
-                for candidate in ["06:00", "08:00", "12:00", "14:00", "20:00", "22:00"]:
-                    if candidate in slot:
-                        sc = candidate
-                        break
-            if sc not in shifts_data:
-                sc = "08:00"
-
-            d_min = int(t.get("turno_x_login_minutos") or 0)
-            shifts_data[sc]["total"] += 1
-
-            just = None
-            if d_min > 0:
-                cand = (justifications or {}).get(code)
-                if cand and str(cand.get("date_ref") or date_ref) == date_ref:
-                    just = cand
-                elif t.get("delay_justification"):
-                    t_just = t.get("delay_justification")
-                    if isinstance(t_just, dict) and str(t_just.get("date_ref") or date_ref) == date_ref:
-                        just = t_just
-
-            if d_min > 0:
-                shifts_data[sc]["atrasadas"] += 1
-                shifts_data[sc]["tempo_atraso_min"] += d_min
-                total_atrasadas += 1
-                total_tempo_atraso_min += d_min
-
-                macro = (just.get("macro_reason") if just else None) or "NÃO JUSTIFICADO"
-                norm_macro = macro.replace("LOGÍSTICA", "LOGISTICA")
-                if norm_macro not in macro_reasons_stats:
-                    norm_macro = "NÃO JUSTIFICADO"
-
-                macro_reasons_stats[norm_macro]["qtd_equipes"] += 1
-                macro_reasons_stats[norm_macro]["tempo_min"] += d_min
-
-                delayed_teams.append({
-                    "team_code": code,
-                    "base": t.get("base_display") or t.get("base_code") or "--",
-                    "turno": f"Turno {sc}",
-                    "shift_code": sc,
-                    "marcacao": t.get("marcacao") or t.get("login_time") or "--",
-                    "delay_minutes": d_min,
-                    "delay_str": f"+{d_min} min",
-                    "macro_reason": just.get("macro_reason") if just else "NÃO JUSTIFICADO",
-                    "sub_reason": just.get("sub_reason") if just else "--",
-                    "user_name": just.get("user_name") if just else None,
-                    "observation": just.get("observation") if just else None,
-                    "has_justification": bool(just)
-                })
-            else:
-                shifts_data[sc]["no_prazo"] += 1
-                tempo_no_prazo = abs(d_min)
-                shifts_data[sc]["tempo_no_prazo_min"] += tempo_no_prazo
-                total_no_prazo += 1
-                total_tempo_no_prazo_min += tempo_no_prazo
-
-        for sc, s in shifts_data.items():
-            s["tempo_atraso_str"] = _fmt_hm(s["tempo_atraso_min"])
-            s["tempo_no_prazo_str"] = _fmt_hm(s["tempo_no_prazo_min"])
-            s["taxa_pontualidade"] = round((s["no_prazo"] / s["total"] * 100), 1) if s["total"] > 0 else 100.0
-
-        for m_key, m_val in macro_reasons_stats.items():
-            m_val["tempo_str"] = _fmt_hm(m_val["tempo_min"])
-            m_val["percentual_tempo"] = round((m_val["tempo_min"] / total_tempo_atraso_min * 100), 1) if total_tempo_atraso_min > 0 else 0.0
-
-        top5 = sorted(delayed_teams, key=lambda x: x["delay_minutes"], reverse=True)[:5]
-        macro_list = sorted(macro_reasons_stats.values(), key=lambda x: x["tempo_min"], reverse=True)
-
-        return {
-            "date_ref": date_ref,
-            "geo_scope": scope_clean,
-            "total_equipes": len(teams_list),
-            "total_atrasadas": total_atrasadas,
-            "total_no_prazo": total_no_prazo,
-            "total_tempo_atraso_min": total_tempo_atraso_min,
-            "total_tempo_atraso_str": _fmt_hm(total_tempo_atraso_min),
-            "total_tempo_no_prazo_min": total_tempo_no_prazo_min,
-            "total_tempo_no_prazo_str": _fmt_hm(total_tempo_no_prazo_min),
-            "taxa_pontualidade_geral": round((total_no_prazo / len(teams_list) * 100), 1) if teams_list else 100.0,
-            "shifts": shifts_data,
-            "top5_atrasos": top5,
-            "macro_motivos": macro_list
-        }
+        # Resumo final consolidado enriquecido
+        result = dict(analytics)
+        result["shifts_by_code"] = shifts_by_code
+        result["shifts_by_period"] = shifts_raw
+        result["shifts"] = shifts_by_code  # Compatibilidade com JS legado
+        result["macro_motivos"] = macro_motivos
+        result["top5_atrasos"] = top5
+        return result
 
 
 
