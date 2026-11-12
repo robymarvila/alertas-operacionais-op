@@ -33,23 +33,166 @@ def normalize_team_code(raw_name: str) -> str:
         return ""
     return re.sub(r'[^A-Za-z0-9]', '', str(raw_name)).upper()
 
-def calculate_time_duration(start_str: str, end_str: str) -> str:
-    """Calcula a duração HH:MM entre dois horários de início e fim."""
-    try:
-        if not start_str or not end_str or start_str in ["--", "--:--"] or end_str in ["--", "--:--"]:
-            return "--"
-        fmt1 = "%H:%M:%S" if len(start_str.strip()) > 5 else "%H:%M"
-        fmt2 = "%H:%M:%S" if len(end_str.strip()) > 5 else "%H:%M"
-        t1 = datetime.strptime(start_str.strip(), fmt1)
-        t2 = datetime.strptime(end_str.strip(), fmt2)
-        diff = t2 - t1
-        if diff.total_seconds() < 0:
-            diff += timedelta(days=1)
-        hours, remainder = divmod(int(diff.total_seconds()), 3600)
-        minutes = remainder // 60
+def parse_time_or_datetime(val_str, default_date: str = "2026-01-01"):
+    """
+    Parser robusto de horários ou timestamps completos nos formatos ISO ou BR.
+    Suporta strings como '10/11/2026 07:27:08', '2026-11-10 07:27:08', '07:27:08', '07:27', etc.
+    """
+    if not val_str or str(val_str).strip() in ["--", "--:--", "None", "", "null"]:
+        return None
+    s = str(val_str).strip()
+    for fmt in [
+        "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M",
+        "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M",
+        "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M"
+    ]:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            pass
+    for fmt in ["%H:%M:%S", "%H:%M"]:
+        try:
+            t = datetime.strptime(s, fmt)
+            y, m, d = [int(x) for x in default_date.split("-")]
+            return datetime(y, m, d, t.hour, t.minute, t.second)
+        except ValueError:
+            pass
+    return None
+
+def calc_duration_hours(start_str: str, end_str: str, date_ref: str = "2026-01-01"):
+    """Calcula a duração em horas decimais (float) entre dois horários/datas com validação de coerência."""
+    dt1 = parse_time_or_datetime(start_str, date_ref)
+    dt2 = parse_time_or_datetime(end_str, date_ref)
+    if not dt1 or not dt2:
+        return None
+    diff_sec = (dt2 - dt1).total_seconds()
+    if diff_sec < 0 and ("/" not in str(start_str) and "-" not in str(start_str)[:10]):
+        diff_sec += 86400
+    if 0.05 <= (diff_sec / 3600.0) <= 24.0:
+        return diff_sec / 3600.0
+    return None
+
+def calculate_time_duration(start_str: str, end_str: str, date_ref: str = "2026-01-01") -> str:
+    """Calcula a duração HH:MM entre dois horários ou timestamps com parser universal."""
+    dur = calc_duration_hours(start_str, end_str, date_ref)
+    if dur is not None:
+        hours = int(dur)
+        minutes = int(round((dur - hours) * 60))
         return f"{hours:02d}h {minutes:02d}m"
-    except Exception:
-        return "--"
+    return "--"
+
+def calculate_effective_duration_with_fallbacks(sp: dict, date_ref: str = "2026-01-01") -> dict:
+    """
+    Calcula a Duração Efetiva em decimal e formatada com a cadeia oficial de fallbacks:
+    1. LogOff Real (Spotfire) - Login Real (Spotfire) [logoff_corrigido - login_corrigido]
+    2. Log Off - Log In [logoff - login]
+    3. Fim Calendario - Inicio Calendario [fim_calendario - inicio_calendario]
+    """
+    if not sp:
+        return {"duracao_decimal": 0.0, "duracao_formatada": "--", "tipo_calculo": "Não Calculado"}
+
+    # 1. Método 1 (Principal): LogOff Real (Spotfire) - Login Real (Spotfire)
+    logoff_real = sp.get("logoff_corrigido") or sp.get("logoff_real") or sp.get("fim_calibrado")
+    login_real = sp.get("login_corrigido") or sp.get("login_real") or sp.get("primeiro_login_corrigido") or sp.get("inicio_calibrado")
+    dur1 = calc_duration_hours(login_real, logoff_real, date_ref)
+    if dur1 is not None:
+        hours = int(dur1)
+        mins = int(round((dur1 - hours) * 60))
+        return {
+            "duracao_decimal": round(dur1, 2),
+            "duracao_formatada": f"{round(dur1, 2):.2f}h ({hours:02d}h {mins:02d}m)",
+            "tipo_calculo": "LogOff Real - Login Real"
+        }
+
+    # 2. Método 2 (Fallback 1): Log Off - Log In
+    logoff_raw = sp.get("logoff")
+    login_raw = sp.get("login") or sp.get("primeiro_login")
+    dur2 = calc_duration_hours(login_raw, logoff_raw, date_ref)
+    if dur2 is not None:
+        hours = int(dur2)
+        mins = int(round((dur2 - hours) * 60))
+        return {
+            "duracao_decimal": round(dur2, 2),
+            "duracao_formatada": f"{round(dur2, 2):.2f}h ({hours:02d}h {mins:02d}m)",
+            "tipo_calculo": "Log Off - Log In"
+        }
+
+    # 3. Método 3 (Fallback 2): Fim Calendario - Inicio Calendario
+    fim_cal = sp.get("fim_calendario")
+    ini_cal = sp.get("inicio_calendario")
+    dur3 = calc_duration_hours(ini_cal, fim_cal, date_ref)
+    if dur3 is not None:
+        hours = int(dur3)
+        mins = int(round((dur3 - hours) * 60))
+        return {
+            "duracao_decimal": round(dur3, 2),
+            "duracao_formatada": f"{round(dur3, 2):.2f}h ({hours:02d}h {mins:02d}m)",
+            "tipo_calculo": "Fim - Início Calendário"
+        }
+
+    return {"duracao_decimal": 0.0, "duracao_formatada": "--", "tipo_calculo": "Não Calculado"}
+
+def calculate_team_delay_and_compensation(shift_str, login_str, duracao_decimal: float, date_ref: str = "2026-01-01", shift_hours: float = 8.0) -> dict:
+    """
+    Calcula o atraso do login da equipe em relação ao turno previsto e
+    avalia se o tempo de atraso foi compensado pela duração efetiva trabalhada.
+    """
+    m_shift = re.search(r'\b(\d{1,2}:\d{2})\b', str(shift_str))
+    shift_hm = m_shift.group(1).zfill(5) if m_shift else "08:00"
+    dt_login = parse_time_or_datetime(login_str, date_ref)
+    atraso_minutos = 0
+    atraso_display = "--"
+    is_delayed = False
+
+    if dt_login:
+        y, m, d = dt_login.year, dt_login.month, dt_login.day
+        sh_h, sh_m = [int(x) for x in shift_hm.split(":")]
+        dt_scheduled = datetime(y, m, d, sh_h, sh_m, 0)
+        diff_sec = (dt_login - dt_scheduled).total_seconds()
+        if diff_sec < -43200:
+            diff_sec += 86400
+        elif diff_sec > 43200:
+            diff_sec -= 86400
+        atraso_minutos = int(round(diff_sec / 60.0))
+        if atraso_minutos > 0:
+            is_delayed = True
+            h = atraso_minutos // 60
+            mins = atraso_minutos % 60
+            atraso_display = f"+{h:02d}h {mins:02d}m" if h > 0 else f"+{mins} min"
+        else:
+            atraso_display = "No Prazo"
+            is_delayed = False
+
+    saldo_horas = round(duracao_decimal - shift_hours, 2) if duracao_decimal > 0 else 0.0
+    compensado_status = "--"
+    compensado_badge = "badge-neutral"
+
+    if duracao_decimal > 0:
+        if is_delayed:
+            if duracao_decimal >= shift_hours:
+                compensado_status = f"COMPENSADO (+{saldo_horas:.2f}h)" if saldo_horas > 0 else "COMPENSADO"
+                compensado_badge = "badge-compensado-success"
+            else:
+                deficit = abs(saldo_horas)
+                compensado_status = f"NÃO COMPENSADO (-{deficit:.2f}h)"
+                compensado_badge = "badge-compensado-danger"
+        else:
+            if duracao_decimal >= shift_hours:
+                compensado_status = f"TURNO INTEGRAL (+{saldo_horas:.2f}h)" if saldo_horas > 0 else "TURNO INTEGRAL"
+                compensado_badge = "badge-compensado-integral"
+            else:
+                deficit = abs(saldo_horas)
+                compensado_status = f"SAÍDA ANTECIPADA (-{deficit:.2f}h)"
+                compensado_badge = "badge-compensado-warning"
+
+    return {
+        "atraso_minutos": atraso_minutos,
+        "atraso_display": atraso_display,
+        "is_delayed": is_delayed,
+        "saldo_horas": saldo_horas,
+        "compensado_status": compensado_status,
+        "compensado_badge": compensado_badge
+    }
 
 
 def format_datetime_br(val) -> str:
@@ -2296,6 +2439,26 @@ class DeliveryManager:
         except Exception as e:
             print(f"[SCANNER AUDIT FETCH ERROR] {e}")
 
+        # Busca universo correspondente da Visão Operacional BidTech (Checklists) para Motorista, Placa e Status Cruzado
+        bid_records_map = {}
+        try:
+            from supabase_client import fetch_bid_records_by_date
+            bid_list = fetch_bid_records_by_date(date_str)
+            if bid_list:
+                bid_records_map = {r["team_code"]: r for r in bid_list if r.get("team_code")}
+            elif hasattr(self, "bid_cache") and self.bid_cache:
+                bid_records_map = {
+                    k: dict(v) for k, v in self.bid_cache.items()
+                    if str(v.get("date_ref") or date_str) == date_str
+                }
+        except Exception as e_bid:
+            print(f"[AUDIT BID FETCH ERROR] {e_bid}")
+            if hasattr(self, "bid_cache") and self.bid_cache:
+                bid_records_map = {
+                    k: dict(v) for k, v in self.bid_cache.items()
+                    if str(v.get("date_ref") or date_str) == date_str
+                }
+
         # Reconciliação dos registros de EquipesBrasil com Scanner/Spotfire
         seen_teams = set()
         for t in base_teams:
@@ -2320,7 +2483,28 @@ class DeliveryManager:
                 t["verificacoes"] = to_int(sp.get("verificacoes") or 0)
                 t["no_local"] = to_int(sp.get("no_local") or 0)
                 t["rejeita"] = str(sp.get("desvios") or sp.get("rejeita") or "NÃO")
-                t["duracao_efetiva"] = calculate_time_duration(t["login_real"], t["logoff_real"])
+
+                # Cálculo de Duração Efetiva com fallbacks oficiais
+                dur_info = calculate_effective_duration_with_fallbacks(sp, date_str)
+                t["duracao_efetiva"] = dur_info["duracao_formatada"]
+                t["duracao_efetiva_decimal"] = dur_info["duracao_decimal"]
+                t["tipo_calculo_duracao"] = dur_info["tipo_calculo"]
+
+                # Cálculo de Atraso e Compensação de Horas
+                delay_info = calculate_team_delay_and_compensation(
+                    t.get("shift_code") or t.get("shift_slot"),
+                    t.get("login_real") or t.get("login_time"),
+                    dur_info["duracao_decimal"],
+                    date_str,
+                    shift_hours=8.0
+                )
+                t["atraso"] = delay_info["atraso_display"]
+                t["atraso_minutos"] = delay_info["atraso_minutos"]
+                t["is_delayed"] = delay_info["is_delayed"]
+                t["compensado"] = delay_info["compensado_status"]
+                t["compensado_badge"] = delay_info["compensado_badge"]
+                t["saldo_horas"] = delay_info["saldo_horas"]
+
                 t["status_conciliacao"] = "CONCILIADO_TOTAL" if t["logoff_real"] not in ["--", "--:--"] else "CONCILIADO_AMBOS"
                 t["spotfire_reconciled"] = True
             else:
@@ -2342,6 +2526,23 @@ class DeliveryManager:
                 t["no_local"] = 0
                 t["rejeita"] = "NÃO"
                 t["duracao_efetiva"] = "--"
+                t["duracao_efetiva_decimal"] = 0.0
+                t["tipo_calculo_duracao"] = "Não Calculado"
+
+                delay_info = calculate_team_delay_and_compensation(
+                    t.get("shift_code") or t.get("shift_slot"),
+                    t.get("login_real") or t.get("login_time"),
+                    0.0,
+                    date_str,
+                    shift_hours=8.0
+                )
+                t["atraso"] = delay_info["atraso_display"]
+                t["atraso_minutos"] = delay_info["atraso_minutos"]
+                t["is_delayed"] = delay_info["is_delayed"]
+                t["compensado"] = "--"
+                t["compensado_badge"] = "badge-neutral"
+                t["saldo_horas"] = 0.0
+
                 t["status_conciliacao"] = "APENAS_EQUIPESBRASIL"
                 t["spotfire_reconciled"] = False
 
@@ -2356,6 +2557,19 @@ class DeliveryManager:
                 shift_info = classify_spotfire_shift_and_turno(sp)
                 login_c = str(sp.get("login_corrigido") or sp.get("login") or sp.get("primeiro_login_corrigido") or sp.get("primeiro_login") or sp.get("inicio_calibrado") or "").strip()
                 logoff_c = str(sp.get("logoff_corrigido") or sp.get("logoff") or sp.get("fim_calibrado") or "").strip()
+
+                # Cálculo de Duração Efetiva com fallbacks oficiais
+                dur_info = calculate_effective_duration_with_fallbacks(sp, date_str)
+
+                # Cálculo de Atraso e Compensação de Horas
+                delay_info = calculate_team_delay_and_compensation(
+                    shift_info["shift_code"] or shift_info["shift_slot"],
+                    login_c or "--:--",
+                    dur_info["duracao_decimal"],
+                    date_str,
+                    shift_hours=8.0
+                )
+
                 base_teams.append({
                     "team_code": sp.get("equipe") or norm,
                     "base_code": prefix,
@@ -2382,10 +2596,60 @@ class DeliveryManager:
                     "verificacoes": to_int(sp.get("verificacoes") or 0),
                     "no_local": to_int(sp.get("no_local") or 0),
                     "rejeita": str(sp.get("desvios") or sp.get("rejeita") or "NÃO"),
-                    "duracao_efetiva": calculate_time_duration(login_c or "--:--", logoff_c or "--:--"),
+                    "duracao_efetiva": dur_info["duracao_formatada"],
+                    "duracao_efetiva_decimal": dur_info["duracao_decimal"],
+                    "tipo_calculo_duracao": dur_info["tipo_calculo"],
+                    "atraso": delay_info["atraso_display"],
+                    "atraso_minutos": delay_info["atraso_minutos"],
+                    "is_delayed": delay_info["is_delayed"],
+                    "compensado": delay_info["compensado_status"],
+                    "compensado_badge": delay_info["compensado_badge"],
+                    "saldo_horas": delay_info["saldo_horas"],
                     "status_conciliacao": "APENAS_SPOTFIRE",
                     "spotfire_reconciled": True
                 })
+
+        # Enriquecimento com BIDTECH (Motorista, Placa e Status Cruzado de Checklist)
+        for t in base_teams:
+            norm = normalize_team_code(t.get("team_code", ""))
+            bid = bid_records_map.get(norm) or bid_records_map.get(t.get("team_code"))
+            if bid:
+                if not t.get("driver") or t.get("driver") in ["--", "None", "", None]:
+                    t["driver"] = bid.get("driver") or "--"
+                if not t.get("plate") or t.get("plate") in ["--", "None", "", None]:
+                    t["plate"] = bid.get("plate") or "--"
+
+                status_bid = bid.get("status_bid") or "Não Encontrada"
+                if not status_bid or str(status_bid).strip() in ["--", "NONE", "NULL", ""]:
+                    status_bid = "Não Encontrada"
+                t["status_bid"] = status_bid
+
+                s_up = str(status_bid).upper()
+                if "OPERA" in s_up:
+                    t["status_cruzado"] = "CONFORME"
+                    t["status_cruzado_desc"] = "Checklist Concluído • Em Operação"
+                    t["status_cruzado_badge"] = "badge-conforme"
+                elif "CHECKLIST" in s_up:
+                    t["status_cruzado"] = "ALERTA CRÍTICO"
+                    t["status_cruzado_desc"] = "Logada • Checklist em Andamento"
+                    t["status_cruzado_badge"] = "badge-alerta-critico"
+                elif "PLANEJAD" in s_up:
+                    t["status_cruzado"] = "ALERTA GRAVE"
+                    t["status_cruzado_desc"] = "Logada • Sem Iniciar Checklist"
+                    t["status_cruzado_badge"] = "badge-alerta-grave"
+                elif "BLOQUEAD" in s_up or "RETORNAD" in s_up:
+                    t["status_cruzado"] = "ALERTA IMPEDITIVO"
+                    t["status_cruzado_desc"] = f"Logada • Status Checklist: {status_bid}"
+                    t["status_cruzado_badge"] = "badge-alerta-impeditivo"
+                else:
+                    t["status_cruzado"] = "ALERTA GRAVÍSSIMO"
+                    t["status_cruzado_desc"] = "Logada • Não Encontrada no Checklist"
+                    t["status_cruzado_badge"] = "badge-alerta-gravissimo"
+            else:
+                t["status_bid"] = "Não Encontrada"
+                t["status_cruzado"] = "ALERTA GRAVÍSSIMO"
+                t["status_cruzado_desc"] = "Logada • Não Encontrada no Checklist"
+                t["status_cruzado_badge"] = "badge-alerta-gravissimo"
 
         metrics = self._build_metrics_breakdown(base_teams)
 

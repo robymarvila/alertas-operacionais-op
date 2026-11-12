@@ -2232,8 +2232,7 @@ def get_teams_data():
     op_date = delivery_manager.get_operational_date()
     force_refresh = (
         request.args.get('force') in ['true', '1'] or
-        request.args.get('refresh') in ['true', '1'] or
-        request.args.get('_') is not None
+        request.args.get('refresh') in ['true', '1']
     )
 
     # Verifica se deve consultar o Supabase (force_refresh, memória vazia ou a cada 6s)

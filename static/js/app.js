@@ -852,15 +852,31 @@ let supabaseClient = null;
 let realtimeSyncChannel = null;
 
 // Sincronização Instantânea Entre Abas (Zero Latência BroadcastChannel)
+function triggerTvRealtimeUpdate() {
+    if (appState && appState.currentView === 'tv') {
+        if (typeof loadTvDashboardData === 'function') {
+            loadTvDashboardData(false);
+        }
+        if (typeof loadTvDelaysData === 'function' && localStorage.getItem('tv_secondary_view') === 'delays') {
+            loadTvDelaysData();
+        }
+    }
+}
+window.triggerTvRealtimeUpdate = triggerTvRealtimeUpdate;
+
 try {
     const ccoDeliveryBroadcast = new BroadcastChannel('cco_delivery_channel');
     ccoDeliveryBroadcast.onmessage = function (ev) {
-        if (ev.data && ev.data.type === 'DELAY_JUSTIFICATION_SAVED') {
-            if (typeof loadTvDelaysData === 'function') {
-                loadTvDelaysData();
-            }
-            if (typeof loadDeliveryData === 'function' && appState && appState.currentView === 'delivery') {
-                loadDeliveryData(false);
+        if (ev.data) {
+            const t = ev.data.type;
+            if (t === 'DELAY_JUSTIFICATION_SAVED' || t === 'DELIVERY_UPDATED' || t === 'PRIORIZADOR_UPDATED' || t === 'TV_SYNC') {
+                if (typeof loadTvDelaysData === 'function') {
+                    loadTvDelaysData();
+                }
+                if (typeof loadDeliveryData === 'function' && appState && appState.currentView === 'delivery') {
+                    loadDeliveryData(false);
+                }
+                triggerTvRealtimeUpdate();
             }
         }
     };
@@ -920,6 +936,7 @@ function initSupabaseRealtime(retryCount = 0) {
                     console.log('[REALTIME WS] Nova coleta TRBOnet One gravada no Supabase!', payload);
                     fetchDashboardData(false);
                     updateHubCard();
+                    triggerTvRealtimeUpdate();
                     showRealtimeIndicator('TRBOnet Atualizado ao Vivo');
                 }
             )
@@ -930,6 +947,7 @@ function initSupabaseRealtime(retryCount = 0) {
                     console.log('[REALTIME WS] Novo operational_snapshot gravado no Supabase!', payload);
                     fetchDashboardData(false);
                     updateHubCard();
+                    triggerTvRealtimeUpdate();
                     showRealtimeIndicator('Snapshot Operacional Atualizado ao Vivo');
                 }
             )
@@ -940,6 +958,7 @@ function initSupabaseRealtime(retryCount = 0) {
                     console.log('[REALTIME WS] Nova coleta Enel SP gravada no Supabase!', payload);
                     loadDeliveryData(false);
                     updateDeliveryHubCard();
+                    triggerTvRealtimeUpdate();
                     const scrOnlineBid = document.getElementById('deliveryScreenOnlineBid');
                     if (scrOnlineBid && scrOnlineBid.style.display !== 'none') {
                         loadOnlineXBidData();
@@ -961,6 +980,7 @@ function initSupabaseRealtime(retryCount = 0) {
                     if (appState.currentView === 'delivery') {
                         loadDeliveryData(false);
                     }
+                    triggerTvRealtimeUpdate();
                     showRealtimeIndicator('Checklist BidTech Atualizado ao Vivo');
                 }
             )
@@ -975,6 +995,7 @@ function initSupabaseRealtime(retryCount = 0) {
                     if (typeof loadTvDelaysData === 'function') {
                         loadTvDelaysData();
                     }
+                    triggerTvRealtimeUpdate();
                     showRealtimeIndicator('Justificativa de Atraso Registrada');
                 }
             )
@@ -989,6 +1010,7 @@ function initSupabaseRealtime(retryCount = 0) {
                     if (typeof updatePriorizadorHubCard === 'function') {
                         updatePriorizadorHubCard();
                     }
+                    triggerTvRealtimeUpdate();
                     showRealtimeIndicator('Priorizador Atualizado ao Vivo');
                 }
             )
@@ -1003,6 +1025,7 @@ function initSupabaseRealtime(retryCount = 0) {
                     if (typeof updatePriorizadorHubCard === 'function') {
                         updatePriorizadorHubCard();
                     }
+                    triggerTvRealtimeUpdate();
                 }
             )
             .on(
@@ -1021,6 +1044,7 @@ function initSupabaseRealtime(retryCount = 0) {
                     if (typeof loadPriorizadorData === 'function') {
                         loadPriorizadorData(false);
                     }
+                    triggerTvRealtimeUpdate();
                     showRealtimeIndicator('Diário de Bordo Atualizado');
                 }
             )
@@ -1051,6 +1075,7 @@ function initSupabaseRealtime(retryCount = 0) {
                         }
                         showRealtimeIndicator('Robô Priorizador Sincronizado');
                     }
+                    triggerTvRealtimeUpdate();
                     if (appState.currentView === 'admin') {
                         loadAdminEngineStatus();
                     }
@@ -8873,7 +8898,7 @@ function renderDailyAuditTable() {
     }
 
     if (filteredTeams.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 30px; color: var(--text-secondary);">Nenhuma equipe encontrada para o filtro de confronto selecionado.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="17" style="text-align: center; padding: 30px; color: var(--text-secondary);">Nenhuma equipe encontrada para o filtro de confronto selecionado.</td></tr>`;
         return;
     }
 
@@ -8896,6 +8921,53 @@ function renderDailyAuditTable() {
             statusBadge = `<span class="badge-reconcile badge-reconcile-pending" title="Presente no EquipesBrasil, ausente no Spotfire"><i data-lucide="hourglass"></i> APENAS EQUIPESBRASIL</span>`;
         }
 
+        // Formata Status Cruzado (Checklist BIDTECH x Despacho)
+        let crossBadge = '';
+        if (t.status_cruzado === 'CONFORME') {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-success" title="Checklist Concluído • Em Operação"><i data-lucide="shield-check"></i> CONFORME</span>`;
+        } else if (t.status_cruzado === 'ALERTA CRÍTICO') {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-warning" title="Logada • Checklist em Andamento"><i data-lucide="alert-triangle"></i> EM CHECKLIST</span>`;
+        } else if (t.status_cruzado === 'ALERTA GRAVE') {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-danger" title="Logada • Sem Iniciar Checklist"><i data-lucide="alert-octagon"></i> PLANEJADA</span>`;
+        } else if (t.status_cruzado === 'ALERTA IMPEDITIVO') {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-danger" title="${t.status_cruzado_desc || ''}"><i data-lucide="slash"></i> ${t.status_bid || 'BLOQUEADA'}</span>`;
+        } else {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-extra" title="Logada • Não Encontrada no Checklist"><i data-lucide="help-circle"></i> NÃO ENCONTRADA</span>`;
+        }
+
+        // Duração Efetiva em decimal e formatada
+        let durHtml = `<span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">--</span>`;
+        if (t.duracao_efetiva && t.duracao_efetiva !== '--') {
+            durHtml = `<strong style="color:#38bdf8; font-family:'JetBrains Mono', monospace; font-size: 0.88rem;">${t.duracao_efetiva}</strong>`;
+        }
+
+        // Auditoria do Cálculo de Duração
+        let calcBadge = `<span style="color:var(--text-secondary); font-size:0.72rem;">--</span>`;
+        if (t.tipo_calculo_duracao === 'LogOff Real - Login Real') {
+            calcBadge = `<span class="badge-calc badge-calc-real" title="Cálculo principal Spotfire: LogOff Real - Login Real"><i data-lucide="sparkles"></i> SPOTFIRE REAL</span>`;
+        } else if (t.tipo_calculo_duracao === 'Log Off - Log In') {
+            calcBadge = `<span class="badge-calc badge-calc-bruto" title="Fallback 1: Log Off - Log In"><i data-lucide="clock"></i> SPOTFIRE BRUTO</span>`;
+        } else if (t.tipo_calculo_duracao === 'Fim - Início Calendário') {
+            calcBadge = `<span class="badge-calc badge-calc-cal" title="Fallback 2: Fim Calendário - Início Calendário"><i data-lucide="calendar"></i> CALENDÁRIO</span>`;
+        }
+
+        // Atraso de Login vs Turno Previsto
+        let delayHtml = `<span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">--</span>`;
+        if (t.atraso && t.atraso !== '--') {
+            if (t.is_delayed || (t.atraso_minutos && t.atraso_minutos > 0)) {
+                delayHtml = `<span class="badge-delay-danger" title="Atraso de ${t.atraso_minutos} min"><i data-lucide="clock-alert"></i> ${t.atraso}</span>`;
+            } else {
+                delayHtml = `<span class="badge-delay-success" title="Entrou no horário previsto"><i data-lucide="check"></i> NO PRAZO</span>`;
+            }
+        }
+
+        // Compensação de Horas
+        let compHtml = `<span style="color:var(--text-secondary); font-size:0.72rem;">--</span>`;
+        if (t.compensado && t.compensado !== '--') {
+            const cls = t.compensado_badge || (t.compensado.includes('NÃO COMPENSADO') ? 'badge-compensado-danger' : t.compensado.includes('COMPENSADO') ? 'badge-compensado-success' : 'badge-compensado-integral');
+            compHtml = `<span class="${cls}">${t.compensado}</span>`;
+        }
+
         // Produtividade
         const prod = t.produtivas || 0;
         const totalOs = t.qtd_os || 0;
@@ -8904,21 +8976,29 @@ function renderDailyAuditTable() {
         // Turno
         const turnoText = t.turno ? `${t.turno} (${t.shift_slot || t.shift_code})` : (t.shift_slot || '--');
 
+        // Motorista e Placa (enriquecidos pelo BIDTECH)
+        const driverHtml = (t.driver && t.driver !== '--') ? `<strong style="color: var(--text-primary); font-size: 0.8rem;">${t.driver}</strong>` : `<span style="color: var(--text-secondary);">--</span>`;
+        const plateHtml = (t.plate && t.plate !== '--') ? `<span class="badge-plate" style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #f8fafc; background: rgba(30, 41, 59, 0.8); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15);">${t.plate}</span>` : `<span style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</span>`;
+
         return `
             <tr>
                 <td><span class="team-badge" style="font-weight: 800;">${t.team_code}</span></td>
                 <td><strong style="color: var(--text-primary);">${t.base_display || t.base_name}</strong></td>
                 <td>${t.region} / <small style="font-weight: 800;">${t.company}</small></td>
                 <td>${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal') ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>` : (t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste') ? `<span class="badge-vehicle-stc-leste" style="font-size: 0.72rem;">STC LESTE</span>` : `<strong>${t.vehicle_type || '--'}</strong>`}</td>
+                <td>${crossBadge}</td>
                 <td><span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">${t.login_time || '--:--'}</span></td>
                 <td><strong style="color:#38bdf8; font-family:'JetBrains Mono', monospace;">${t.login_real || '--:--'}</strong></td>
                 <td>${logoffHtml}</td>
-                <td><strong style="color:#a78bfa; font-family:'JetBrains Mono', monospace;">${t.duracao_efetiva || '--'}</strong></td>
+                <td>${durHtml}</td>
+                <td>${calcBadge}</td>
+                <td><span class="shift-pill ${t.shift_pill_class || ''}">${turnoText}</span></td>
+                <td>${delayHtml}</td>
+                <td>${compHtml}</td>
                 <td>${osHtml}</td>
                 <td>${statusBadge}</td>
-                <td><span class="shift-pill ${t.shift_pill_class || ''}">${turnoText}</span></td>
-                <td>${t.driver || '--'}</td>
-                <td><span style="font-family:'JetBrains Mono', monospace;">${t.plate || '--'}</span></td>
+                <td>${driverHtml}</td>
+                <td>${plateHtml}</td>
             </tr>
         `;
     }).join('');
@@ -9020,8 +9100,350 @@ async function loadComparisonAudit(dates) {
             }).join('');
         }
 
+        // 4. Consolidação de Equipes de Todas as Datas Selecionadas
+        const allTeams = [];
+        validResults.forEach(r => {
+            (r.teams || []).forEach(t => {
+                allTeams.push({
+                    ...t,
+                    audit_date: r.date,
+                    date_formatted: r.dateFormatted
+                });
+            });
+        });
+
+        // Ordenação inteligente: Data decrescente e depois Código da Equipe
+        allTeams.sort((a, b) => {
+            if (a.audit_date !== b.audit_date) {
+                return b.audit_date.localeCompare(a.audit_date);
+            }
+            return (a.team_code || '').localeCompare(b.team_code || '');
+        });
+
+        deliveryState.comparisonAllTeams = allTeams;
+        deliveryState.comparisonFilteredTeams = allTeams;
+
+        // Atualiza subtítulo e contador do placeholder da tabela nominal consolidada
+        const elComparisonSub = document.getElementById('histComparisonTeamsSubtitle');
+        if (elComparisonSub) {
+            elComparisonSub.textContent = `Listagem nominal consolidada de ${validResults.length} datas selecionadas (${allTeams.length} equipes no total)`;
+        }
+        const elComparisonPlaceholderCount = document.getElementById('histComparisonTeamsPlaceholderCount');
+        if (elComparisonPlaceholderCount) {
+            elComparisonPlaceholderCount.textContent = allTeams.length;
+        }
+
+        // Popula as opções do dropdown de filtro por data dentro da tabela consolidada
+        const selectDate = document.getElementById('histComparisonDateFilterSelect');
+        if (selectDate) {
+            let opts = `<option value="ALL">Todas as Datas (${allTeams.length} eq)</option>`;
+            validResults.forEach(r => {
+                const count = (r.teams || []).length;
+                opts += `<option value="${r.date}">${r.dateFormatted} (${count} eq)</option>`;
+            });
+            selectDate.innerHTML = opts;
+            selectDate.value = "ALL";
+        }
+
+        const selectStatus = document.getElementById('histComparisonStatusFilterSelect');
+        if (selectStatus) selectStatus.value = "ALL";
+
+        const searchInput = document.getElementById('histComparisonTeamsSearchInput');
+        if (searchInput) searchInput.value = "";
+
+        // Se a tabela nominal consolidada estiver expandida, renderiza imediatamente
+        if (deliveryState.histComparisonTeamsExpanded) {
+            renderComparisonTeamsTable();
+        }
+
     } catch (err) {
         console.error('Falha ao processar comparativo:', err);
+    }
+}
+
+// Alterna Recolher / Expandir da Tabela Nominal Consolidada de Múltiplas Datas
+function toggleComparisonTeamsTableCollapse(forceExpand = null) {
+    const tableBody = document.getElementById('histComparisonTeamsCollapseBody');
+    const placeholder = document.getElementById('histComparisonTeamsPlaceholder');
+    const textEl = document.getElementById('textToggleComparisonTeamsTable');
+    const iconEl = document.getElementById('iconToggleComparisonTeamsTable');
+
+    if (forceExpand !== null) {
+        deliveryState.histComparisonTeamsExpanded = forceExpand;
+    } else {
+        deliveryState.histComparisonTeamsExpanded = !deliveryState.histComparisonTeamsExpanded;
+    }
+
+    if (deliveryState.histComparisonTeamsExpanded) {
+        if (tableBody) tableBody.style.display = 'block';
+        if (placeholder) placeholder.style.display = 'none';
+        if (textEl) textEl.textContent = 'RECOLHER TABELA';
+        if (iconEl) iconEl.setAttribute('data-lucide', 'chevron-up');
+        renderComparisonTeamsTable();
+    } else {
+        if (tableBody) tableBody.style.display = 'none';
+        if (placeholder) placeholder.style.display = 'block';
+        if (textEl) textEl.textContent = 'EXPANDIR TABELA COMPLETA';
+        if (iconEl) iconEl.setAttribute('data-lucide', 'chevron-down');
+    }
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+}
+
+// Filtros da Tabela Nominal Consolidada
+function applyComparisonTeamsFilter() {
+    if (!deliveryState.comparisonAllTeams) return;
+    const searchInput = document.getElementById('histComparisonTeamsSearchInput');
+    const term = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const dateSelect = document.getElementById('histComparisonDateFilterSelect');
+    const selectedDate = dateSelect ? dateSelect.value : 'ALL';
+    const statusSelect = document.getElementById('histComparisonStatusFilterSelect');
+    const selectedStatus = statusSelect ? statusSelect.value : 'ALL';
+
+    let filtered = deliveryState.comparisonAllTeams;
+
+    if (selectedDate && selectedDate !== 'ALL') {
+        filtered = filtered.filter(t => t.audit_date === selectedDate);
+    }
+
+    if (selectedStatus && selectedStatus !== 'ALL') {
+        if (selectedStatus === 'both') {
+            filtered = filtered.filter(t =>
+                t.status_conciliacao === 'CONCILIADO_TOTAL' ||
+                t.status_conciliacao === 'CONCILIADO_AMBOS' ||
+                t.status_conciliacao === 'TURNO_EM_ANDAMENTO' ||
+                (t.spotfire_reconciled && t.status_conciliacao !== 'APENAS_SPOTFIRE')
+            );
+        } else if (selectedStatus === 'spotfire_only') {
+            filtered = filtered.filter(t => t.status_conciliacao === 'APENAS_SPOTFIRE');
+        } else if (selectedStatus === 'eb_only') {
+            filtered = filtered.filter(t =>
+                t.status_conciliacao === 'APENAS_EQUIPESBRASIL' ||
+                t.status_conciliacao === 'AGUARDANDO_SPOTFIRE'
+            );
+        } else if (selectedStatus === 'logoff') {
+            filtered = filtered.filter(t => t.logoff_real && t.logoff_real !== '--' && t.logoff_real !== '--:--');
+        }
+    }
+
+    if (term) {
+        filtered = filtered.filter(t => {
+            const code = (t.team_code || '').toLowerCase();
+            const base = (t.base_display || t.base_name || '').toLowerCase();
+            const plate = (t.plate || '').toLowerCase();
+            const driver = (t.driver || '').toLowerCase();
+            const reg = (t.region || '').toLowerCase();
+            const dt = (t.date_formatted || t.audit_date || '').toLowerCase();
+            return code.includes(term) || base.includes(term) || plate.includes(term) || driver.includes(term) || reg.includes(term) || dt.includes(term);
+        });
+    }
+
+    deliveryState.comparisonFilteredTeams = filtered;
+    renderComparisonTeamsTable();
+}
+
+function handleComparisonTeamsSearch(val) {
+    applyComparisonTeamsFilter();
+}
+
+function handleComparisonDateFilterChange(val) {
+    applyComparisonTeamsFilter();
+}
+
+function handleComparisonStatusFilterChange(val) {
+    applyComparisonTeamsFilter();
+}
+
+// Renderização Reativa da Tabela Nominal Consolidada de Múltiplas Datas
+function renderComparisonTeamsTable() {
+    const tbody = document.getElementById('histComparisonTeamsTableBody');
+    if (!tbody) return;
+
+    const list = deliveryState.comparisonFilteredTeams || deliveryState.comparisonAllTeams || [];
+    const counterEl = document.getElementById('histComparisonTeamsCounterBadge');
+    if (counterEl) {
+        const total = (deliveryState.comparisonAllTeams || []).length;
+        counterEl.innerHTML = `Exibindo <strong style="color: #38bdf8;">${list.length}</strong> de ${total} equipes`;
+    }
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="18" style="text-align: center; padding: 30px; color: var(--text-secondary);">Nenhuma equipe encontrada para os filtros aplicados.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = list.map(t => {
+        // Formata Logoff Real
+        let logoffHtml = `<span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">--:--</span>`;
+        if (t.logoff_real && t.logoff_real !== '--' && t.logoff_real !== '--:--') {
+            logoffHtml = `<span class="badge-logoff-closed"><i data-lucide="check"></i> ${t.logoff_real}</span>`;
+        }
+
+        // Formata Status de Conciliação
+        let statusBadge = '';
+        if (t.status_conciliacao === 'CONCILIADO_TOTAL') {
+            statusBadge = `<span class="badge-reconcile badge-reconcile-success" title="Turno com LogOff e Produtividade confirmados no Spotfire"><i data-lucide="check-circle-2"></i> 100% CONCILIADO</span>`;
+        } else if (t.status_conciliacao === 'CONCILIADO_AMBOS' || t.status_conciliacao === 'TURNO_EM_ANDAMENTO') {
+            statusBadge = `<span class="badge-reconcile badge-reconcile-warning" title="Equipe presente no Spotfire e EB, turno em andamento"><i data-lucide="check"></i> CONCILIADO EM AMBOS</span>`;
+        } else if (t.status_conciliacao === 'APENAS_SPOTFIRE') {
+            statusBadge = `<span class="badge-reconcile badge-reconcile-extra" title="Detectada no Spotfire mas ausente no EquipesBrasil"><i data-lucide="alert-circle"></i> APENAS NO SPOTFIRE</span>`;
+        } else {
+            statusBadge = `<span class="badge-reconcile badge-reconcile-pending" title="Presente no EquipesBrasil, ausente no Spotfire"><i data-lucide="hourglass"></i> APENAS EQUIPESBRASIL</span>`;
+        }
+
+        // Formata Status Cruzado (Checklist BIDTECH x Despacho)
+        let crossBadge = '';
+        if (t.status_cruzado === 'CONFORME') {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-success" title="Checklist Concluído • Em Operação"><i data-lucide="shield-check"></i> CONFORME</span>`;
+        } else if (t.status_cruzado === 'ALERTA CRÍTICO') {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-warning" title="Logada • Checklist em Andamento"><i data-lucide="alert-triangle"></i> EM CHECKLIST</span>`;
+        } else if (t.status_cruzado === 'ALERTA GRAVE') {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-danger" title="Logada • Sem Iniciar Checklist"><i data-lucide="alert-octagon"></i> PLANEJADA</span>`;
+        } else if (t.status_cruzado === 'ALERTA IMPEDITIVO') {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-danger" title="${t.status_cruzado_desc || ''}"><i data-lucide="slash"></i> ${t.status_bid || 'BLOQUEADA'}</span>`;
+        } else {
+            crossBadge = `<span class="badge-reconcile badge-reconcile-extra" title="Logada • Não Encontrada no Checklist"><i data-lucide="help-circle"></i> NÃO ENCONTRADA</span>`;
+        }
+
+        // Duração Efetiva em decimal e formatada
+        let durHtml = `<span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">--</span>`;
+        if (t.duracao_efetiva && t.duracao_efetiva !== '--') {
+            durHtml = `<strong style="color:#38bdf8; font-family:'JetBrains Mono', monospace; font-size: 0.88rem;">${t.duracao_efetiva}</strong>`;
+        }
+
+        // Auditoria do Cálculo de Duração
+        let calcBadge = `<span style="color:var(--text-secondary); font-size:0.72rem;">--</span>`;
+        if (t.tipo_calculo_duracao === 'LogOff Real - Login Real') {
+            calcBadge = `<span class="badge-calc badge-calc-real" title="Cálculo oficial Spotfire: LogOff Real - Login Real"><i data-lucide="sparkles"></i> SPOTFIRE REAL</span>`;
+        } else if (t.tipo_calculo_duracao === 'Log Off - Log In') {
+            calcBadge = `<span class="badge-calc badge-calc-bruto" title="Fallback 1: Log Off - Log In"><i data-lucide="clock"></i> SPOTFIRE BRUTO</span>`;
+        } else if (t.tipo_calculo_duracao === 'Fim - Início Calendário') {
+            calcBadge = `<span class="badge-calc badge-calc-cal" title="Fallback 2: Fim Calendário - Início Calendário"><i data-lucide="calendar"></i> CALENDÁRIO</span>`;
+        }
+
+        // Atraso de Login vs Turno Previsto
+        let delayHtml = `<span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">--</span>`;
+        if (t.atraso && t.atraso !== '--') {
+            if (t.is_delayed || (t.atraso_minutos && t.atraso_minutos > 0)) {
+                delayHtml = `<span class="badge-delay-danger" title="Atraso de ${t.atraso_minutos} min"><i data-lucide="clock-alert"></i> ${t.atraso}</span>`;
+            } else {
+                delayHtml = `<span class="badge-delay-success" title="Entrou no horário previsto"><i data-lucide="check"></i> NO PRAZO</span>`;
+            }
+        }
+
+        // Compensação de Horas
+        let compHtml = `<span style="color:var(--text-secondary); font-size:0.72rem;">--</span>`;
+        if (t.compensado && t.compensado !== '--') {
+            const cls = t.compensado_badge || (t.compensado.includes('NÃO COMPENSADO') ? 'badge-compensado-danger' : t.compensado.includes('COMPENSADO') ? 'badge-compensado-success' : 'badge-compensado-integral');
+            compHtml = `<span class="${cls}">${t.compensado}</span>`;
+        }
+
+        // Produtividade
+        const prod = t.produtivas || 0;
+        const totalOs = t.qtd_os || 0;
+        const osHtml = `<span title="Produtivas: ${prod} | Total: ${totalOs} | Improdutivas: ${t.improdutiva || 0} | Verificações: ${t.verificacoes || 0}"><strong style="color: #10b981;">${prod}</strong> <small style="color: var(--text-secondary);">/ ${totalOs}</small></span>`;
+
+        // Turno
+        const turnoText = t.turno ? `${t.turno} (${t.shift_slot || t.shift_code})` : (t.shift_slot || '--');
+
+        // Data formatada
+        const dateDisplay = t.date_formatted || (t.audit_date ? t.audit_date.split('-').reverse().join('/') : '--');
+
+        // Motorista e Placa (enriquecidos pelo BIDTECH)
+        const driverHtml = (t.driver && t.driver !== '--') ? `<strong style="color: var(--text-primary); font-size: 0.8rem;">${t.driver}</strong>` : `<span style="color: var(--text-secondary);">--</span>`;
+        const plateHtml = (t.plate && t.plate !== '--') ? `<span class="badge-plate" style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #f8fafc; background: rgba(30, 41, 59, 0.8); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15);">${t.plate}</span>` : `<span style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">--</span>`;
+
+        return `
+            <tr>
+                <td><span class="date-comparison-badge" style="font-size: 0.76rem; padding: 2px 8px; border-radius: 6px; font-weight: 700; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-family: 'JetBrains Mono', monospace;">${dateDisplay}</span></td>
+                <td><span class="team-badge" style="font-weight: 800;">${t.team_code}</span></td>
+                <td><strong style="color: var(--text-primary);">${t.base_display || t.base_name}</strong></td>
+                <td>${t.region} / <small style="font-weight: 800;">${t.company}</small></td>
+                <td>${(t.vehicle_type === 'Projeto Ramal' || t.unified_group === 'Projeto Ramal') ? `<span class="badge-vehicle-ramal" style="font-size: 0.72rem;">PROJETO RAMAL</span>` : (t.vehicle_type === 'STC Leste' || t.unified_group === 'STC Leste') ? `<span class="badge-vehicle-stc-leste" style="font-size: 0.72rem;">STC LESTE</span>` : `<strong>${t.vehicle_type || '--'}</strong>`}</td>
+                <td>${crossBadge}</td>
+                <td><span style="color:var(--text-secondary); font-family:'JetBrains Mono', monospace;">${t.login_time || '--:--'}</span></td>
+                <td><strong style="color:#38bdf8; font-family:'JetBrains Mono', monospace;">${t.login_real || '--:--'}</strong></td>
+                <td>${logoffHtml}</td>
+                <td>${durHtml}</td>
+                <td>${calcBadge}</td>
+                <td><span class="shift-pill ${t.shift_pill_class || ''}">${turnoText}</span></td>
+                <td>${delayHtml}</td>
+                <td>${compHtml}</td>
+                <td>${osHtml}</td>
+                <td>${statusBadge}</td>
+                <td>${driverHtml}</td>
+                <td>${plateHtml}</td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+}
+
+// Exportação Excel da Tabela Nominal Consolidada de Múltiplas Datas
+function exportComparisonTeamsExcel() {
+    const list = deliveryState.comparisonFilteredTeams || deliveryState.comparisonAllTeams;
+    if (!list || list.length === 0) {
+        showToast('Nenhum dado consolidado de equipes para exportar.', 'warning');
+        return;
+    }
+
+    const rows = list.map(t => ({
+        "Data": t.date_formatted || (t.audit_date ? t.audit_date.split('-').reverse().join('/') : '--'),
+        "Código Equipe": t.team_code || '--',
+        "Base Operacional": t.base_display || t.base_name || '--',
+        "Região": t.region || '--',
+        "Empresa": t.company || '--',
+        "Frota": t.vehicle_type || '--',
+        "Status Cruzado (Checklist)": t.status_cruzado || '--',
+        "Status Checklist BID": t.status_bid || '--',
+        "Login Enel": t.login_time || '--:--',
+        "Login Real (Spotfire)": t.login_real || '--:--',
+        "LogOff Real (Spotfire)": t.logoff_real || '--:--',
+        "Duração Efetiva (Horas Decimais)": t.duracao_efetiva_decimal != null ? t.duracao_efetiva_decimal : 0.0,
+        "Duração Efetiva (Formatado)": t.duracao_efetiva || '--',
+        "Tipo Cálculo Duração": t.tipo_calculo_duracao || '--',
+        "Turno Previsto": t.shift_slot || t.turno || '--',
+        "Atraso": t.atraso || 'No Prazo',
+        "Atraso (Minutos)": t.atraso_minutos != null ? t.atraso_minutos : 0,
+        "Compensação de Horas": t.compensado || '--',
+        "Saldo de Horas (vs 8h)": t.saldo_horas != null ? t.saldo_horas : 0.0,
+        "OS Produtivas": t.produtivas != null ? t.produtivas : 0,
+        "OS Improdutivas": t.improdutiva != null ? t.improdutiva : 0,
+        "Total OS": t.qtd_os != null ? t.qtd_os : 0,
+        "Rejeita": t.rejeita || 'NÃO',
+        "Status Conciliação (Spotfire)": t.status_conciliacao || 'AGUARDANDO_SPOTFIRE',
+        "Motorista": t.driver || '--',
+        "Placa": t.plate || '--'
+    }));
+
+    if (window.XLSX) {
+        const ws = XLSX.utils.json_to_sheet(rows);
+
+        // Auto-ajuste da largura das colunas
+        const colWidths = Object.keys(rows[0] || {}).map(key => {
+            let maxLen = key.length;
+            for (let r = 0; r < Math.min(rows.length, 200); r++) {
+                const val = String(rows[r][key] || '');
+                if (val.length > maxLen) maxLen = val.length;
+            }
+            return { wch: Math.min(Math.max(maxLen + 3, 12), 40) };
+        });
+        ws['!cols'] = colWidths;
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Equipes_Consolidado");
+
+        const dateRangeStr = (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates.length > 0)
+            ? `${deliveryState.selectedAuditDates[0]}_a_${deliveryState.selectedAuditDates[deliveryState.selectedAuditDates.length - 1]}`
+            : new Date().toISOString().split('T')[0];
+
+        XLSX.writeFile(wb, `Auditoria_Confronto_Equipes_Consolidado_${dateRangeStr}.xlsx`);
+        showToast(`Tabela completa de ${rows.length} equipes exportada com sucesso!`, 'success');
+    } else {
+        showToast('Biblioteca XLSX não carregada no navegador.', 'danger');
     }
 }
 
@@ -10258,6 +10680,11 @@ async function savePlanningTargets() {
 }
 
 function exportHistoryExcel() {
+    // Se múltiplas datas estiverem selecionadas, exporta automaticamente a consolidação completa
+    if (deliveryState.selectedAuditDates && deliveryState.selectedAuditDates.length > 1) {
+        return exportComparisonTeamsExcel();
+    }
+
     const data = deliveryState.historyDayData;
     if (!data || !data.teams || data.teams.length === 0) {
         showToast('Nenhum dado auditado para exportar.', 'warning');
@@ -10270,21 +10697,41 @@ function exportHistoryExcel() {
         "Região": t.region,
         "Empresa": t.company,
         "Frota": t.vehicle_type,
+        "Status Cruzado (Checklist)": t.status_cruzado || '--',
+        "Status Checklist BID": t.status_bid || '--',
         "Login Enel": t.login_time || '--:--',
         "Login Real (Spotfire)": t.login_real || '--:--',
         "LogOff Real (Spotfire)": t.logoff_real || '--:--',
-        "Duração Efetiva": t.duracao_efetiva || '--',
+        "Duração Efetiva (Horas Decimais)": t.duracao_efetiva_decimal != null ? t.duracao_efetiva_decimal : 0.0,
+        "Duração Efetiva (Formatado)": t.duracao_efetiva || '--',
+        "Tipo Cálculo Duração": t.tipo_calculo_duracao || '--',
+        "Turno Previsto": t.shift_slot || t.turno || '--',
+        "Atraso": t.atraso || 'No Prazo',
+        "Atraso (Minutos)": t.atraso_minutos != null ? t.atraso_minutos : 0,
+        "Compensação de Horas": t.compensado || '--',
+        "Saldo de Horas (vs 8h)": t.saldo_horas != null ? t.saldo_horas : 0.0,
         "OS Produtivas": t.produtivas || 0,
         "OS Improdutivas": t.improdutiva || 0,
         "Total OS": t.qtd_os || 0,
         "Rejeita": t.rejeita || 'NÃO',
-        "Status Conciliação": t.status_conciliacao || 'AGUARDANDO_SPOTFIRE',
-        "Turno": t.shift_slot,
-        "Motorista": t.driver,
-        "Placa": t.plate
+        "Status Conciliação (Spotfire)": t.status_conciliacao || 'AGUARDANDO_SPOTFIRE',
+        "Motorista": t.driver || '--',
+        "Placa": t.plate || '--'
     }));
     if (window.XLSX) {
         const ws = XLSX.utils.json_to_sheet(rows);
+
+        // Auto-ajuste de largura de colunas
+        const colWidths = Object.keys(rows[0] || {}).map(key => {
+            let maxLen = key.length;
+            for (let r = 0; r < Math.min(rows.length, 100); r++) {
+                const val = String(rows[r][key] || '');
+                if (val.length > maxLen) maxLen = val.length;
+            }
+            return { wch: Math.min(Math.max(maxLen + 3, 12), 40) };
+        });
+        ws['!cols'] = colWidths;
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Auditoria_Confronto");
         XLSX.writeFile(wb, `Auditoria_Confronto_Spotfire_${data.date}.xlsx`);
@@ -13090,6 +13537,13 @@ window.initHistoryDatePicker = initHistoryDatePicker;
 window.clearSelectedAuditDates = clearSelectedAuditDates;
 window.loadComparisonAudit = loadComparisonAudit;
 window.exportComparisonExcel = exportComparisonExcel;
+window.exportComparisonTeamsExcel = exportComparisonTeamsExcel;
+window.toggleComparisonTeamsTableCollapse = toggleComparisonTeamsTableCollapse;
+window.applyComparisonTeamsFilter = applyComparisonTeamsFilter;
+window.handleComparisonTeamsSearch = handleComparisonTeamsSearch;
+window.handleComparisonDateFilterChange = handleComparisonDateFilterChange;
+window.handleComparisonStatusFilterChange = handleComparisonStatusFilterChange;
+window.renderComparisonTeamsTable = renderComparisonTeamsTable;
 window.openDeliveryCollectModal = openDeliveryCollectModal;
 window.copyDaemonScriptToClipboard = copyDaemonScriptToClipboard;
 window.triggerEnelCdpCapture = triggerEnelCdpCapture;
@@ -16373,16 +16827,32 @@ function updateTvClockDisplay() {
     }
 }
 
+function tvSetTextIfChanged(idOrEl, newText) {
+    const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+    if (el && el.textContent !== String(newText)) {
+        el.textContent = String(newText);
+    }
+}
+
+function tvSetHtmlIfChanged(idOrEl, newHtml) {
+    const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+    if (el && el.innerHTML !== newHtml) {
+        el.innerHTML = newHtml;
+        return true;
+    }
+    return false;
+}
+
 function startTvCountdown() {
     if (tvDashboardState.countdownTimer) clearInterval(tvDashboardState.countdownTimer);
-    tvDashboardState.countdown = 30;
+    tvDashboardState.countdown = 15;
     updateTvCountdownDisplay();
 
     tvDashboardState.countdownTimer = setInterval(() => {
         if (appState.currentView !== 'tv') return;
         tvDashboardState.countdown -= 1;
         if (tvDashboardState.countdown <= 0) {
-            tvDashboardState.countdown = 30;
+            tvDashboardState.countdown = 15;
             loadTvDashboardData(false);
         }
         updateTvCountdownDisplay();
@@ -16398,7 +16868,7 @@ function updateTvCountdownDisplay() {
     if (circleEl) {
         // Circunferência de raio 16 = 2 * PI * 16 ≈ 100.53
         const totalLen = 100.53;
-        const progress = (30 - tvDashboardState.countdown) / 30;
+        const progress = (15 - tvDashboardState.countdown) / 15;
         circleEl.style.strokeDashoffset = (totalLen * progress).toFixed(1);
     }
 }
@@ -16436,15 +16906,20 @@ async function loadTvDashboardData(isManual = false) {
 
     const delBadge = document.getElementById('tvDeliveryStatusBadge');
     const prioBadge = document.getElementById('tvPrioStatusBadge');
-    if (delBadge) {
-        delBadge.className = 'tv-metric-badge badge-cyan';
-        delBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Atualizando...';
+    
+    // Apenas altera os badges para indicador de loading caso o usuário tenha clicado manualmente
+    // No modo real-time/automático, mantém o layout perfeitamente estável e sem piscar!
+    if (isManual) {
+        if (delBadge) {
+            delBadge.className = 'tv-metric-badge badge-cyan';
+            delBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Atualizando...';
+        }
+        if (prioBadge) {
+            prioBadge.className = 'tv-metric-badge badge-emerald';
+            prioBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Sincronizando...';
+        }
+        if (window.lucide) lucide.createIcons();
     }
-    if (prioBadge) {
-        prioBadge.className = 'tv-metric-badge badge-emerald';
-        prioBadge.innerHTML = '<i data-lucide="loader-2" class="spin-icon"></i> Sincronizando...';
-    }
-    initIcons();
 
     try {
         const [delRes, prioRes] = await Promise.all([
@@ -16468,9 +16943,17 @@ async function loadTvDashboardData(isManual = false) {
         if (delRes && (delRes.status === 'success' || Array.isArray(delRes.active_teams) || Array.isArray(delRes.teams))) {
             tvDashboardState.deliveryData = delRes;
             hasDelSuccess = true;
-            if (delBadge) delBadge.innerHTML = '<i data-lucide="activity"></i> Sincronizado';
+            if (delBadge && (!delBadge.innerHTML.includes('Sincronizado') || delBadge.innerHTML.includes('spin-icon'))) {
+                delBadge.className = 'tv-metric-badge badge-cyan';
+                delBadge.innerHTML = '<i data-lucide="activity"></i> Sincronizado';
+                if (window.lucide) lucide.createIcons();
+            }
         } else {
-            if (delBadge) delBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
+            if (delBadge && !delBadge.innerHTML.includes('Erro Conexão')) {
+                delBadge.className = 'tv-metric-badge badge-rose';
+                delBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
+                if (window.lucide) lucide.createIcons();
+            }
         }
 
         if (localStorage.getItem('tv_secondary_view') === 'delays' && typeof loadTvDelaysData === 'function') {
@@ -16480,14 +16963,16 @@ async function loadTvDashboardData(isManual = false) {
         if (prioRes && (prioRes.status === 'success' || Array.isArray(prioRes.active_orders) || Array.isArray(prioRes.orders))) {
             tvDashboardState.priorizadorData = prioRes;
             hasPrioSuccess = true;
-            if (prioBadge) {
+            if (prioBadge && (!prioBadge.innerHTML.includes('CCO Ativo') || prioBadge.innerHTML.includes('spin-icon'))) {
                 prioBadge.className = 'tv-metric-badge badge-emerald';
                 prioBadge.innerHTML = '<i data-lucide="shield-check"></i> CCO Ativo';
+                if (window.lucide) lucide.createIcons();
             }
         } else {
-            if (prioBadge) {
+            if (prioBadge && !prioBadge.innerHTML.includes('Erro Conexão')) {
                 prioBadge.className = 'tv-metric-badge badge-rose';
                 prioBadge.innerHTML = '<i data-lucide="alert-circle"></i> Erro Conexão';
+                if (window.lucide) lucide.createIcons();
             }
         }
 
@@ -16495,19 +16980,17 @@ async function loadTvDashboardData(isManual = false) {
         const tvPill = document.getElementById('tvLivePill');
         const tvPillText = document.getElementById('tvLiveStatusText');
         if (hasDelSuccess || hasPrioSuccess) {
-            if (tvPill) tvPill.classList.remove('offline');
-            if (tvPillText) tvPillText.textContent = 'TRANSMISSÃO AO VIVO';
+            if (tvPill && tvPill.classList.contains('offline')) tvPill.classList.remove('offline');
+            if (tvPillText && tvPillText.textContent !== 'TRANSMISSÃO AO VIVO') tvPillText.textContent = 'TRANSMISSÃO AO VIVO';
         } else {
-            if (tvPill) tvPill.classList.add('offline');
-            if (tvPillText) tvPillText.textContent = 'PAINEL OFFLINE';
+            if (tvPill && !tvPill.classList.contains('offline')) tvPill.classList.add('offline');
+            if (tvPillText && tvPillText.textContent !== 'PAINEL OFFLINE') tvPillText.textContent = 'PAINEL OFFLINE';
         }
 
         renderTvDashboard();
 
-        if (isManual) {
-            tvDashboardState.countdown = 30;
-            updateTvCountdownDisplay();
-        }
+        tvDashboardState.countdown = 15;
+        updateTvCountdownDisplay();
     } catch (err) {
         console.error('Falha geral no loadTvDashboardData:', err);
     } finally {
@@ -16611,23 +17094,23 @@ function renderTvDeliverySection() {
 
     const pct = val => totalAtivas > 0 ? `${Math.round((val / totalAtivas) * 100)}%` : '0%';
 
-    if (elTot) elTot.textContent = totalAtivas.toLocaleString('pt-BR');
-    if (elCesto) elCesto.textContent = cesto.toLocaleString('pt-BR');
-    if (elCestoSub) elCestoSub.textContent = pct(cesto);
-    if (elLeve) elLeve.textContent = leve.toLocaleString('pt-BR');
-    if (elLeveSub) elLeveSub.textContent = pct(leve);
-    if (elMoto) elMoto.textContent = moto.toLocaleString('pt-BR');
-    if (elMotoSub) elMotoSub.textContent = pct(moto);
-    if (elMunk) elMunk.textContent = linhaVivaMunk.toLocaleString('pt-BR');
-    if (elMunkSub) elMunkSub.textContent = pct(linhaVivaMunk);
-    if (elRamal) elRamal.textContent = ramal.toLocaleString('pt-BR');
-    if (elRamalSub) elRamalSub.textContent = pct(ramal);
-    if (elStcLeste) elStcLeste.textContent = stcLeste.toLocaleString('pt-BR');
-    if (elStcLesteSub) elStcLesteSub.textContent = pct(stcLeste);
+    tvSetTextIfChanged('tvKpiTotalAtivas', totalAtivas.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiCestoAereo', cesto.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiCestoSub', pct(cesto));
+    tvSetTextIfChanged('tvKpiVeiculoLeve', leve.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiLeveSub', pct(leve));
+    tvSetTextIfChanged('tvKpiMoto', moto.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiMotoSub', pct(moto));
+    tvSetTextIfChanged('tvKpiLinhaVivaMunk', linhaVivaMunk.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiMunkSub', pct(linhaVivaMunk));
+    tvSetTextIfChanged('tvKpiProjetoRamal', ramal.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiRamalSub', pct(ramal));
+    tvSetTextIfChanged('tvKpiStcLeste', stcLeste.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiStcLesteSub', pct(stcLeste));
 
     // Meta se disponível no backend
     const meta = data.target_teams || (scope === 'NORTE' ? 70 : scope === 'LESTE' ? 95 : 165);
-    if (elTarget) elTarget.textContent = `Meta: ${meta}`;
+    tvSetTextIfChanged('tvKpiTargetAtivas', `Meta: ${meta}`);
 
     // 1º Gráfico (Topo): Distribuição de Equipes por Horário e Turno
     renderTvHourlyChart(teams, data.intraday_curve);
@@ -16647,16 +17130,27 @@ function renderTvFleetChart(items, totalAtivas) {
     const ctx = document.getElementById('tvDeliveryFleetChart');
     if (!ctx) return;
 
-    if (tvDashboardState.charts.fleetChart) {
-        tvDashboardState.charts.fleetChart.destroy();
-        tvDashboardState.charts.fleetChart = null;
-    }
-
     const labels = items.map(i => i.label);
     const values = items.map(i => i.value);
     const bgColors = items.map(i => i.color + 'bb');
     const borderColors = items.map(i => i.color);
     const maxVal = Math.max(...values, 5);
+
+    // Se o gráfico já existe, faz atualização in-place sem destruir o canvas! (Zero piscar)
+    if (tvDashboardState.charts.fleetChart) {
+        const chart = tvDashboardState.charts.fleetChart;
+        chart.tvTotalAtivas = totalAtivas;
+        chart.tvBorderColors = borderColors;
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = values;
+        chart.data.datasets[0].backgroundColor = bgColors;
+        chart.data.datasets[0].borderColor = borderColors;
+        if (chart.options && chart.options.scales && chart.options.scales.y) {
+            chart.options.scales.y.suggestedMax = Math.ceil(maxVal * 1.25) + 1;
+        }
+        chart.update('none');
+        return;
+    }
 
     // Plugin para desenhar a quantidade exata e porcentagem no topo de cada barra vertical
     const tvFleetVBarLabelsPlugin = {
@@ -16664,13 +17158,15 @@ function renderTvFleetChart(items, totalAtivas) {
         afterDatasetsDraw(chart) {
             const { ctx: c, scales: { y } } = chart;
             const isLightMode = document.body.classList.contains('theme-light');
+            const total = chart.tvTotalAtivas !== undefined ? chart.tvTotalAtivas : totalAtivas;
+            const bColors = chart.tvBorderColors || borderColors;
             chart.data.datasets.forEach((dataset, i) => {
                 const meta = chart.getDatasetMeta(i);
                 meta.data.forEach((bar, index) => {
                     const val = dataset.data[index];
-                    const pct = totalAtivas > 0 ? Math.round((val / totalAtivas) * 100) : 0;
+                    const pct = total > 0 ? Math.round((val / total) * 100) : 0;
                     c.save();
-                    c.fillStyle = isLightMode ? '#0f172a' : (borderColors[index] || '#cbd5e1');
+                    c.fillStyle = isLightMode ? '#0f172a' : (bColors[index] || '#cbd5e1');
                     c.font = 'bold 11px "JetBrains Mono", monospace';
                     c.textAlign = 'center';
                     c.textBaseline = 'bottom';
@@ -16742,11 +17238,6 @@ function renderTvFleetChart(items, totalAtivas) {
 function renderTvHourlyChart(teams, serverCurve) {
     const ctx = document.getElementById('tvDeliveryHourlyChart');
     if (!ctx) return;
-
-    if (tvDashboardState.charts.hourlyChart) {
-        tvDashboardState.charts.hourlyChart.destroy();
-        tvDashboardState.charts.hourlyChart = null;
-    }
 
     // Horários / Turnos operacionais
     const shiftSlots = ['06:00', '08:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
@@ -16824,6 +17315,24 @@ function renderTvHourlyChart(teams, serverCurve) {
     const totalsPerShift = shiftSlots.map(s => matrix[s].total);
     const maxShiftTotal = Math.max(...totalsPerShift, 5);
 
+    // Se o gráfico já existe, faz atualização in-place sem destruir o canvas! (Zero piscar)
+    if (tvDashboardState.charts.hourlyChart) {
+        const chart = tvDashboardState.charts.hourlyChart;
+        chart.tvTotalsPerShift = totalsPerShift;
+        chart.data.labels = shiftSlots;
+        chart.data.datasets[0].data = dataCesto;
+        chart.data.datasets[1].data = dataLeve;
+        chart.data.datasets[2].data = dataMoto;
+        chart.data.datasets[3].data = dataPesado;
+        chart.data.datasets[4].data = dataRamal;
+        chart.data.datasets[5].data = dataStcLeste;
+        if (chart.options && chart.options.scales && chart.options.scales.y) {
+            chart.options.scales.y.suggestedMax = Math.ceil(maxShiftTotal * 1.22) + 1;
+        }
+        chart.update('none');
+        return;
+    }
+
     // Plugin para desenhar total no topo da coluna e quantidade interna nos blocos empilhados
     const tvStackedBarLabelsPlugin = {
         id: 'tvStackedBarLabels',
@@ -16831,10 +17340,11 @@ function renderTvHourlyChart(teams, serverCurve) {
             const { ctx: c, scales: { x, y } } = chart;
             const isLightMode = document.body.classList.contains('theme-light');
             const textTopColor = isLightMode ? '#0f172a' : '#00f2fe';
+            const curTotals = chart.tvTotalsPerShift || totalsPerShift;
 
             // 1. Total acumulado no topo de cada coluna de horário
             chart.data.labels.forEach((_, i) => {
-                const total = totalsPerShift[i];
+                const total = curTotals[i];
                 if (total > 0) {
                     const xPos = x.getPixelForValue(i);
                     const yPos = y.getPixelForValue(total);
@@ -17076,25 +17586,15 @@ function renderTvPriorizadorSection() {
     }
 
     // Atualiza KPIs do Priorizador no DOM
-    const elOs = document.getElementById('tvKpiPrioTotalOs');
-    const elCi = document.getElementById('tvKpiPrioTotalCi');
-    const elAlta = document.getElementById('tvKpiPrioAltaPrioridade');
-    const elAguard = document.getElementById('tvKpiPrioAguardDesp');
+    tvSetTextIfChanged('tvKpiPrioTotalOs', totalOs.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiPrioTotalCi', totalCi.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiPrioAltaPrioridade', altaPrioridade.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvKpiPrioAguardDesp', aguardDesp.toLocaleString('pt-BR'));
 
-    const elLoc80 = document.getElementById('tvStatLocal80');
-    const elSemAtend = document.getElementById('tvStatSemAtendimento');
-    const elDesloc = document.getElementById('tvStatEmDeslocamento');
-    const elDesp10 = document.getElementById('tvStatDesp10');
-
-    if (elOs) elOs.textContent = totalOs.toLocaleString('pt-BR');
-    if (elCi) elCi.textContent = totalCi.toLocaleString('pt-BR');
-    if (elAlta) elAlta.textContent = altaPrioridade.toLocaleString('pt-BR');
-    if (elAguard) elAguard.textContent = aguardDesp.toLocaleString('pt-BR');
-
-    if (elLoc80) elLoc80.textContent = local80.toLocaleString('pt-BR');
-    if (elSemAtend) elSemAtend.textContent = semAtend.toLocaleString('pt-BR');
-    if (elDesloc) elDesloc.textContent = deslocamento.toLocaleString('pt-BR');
-    if (elDesp10) elDesp10.textContent = desp10.toLocaleString('pt-BR');
+    tvSetTextIfChanged('tvStatLocal80', local80.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvStatSemAtendimento', semAtend.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvStatEmDeslocamento', deslocamento.toLocaleString('pt-BR'));
+    tvSetTextIfChanged('tvStatDesp10', desp10.toLocaleString('pt-BR'));
 
     // Gráfico de Distribuição de OS por Base
     renderTvBaseChart(baseCountMap);
@@ -17103,11 +17603,6 @@ function renderTvPriorizadorSection() {
 function renderTvBaseChart(baseCountMap) {
     const ctx = document.getElementById('tvPriorizadorBaseChart');
     if (!ctx) return;
-
-    if (tvDashboardState.charts.baseChart) {
-        tvDashboardState.charts.baseChart.destroy();
-        tvDashboardState.charts.baseChart = null;
-    }
 
     // Normaliza nomes das bases e converte valores com garantia numérica estrita
     const sorted = Object.entries(baseCountMap)
@@ -17126,6 +17621,15 @@ function renderTvBaseChart(baseCountMap) {
     if (labels.length === 0) {
         labels = ['Sem Ordens'];
         values = [0];
+    }
+
+    // Se o gráfico já existe, faz atualização in-place sem destruir o canvas! (Zero piscar)
+    if (tvDashboardState.charts.baseChart) {
+        const chart = tvDashboardState.charts.baseChart;
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = values;
+        chart.update('none');
+        return;
     }
 
     // Plugin para desenhar a quantidade exata ao final de cada barra horizontal
@@ -17332,12 +17836,13 @@ function renderTvTop5Orders() {
     }
 
     if (top5.length === 0) {
-        grid.innerHTML = '<div class="tv-top5-empty">Nenhuma ordem encontrada para o filtro selecionado.</div>';
-        initIcons();
+        if (tvSetHtmlIfChanged(grid, '<div class="tv-top5-empty">Nenhuma ordem encontrada para o filtro selecionado.</div>')) {
+            initIcons();
+        }
         return;
     }
 
-    grid.innerHTML = top5.map((os, idx) => {
+    const generatedHtml = top5.map((os, idx) => {
         const osNum = os.ordem || os.numero_os || os.os || `ORD-${idx + 1}`;
         const isCrit = isCriticaOrder(os);
         const prioTag = isCrit
@@ -17451,7 +17956,9 @@ function renderTvTop5Orders() {
         `;
     }).join('');
 
-    initIcons();
+    if (tvSetHtmlIfChanged(grid, generatedHtml)) {
+        initIcons();
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -17919,310 +18426,323 @@ window.renderTvDelayCumulativeCharts = function (hourlyCurve) {
 
     // 1. Chart: Perda Financeira Acumulada
     if (tvDashboardState.charts.delayLossCumulativeChart) {
-        tvDashboardState.charts.delayLossCumulativeChart.destroy();
-        tvDashboardState.charts.delayLossCumulativeChart = null;
-    }
+        const chart = tvDashboardState.charts.delayLossCumulativeChart;
+        chart.tvUpdatedFlags = updatedFlags;
+        chart.tvLastActiveIdx = lastActiveIdx;
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = lossCumulativeData;
+        chart.data.datasets[0].pointRadius = pointRadiiLoss;
+        chart.data.datasets[0].pointHoverRadius = pointHoverRadiiLoss;
+        chart.update('none');
+    } else {
+        const lossCtx = lossCanvas.getContext('2d');
+        const gradLoss = lossCtx.createLinearGradient(0, 0, 0, 95);
+        gradLoss.addColorStop(0, 'rgba(244, 63, 94, 0.35)');
+        gradLoss.addColorStop(1, 'rgba(244, 63, 94, 0.01)');
 
-    const lossCtx = lossCanvas.getContext('2d');
-    const gradLoss = lossCtx.createLinearGradient(0, 0, 0, 95);
-    gradLoss.addColorStop(0, 'rgba(244, 63, 94, 0.35)');
-    gradLoss.addColorStop(1, 'rgba(244, 63, 94, 0.01)');
+        const pointRadiiLoss = hourlyCurve.map((_, i) => updatedFlags[i] && i <= lastActiveIdx ? 4 : 0);
+        const pointHoverRadiiLoss = hourlyCurve.map((_, i) => i <= lastActiveIdx ? 6 : 0);
 
-    const pointRadiiLoss = hourlyCurve.map((_, i) => updatedFlags[i] && i <= lastActiveIdx ? 4 : 0);
-    const pointHoverRadiiLoss = hourlyCurve.map((_, i) => i <= lastActiveIdx ? 6 : 0);
+        const tvDelayCumulativeLossPlugin = {
+            id: 'tvDelayCumulativeLossLabels',
+            afterDatasetsDraw(chart) {
+                const { ctx } = chart;
+                const meta = chart.getDatasetMeta(0);
+                if (!meta || !meta.data) return;
+                const uFlags = chart.tvUpdatedFlags || updatedFlags;
+                const activeIdx = chart.tvLastActiveIdx !== undefined ? chart.tvLastActiveIdx : lastActiveIdx;
 
-    const tvDelayCumulativeLossPlugin = {
-        id: 'tvDelayCumulativeLossLabels',
-        afterDatasetsDraw(chart) {
-            const { ctx } = chart;
-            const meta = chart.getDatasetMeta(0);
-            if (!meta || !meta.data) return;
+                meta.data.forEach((point, idx) => {
+                    if (!point || point.skip) return;
+                    const val = chart.data.datasets[0].data[idx];
+                    if (val === null || val === undefined) return;
+                    if (!uFlags[idx] || idx > activeIdx) return;
 
-            meta.data.forEach((point, idx) => {
-                if (!point || point.skip) return;
-                const val = chart.data.datasets[0].data[idx];
-                if (val === null || val === undefined) return;
-                if (!updatedFlags[idx] || idx > lastActiveIdx) return;
+                    const xPos = point.x;
+                    const yPos = point.y;
+                    const valStr = 'R$ ' + Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-                const xPos = point.x;
-                const yPos = point.y;
-                const valStr = 'R$ ' + Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    ctx.save();
+                    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+                    const textWidth = ctx.measureText(valStr).width;
+                    const padX = 5;
+                    const pillW = textWidth + padX * 2;
+                    const pillH = 14;
+                    const pillX = Math.max(3, Math.min(xPos - pillW / 2, chart.width - pillW - 3));
+                    const pillY = Math.max(2, yPos - pillH - 5);
 
-                ctx.save();
-                ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-                const textWidth = ctx.measureText(valStr).width;
-                const padX = 5;
-                const pillW = textWidth + padX * 2;
-                const pillH = 14;
-                const pillX = Math.max(3, Math.min(xPos - pillW / 2, chart.width - pillW - 3));
-                const pillY = Math.max(2, yPos - pillH - 5);
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+                    ctx.strokeStyle = '#f43f5e';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    if (ctx.roundRect) {
+                        ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+                    } else {
+                        ctx.rect(pillX, pillY, pillW, pillH);
+                    }
+                    ctx.fill();
+                    ctx.stroke();
 
-                ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-                ctx.strokeStyle = '#f43f5e';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                if (ctx.roundRect) {
-                    ctx.roundRect(pillX, pillY, pillW, pillH, 4);
-                } else {
-                    ctx.rect(pillX, pillY, pillW, pillH);
-                }
-                ctx.fill();
-                ctx.stroke();
+                    ctx.fillStyle = '#fecdd3';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(valStr, pillX + pillW / 2, pillY + pillH / 2);
+                    ctx.restore();
+                });
+            }
+        };
 
-                ctx.fillStyle = '#fecdd3';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(valStr, pillX + pillW / 2, pillY + pillH / 2);
-                ctx.restore();
-            });
-        }
-    };
-
-    tvDashboardState.charts.delayLossCumulativeChart = new Chart(lossCtx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Perda Acumulada',
-                data: lossCumulativeData,
-                borderColor: '#f43f5e',
-                backgroundColor: gradLoss,
-                borderWidth: 2,
-                fill: true,
-                tension: 0.35,
-                pointRadius: pointRadiiLoss,
-                pointHoverRadius: pointHoverRadiiLoss,
-                pointBackgroundColor: '#f43f5e',
-                pointBorderColor: '#ffffff',
-                pointBorderWidth: 1.5,
-                spanGaps: false
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: {
-                padding: { top: 16, bottom: 2, left: 2, right: 8 }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        tvDashboardState.charts.delayLossCumulativeChart = new Chart(lossCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Perda Acumulada',
+                    data: lossCumulativeData,
                     borderColor: '#f43f5e',
-                    borderWidth: 1,
-                    titleFont: { size: 10, family: 'JetBrains Mono' },
-                    bodyFont: { size: 9, family: 'JetBrains Mono' },
-                    padding: 6,
-                    displayColors: false,
-                    callbacks: {
-                        title: (items) => `Horário: ${items[0].label}`,
-                        label: (item) => {
-                            const idx = item.dataIndex;
-                            const cumVal = item.raw;
-                            const inc = hourLossInc[idx] || 0;
-                            return [
-                                `Acumulado: R$ ${Number(cumVal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                                `Nesta hora: +R$ ${Number(inc).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            ];
+                    backgroundColor: gradLoss,
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: pointRadiiLoss,
+                    pointHoverRadius: pointHoverRadiiLoss,
+                    pointBackgroundColor: '#f43f5e',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 1.5,
+                    spanGaps: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: { top: 16, bottom: 2, left: 2, right: 8 }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        borderColor: '#f43f5e',
+                        borderWidth: 1,
+                        titleFont: { size: 10, family: 'JetBrains Mono' },
+                        bodyFont: { size: 9, family: 'JetBrains Mono' },
+                        padding: 6,
+                        displayColors: false,
+                        callbacks: {
+                            title: (items) => `Horário: ${items[0].label}`,
+                            label: (item) => {
+                                const idx = item.dataIndex;
+                                const cumVal = item.raw;
+                                const inc = hourLossInc[idx] || 0;
+                                return [
+                                    `Acumulado: R$ ${Number(cumVal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                                    `Nesta hora: +R$ ${Number(inc).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { size: 8, family: 'JetBrains Mono' },
+                            maxRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 9
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                        ticks: {
+                            color: '#64748b',
+                            font: { size: 8, family: 'JetBrains Mono' },
+                            callback: (v) => v >= 1000 ? `R$ ${(v / 1000).toFixed(1)}k` : `R$ ${v}`
                         }
                     }
                 }
             },
-            scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: {
-                        color: '#94a3b8',
-                        font: { size: 8, family: 'JetBrains Mono' },
-                        maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: 9
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    grid: { color: 'rgba(255, 255, 255, 0.04)' },
-                    ticks: {
-                        color: '#64748b',
-                        font: { size: 8, family: 'JetBrains Mono' },
-                        callback: (v) => v >= 1000 ? `R$ ${(v / 1000).toFixed(1)}k` : `R$ ${v}`
-                    }
-                }
-            }
-        },
-        plugins: [tvDelayCumulativeLossPlugin]
-    });
+            plugins: [tvDelayCumulativeLossPlugin]
+        });
+        tvDashboardState.charts.delayLossCumulativeChart.tvUpdatedFlags = updatedFlags;
+        tvDashboardState.charts.delayLossCumulativeChart.tvLastActiveIdx = lastActiveIdx;
+    }
 
     // 2. Chart: Horas Perdidas Acumuladas
     if (tvDashboardState.charts.delayTimeCumulativeChart) {
-        tvDashboardState.charts.delayTimeCumulativeChart.destroy();
-        tvDashboardState.charts.delayTimeCumulativeChart = null;
-    }
+        const chart = tvDashboardState.charts.delayTimeCumulativeChart;
+        chart.tvUpdatedFlags = updatedFlags;
+        chart.tvLastActiveIdx = lastActiveIdx;
+        chart.tvCumulativeMinutesArr = cumulativeMinutesArr;
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = timeCumulativeHours;
+        chart.data.datasets[0].pointRadius = pointRadiiTime;
+        chart.data.datasets[0].pointHoverRadius = pointHoverRadiiTime;
+        chart.update('none');
+    } else {
+        const timeCtx = timeCanvas.getContext('2d');
+        const gradTime = timeCtx.createLinearGradient(0, 0, 0, 95);
+        gradTime.addColorStop(0, 'rgba(245, 158, 11, 0.35)');
+        gradTime.addColorStop(1, 'rgba(245, 158, 11, 0.01)');
 
-    const timeCtx = timeCanvas.getContext('2d');
-    const gradTime = timeCtx.createLinearGradient(0, 0, 0, 95);
-    gradTime.addColorStop(0, 'rgba(245, 158, 11, 0.35)');
-    gradTime.addColorStop(1, 'rgba(245, 158, 11, 0.01)');
+        const pointRadiiTime = hourlyCurve.map((_, i) => updatedFlags[i] && i <= lastActiveIdx ? 4 : 0);
+        const pointHoverRadiiTime = hourlyCurve.map((_, i) => i <= lastActiveIdx ? 6 : 0);
 
-    const pointRadiiTime = hourlyCurve.map((_, i) => updatedFlags[i] && i <= lastActiveIdx ? 4 : 0);
-    const pointHoverRadiiTime = hourlyCurve.map((_, i) => i <= lastActiveIdx ? 6 : 0);
+        const tvDelayCumulativeTimePlugin = {
+            id: 'tvDelayCumulativeTimeLabels',
+            afterDatasetsDraw(chart) {
+                const { ctx } = chart;
+                const meta = chart.getDatasetMeta(0);
+                if (!meta || !meta.data) return;
+                const uFlags = chart.tvUpdatedFlags || updatedFlags;
+                const activeIdx = chart.tvLastActiveIdx !== undefined ? chart.tvLastActiveIdx : lastActiveIdx;
+                const minArr = chart.tvCumulativeMinutesArr || cumulativeMinutesArr;
 
-    const tvDelayCumulativeTimePlugin = {
-        id: 'tvDelayCumulativeTimeLabels',
-        afterDatasetsDraw(chart) {
-            const { ctx } = chart;
-            const meta = chart.getDatasetMeta(0);
-            if (!meta || !meta.data) return;
+                meta.data.forEach((point, idx) => {
+                    if (!point || point.skip) return;
+                    const val = chart.data.datasets[0].data[idx];
+                    if (val === null || val === undefined) return;
+                    if (!uFlags[idx] || idx > activeIdx) return;
 
-            meta.data.forEach((point, idx) => {
-                if (!point || point.skip) return;
-                const val = chart.data.datasets[0].data[idx];
-                if (val === null || val === undefined) return;
-                if (!updatedFlags[idx] || idx > lastActiveIdx) return;
+                    const totMin = minArr[idx];
+                    const h = Math.floor(totMin / 60);
+                    const m = totMin % 60;
+                    const timeStr = `${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m`;
 
-                const totMin = cumulativeMinutesArr[idx];
-                const h = Math.floor(totMin / 60);
-                const m = totMin % 60;
-                const timeStr = `${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m`;
+                    const xPos = point.x;
+                    const yPos = point.y;
 
-                const xPos = point.x;
-                const yPos = point.y;
+                    ctx.save();
+                    ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+                    const textWidth = ctx.measureText(timeStr).width;
+                    const padX = 5;
+                    const pillW = textWidth + padX * 2;
+                    const pillH = 14;
+                    const pillX = Math.max(3, Math.min(xPos - pillW / 2, chart.width - pillW - 3));
+                    const pillY = Math.max(2, yPos - pillH - 5);
 
-                ctx.save();
-                ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-                const textWidth = ctx.measureText(timeStr).width;
-                const padX = 5;
-                const pillW = textWidth + padX * 2;
-                const pillH = 14;
-                const pillX = Math.max(3, Math.min(xPos - pillW / 2, chart.width - pillW - 3));
-                const pillY = Math.max(2, yPos - pillH - 5);
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+                    ctx.strokeStyle = '#f59e0b';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    if (ctx.roundRect) {
+                        ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+                    } else {
+                        ctx.rect(pillX, pillY, pillW, pillH);
+                    }
+                    ctx.fill();
+                    ctx.stroke();
 
-                ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-                ctx.strokeStyle = '#f59e0b';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                if (ctx.roundRect) {
-                    ctx.roundRect(pillX, pillY, pillW, pillH, 4);
-                } else {
-                    ctx.rect(pillX, pillY, pillW, pillH);
-                }
-                ctx.fill();
-                ctx.stroke();
+                    ctx.fillStyle = '#fde68a';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(timeStr, pillX + pillW / 2, pillY + pillH / 2);
+                    ctx.restore();
+                });
+            }
+        };
 
-                ctx.fillStyle = '#fde68a';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(timeStr, pillX + pillW / 2, pillY + pillH / 2);
-                ctx.restore();
-            });
-        }
-    };
-
-    tvDashboardState.charts.delayTimeCumulativeChart = new Chart(timeCtx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Tempo Acumulado',
-                data: timeCumulativeHours,
-                borderColor: '#f59e0b',
-                backgroundColor: gradTime,
-                borderWidth: 2,
-                fill: true,
-                tension: 0.35,
-                pointRadius: pointRadiiTime,
-                pointHoverRadius: pointHoverRadiiTime,
-                pointBackgroundColor: '#f59e0b',
-                pointBorderColor: '#ffffff',
-                pointBorderWidth: 1.5,
-                spanGaps: false
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: {
-                padding: { top: 16, bottom: 2, left: 2, right: 8 }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        tvDashboardState.charts.delayTimeCumulativeChart = new Chart(timeCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Tempo Acumulado',
+                    data: timeCumulativeHours,
                     borderColor: '#f59e0b',
-                    borderWidth: 1,
-                    titleFont: { size: 10, family: 'JetBrains Mono' },
-                    bodyFont: { size: 9, family: 'JetBrains Mono' },
-                    padding: 6,
-                    displayColors: false,
-                    callbacks: {
-                        title: (items) => `Horário: ${items[0].label}`,
-                        label: (item) => {
-                            const idx = item.dataIndex;
-                            const totMin = cumulativeMinutesArr[idx];
-                            const incMin = hourDelayInc[idx] || 0;
-                            return [
-                                `Acumulado: ${String(Math.floor(totMin / 60)).padStart(2, '0')}h ${String(totMin % 60).padStart(2, '0')}m`,
-                                `Nesta hora: +${String(Math.floor(incMin / 60)).padStart(2, '0')}h ${String(incMin % 60).padStart(2, '0')}m`
-                            ];
+                    backgroundColor: gradTime,
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: pointRadiiTime,
+                    pointHoverRadius: pointHoverRadiiTime,
+                    pointBackgroundColor: '#f59e0b',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 1.5,
+                    spanGaps: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: { top: 16, bottom: 2, left: 2, right: 8 }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        borderColor: '#f59e0b',
+                        borderWidth: 1,
+                        titleFont: { size: 10, family: 'JetBrains Mono' },
+                        bodyFont: { size: 9, family: 'JetBrains Mono' },
+                        padding: 6,
+                        displayColors: false,
+                        callbacks: {
+                            title: (items) => `Horário: ${items[0].label}`,
+                            label: (item) => {
+                                const idx = item.dataIndex;
+                                const totMin = cumulativeMinutesArr[idx];
+                                const incMin = hourDelayInc[idx] || 0;
+                                return [
+                                    `Acumulado: ${String(Math.floor(totMin / 60)).padStart(2, '0')}h ${String(totMin % 60).padStart(2, '0')}m`,
+                                    `Nesta hora: +${String(Math.floor(incMin / 60)).padStart(2, '0')}h ${String(incMin % 60).padStart(2, '0')}m`
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { size: 8, family: 'JetBrains Mono' },
+                            maxRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 9
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                        ticks: {
+                            color: '#64748b',
+                            font: { size: 8, family: 'JetBrains Mono' },
+                            callback: (v) => `${v}h`
                         }
                     }
                 }
             },
-            scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: {
-                        color: '#94a3b8',
-                        font: { size: 8, family: 'JetBrains Mono' },
-                        maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: 9
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    grid: { color: 'rgba(255, 255, 255, 0.04)' },
-                    ticks: {
-                        color: '#64748b',
-                        font: { size: 8, family: 'JetBrains Mono' },
-                        callback: (v) => `${v}h`
-                    }
-                }
-            }
-        },
-        plugins: [tvDelayCumulativeTimePlugin]
-    });
+            plugins: [tvDelayCumulativeTimePlugin]
+        });
+        tvDashboardState.charts.delayTimeCumulativeChart.tvUpdatedFlags = updatedFlags;
+        tvDashboardState.charts.delayTimeCumulativeChart.tvLastActiveIdx = lastActiveIdx;
+        tvDashboardState.charts.delayTimeCumulativeChart.tvCumulativeMinutesArr = cumulativeMinutesArr;
+    }
 };
 
 window.renderTvDelaySection = function (data) {
     if (!data) return;
 
     // 1. Mini Cards (5 Cards: Perda Financeira, Atrasadas, Horas Perdidas, Pontuais, Tempo no Prazo)
-    const elTotPerda = document.getElementById('tvKpiDelayTotalPerda');
-    const elSubPerda = document.getElementById('tvKpiDelaySubPerda');
-    if (elTotPerda) elTotPerda.textContent = data.total_perda_financeira_str || 'R$ 0,00';
-    if (elSubPerda) elSubPerda.textContent = `Média: ${data.custo_medio_atrasada_str || 'R$ 0,00'}/eq`;
+    tvSetTextIfChanged('tvKpiDelayTotalPerda', data.total_perda_financeira_str || 'R$ 0,00');
+    tvSetTextIfChanged('tvKpiDelaySubPerda', `Média: ${data.custo_medio_atrasada_str || 'R$ 0,00'}/eq`);
 
-    const elTotAtraso = document.getElementById('tvKpiDelayTotalAtraso');
-    const elSubAtraso = document.getElementById('tvKpiDelaySubAtraso');
-    if (elTotAtraso) elTotAtraso.textContent = data.total_atrasadas || 0;
+    tvSetTextIfChanged('tvKpiDelayTotalAtraso', data.total_atrasadas || 0);
     const pctAtr = (data.total_equipes > 0) ? ((data.total_atrasadas / data.total_equipes) * 100).toFixed(1) : '0.0';
-    if (elSubAtraso) elSubAtraso.textContent = `${pctAtr}% das equipes`;
+    tvSetTextIfChanged('tvKpiDelaySubAtraso', `${pctAtr}% das equipes`);
 
-    const elTempoAtraso = document.getElementById('tvKpiDelayTempoTotalAtraso');
-    const elSubMediaAtraso = document.getElementById('tvKpiDelaySubMediaAtraso');
-    if (elTempoAtraso) elTempoAtraso.textContent = data.total_tempo_atraso_str || '00h 00m';
-    if (elSubMediaAtraso) elSubMediaAtraso.textContent = `Média: ${data.media_tempo_atrasada_str || '00 min'}`;
+    tvSetTextIfChanged('tvKpiDelayTempoTotalAtraso', data.total_tempo_atraso_str || '00h 00m');
+    tvSetTextIfChanged('tvKpiDelaySubMediaAtraso', `Média: ${data.media_tempo_atrasada_str || '00 min'}`);
 
-    const elTotNoPrazo = document.getElementById('tvKpiDelayTotalNoPrazo');
-    const elSubNoPrazo = document.getElementById('tvKpiDelaySubNoPrazo');
-    if (elTotNoPrazo) elTotNoPrazo.textContent = data.total_no_prazo || 0;
-    if (elSubNoPrazo) elSubNoPrazo.textContent = `${data.taxa_pontualidade_geral || 0}% pontual`;
+    tvSetTextIfChanged('tvKpiDelayTotalNoPrazo', data.total_no_prazo || 0);
+    tvSetTextIfChanged('tvKpiDelaySubNoPrazo', `${data.taxa_pontualidade_geral || 0}% pontual`);
 
-    const elTempoNoPrazo = document.getElementById('tvKpiDelayTempoTotalNoPrazo');
-    const elSubMediaNoPrazo = document.getElementById('tvKpiDelaySubMediaNoPrazo');
-    if (elTempoNoPrazo) elTempoNoPrazo.textContent = data.total_tempo_no_prazo_str || '00h 00m';
-    if (elSubMediaNoPrazo) elSubMediaNoPrazo.textContent = `Média: ${data.media_tempo_no_prazo_str || '00 min'}`;
+    tvSetTextIfChanged('tvKpiDelayTempoTotalNoPrazo', data.total_tempo_no_prazo_str || '00h 00m');
+    tvSetTextIfChanged('tvKpiDelaySubMediaNoPrazo', `Média: ${data.media_tempo_no_prazo_str || '00 min'}`);
 
     // 2. Gráficos Crescentes Hora a Hora (Perda Financeira Acumulada + Horas Perdidas Acumuladas)
     try {
@@ -18237,20 +18757,14 @@ window.renderTvDelaySection = function (data) {
     const sTarde = shiftsByPeriod['Tarde'] || {};
     const sNoite = shiftsByPeriod['Noite'] || {};
 
-    const elLossM = document.getElementById('tvDelayShiftLossManha');
-    const elMetaM = document.getElementById('tvDelayShiftMetaManha');
-    if (elLossM) elLossM.textContent = sManha.perda_financeira_str || 'R$ 0,00';
-    if (elMetaM) elMetaM.textContent = `${sManha.total || 0} eq • ${sManha.atrasadas || 0} atr`;
+    tvSetTextIfChanged('tvDelayShiftLossManha', sManha.perda_financeira_str || 'R$ 0,00');
+    tvSetTextIfChanged('tvDelayShiftMetaManha', `${sManha.total || 0} eq • ${sManha.atrasadas || 0} atr`);
 
-    const elLossT = document.getElementById('tvDelayShiftLossTarde');
-    const elMetaT = document.getElementById('tvDelayShiftMetaTarde');
-    if (elLossT) elLossT.textContent = sTarde.perda_financeira_str || 'R$ 0,00';
-    if (elMetaT) elMetaT.textContent = `${sTarde.total || 0} eq • ${sTarde.atrasadas || 0} atr`;
+    tvSetTextIfChanged('tvDelayShiftLossTarde', sTarde.perda_financeira_str || 'R$ 0,00');
+    tvSetTextIfChanged('tvDelayShiftMetaTarde', `${sTarde.total || 0} eq • ${sTarde.atrasadas || 0} atr`);
 
-    const elLossN = document.getElementById('tvDelayShiftLossNoite');
-    const elMetaN = document.getElementById('tvDelayShiftMetaNoite');
-    if (elLossN) elLossN.textContent = sNoite.perda_financeira_str || 'R$ 0,00';
-    if (elMetaN) elMetaN.textContent = `${sNoite.total || 0} eq • ${sNoite.atrasadas || 0} atr`;
+    tvSetTextIfChanged('tvDelayShiftLossNoite', sNoite.perda_financeira_str || 'R$ 0,00');
+    tvSetTextIfChanged('tvDelayShiftMetaNoite', `${sNoite.total || 0} eq • ${sNoite.atrasadas || 0} atr`);
 
     const shifts = data.shifts || {};
     const renderShiftCard = (s) => {
@@ -18284,17 +18798,17 @@ window.renderTvDelaySection = function (data) {
 
     const cManha = document.getElementById('tvDelayShiftsManha');
     if (cManha) {
-        cManha.innerHTML = renderShiftCard(shifts['06:00']) + renderShiftCard(shifts['08:00']);
+        tvSetHtmlIfChanged(cManha, renderShiftCard(shifts['06:00']) + renderShiftCard(shifts['08:00']));
     }
 
     const cTarde = document.getElementById('tvDelayShiftsTarde');
     if (cTarde) {
-        cTarde.innerHTML = renderShiftCard(shifts['12:00']) + renderShiftCard(shifts['14:00']);
+        tvSetHtmlIfChanged(cTarde, renderShiftCard(shifts['12:00']) + renderShiftCard(shifts['14:00']));
     }
 
     const cNoite = document.getElementById('tvDelayShiftsNoite');
     if (cNoite) {
-        cNoite.innerHTML = renderShiftCard(shifts['20:00']) + renderShiftCard(shifts['22:00']);
+        tvSetHtmlIfChanged(cNoite, renderShiftCard(shifts['20:00']) + renderShiftCard(shifts['22:00']));
     }
 
     // 3. Principais Macro Motivos de Atraso
@@ -18302,7 +18816,7 @@ window.renderTvDelaySection = function (data) {
     if (elMacroList) {
         const macros = (data.macro_motivos || []).filter(m => m.qtd_equipes > 0);
         if (macros.length === 0) {
-            elMacroList.innerHTML = '<div style="color: #94a3b8; font-size: 0.72rem; text-align: center; padding: 12px;">Nenhum atraso registrado no momento.</div>';
+            tvSetHtmlIfChanged(elMacroList, '<div style="color: #94a3b8; font-size: 0.72rem; text-align: center; padding: 12px;">Nenhum atraso registrado no momento.</div>');
         } else {
             let html = macros.map(m => {
                 const icon = (m.macro_reason === 'PROBLEMAS TI' ? '💻' :
@@ -18349,7 +18863,7 @@ window.renderTvDelaySection = function (data) {
                     </div>
                 `;
             }
-            elMacroList.innerHTML = html;
+            tvSetHtmlIfChanged(elMacroList, html);
         }
     }
 
@@ -18358,9 +18872,9 @@ window.renderTvDelaySection = function (data) {
     if (elTop5) {
         const top5 = data.top5_atrasos || [];
         if (top5.length === 0) {
-            elTop5.innerHTML = '<div style="color: #94a3b8; font-size: 0.72rem; text-align: center; padding: 12px;">Nenhuma equipe em atraso hoje!</div>';
+            tvSetHtmlIfChanged(elTop5, '<div style="color: #94a3b8; font-size: 0.72rem; text-align: center; padding: 12px;">Nenhuma equipe em atraso hoje!</div>');
         } else {
-            elTop5.innerHTML = top5.map((t, idx) => {
+            const html5 = top5.map((t, idx) => {
                 const justBadge = t.has_justification
                     ? `<span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 1px 5px; border-radius: 4px; font-size: 0.62rem; font-weight: 700;">${(t.macro_reason || 'JUSTIFICADO').replace('PROBLEMAS ', '')}</span>`
                     : `<span style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); padding: 1px 5px; border-radius: 4px; font-size: 0.62rem; font-weight: 700;">Pendente</span>`;
@@ -18380,6 +18894,7 @@ window.renderTvDelaySection = function (data) {
                     </div>
                 `;
             }).join('');
+            tvSetHtmlIfChanged(elTop5, html5);
         }
     }
 

@@ -2758,13 +2758,17 @@
                                         <th>BASE OPERACIONAL</th>
                                         <th>REGIÃO / EMPRESA</th>
                                         <th>FROTA</th>
+                                        <th>STATUS CRUZADO</th>
                                         <th>LOGIN ENEL</th>
                                         <th>LOGIN REAL (SPOTFIRE)</th>
                                         <th>LOGOFF REAL (SPOTFIRE)</th>
                                         <th>DURAÇÃO EFETIVA</th>
+                                        <th>AUDITORIA CÁLCULO</th>
+                                        <th>TURNO</th>
+                                        <th>ATRASO</th>
+                                        <th>COMPENSAÇÃO</th>
                                         <th>OS (PROD / TOTAL)</th>
                                         <th>STATUS CONCILIAÇÃO</th>
-                                        <th>TURNO</th>
                                         <th>MOTORISTA</th>
                                         <th>PLACA</th>
                                     </tr>
@@ -2785,7 +2789,12 @@
                                 <h4 style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary); margin: 0 0 4px 0;">COMPARATIVO ENTRE DATAS SELECIONADAS</h4>
                                 <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Análise comparativa de volume e tipologia veicular entre as datas escolhidas</p>
                             </div>
-                            <div id="histComparisonSelectedBadges" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <div id="histComparisonSelectedBadges" style="display: flex; gap: 8px; flex-wrap: wrap;"></div>
+                                <button class="btn btn-secondary btn-sm" onclick="exportComparisonTeamsExcel()" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;" title="Baixar dados nominais completos em Excel de todas as datas selecionadas">
+                                    <i data-lucide="download" style="width:14px; height:14px; margin-right:4px;"></i> BAIXAR EXCEL COMPLETO
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Cards de Comparativo Rápido -->
@@ -2809,12 +2818,19 @@
 
                     <!-- Tabela Comparativa Analítica -->
                     <div class="delivery-table-collapsible-wrapper">
-                        <div class="delivery-table-collapsible-header">
+                        <div class="delivery-table-collapsible-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                             <div>
                                 <h4 style="font-size: 1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">QUADRO COMPARATIVO DIÁRIO</h4>
                                 <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;">Métricas consolidadas de cada data selecionada</p>
                             </div>
-                            <button class="btn btn-secondary btn-sm" onclick="exportComparisonExcel()">EXPORTAR COMPARATIVO</button>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button class="btn btn-secondary btn-sm" onclick="exportComparisonExcel()" title="Exportar resumo de métricas por dia">
+                                    <i data-lucide="file-spreadsheet" style="width:14px; height:14px; margin-right:4px;"></i> EXPORTAR RESUMO
+                                </button>
+                                <button class="btn btn-secondary btn-sm" onclick="exportComparisonTeamsExcel()" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;" title="Exportar dados nominais completos de todas as equipes">
+                                    <i data-lucide="download" style="width:14px; height:14px; margin-right:4px;"></i> EXPORTAR TABELA COMPLETA (EXCEL)
+                                </button>
+                            </div>
                         </div>
                         <div class="table-responsive" style="margin-top: 14px;">
                             <table class="data-table">
@@ -2832,6 +2848,85 @@
                                     </tr>
                                 </thead>
                                 <tbody id="histComparisonTableBody">
+                                    <!-- Inserido dinamicamente via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Tabela Nominal de Equipes Entregues nas Datas Selecionadas -->
+                    <div class="delivery-table-collapsible-wrapper">
+                        <div class="delivery-table-collapsible-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                            <div>
+                                <h4 style="font-size: 1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">EQUIPES ENTREGUES NAS DATAS SELECIONADAS</h4>
+                                <p style="font-size: 0.78rem; color: var(--text-secondary); margin: 0;" id="histComparisonTeamsSubtitle">Confronto nominal consolidado entre EquipesBrasil e TIBCO Spotfire para todas as datas selecionadas</p>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button class="btn btn-secondary btn-sm" id="btnToggleComparisonTeamsTable" onclick="toggleComparisonTeamsTableCollapse()" title="Recolher / Expandir tabela consolidada" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+                                    <i data-lucide="chevron-down" id="iconToggleComparisonTeamsTable" style="width:14px; height:14px; margin-right:4px;"></i> <span id="textToggleComparisonTeamsTable">EXPANDIR TABELA COMPLETA</span>
+                                </button>
+                                <button class="btn btn-secondary btn-sm" onclick="exportComparisonTeamsExcel()" title="Baixar planilha Excel com dados nominais completos de todos os dias selecionados">
+                                    <i data-lucide="download" style="width:14px; height:14px; margin-right:4px;"></i> BAIXAR EXCEL COMPLETO
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Placeholder Otimizado quando Recolhido -->
+                        <div id="histComparisonTeamsPlaceholder" class="table-collapsed-placeholder" onclick="toggleComparisonTeamsTableCollapse()" style="cursor: pointer; padding: 24px; text-align: center; border-radius: 12px; margin-top: 14px; background: rgba(30, 41, 59, 0.45); border: 1px dashed rgba(56, 189, 248, 0.3); transition: all 0.2s ease;">
+                            <i data-lucide="chevrons-up-down" style="width: 22px; height: 22px; color: #38bdf8; margin-bottom: 6px;"></i>
+                            <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary);">Tabela nominal consolidada recolhida para otimização de performance</div>
+                            <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px;">
+                                Total de <strong id="histComparisonTeamsPlaceholderCount" style="color: #38bdf8;">0</strong> equipes auditadas nas datas selecionadas. Clique aqui para <strong>VER TABELA COMPLETA</strong>.
+                            </div>
+                        </div>
+
+                        <!-- Container da Tabela Nominal Consolidada (Recolhido por padrão) -->
+                        <div id="histComparisonTeamsCollapseBody" class="table-responsive" style="margin-top: 14px; display: none;">
+                            <!-- Barra de Filtros Rápida -->
+                            <div class="delivery-filter-row" style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: rgba(15, 23, 42, 0.5); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                    <span style="font-size: 0.74rem; font-weight: 800; color: var(--text-secondary); letter-spacing: 0.05em;">FILTRO:</span>
+                                    <input type="text" id="histComparisonTeamsSearchInput" placeholder="Buscar por equipe, base, placa, motorista..." oninput="handleComparisonTeamsSearch(this.value)" style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 5px 12px; color: #fff; font-size: 0.8rem; width: 240px;" />
+                                    <select id="histComparisonDateFilterSelect" onchange="handleComparisonDateFilterChange(this.value)" style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 5px 10px; color: #fff; font-size: 0.8rem;">
+                                        <option value="ALL">Todas as Datas</option>
+                                    </select>
+                                    <select id="histComparisonStatusFilterSelect" onchange="handleComparisonStatusFilterChange(this.value)" style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 5px 10px; color: #fff; font-size: 0.8rem;">
+                                        <option value="ALL">Todos os Status</option>
+                                        <option value="both">Conciliadas em Ambos</option>
+                                        <option value="spotfire_only">Apenas no Spotfire</option>
+                                        <option value="eb_only">Apenas no EquipesBrasil</option>
+                                        <option value="logoff">Com LogOff Real</option>
+                                    </select>
+                                </div>
+                                <div id="histComparisonTeamsCounterBadge" style="font-size: 0.76rem; color: #38bdf8; font-weight: 700;">
+                                    Exibindo 0 equipes
+                                </div>
+                            </div>
+
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>DATA</th>
+                                        <th>EQUIPE</th>
+                                        <th>BASE OPERACIONAL</th>
+                                        <th>REGIÃO / EMPRESA</th>
+                                        <th>FROTA</th>
+                                        <th>STATUS CRUZADO</th>
+                                        <th>LOGIN ENEL</th>
+                                        <th>LOGIN REAL (SPOTFIRE)</th>
+                                        <th>LOGOFF REAL (SPOTFIRE)</th>
+                                        <th>DURAÇÃO EFETIVA</th>
+                                        <th>AUDITORIA CÁLCULO</th>
+                                        <th>TURNO</th>
+                                        <th>ATRASO</th>
+                                        <th>COMPENSAÇÃO</th>
+                                        <th>OS (PROD / TOTAL)</th>
+                                        <th>STATUS CONCILIAÇÃO</th>
+                                        <th>MOTORISTA</th>
+                                        <th>PLACA</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="histComparisonTeamsTableBody">
                                     <!-- Inserido dinamicamente via JS -->
                                 </tbody>
                             </table>
@@ -7596,7 +7691,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.9.13-tv-delays-balanced-bottom-grid"></script>
+<script src="/static/js/app.js?v=5.9.15-forensic-duration-delay-bid-cross"></script>
 
 </body>
 </html>
