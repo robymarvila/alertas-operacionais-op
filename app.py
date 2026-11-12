@@ -39,6 +39,63 @@ from supabase_client import (
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VERSION_FILE = os.path.join(BASE_DIR, 'version.json')
+_version_cache = {'version': None, 'build_id': None, 'last_check': 0}
+
+def get_git_commit_hash():
+    """Obtém o hash curto do commit Git atual de forma resiliente."""
+    try:
+        import subprocess
+        res = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'], cwd=BASE_DIR, stderr=subprocess.DEVNULL)
+        return res.decode('utf-8').strip()
+    except Exception:
+        pass
+    try:
+        head_path = os.path.join(BASE_DIR, '.git', 'HEAD')
+        if os.path.exists(head_path):
+            with open(head_path, 'r', encoding='utf-8') as f:
+                ref = f.read().strip()
+            if ref.startswith('ref:'):
+                parts = ref.split(' ')
+                if len(parts) > 1:
+                    ref_path = os.path.join(BASE_DIR, '.git', parts[1].strip())
+                    if os.path.exists(ref_path):
+                        with open(ref_path, 'r', encoding='utf-8') as f:
+                            return f.read().strip()[:7]
+            else:
+                return ref[:7]
+    except Exception:
+        pass
+    return None
+
+def get_current_app_version():
+    """Retorna a versão e build_id atuais do sistema com cache TTL de 4 segundos."""
+    global _version_cache
+    now = time.time()
+    if _version_cache['version'] and (now - _version_cache['last_check'] < 4):
+        return _version_cache['version'], _version_cache['build_id']
+
+    ver = "6.1.0"
+    bid = "20261112"
+    if os.path.exists(VERSION_FILE):
+        try:
+            with open(VERSION_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                ver = data.get('version', ver)
+                bid = data.get('build_id', bid)
+        except Exception:
+            pass
+
+    commit = get_git_commit_hash()
+    if commit:
+        bid = commit
+        if commit not in ver:
+            ver = f"{ver}-{commit}"
+
+    _version_cache['version'] = ver
+    _version_cache['build_id'] = bid
+    _version_cache['last_check'] = now
+    return ver, bid
 
 app = Flask(
     __name__,
@@ -57,6 +114,11 @@ def add_cors_headers(response):
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
 
+    # Injeta versão e build atuais para detecção instantânea de hot-update por clientes conectados
+    ver, bid = get_current_app_version()
+    response.headers['X-App-Version'] = ver
+    response.headers['X-App-Build-Id'] = bid
+
     # Evita cacheamento agressivo de APIs, HTML e Service Worker no navegador
     if request.path.startswith('/api/') or request.path in ['/', '/hub', '/trbonet', '/priorizador', '/sw.js', '/static/sw.js', '/manifest.webmanifest'] or (response.mimetype and 'text/html' in response.mimetype):
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
@@ -64,11 +126,33 @@ def add_cors_headers(response):
         response.headers['Expires'] = '0'
     return response
 
+@app.route('/api/system/version')
+@app.route('/api/version')
+def system_version_endpoint():
+    """Endpoint ultra-leve para heartbeat de versão e detecção de atualizações pelo frontend."""
+    ver, bid = get_current_app_version()
+    resp = jsonify({
+        'status': 'success',
+        'version': ver,
+        'build_id': bid,
+        'timestamp': int(time.time()),
+        'server_time': datetime.now().isoformat()
+    })
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
+
 @app.route('/')
 @app.route('/hub')
 def index():
     """Renderiza a aplicação principal com design 100% oficial e aprovado."""
-    return render_template('index.html')
+    ver, bid = get_current_app_version()
+    response = make_response(render_template('index.html', app_version=ver, build_id=bid))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 @app.route('/trbonet')
 def view_trbonet():
@@ -239,65 +323,119 @@ def auth_register():
 
 @app.route('/api/auth/session', methods=['GET'])
 def auth_session():
-    """Valida o token da sessão ativa."""
+    """Valida o token da sessão ativa e retorna dados do usuário autenticado."""
     user = get_current_user()
     if not user:
         return jsonify({"status": "unauthenticated", "authenticated": False}), 200
+    
+    user_id = user.get("sub")
+    cached_u = auth_manager.users.get(user_id) if user_id else None
+    precisa_trocar = cached_u.get("precisa_trocar_senha", False) if cached_u else False
+    role = cached_u.get("role", user.get("role")) if cached_u else user.get("role")
+    nome = cached_u.get("nome", user.get("nome")) if cached_u else user.get("nome")
+    email = cached_u.get("email", user.get("email")) if cached_u else user.get("email")
+    username = cached_u.get("username", user.get("username")) if cached_u else user.get("username")
+    matricula = cached_u.get("matricula", user.get("matricula")) if cached_u else user.get("matricula")
+
     return jsonify({
         "status": "success",
         "authenticated": True,
         "user": {
-            "id": user.get("sub"),
-            "nome": user.get("nome"),
-            "email": user.get("email"),
-            "matricula": user.get("matricula"),
-            "role": user.get("role")
+            "id": user_id,
+            "nome": nome,
+            "email": email,
+            "username": username,
+            "matricula": matricula,
+            "role": role,
+            "precisa_trocar_senha": precisa_trocar
         }
     })
 
-@app.route('/api/auth/users', methods=['GET'])
-def auth_list_users():
-    """Lista todos os usuários (Apenas Administrador)."""
+@app.route('/api/auth/change_password', methods=['POST'])
+def auth_change_password():
+    """Altera a senha do usuário logado (usado na troca obrigatória de 1º acesso)."""
     user = get_current_user()
-    if not user or user.get("role") != "admin":
-        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores."}), 403
+    if not user:
+        return jsonify({"status": "error", "message": "Usuário não autenticado."}), 401
+    
+    data = request.get_json(force=True, silent=True) or {}
+    new_password = data.get("new_password") or ""
+    
+    result = auth_manager.change_password(user.get("sub"), new_password)
+    status_code = 200 if result.get("status") == "success" else 400
+    return jsonify(result), status_code
+
+@app.route('/api/admin/users', methods=['GET'])
+def admin_list_users():
+    """Lista todos os usuários (Apenas Administrador e Gerente)."""
+    user = get_current_user()
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Gestores e Administradores."}), 403
     return jsonify({
         "status": "success",
         "users": auth_manager.list_users()
     })
 
-@app.route('/api/auth/approve_user', methods=['POST'])
-def auth_approve_user():
-    """Aprova ou altera o perfil de um usuário pendente (Apenas Administrador)."""
+@app.route('/api/admin/users/update_role', methods=['POST'])
+def admin_update_user_role():
+    """Altera o perfil RBAC de um usuário (Apenas Administrador)."""
     user = get_current_user()
-    if not user or user.get("role") != "admin":
-        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores."}), 403
+    if not user or user.get("role") != "administrador":
+        return jsonify({"status": "forbidden", "message": "Apenas o Administrador Geral pode alterar perfis."}), 403
     
     data = request.get_json(force=True, silent=True) or {}
-    user_id = data.get("user_id")
-    status = data.get("status", "approved")
-    role = data.get("role")
+    target_id = data.get("user_id")
+    new_role = data.get("role")
 
-    result = auth_manager.update_user_status(user_id, new_status=status, new_role=role)
+    result = auth_manager.update_user_role(target_id, new_role, user)
     status_code = 200 if result.get("status") == "success" else 400
     return jsonify(result), status_code
 
-@app.route('/api/auth/reject_user', methods=['POST'])
-def auth_reject_user():
-    """Rejeita o acesso de um usuário (Apenas Administrador)."""
+@app.route('/api/admin/users/set_temp_password', methods=['POST'])
+def admin_set_temp_password():
+    """Define senha provisória com troca obrigatória no próximo login (Administrador ou Gerente)."""
     user = get_current_user()
-    if not user or user.get("role") != "admin":
-        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores."}), 403
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
     
     data = request.get_json(force=True, silent=True) or {}
-    user_id = data.get("user_id")
-    result = auth_manager.update_user_status(user_id, new_status="rejected")
-    return jsonify(result)
+    target_id = data.get("user_id")
+    temp_password = data.get("temp_password")
 
-@app.route('/api/auth/delete_user', methods=['POST'])
-def auth_delete_user():
-    """Exclui um usuário do sistema (Apenas Administrador)."""
+    result = auth_manager.set_temporary_password(target_id, temp_password, user)
+    status_code = 200 if result.get("status") == "success" else 400
+    return jsonify(result), status_code
+
+@app.route('/api/admin/users/toggle_status', methods=['POST'])
+def admin_toggle_user_status():
+    """Ativa ou inativa usuário (Administrador ou Gerente)."""
     user = get_current_user()
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
+    
+    data = request.get_json(force=True, silent=True) or {}
+    target_id = data.get("user_id")
+    new_status = data.get("status", "ativo")
+
+    result = auth_manager.update_user_status(target_id, new_status, user)
+    status_code = 200 if result.get("status") == "success" else 400
+    return jsonify(result), status_code
+
+@app.route('/api/admin/import_fleet_users', methods=['POST'])
+def admin_import_fleet_users():
+    """Importa ou sincroniza usuários a partir da base do sistema Fleet."""
+    user = get_current_user()
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
+    
+    result = auth_manager.import_fleet_users()
+    status_code = 200 if result.get("status") == "success" else 500
+    return jsonify(result), status_code
+
+@app.route('/api/auth/users', methods=['GET'])
+def auth_list_users():
+    """Alias compatível para lista de usuários."""
+    return admin_list_users()
     if not user or user.get("role") != "admin":
         return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores."}), 403
     
@@ -2608,6 +2746,16 @@ def get_tv_delay_summary():
         date_ref = request.args.get("date") or delivery_manager.get_operational_date()
         geo_scope = request.args.get("scope", "ALL").upper()
         summary = delivery_manager.get_delay_analytics_summary(date_ref=date_ref, geo_scope=geo_scope)
+        
+        # Mascaramento para perfil Gerente (ocultação estrita de valores em Reais)
+        current_user = get_current_user()
+        if current_user and current_user.get("role") == "gerente":
+            if isinstance(summary, dict):
+                summary["hide_financial_values"] = True
+                summary["total_perda_financeira"] = 0
+                summary["total_perda_financeira_str"] = "R$ --,--"
+                summary["media_perda_por_equipe_str"] = "R$ --,--"
+
         return jsonify(summary)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -2646,6 +2794,39 @@ def get_delivery_delays_analytics():
             status_login_filter=status_login_filter,
             include_stc_leste=include_stc_leste
         )
+
+        # Regra RBAC para perfil 'gerente': valores em Reais (R$) ocultados em conformidade com diretriz
+        current_user = get_current_user()
+        if current_user and current_user.get("role") == "gerente":
+            if isinstance(analytics, dict):
+                analytics["hide_financial_values"] = True
+                if "kpis" in analytics:
+                    analytics["kpis"]["total_perda_financeira"] = 0
+                    analytics["kpis"]["total_perda_financeira_str"] = "R$ --,--"
+                    analytics["kpis"]["media_perda_por_equipe_str"] = "R$ --,--"
+                if "shifts_summary" in analytics and isinstance(analytics["shifts_summary"], dict):
+                    for s in analytics["shifts_summary"].values():
+                        if isinstance(s, dict):
+                            s["impacto_financeiro_reais"] = 0
+                            s["impacto_financeiro_str"] = "R$ --,--"
+                if "top_delayed_teams" in analytics and isinstance(analytics["top_delayed_teams"], list):
+                    for t in analytics["top_delayed_teams"]:
+                        if isinstance(t, dict):
+                            t["custo_atraso_reais"] = 0
+                            t["custo_atraso_str"] = "R$ --,--"
+                if "top_justifications" in analytics and isinstance(analytics["top_justifications"], list):
+                    for j in analytics["top_justifications"]:
+                        if isinstance(j, dict):
+                            j["impacto_financeiro_reais"] = 0
+                            j["impacto_financeiro_str"] = "R$ --,--"
+                if "teams_table" in analytics and isinstance(analytics["teams_table"], list):
+                    for row in analytics["teams_table"]:
+                        if isinstance(row, dict):
+                            row["valor_hora"] = 0
+                            row["valor_hora_str"] = "R$ --,--"
+                            row["perda_estimada_reais"] = 0
+                            row["perda_estimada_str"] = "R$ --,--"
+
         return jsonify(analytics)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

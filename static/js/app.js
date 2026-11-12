@@ -3,6 +3,126 @@
  * Motor Reativo, Multi-Seleção Regional e de Bases, Sincronização PowerON e Auditoria
  */
 
+// ==============================================================================
+// GESTOR DE VERSÃO E AUTO-ATUALIZAÇÃO EM TEMPO REAL (HOT-UPDATE / ZERO-CACHE)
+// ==============================================================================
+(function() {
+    let isAutoUpdating = false;
+    let lastVersionCheck = 0;
+
+    // Obtém a versão inicial injetada pelo Jinja ou meta tag
+    const metaVer = document.querySelector('meta[name="app-version"]')?.getAttribute('content');
+    window.APP_VERSION = window.APP_VERSION || metaVer || '6.1.0';
+
+    async function triggerSystemAutoUpdate(newVersion) {
+        if (isAutoUpdating) return;
+        isAutoUpdating = true;
+
+        console.log(`[AUTO-UPDATE] Nova versão detectada: ${newVersion} (Versão atual: ${window.APP_VERSION}). Atualizando sistema...`);
+
+        // Banner flutuante ultra-premium informando o usuário
+        try {
+            const banner = document.createElement('div');
+            banner.id = 'sysAutoUpdateNotification';
+            banner.style.cssText = `
+                position: fixed;
+                top: 24px;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 1000000;
+                background: linear-gradient(135deg, #0284c7, #0369a1);
+                color: #ffffff;
+                padding: 14px 28px;
+                border-radius: 14px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.7), 0 0 25px rgba(56, 189, 248, 0.5);
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                font-family: inherit;
+                font-size: 0.92rem;
+                font-weight: 700;
+                border: 1px solid rgba(255, 255, 255, 0.25);
+                backdrop-filter: blur(12px);
+                user-select: none;
+                pointer-events: none;
+            `;
+            banner.innerHTML = `
+                <div style="width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #ffffff; border-radius: 50%; animation: sysSpin 0.8s linear infinite;"></div>
+                <span>Nova versão do sistema detectada! Atualizando para a versão mais recente...</span>
+                <style>@keyframes sysSpin { to { transform: rotate(360deg); } }</style>
+            `;
+            document.body.appendChild(banner);
+        } catch (e) {}
+
+        // Limpa agressivamente caches locais e service workers
+        try {
+            if ('caches' in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(k => caches.delete(k)));
+            }
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (const reg of registrations) {
+                    await reg.unregister();
+                }
+            }
+        } catch (e) {
+            console.warn('[AUTO-UPDATE] Falha ao limpar caches locais:', e);
+        }
+
+        // Força recarregamento da página com timestamp para furar qualquer cache de proxy / navegador
+        setTimeout(() => {
+            const hash = window.location.hash || '';
+            const timestamp = Date.now();
+            window.location.replace(`${window.location.pathname}?_v=${timestamp}${hash}`);
+        }, 700);
+    }
+    window.triggerSystemAutoUpdate = triggerSystemAutoUpdate;
+
+    async function checkSystemVersion(force = false) {
+        if (isAutoUpdating) return;
+        const now = Date.now();
+        if (!force && (now - lastVersionCheck < 4000)) return;
+        lastVersionCheck = now;
+
+        try {
+            const res = await originalFetch(`/api/system/version?_t=${now}`, {
+                cache: 'no-store',
+                headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data && data.version && window.APP_VERSION && data.version !== window.APP_VERSION) {
+                triggerSystemAutoUpdate(data.version);
+            }
+        } catch (e) {}
+    }
+    window.checkSystemVersion = checkSystemVersion;
+
+    // 1. Interceptor de fetch para detecção reativa imediata em qualquer ação do sistema
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+        const response = await originalFetch.apply(this, args);
+        try {
+            const serverVersion = response.headers.get('x-app-version');
+            if (serverVersion && window.APP_VERSION && serverVersion !== window.APP_VERSION) {
+                triggerSystemAutoUpdate(serverVersion);
+            }
+        } catch (err) {}
+        return response;
+    };
+
+    // 2. Eventos de retorno de foco e visibilidade
+    window.addEventListener('focus', () => checkSystemVersion());
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') checkSystemVersion();
+    });
+    window.addEventListener('hashchange', () => checkSystemVersion());
+
+    // 3. Heartbeat periódico a cada 20 segundos para dashboards e painéis TV
+    setInterval(() => checkSystemVersion(), 20000);
+})();
+
 // Configuração das 2 Regiões Oficiais Alpitel (7 Bases Oficiais)
 const REGION_CONFIG = {
     NORTE_ALPITEL: {
@@ -119,10 +239,10 @@ const appState = {
     barChart: null
 };
 
-// Estado de Autenticação e Controle de Acesso (E2EE)
+// Estado de Autenticação e Controle de Acesso (E2EE / Zero-Knowledge)
 const authState = {
-    token: sessionStorage.getItem('cco_auth_token') || null,
-    user: JSON.parse(sessionStorage.getItem('cco_auth_user') || 'null'),
+    token: localStorage.getItem('cco_auth_token') || sessionStorage.getItem('cco_auth_token') || null,
+    user: JSON.parse(localStorage.getItem('cco_auth_user') || sessionStorage.getItem('cco_auth_user') || 'null'),
     isAuthenticated: false,
     activeTab: 'login',
     adminUsers: []
@@ -363,6 +483,10 @@ function applyTheme(theme) {
 // NAVEGAÇÃO ENTRE PORTAL HUB E MÓDULO OPERACIONAL
 // ==========================================================================
 function navigateToView(viewName) {
+    if (typeof checkSystemVersion === 'function') {
+        checkSystemVersion();
+    }
+
     if (viewName === 'admin') {
         if (!authState.isAuthenticated) {
             showToast('Acesso Restrito: Autentique-se com sua matrícula e senha para acessar esta funcionalidade.', 'warning');
@@ -2389,22 +2513,32 @@ function openModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.style.display = 'flex';
+        modal.style.opacity = '1';
+        modal.style.pointerEvents = 'auto';
         void modal.offsetWidth;
         modal.classList.add('active');
+        if (window.lucide) lucide.createIcons();
     }
 }
+window.openModal = openModal;
 
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.remove('active');
+        modal.style.display = 'none';
+        modal.style.opacity = '0';
+        modal.style.pointerEvents = 'none';
         setTimeout(() => {
             if (!modal.classList.contains('active')) {
-                modal.style.display = '';
+                modal.style.display = 'none';
+                modal.style.opacity = '0';
+                modal.style.pointerEvents = 'none';
             }
         }, 250);
     }
 }
+window.closeModal = closeModal;
 
 // ==========================================================================
 // UPLOAD DE ARQUIVOS (EXCEL / CSV)
@@ -5088,151 +5222,799 @@ window.exportAuditTableCSV = exportAuditTableCSV;
 // ==========================================================================
 
 async function initAuth() {
-    if (authState.token) {
+    const maintScreen = document.getElementById('screenSystemMaintenance');
+    const storedToken = localStorage.getItem('cco_auth_token') || sessionStorage.getItem('cco_auth_token') || authState.token;
+
+    if (storedToken) {
         try {
             const resp = await fetch('/api/auth/session', {
-                headers: { 'Authorization': `Bearer ${authState.token}` }
+                headers: { 'Authorization': `Bearer ${storedToken}` }
             });
             const data = await resp.json();
-            if (data.status === 'success' && data.authenticated) {
+            if (data.status === 'success' && data.authenticated && data.user) {
                 authState.isAuthenticated = true;
+                authState.token = storedToken;
                 authState.user = data.user;
-                sessionStorage.setItem('cco_auth_user', JSON.stringify(data.user));
+                localStorage.setItem('cco_auth_token', storedToken);
+                localStorage.setItem('cco_auth_user', JSON.stringify(data.user));
+
+                // Verifica se há troca de senha obrigatória
+                if (data.user.precisa_trocar_senha) {
+                    if (maintScreen) maintScreen.style.display = 'none';
+                    openForceChangePasswordModal();
+                } else {
+                    if (maintScreen) maintScreen.style.display = 'none';
+                    applyRbacPermissions(data.user.role);
+                }
             } else {
                 handleLogout(false);
             }
-        } catch {
-            authState.isAuthenticated = !!authState.token;
+        } catch (err) {
+            console.warn('[AUTH] Falha ao verificar sessão:', err);
+            if (authState.user && storedToken) {
+                authState.isAuthenticated = true;
+                if (maintScreen) maintScreen.style.display = 'none';
+                applyRbacPermissions(authState.user.role);
+            } else {
+                handleLogout(false);
+            }
         }
     } else {
         authState.isAuthenticated = false;
+        authState.token = null;
+        authState.user = null;
+        if (maintScreen) maintScreen.style.display = 'flex';
+        applyRbacPermissions(null);
     }
     updateAuthUI();
 }
 
 function updateAuthUI() {
     const isAuth = authState.isAuthenticated && !!authState.user;
-    const isAdmin = isAuth && authState.user.role === 'admin';
-    const userName = isAuth ? (authState.user.nome || 'AUTENTICADO') : 'Acesso Restrito';
+    const user = authState.user;
+    const role = (user && user.role) ? user.role.toLowerCase() : '';
+    const userName = isAuth ? (user.nome || user.username || 'USUÁRIO') : 'Acesso Restrito';
+    const firstWord = userName.split(' ')[0];
 
-    // 1. Alterna classe no body para exibir/ocultar badges de bloqueio
+    // 1. Alterna classe no body
     document.body.classList.toggle('unlocked-ops', isAuth);
 
-    // 2. Atualiza Botão do Hub Central
-    const btnHub = document.getElementById('btnAuthHub');
-    const labelHub = document.getElementById('authLockTextHub');
-    const iconHub = document.getElementById('authLockIconHub');
-    if (btnHub) {
-        btnHub.classList.toggle('locked', !isAuth);
-        btnHub.classList.toggle('unlocked', isAuth);
+    // 2. Hub Session Header Pill
+    const hubPill = document.getElementById('hubUserHeaderPill');
+    const hubAvatar = document.getElementById('hubUserAvatar');
+    const hubName = document.getElementById('hubUserName');
+    const hubRoleBadge = document.getElementById('hubUserRoleBadge');
+    const hubLogout = document.getElementById('btnHubLogout');
+    const hubManageUsers = document.getElementById('btnHubManageUsers');
+
+    if (hubPill) hubPill.style.display = isAuth ? 'inline-flex' : 'none';
+    if (hubAvatar) hubAvatar.textContent = firstWord.charAt(0).toUpperCase();
+    if (hubName) hubName.textContent = firstWord;
+    if (hubRoleBadge) {
+        hubRoleBadge.className = `badge-role-${role || 'supervisor'}`;
+        hubRoleBadge.textContent = (role || 'SUPERVISOR').toUpperCase();
     }
-    if (labelHub) {
-        labelHub.textContent = isAuth ? `🔓 ${userName.split(' ')[0]}` : 'Acesso Restrito';
+    if (hubLogout) hubLogout.style.display = isAuth ? 'inline-flex' : 'none';
+    if (hubManageUsers) hubManageUsers.style.display = (isAuth && ['gerente', 'administrador'].includes(role)) ? 'inline-flex' : 'none';
+
+    // 3. Delivery Session Header Pill
+    const delivPill = document.getElementById('deliveryUserHeaderPill');
+    const delivAvatar = document.getElementById('deliveryUserAvatar');
+    const delivName = document.getElementById('deliveryUserName');
+    const delivRoleBadge = document.getElementById('deliveryUserRoleBadge');
+    const delivLogout = document.getElementById('btnDeliveryLogout');
+    const delivManageUsers = document.getElementById('btnDeliveryManageUsers');
+
+    if (delivPill) delivPill.style.display = isAuth ? 'inline-flex' : 'none';
+    if (delivAvatar) delivAvatar.textContent = firstWord.charAt(0).toUpperCase();
+    if (delivName) delivName.textContent = firstWord;
+    if (delivRoleBadge) {
+        delivRoleBadge.className = `badge-role-${role || 'supervisor'}`;
+        delivRoleBadge.textContent = (role || 'SUPERVISOR').toUpperCase();
     }
-    if (iconHub) {
-        iconHub.setAttribute('data-lucide', isAuth ? 'lock-open' : 'lock');
-    }
+    if (delivLogout) delivLogout.style.display = isAuth ? 'inline-flex' : 'none';
+    if (delivManageUsers) delivManageUsers.style.display = (isAuth && ['gerente', 'administrador'].includes(role)) ? 'inline-flex' : 'none';
 
-    // 3. Atualiza Botão do Módulo
-    const btnMod = document.getElementById('btnAuthModule');
-    const labelMod = document.getElementById('authLockTextModule');
-    const iconMod = document.getElementById('authLockIconModule');
-    if (btnMod) {
-        btnMod.classList.toggle('locked', !isAuth);
-        btnMod.classList.toggle('unlocked', isAuth);
-    }
-    if (labelMod) {
-        labelMod.textContent = isAuth ? `🔓 ${userName.split(' ')[0]}` : 'Bloqueado';
-    }
-    if (iconMod) {
-        iconMod.setAttribute('data-lucide', isAuth ? 'lock-open' : 'lock');
-    }
+    // 4. Botões de Cadeado Legados (para sincronização suave de estado)
+    const btns = [
+        { btn: document.getElementById('btnAuthHub'), icon: document.getElementById('authLockIconHub'), text: document.getElementById('authLockTextHub') },
+        { btn: document.getElementById('btnAuthModule'), icon: document.getElementById('authLockIconModule'), text: document.getElementById('authLockTextModule') },
+        { btn: document.getElementById('btnAuthDelivery'), icon: document.getElementById('authLockIconDelivery'), text: document.getElementById('authLockTextDelivery') }
+    ];
 
-    // 4. Modal de Autenticação - Mostra sessão ativa ou formulário de login
-    const loginForm = document.getElementById('formAuthLogin');
-    const activeBox = document.getElementById('authActiveSessionBox');
-    const adminTabBtn = document.getElementById('tabBtnAdminUsers');
-    const manageShortBtn = document.getElementById('btnManageUsersShort');
+    btns.forEach(item => {
+        if (item.btn) {
+            item.btn.classList.toggle('locked', !isAuth);
+            item.btn.classList.toggle('unlocked', isAuth);
+            if (item.text) item.text.textContent = isAuth ? `🔓 ${firstWord}` : 'Acesso Restrito';
+            if (item.icon) item.icon.setAttribute('data-lucide', isAuth ? 'lock-open' : 'lock');
+        }
+    });
 
-    if (isAuth) {
-        if (loginForm) loginForm.style.display = 'none';
-        if (activeBox) activeBox.style.display = 'flex';
+    // 5. Botões de ação restrita
+    document.querySelectorAll('.locked-action').forEach(el => {
+        const lockBadge = el.querySelector('.lock-mini-badge');
+        if (isAuth) {
+            el.classList.remove('action-locked');
+            if (lockBadge) lockBadge.style.display = 'none';
+        } else {
+            el.classList.add('action-locked');
+            if (lockBadge) lockBadge.style.display = 'inline-flex';
+        }
+    });
 
-        const nameEl = document.getElementById('activeUserName');
-        const emailEl = document.getElementById('activeUserEmail');
-        const matEl = document.getElementById('activeUserMatricula');
-        const roleEl = document.getElementById('activeUserRole');
-
-        if (nameEl) nameEl.textContent = authState.user.nome || 'COLABORADOR';
-        if (emailEl) emailEl.textContent = authState.user.email || '--';
-        if (matEl) matEl.textContent = authState.user.matricula || '--';
-        if (roleEl) roleEl.textContent = (authState.user.role || 'OPERADOR').toUpperCase();
-
-        if (adminTabBtn) adminTabBtn.style.display = isAdmin ? 'inline-flex' : 'none';
-        if (manageShortBtn) manageShortBtn.style.display = isAdmin ? 'inline-flex' : 'none';
-        const btnHubAdmin = document.getElementById('btnHubAdminPanel');
-        const btnGoToAdmin = document.getElementById('btnGoToAdminPanel');
-        const btnHubTv = document.getElementById('btnHubTvPanel');
-        const btnGoToTv = document.getElementById('btnGoToTvPanel');
-        const cardHubTv = document.getElementById('cardHubTvPanel');
-        const btnHubCLevel = document.getElementById('btnHubCLevelPanel');
-        const cardHubCLevel = document.getElementById('cardHubCLevelPanel');
-
-        if (btnHubAdmin) btnHubAdmin.style.display = 'inline-flex';
-        if (btnGoToAdmin) btnGoToAdmin.style.display = 'inline-flex';
-        if (btnHubTv) btnHubTv.style.display = 'inline-flex';
-        if (btnGoToTv) btnGoToTv.style.display = 'inline-flex';
-        if (cardHubTv) cardHubTv.style.display = 'block';
-        if (btnHubCLevel) btnHubCLevel.style.display = 'inline-flex';
-        if (cardHubCLevel) cardHubCLevel.style.display = 'flex';
-    } else {
-        if (loginForm) loginForm.style.display = 'block';
-        if (activeBox) activeBox.style.display = 'none';
-        if (adminTabBtn) adminTabBtn.style.display = 'none';
-        if (manageShortBtn) manageShortBtn.style.display = 'none';
-        const btnHubAdmin = document.getElementById('btnHubAdminPanel');
-        const btnGoToAdmin = document.getElementById('btnGoToAdminPanel');
-        const btnHubTv = document.getElementById('btnHubTvPanel');
-        const btnGoToTv = document.getElementById('btnGoToTvPanel');
-        const cardHubTv = document.getElementById('cardHubTvPanel');
-        const btnHubCLevel = document.getElementById('btnHubCLevelPanel');
-        const cardHubCLevel = document.getElementById('cardHubCLevelPanel');
-
-        if (btnHubAdmin) btnHubAdmin.style.display = 'none';
-        if (btnGoToAdmin) btnGoToAdmin.style.display = 'none';
-        if (btnHubTv) btnHubTv.style.display = 'none';
-        if (btnGoToTv) btnGoToTv.style.display = 'none';
-        if (cardHubTv) cardHubTv.style.display = 'none';
-        if (btnHubCLevel) btnHubCLevel.style.display = 'none';
-        if (cardHubCLevel) cardHubCLevel.style.display = 'none';
+    // 6. Controle de tela fake
+    const maintScreen = document.getElementById('screenSystemMaintenance');
+    if (maintScreen) {
+        maintScreen.style.display = isAuth ? 'none' : 'flex';
     }
 
-    initIcons();
+    if (window.lucide) lucide.createIcons();
 }
 
-function handleRestrictedAction(fn) {
-    if (!authState.isAuthenticated) {
-        showToast('Ação Restrita: Efetue o login no Cadeado para executar esta função.', 'warning');
-        openAuthModal();
+function applyRbacPermissions(role) {
+    const userRole = (role || (authState.user && authState.user.role) || '').toLowerCase();
+
+    document.body.classList.remove('role-supervisor', 'role-coordenador', 'role-gerente', 'role-administrador');
+    if (userRole) {
+        document.body.classList.add(`role-${userRole}`);
+    }
+
+    // 1. Sub-Módulos Entrega de Equipes
+    const btnOnline = document.getElementById('btnSwitchOnline');
+    const btnOnlineBid = document.getElementById('btnSwitchOnlineBid');
+    const btnHist = document.getElementById('btnSwitchHistory');
+    const btnDelays = document.getElementById('btnSwitchDelays');
+
+    const mobSubOnline = document.getElementById('mobSubDeliveryOnline');
+    const mobSubBid = document.getElementById('mobSubDeliveryBid');
+    const mobSubHist = document.getElementById('mobSubDeliveryHistory');
+
+    if (userRole === 'supervisor') {
+        // Supervisor: apenas ONLINE e AUDITORIA & HISTÓRICO
+        if (btnOnline) btnOnline.style.display = 'inline-flex';
+        if (btnHist) btnHist.style.display = 'inline-flex';
+        if (btnOnlineBid) btnOnlineBid.style.display = 'none';
+        if (btnDelays) btnDelays.style.display = 'none';
+        if (mobSubBid) mobSubBid.style.display = 'none';
+
+        if (deliveryState && (deliveryState.currentScreen === 'online_bid' || deliveryState.currentScreen === 'delays')) {
+            switchDeliveryScreen('online');
+        }
+    } else if (userRole === 'coordenador') {
+        // Coordenador: ONLINE, EQUIPES LOGADAS x CHECKLIST e AUDITORIA & HISTÓRICO (ATRASOS E TURNOS bloqueado)
+        if (btnOnline) btnOnline.style.display = 'inline-flex';
+        if (btnOnlineBid) btnOnlineBid.style.display = 'inline-flex';
+        if (btnHist) btnHist.style.display = 'inline-flex';
+        if (btnDelays) btnDelays.style.display = 'none';
+        if (mobSubBid) mobSubBid.style.display = 'inline-flex';
+
+        if (deliveryState && deliveryState.currentScreen === 'delays') {
+            switchDeliveryScreen('online');
+        }
+    } else if (userRole === 'gerente') {
+        // Gerente: todos os 4 sub-módulos visíveis, com restrição estrita a valores em R$
+        if (btnOnline) btnOnline.style.display = 'inline-flex';
+        if (btnOnlineBid) btnOnlineBid.style.display = 'inline-flex';
+        if (btnHist) btnHist.style.display = 'inline-flex';
+        if (btnDelays) btnDelays.style.display = 'inline-flex';
+        if (mobSubBid) mobSubBid.style.display = 'inline-flex';
+    } else if (userRole === 'administrador') {
+        // Administrador: acesso total e irrestrito
+        if (btnOnline) btnOnline.style.display = 'inline-flex';
+        if (btnOnlineBid) btnOnlineBid.style.display = 'inline-flex';
+        if (btnHist) btnHist.style.display = 'inline-flex';
+        if (btnDelays) btnDelays.style.display = 'inline-flex';
+        if (mobSubBid) mobSubBid.style.display = 'inline-flex';
+    }
+
+    // 2. Botões de Gestão de Usuários
+    const canManageUsers = ['gerente', 'administrador'].includes(userRole);
+    const btnHubUsers = document.getElementById('btnHubManageUsers');
+    const btnDelivUsers = document.getElementById('btnDeliveryManageUsers');
+    if (btnHubUsers) btnHubUsers.style.display = canManageUsers ? 'inline-flex' : 'none';
+    if (btnDelivUsers) btnDelivUsers.style.display = canManageUsers ? 'inline-flex' : 'none';
+
+    // 3. Botão Sincronizar Fleet visível apenas para Administrador
+    const btnSyncFleet = document.getElementById('btnImportFleetUsers');
+    if (btnSyncFleet) {
+        btnSyncFleet.style.display = (userRole === 'administrador') ? 'inline-flex' : 'none';
+    }
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function openSecureLoginModal() {
+    const modal = document.getElementById('modalSecureLogin');
+    const input = document.getElementById('secLoginIdentifier');
+    const pass = document.getElementById('secLoginPassword');
+    const errBanner = document.getElementById('secLoginErrorBanner');
+
+    if (pass) pass.value = '';
+    if (errBanner) errBanner.style.display = 'none';
+
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.opacity = '1';
+        modal.style.pointerEvents = 'auto';
+        void modal.offsetWidth;
+        modal.classList.add('active');
+        if (input) setTimeout(() => input.focus(), 150);
+        if (window.lucide) lucide.createIcons();
+    }
+}
+window.openSecureLoginModal = openSecureLoginModal;
+
+async function handleSecureLoginSubmit(event) {
+    if (event) event.preventDefault();
+    const idInput = document.getElementById('secLoginIdentifier');
+    const pwdInput = document.getElementById('secLoginPassword');
+    const btn = document.getElementById('btnSubmitSecureLogin');
+    const errBanner = document.getElementById('secLoginErrorBanner');
+    const errMsg = document.getElementById('secLoginErrorMsg');
+
+    const identifier = (idInput?.value || '').trim();
+    const password = pwdInput?.value || '';
+
+    if (!identifier || !password) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'Informe seu usuário/matrícula e senha.';
+        }
         return;
     }
-    if (typeof fn === 'function') {
-        fn();
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Verificando credenciais...</span>`;
+        if (window.lucide) lucide.createIcons();
     }
+    if (errBanner) errBanner.style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ login: identifier, password: password })
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success' && res.token && res.user) {
+            authState.token = res.token;
+            authState.user = res.user;
+            authState.isAuthenticated = true;
+
+            localStorage.setItem('cco_auth_token', res.token);
+            localStorage.setItem('cco_auth_user', JSON.stringify(res.user));
+            sessionStorage.setItem('cco_auth_token', res.token);
+            sessionStorage.setItem('cco_auth_user', JSON.stringify(res.user));
+
+            closeModal('modalSecureLogin');
+            const secModal = document.getElementById('modalSecureLogin');
+            if (secModal) {
+                secModal.classList.remove('active');
+                secModal.style.display = 'none';
+                secModal.style.opacity = '0';
+                secModal.style.pointerEvents = 'none';
+            }
+
+            if (res.precisa_trocar_senha || res.user.precisa_trocar_senha) {
+                openForceChangePasswordModal();
+            } else {
+                const maintScreen = document.getElementById('screenSystemMaintenance');
+                if (maintScreen) maintScreen.style.display = 'none';
+                applyRbacPermissions(res.user.role);
+                updateAuthUI();
+                showToast(res.message || `Bem-vindo(a), ${res.user.nome}!`, 'success');
+            }
+        } else {
+            if (errBanner) {
+                errBanner.style.display = 'flex';
+                if (errMsg) errMsg.textContent = res.message || 'Credenciais inválidas. Verifique os dados digitados.';
+            }
+            showToast(res.message || 'Falha na autenticação.', 'danger');
+        }
+    } catch (e) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = `Erro de conexão: ${e.message}`;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="unlock"></i> <span>Autenticar e Desbloquear Sistema</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+}
+window.handleSecureLoginSubmit = handleSecureLoginSubmit;
+
+function openForceChangePasswordModal() {
+    const modal = document.getElementById('modalForceChangePassword');
+    const p1 = document.getElementById('forceNewPass');
+    const p2 = document.getElementById('forceConfirmPass');
+    const errBanner = document.getElementById('forcePassErrorBanner');
+
+    if (p1) p1.value = '';
+    if (p2) p2.value = '';
+    if (errBanner) errBanner.style.display = 'none';
+
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.opacity = '1';
+        modal.style.pointerEvents = 'auto';
+        void modal.offsetWidth;
+        modal.classList.add('active');
+        if (p1) setTimeout(() => p1.focus(), 150);
+        if (window.lucide) lucide.createIcons();
+    }
+}
+window.openForceChangePasswordModal = openForceChangePasswordModal;
+
+async function handleForceChangePasswordSubmit(event) {
+    if (event) event.preventDefault();
+    const p1 = document.getElementById('forceNewPass')?.value || '';
+    const p2 = document.getElementById('forceConfirmPass')?.value || '';
+    const errBanner = document.getElementById('forcePassErrorBanner');
+    const errMsg = document.getElementById('forcePassErrorMsg');
+    const btn = document.getElementById('btnSubmitForcePass');
+
+    if (p1.length < 6) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'A nova senha deve ter no mínimo 6 caracteres.';
+        }
+        return;
+    }
+
+    if (p1 !== p2) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'As senhas digitadas não coincidem.';
+        }
+        return;
+    }
+
+    if (errBanner) errBanner.style.display = 'none';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Salvando nova senha...</span>`;
+        if (window.lucide) lucide.createIcons();
+    }
+
+    try {
+        const resp = await fetch('/api/auth/change_password', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            },
+            body: JSON.stringify({ new_password: p1 })
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            if (authState.user) {
+                authState.user.precisa_trocar_senha = false;
+                localStorage.setItem('cco_auth_user', JSON.stringify(authState.user));
+            }
+            closeModal('modalForceChangePassword');
+            const forceModal = document.getElementById('modalForceChangePassword');
+            if (forceModal) {
+                forceModal.classList.remove('active');
+                forceModal.style.display = 'none';
+                forceModal.style.opacity = '0';
+                forceModal.style.pointerEvents = 'none';
+            }
+            const maintScreen = document.getElementById('screenSystemMaintenance');
+            if (maintScreen) maintScreen.style.display = 'none';
+            applyRbacPermissions(authState.user?.role);
+            updateAuthUI();
+            showToast('Senha alterada com sucesso! Bem-vindo(a) ao sistema.', 'success');
+        } else {
+            if (errBanner) {
+                errBanner.style.display = 'flex';
+                if (errMsg) errMsg.textContent = res.message || 'Erro ao alterar a senha.';
+            }
+        }
+    } catch (e) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = `Erro de comunicação: ${e.message}`;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="check-circle"></i> <span>Salvar Nova Senha e Acessar</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+}
+window.handleForceChangePasswordSubmit = handleForceChangePasswordSubmit;
+
+function togglePasswordVisibility(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) icon.setAttribute('data-lucide', 'eye-off');
+    } else {
+        input.type = 'password';
+        if (icon) icon.setAttribute('data-lucide', 'eye');
+    }
+    if (window.lucide) lucide.createIcons();
+}
+window.togglePasswordVisibility = togglePasswordVisibility;
+
+function handleLogout(showNotification = true) {
+    authState.token = null;
+    authState.user = null;
+    authState.isAuthenticated = false;
+    localStorage.removeItem('cco_auth_token');
+    localStorage.removeItem('cco_auth_user');
+    sessionStorage.removeItem('cco_auth_token');
+    sessionStorage.removeItem('cco_auth_user');
+
+    const maintScreen = document.getElementById('screenSystemMaintenance');
+    if (maintScreen) maintScreen.style.display = 'flex';
+
+    applyRbacPermissions(null);
+    updateAuthUI();
+    closeModal('modalSecureLogin');
+    closeModal('modalForceChangePassword');
+    closeModal('modalAdminUsersManagement');
+    closeModal('authModal');
+
+    if (showNotification) {
+        showToast('Sessão encerrada com sucesso. Sistema protegido.', 'info');
+    }
+    if (appState.currentView === 'admin') {
+        navigateToView('hub');
+    }
+}
+window.handleLogout = handleLogout;
+
+// ==============================================================================
+// GESTÃO E GOVERNANÇA DE USUÁRIOS E PERFIS RBAC (ADMIN & GERENTE)
+// ==============================================================================
+let adminUsersCache = [];
+
+function openAdminUsersModal() {
+    const userRole = (authState.user?.role || '').toLowerCase();
+    if (!['administrador', 'gerente'].includes(userRole)) {
+        showToast('Acesso Restrito: Apenas Gerentes e Administradores têm permissão.', 'warning');
+        return;
+    }
+    const modal = document.getElementById('modalAdminUsersManagement');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.opacity = '1';
+        modal.style.pointerEvents = 'auto';
+        void modal.offsetWidth;
+        modal.classList.add('active');
+        loadAllAdminUsers();
+        if (window.lucide) lucide.createIcons();
+    }
+}
+window.openAdminUsersModal = openAdminUsersModal;
+
+async function loadAllAdminUsers() {
+    const icon = document.getElementById('iconReloadAdminUsers');
+    if (icon) icon.classList.add('spin-animation');
+    const tbody = document.getElementById('adminUsersManagementTableBody');
+
+    try {
+        const resp = await fetch('/api/admin/users', {
+            headers: { 'Authorization': `Bearer ${authState.token || ''}` }
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success' && Array.isArray(res.users)) {
+            adminUsersCache = res.users;
+            updateAdminUsersKpis(res.users);
+            filterAdminUsersTable();
+        } else {
+            if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #f43f5e; padding: 24px;">${res.message || 'Erro ao consultar usuários.'}</td></tr>`;
+        }
+    } catch (e) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #f43f5e; padding: 24px;">Falha: ${e.message}</td></tr>`;
+    } finally {
+        if (icon) setTimeout(() => icon.classList.remove('spin-animation'), 400);
+        if (window.lucide) lucide.createIcons();
+    }
+}
+window.loadAllAdminUsers = loadAllAdminUsers;
+
+function updateAdminUsersKpis(users) {
+    const total = users.length;
+    const admin = users.filter(u => u.role === 'administrador').length;
+    const gerente = users.filter(u => u.role === 'gerente').length;
+    const coord = users.filter(u => u.role === 'coordenador').length;
+    const superv = users.filter(u => u.role === 'supervisor').length;
+
+    const elTot = document.getElementById('kpiUserTotal');
+    const elAdm = document.getElementById('kpiUserAdmin');
+    const elGer = document.getElementById('kpiUserGerente');
+    const elCoo = document.getElementById('kpiUserCoord');
+    const elSup = document.getElementById('kpiUserSuper');
+
+    if (elTot) elTot.textContent = total;
+    if (elAdm) elAdm.textContent = admin;
+    if (elGer) elGer.textContent = gerente;
+    if (elCoo) elCoo.textContent = coord;
+    if (elSup) elSup.textContent = superv;
 }
 
-function openAuthModal() {
-    const modal = document.getElementById('authModal');
+function filterAdminUsersTable() {
+    const searchVal = (document.getElementById('adminUserSearchInput')?.value || '').toLowerCase().trim();
+    const roleVal = document.getElementById('adminUserRoleFilter')?.value || 'ALL';
+    const statusVal = document.getElementById('adminUserStatusFilter')?.value || 'ALL';
+
+    let filtered = adminUsersCache.filter(u => {
+        if (roleVal !== 'ALL' && u.role !== roleVal) return false;
+        if (statusVal !== 'ALL' && u.status !== statusVal) return false;
+        if (searchVal) {
+            const nome = (u.nome || '').toLowerCase();
+            const email = (u.email || '').toLowerCase();
+            const user = (u.username || '').toLowerCase();
+            const mat = (u.matricula || '').toLowerCase();
+            if (!nome.includes(searchVal) && !email.includes(searchVal) && !user.includes(searchVal) && !mat.includes(searchVal)) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    renderAdminUsersManagementTable(filtered);
+}
+window.filterAdminUsersTable = filterAdminUsersTable;
+
+function renderAdminUsersManagementTable(users) {
+    const tbody = document.getElementById('adminUsersManagementTableBody');
+    if (!tbody) return;
+
+    if (!users || users.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #94a3b8; padding: 24px;">Nenhum usuário corresponde aos filtros aplicados.</td></tr>`;
+        return;
+    }
+
+    const currentRole = (authState.user?.role || '').toLowerCase();
+    const isMasterAdmin = currentRole === 'administrador';
+
+    tbody.innerHTML = users.map(u => {
+        const isMaster = u.is_master || u.username === 'administrado';
+        const roleBadgeClass = `badge-role-${u.role || 'supervisor'}`;
+        const isPendingPass = u.precisa_trocar_senha;
+
+        let roleColHtml = '';
+        if (isMasterAdmin && !isMaster) {
+            roleColHtml = `
+                <select class="form-select" style="font-size: 0.76rem; padding: 4px 8px; border-radius: 6px;" onchange="handleUserRoleChange('${u.id}', this.value)">
+                    <option value="supervisor" ${u.role === 'supervisor' ? 'selected' : ''}>Supervisor</option>
+                    <option value="coordenador" ${u.role === 'coordenador' ? 'selected' : ''}>Coordenador</option>
+                    <option value="gerente" ${u.role === 'gerente' ? 'selected' : ''}>Gerente</option>
+                    <option value="administrador" ${u.role === 'administrador' ? 'selected' : ''}>Administrador</option>
+                </select>
+            `;
+        } else {
+            roleColHtml = `<span class="${roleBadgeClass}">${(u.role || 'supervisor').toUpperCase()}</span>`;
+        }
+
+        const isAtivo = u.status === 'ativo';
+        const statusHtml = isAtivo
+            ? `<span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 0.72rem;">ATIVO</span>`
+            : `<span style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35); padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 0.72rem;">INATIVO</span>`;
+
+        let actionsHtml = '';
+        if (isMaster) {
+            actionsHtml = `<span style="color: #c084fc; font-weight: 700; font-size: 0.74rem;">★ Administrador Master</span>`;
+        } else {
+            actionsHtml = `
+                <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                    <button class="btn btn-secondary btn-xs" onclick="openSetTempPasswordModal('${u.id}', '${encodeURIComponent(u.nome || '')}')" title="Emitir nova senha provisória" style="font-size: 0.72rem; padding: 3px 8px;">
+                        <i data-lucide="key" style="width: 12px; height: 12px;"></i> Senha
+                    </button>
+                    <button class="btn ${isAtivo ? 'btn-danger' : 'btn-success'} btn-xs" onclick="handleToggleUserStatus('${u.id}', '${isAtivo ? 'inativo' : 'ativo'}')" title="${isAtivo ? 'Inativar usuário' : 'Ativar usuário'}" style="font-size: 0.72rem; padding: 3px 8px;">
+                        ${isAtivo ? 'Inativar' : 'Ativar'}
+                    </button>
+                </div>
+            `;
+        }
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                <td style="padding: 10px 12px;">
+                    <strong style="color: #38bdf8; font-size: 0.82rem; display: block;">${u.nome}</strong>
+                    <div style="font-size: 0.7rem; color: #94a3b8; display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+                        <span style="font-family: monospace;">@${u.username || '--'}</span>
+                        ${isPendingPass ? '<span style="color: #fbbf24; font-weight: 700;">• Troca Pendente</span>' : ''}
+                    </div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <span class="badge-tag badge-matricula">${u.matricula || '--'}</span>
+                    <div style="font-size: 0.7rem; color: #64748b; margin-top: 2px;">${u.regional || ''} ${u.setor ? '• ' + u.setor : ''}</div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <span style="color: #cbd5e1; font-size: 0.78rem;">${u.email}</span>
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    ${roleColHtml}
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    ${statusHtml}
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    ${actionsHtml}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function openSetTempPasswordModal(userId, encodedName) {
+    const name = decodeURIComponent(encodedName || '');
+    const modal = document.getElementById('modalSetTempPassword');
+    const uInput = document.getElementById('tempPassUserId');
+    const lbl = document.getElementById('tempPassTargetUser');
+    const val = document.getElementById('tempPassValue');
+
+    if (uInput) uInput.value = userId;
+    if (lbl) lbl.textContent = `Para: ${name}`;
+    if (val) val.value = 'Alpitel@2026';
+
     if (modal) {
-        switchAuthTab('login');
+        modal.style.display = 'flex';
+        modal.style.opacity = '1';
+        modal.style.pointerEvents = 'auto';
+        void modal.offsetWidth;
         modal.classList.add('active');
-        initIcons();
+        if (val) setTimeout(() => val.select(), 150);
+        if (window.lucide) lucide.createIcons();
     }
 }
+window.openSetTempPasswordModal = openSetTempPasswordModal;
+
+async function handleConfirmTempPasswordSubmit() {
+    const userId = document.getElementById('tempPassUserId')?.value;
+    const tempPass = document.getElementById('tempPassValue')?.value?.trim();
+
+    if (!userId || !tempPass || tempPass.length < 6) {
+        showToast('A senha provisória deve conter no mínimo 6 caracteres.', 'warning');
+        return;
+    }
+
+    try {
+        const resp = await fetch('/api/admin/users/set_temp_password', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            },
+            body: JSON.stringify({ user_id: userId, temp_password: tempPass })
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            closeModal('modalSetTempPassword');
+            const tempModal = document.getElementById('modalSetTempPassword');
+            if (tempModal) {
+                tempModal.classList.remove('active');
+                tempModal.style.display = 'none';
+                tempModal.style.opacity = '0';
+                tempModal.style.pointerEvents = 'none';
+            }
+            showToast(res.message, 'success');
+            await loadAllAdminUsers();
+        } else {
+            showToast(res.message || 'Falha ao gravar senha provisória.', 'danger');
+        }
+    } catch (e) {
+        showToast(`Erro: ${e.message}`, 'danger');
+    }
+}
+window.handleConfirmTempPasswordSubmit = handleConfirmTempPasswordSubmit;
+
+async function handleUserRoleChange(userId, newRole) {
+    try {
+        const resp = await fetch('/api/admin/users/update_role', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            },
+            body: JSON.stringify({ user_id: userId, role: newRole })
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            showToast(res.message, 'success');
+            await loadAllAdminUsers();
+        } else {
+            showToast(res.message || 'Erro ao alterar perfil.', 'danger');
+            await loadAllAdminUsers();
+        }
+    } catch (e) {
+        showToast(`Erro: ${e.message}`, 'danger');
+    }
+}
+window.handleUserRoleChange = handleUserRoleChange;
+
+async function handleToggleUserStatus(userId, newStatus) {
+    try {
+        const resp = await fetch('/api/admin/users/toggle_status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            },
+            body: JSON.stringify({ user_id: userId, status: newStatus })
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            showToast(res.message, 'success');
+            await loadAllAdminUsers();
+        } else {
+            showToast(res.message || 'Falha ao alterar status.', 'danger');
+        }
+    } catch (e) {
+        showToast(`Erro: ${e.message}`, 'danger');
+    }
+}
+window.handleToggleUserStatus = handleToggleUserStatus;
+
+async function handleImportFleetUsersSubmit() {
+    const btn = document.getElementById('btnImportFleetUsers');
+    const icon = document.getElementById('iconSyncFleet');
+
+    if (btn) btn.disabled = true;
+    if (icon) icon.classList.add('spin-animation');
+
+    try {
+        const resp = await fetch('/api/admin/import_fleet_users', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            }
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            showToast(res.message, 'success');
+            await loadAllAdminUsers();
+        } else {
+            showToast(res.message || 'Falha ao sincronizar com o Fleet.', 'danger');
+        }
+    } catch (e) {
+        showToast(`Erro de comunicação: ${e.message}`, 'danger');
+    } finally {
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove('spin-animation');
+        if (window.lucide) lucide.createIcons();
+    }
+}
+window.handleImportFleetUsersSubmit = handleImportFleetUsersSubmit;
+
+function openAuthModal() {
+    if (!authState.isAuthenticated) {
+        openSecureLoginModal();
+    } else {
+        const modal = document.getElementById('authModal');
+        if (modal) {
+            switchAuthTab('login');
+            modal.classList.add('active');
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+}
+window.openAuthModal = openAuthModal;
 
 function switchAuthTab(tab) {
     authState.activeTab = tab;
-
     document.querySelectorAll('.auth-tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.auth-tab-pane').forEach(pane => pane.classList.remove('active'));
 
@@ -5243,279 +6025,11 @@ function switchAuthTab(tab) {
         document.getElementById('tabBtnRegister')?.classList.add('active');
         document.getElementById('authPaneRegister')?.classList.add('active');
     } else if (tab === 'admin_users') {
-        document.getElementById('tabBtnAdminUsers')?.classList.add('active');
-        document.getElementById('authPaneAdminUsers')?.classList.add('active');
-        loadAdminUsersList();
+        openAdminUsersModal();
     }
-    initIcons();
+    if (window.lucide) lucide.createIcons();
 }
-
-async function handleLoginSubmit(event) {
-    event.preventDefault();
-    const loginInput = document.getElementById('loginIdentifier');
-    const passwordInput = document.getElementById('loginPassword');
-    const btn = document.getElementById('btnSubmitLogin');
-
-    const loginVal = (loginInput?.value || '').trim();
-    const passVal = passwordInput?.value || '';
-
-    if (!loginVal || !passVal) {
-        showToast('Preencha o identificador (matrícula/e-mail) e a senha.', 'warning');
-        return;
-    }
-
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> Autenticando...`;
-    }
-    initIcons();
-
-    try {
-        const resp = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ login: loginVal, password: passVal })
-        });
-        const result = await resp.json();
-
-        if (result.status === 'success') {
-            authState.token = result.token;
-            authState.user = result.user;
-            authState.isAuthenticated = true;
-
-            sessionStorage.setItem('cco_auth_token', result.token);
-            sessionStorage.setItem('cco_auth_user', JSON.stringify(result.user));
-
-            showToast(result.message || 'Desbloqueio efetuado com sucesso!', 'success');
-            updateAuthUI();
-            closeModal('authModal');
-            if (passwordInput) passwordInput.value = '';
-        } else {
-            showToast(result.message || 'Credenciais inválidas.', 'danger');
-        }
-    } catch (err) {
-        showToast(`Erro na autenticação: ${err.message}`, 'danger');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = `<i data-lucide="unlock"></i> Entrar e Desbloquear Painel`;
-        }
-        initIcons();
-    }
-}
-
-async function handleRegisterSubmit(event) {
-    event.preventDefault();
-    const nome = (document.getElementById('regNome')?.value || '').trim().toUpperCase();
-    const email = (document.getElementById('regEmail')?.value || '').trim().toLowerCase();
-    const matricula = (document.getElementById('regMatricula')?.value || '').trim().toUpperCase();
-    const password = document.getElementById('regPassword')?.value || '';
-    const btn = document.getElementById('btnSubmitRegister');
-
-    // Validações Client-side
-    if (!nome || nome.length < 3) {
-        showToast('Informe o nome completo do colaborador.', 'warning');
-        return;
-    }
-
-    if (!email.endsWith('@alpitelbrasil.com.br')) {
-        showToast('O e-mail deve pertencer ao domínio @alpitelbrasil.com.br', 'danger');
-        return;
-    }
-
-    const matriculaRegex = /^BR0\d{9}$/;
-    if (!matriculaRegex.test(matricula)) {
-        showToast('Matrícula inválida! Padrão obrigatório: BR0 seguido de 9 dígitos numéricos (ex: BR0144636617).', 'danger');
-        return;
-    }
-
-    if (!password || password.length < 4) {
-        showToast('A senha deve conter no mínimo 4 caracteres.', 'warning');
-        return;
-    }
-
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> Enviando solicitação...`;
-    }
-    initIcons();
-
-    try {
-        const resp = await fetch('/api/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nome, email, matricula, password })
-        });
-        const result = await resp.json();
-
-        if (result.status === 'success') {
-            showToast(result.message, 'success');
-            document.getElementById('formAuthRegister')?.reset();
-            switchAuthTab('login');
-        } else {
-            showToast(result.message || 'Falha ao solicitar cadastro.', 'danger');
-        }
-    } catch (err) {
-        showToast(`Erro no envio do cadastro: ${err.message}`, 'danger');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = `<i data-lucide="send"></i> Enviar Solicitação de Acesso`;
-        }
-        initIcons();
-    }
-}
-
-function handleLogout(showNotification = true) {
-    authState.token = null;
-    authState.user = null;
-    authState.isAuthenticated = false;
-    sessionStorage.removeItem('cco_auth_token');
-    sessionStorage.removeItem('cco_auth_user');
-    updateAuthUI();
-    closeModal('authModal');
-    if (showNotification) {
-        showToast('Painel bloqueado com sucesso (Logout efetuado).', 'info');
-    }
-    if (appState.currentView === 'admin') {
-        navigateToView('hub');
-    }
-}
-
-async function loadAdminUsersList() {
-    const tbody = document.getElementById('adminUsersTableBody');
-    const iconReload = document.getElementById('iconReloadUsers');
-    if (iconReload) iconReload.classList.add('spin-animation');
-
-    try {
-        const resp = await fetch('/api/auth/users', {
-            headers: { 'Authorization': `Bearer ${authState.token || ''}` }
-        });
-        const data = await resp.json();
-
-        if (data.status === 'success' && Array.isArray(data.users)) {
-            authState.adminUsers = data.users;
-            renderAdminUsersTable(data.users);
-        } else {
-            if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">${data.message || 'Erro ao carregar usuários.'}</td></tr>`;
-        }
-    } catch (err) {
-        if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Falha na consulta: ${err.message}</td></tr>`;
-    } finally {
-        if (iconReload) setTimeout(() => iconReload.classList.remove('spin-animation'), 400);
-        initIcons();
-    }
-}
-
-function renderAdminUsersTable(users) {
-    const tbody = document.getElementById('adminUsersTableBody');
-    if (!tbody) return;
-
-    if (users.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-secondary">Nenhum usuário cadastrado além do Administrador.</td></tr>`;
-        return;
-    }
-
-    tbody.innerHTML = users.map(u => {
-        let statusBadge = `<span class="status-badge-pending">PENDENTE</span>`;
-        if (u.status === 'approved') statusBadge = `<span class="status-badge-approved">APROVADO</span>`;
-        if (u.status === 'rejected') statusBadge = `<span class="status-badge-rejected">REJEITADO</span>`;
-
-        const isMasterAdmin = u.id === '00000000-0000-0000-0000-000000000001' || u.matricula === 'BR0000000000';
-
-        let actionButtons = '';
-        if (!isMasterAdmin) {
-            actionButtons = `
-                <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
-                    ${u.status !== 'approved' ? `<button class="btn-action-icon btn-approve" title="Aprovar Acesso" onclick="window.approveUser('${u.id}')"><i data-lucide="check"></i></button>` : ''}
-                    ${u.status !== 'rejected' ? `<button class="btn-action-icon btn-reject" title="Rejeitar / Desativar" onclick="window.rejectUser('${u.id}')"><i data-lucide="x"></i></button>` : ''}
-                    <button class="btn-action-icon btn-delete" title="Excluir Usuário" onclick="window.deleteUser('${u.id}', '${u.nome}')"><i data-lucide="trash-2"></i></button>
-                </div>
-            `;
-        } else {
-            actionButtons = `<span class="text-secondary" style="font-size: 0.78rem;">Conta Mestra</span>`;
-        }
-
-        return `
-            <tr>
-                <td><strong class="text-cyan">${u.nome}</strong></td>
-                <td><span class="badge-tag badge-matricula">${u.matricula}</span></td>
-                <td><span class="text-secondary">${u.email}</span></td>
-                <td><span class="badge-tag badge-role">${(u.role || 'OPERADOR').toUpperCase()}</span></td>
-                <td>${statusBadge}</td>
-                <td style="text-align: center;">${actionButtons}</td>
-            </tr>
-        `;
-    }).join('');
-
-    initIcons();
-}
-
-window.approveUser = async function (userId) {
-    try {
-        const resp = await fetch('/api/auth/approve_user', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authState.token || ''}`
-            },
-            body: JSON.stringify({ user_id: userId, status: 'approved' })
-        });
-        const data = await resp.json();
-        if (data.status === 'success') {
-            showToast(data.message, 'success');
-            await loadAdminUsersList();
-        } else {
-            showToast(data.message, 'danger');
-        }
-    } catch (err) {
-        showToast(`Erro ao aprovar usuário: ${err.message}`, 'danger');
-    }
-};
-
-window.rejectUser = async function (userId) {
-    try {
-        const resp = await fetch('/api/auth/reject_user', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authState.token || ''}`
-            },
-            body: JSON.stringify({ user_id: userId })
-        });
-        const data = await resp.json();
-        if (data.status === 'success') {
-            showToast(data.message, 'info');
-            await loadAdminUsersList();
-        } else {
-            showToast(data.message, 'danger');
-        }
-    } catch (err) {
-        showToast(`Erro ao rejeitar usuário: ${err.message}`, 'danger');
-    }
-};
-
-window.deleteUser = async function (userId, userName = '') {
-    try {
-        const resp = await fetch('/api/auth/delete_user', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authState.token || ''}`
-            },
-            body: JSON.stringify({ user_id: userId })
-        });
-        const data = await resp.json();
-        if (data.status === 'success') {
-            showToast(data.message || `Usuário ${userName || ''} excluído com sucesso!`, 'success');
-            await loadAdminUsersList();
-        } else {
-            showToast(data.message || 'Erro ao excluir usuário.', 'danger');
-        }
-    } catch (err) {
-        showToast(`Erro ao excluir usuário: ${err.message}`, 'danger');
-    }
-};
+window.switchAuthTab = switchAuthTab;
 
 // ==============================================================================
 // MÓDULO 2: ENTREGA DE EQUIPES (ENEL SP) - CONTROLLER
@@ -5583,6 +6097,20 @@ window.deliveryState = deliveryState;
 
 // Alternador de Telas (ONLINE vs ONLINE x BID vs AUDITORIA & HISTÓRICO)
 async function switchDeliveryScreen(screenName) {
+    if (typeof checkSystemVersion === 'function') {
+        checkSystemVersion();
+    }
+
+    // Validação estrita de perfil RBAC
+    const userRole = (authState.user?.role || '').toLowerCase();
+    if (userRole === 'supervisor' && (screenName === 'online_bid' || screenName === 'delays')) {
+        showToast('Acesso Restrito: Seu perfil de Supervisor não tem permissão para este módulo.', 'warning');
+        screenName = 'online';
+    } else if (userRole === 'coordenador' && screenName === 'delays') {
+        showToast('Acesso Restrito: Seu perfil de Coordenador não tem permissão para o módulo de Atrasos e Turnos.', 'warning');
+        screenName = 'online';
+    }
+
     deliveryState.currentScreen = screenName;
     const btnOnline = document.getElementById('btnSwitchOnline');
     const btnOnlineBid = document.getElementById('btnSwitchOnlineBid');
@@ -16906,7 +17434,7 @@ async function loadTvDashboardData(isManual = false) {
 
     const delBadge = document.getElementById('tvDeliveryStatusBadge');
     const prioBadge = document.getElementById('tvPrioStatusBadge');
-    
+
     // Apenas altera os badges para indicador de loading caso o usuário tenha clicado manualmente
     // No modo real-time/automático, mantém o layout perfeitamente estável e sem piscar!
     if (isManual) {
@@ -18727,6 +19255,10 @@ window.renderTvDelayCumulativeCharts = function (hourlyCurve) {
 window.renderTvDelaySection = function (data) {
     if (!data) return;
 
+    const isGerente = (authState.user && authState.user.role === 'gerente') || (data && data.hide_financial_values);
+    const tvCardPerda = document.getElementById('tvKpiFinancialCard');
+    if (tvCardPerda) tvCardPerda.style.display = isGerente ? 'none' : '';
+
     // 1. Mini Cards (5 Cards: Perda Financeira, Atrasadas, Horas Perdidas, Pontuais, Tempo no Prazo)
     tvSetTextIfChanged('tvKpiDelayTotalPerda', data.total_perda_financeira_str || 'R$ 0,00');
     tvSetTextIfChanged('tvKpiDelaySubPerda', `Média: ${data.custo_medio_atrasada_str || 'R$ 0,00'}/eq`);
@@ -19266,6 +19798,13 @@ window.loadDelaysAnalytics = async function (forceRefresh = false) {
 function renderDelaysScreen(data) {
     if (!data) return;
 
+    // Regra RBAC para perfil 'gerente': oculta card de Perda Financeira Estimada
+    const isGerente = (authState.user && authState.user.role === 'gerente') || (data && data.hide_financial_values);
+    const cardPerda = document.getElementById('delaysKpiFinancialCard');
+    if (cardPerda) cardPerda.style.display = isGerente ? 'none' : '';
+    const tvCardPerda = document.getElementById('tvKpiFinancialCard');
+    if (tvCardPerda) tvCardPerda.style.display = isGerente ? 'none' : '';
+
     // Reseta filtros locais de seleção por clique ao carregar novos dados
     if (delaysHourlyState && delaysHourlyState.selectedHours) delaysHourlyState.selectedHours.clear();
     delaysState.selectedCardShift = null;
@@ -19347,6 +19886,8 @@ function renderDelaysDailyShifts(shifts, data) {
     const sTarde = shifts['Tarde'] || {};
     const sNoite = shifts['Noite'] || {};
 
+    const isGerente = (authState.user && authState.user.role === 'gerente') || (data && data.hide_financial_values);
+
     // 0. Card TOTAL CONSOLIDADO
     const elLossTot = document.getElementById('delaysShiftLossTotal');
     const elAtrTot = document.getElementById('delaysShiftAtrasadasTotal');
@@ -19365,7 +19906,10 @@ function renderDelaysDailyShifts(shifts, data) {
     const fmtTotalPerda = (data && data.total_perda_financeira_str) ? data.total_perda_financeira_str :
         `R$ ${totalPerdaFin.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    if (elLossTot) elLossTot.textContent = fmtTotalPerda;
+    if (elLossTot) {
+        elLossTot.textContent = isGerente ? '' : fmtTotalPerda;
+        elLossTot.style.display = isGerente ? 'none' : '';
+    }
     if (elAtrTot) elAtrTot.textContent = (data && data.total_atrasadas !== undefined) ? data.total_atrasadas : totalAtrasadas;
     if (elPraTot) elPraTot.textContent = (data && data.total_no_prazo !== undefined) ? data.total_no_prazo : totalNoPrazo;
     if (elTmpTot) elTmpTot.textContent = (data && data.total_tempo_atraso_str) ? data.total_tempo_atraso_str : fmtTotalTempo;
@@ -19376,19 +19920,19 @@ function renderDelaysDailyShifts(shifts, data) {
                 <span class="delays-slot-tag" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">Manhã</span>
                 <span class="text-rose font-mono"><b>${sManha.atrasadas || 0}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${sManha.no_prazo || 0}</b> prazo</span>
-                <span class="font-mono text-rose" style="font-weight: 700;">${sManha.perda_financeira_str || 'R$ 0,00'}</span>
+                ${!isGerente ? `<span class="font-mono text-rose" style="font-weight: 700;">${sManha.perda_financeira_str || 'R$ 0,00'}</span>` : ''}
             </div>
             <div class="delays-slot-row-item" onclick="event.stopPropagation(); toggleDelaysShiftCardFilter('Tarde')" style="cursor: pointer;" title="Filtrar equipes do Turno Tarde">
                 <span class="delays-slot-tag" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">Tarde</span>
                 <span class="text-rose font-mono"><b>${sTarde.atrasadas || 0}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${sTarde.no_prazo || 0}</b> prazo</span>
-                <span class="font-mono text-rose" style="font-weight: 700;">${sTarde.perda_financeira_str || 'R$ 0,00'}</span>
+                ${!isGerente ? `<span class="font-mono text-rose" style="font-weight: 700;">${sTarde.perda_financeira_str || 'R$ 0,00'}</span>` : ''}
             </div>
             <div class="delays-slot-row-item" onclick="event.stopPropagation(); toggleDelaysShiftCardFilter('Noite')" style="cursor: pointer;" title="Filtrar equipes do Turno Noite">
                 <span class="delays-slot-tag" style="background: rgba(192, 132, 252, 0.2); color: #c084fc;">Noite</span>
                 <span class="text-rose font-mono"><b>${sNoite.atrasadas || 0}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${sNoite.no_prazo || 0}</b> prazo</span>
-                <span class="font-mono text-rose" style="font-weight: 700;">${sNoite.perda_financeira_str || 'R$ 0,00'}</span>
+                ${!isGerente ? `<span class="font-mono text-rose" style="font-weight: 700;">${sNoite.perda_financeira_str || 'R$ 0,00'}</span>` : ''}
             </div>
         `;
     }
@@ -19400,7 +19944,10 @@ function renderDelaysDailyShifts(shifts, data) {
     const elTmpM = document.getElementById('delaysShiftTempoManha');
     const elSlotsM = document.getElementById('delaysShiftSlotsManha');
 
-    if (elLossM) elLossM.textContent = sManha.perda_financeira_str || 'R$ 0,00';
+    if (elLossM) {
+        elLossM.textContent = isGerente ? '' : (sManha.perda_financeira_str || 'R$ 0,00');
+        elLossM.style.display = isGerente ? 'none' : '';
+    }
     if (elAtrM) elAtrM.textContent = sManha.atrasadas || 0;
     if (elPraM) elPraM.textContent = sManha.no_prazo || 0;
     if (elTmpM) elTmpM.textContent = sManha.tempo_atraso_str || '00h 00m';
@@ -19412,7 +19959,7 @@ function renderDelaysDailyShifts(shifts, data) {
                 <span class="text-rose font-mono"><b>${h.atrasadas}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${h.no_prazo}</b> prazo</span>
                 <span class="text-amber font-mono">${h.tempo_atraso_str}</span>
-                <span class="font-mono text-rose" style="font-weight: 700;">${h.perda_financeira_str}</span>
+                ${!isGerente ? `<span class="font-mono text-rose" style="font-weight: 700;">${h.perda_financeira_str}</span>` : ''}
             </div>
         `).join('');
     }
@@ -19424,7 +19971,10 @@ function renderDelaysDailyShifts(shifts, data) {
     const elTmpT = document.getElementById('delaysShiftTempoTarde');
     const elSlotsT = document.getElementById('delaysShiftSlotsTarde');
 
-    if (elLossT) elLossT.textContent = sTarde.perda_financeira_str || 'R$ 0,00';
+    if (elLossT) {
+        elLossT.textContent = isGerente ? '' : (sTarde.perda_financeira_str || 'R$ 0,00');
+        elLossT.style.display = isGerente ? 'none' : '';
+    }
     if (elAtrT) elAtrT.textContent = sTarde.atrasadas || 0;
     if (elPraT) elPraT.textContent = sTarde.no_prazo || 0;
     if (elTmpT) elTmpT.textContent = sTarde.tempo_atraso_str || '00h 00m';
@@ -19436,7 +19986,7 @@ function renderDelaysDailyShifts(shifts, data) {
                 <span class="text-rose font-mono"><b>${h.atrasadas}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${h.no_prazo}</b> prazo</span>
                 <span class="text-amber font-mono">${h.tempo_atraso_str}</span>
-                <span class="font-mono text-rose" style="font-weight: 700;">${h.perda_financeira_str}</span>
+                ${!isGerente ? `<span class="font-mono text-rose" style="font-weight: 700;">${h.perda_financeira_str}</span>` : ''}
             </div>
         `).join('');
     }
@@ -19448,7 +19998,10 @@ function renderDelaysDailyShifts(shifts, data) {
     const elTmpN = document.getElementById('delaysShiftTempoNoite');
     const elSlotsN = document.getElementById('delaysShiftSlotsNoite');
 
-    if (elLossN) elLossN.textContent = sNoite.perda_financeira_str || 'R$ 0,00';
+    if (elLossN) {
+        elLossN.textContent = isGerente ? '' : (sNoite.perda_financeira_str || 'R$ 0,00');
+        elLossN.style.display = isGerente ? 'none' : '';
+    }
     if (elAtrN) elAtrN.textContent = sNoite.atrasadas || 0;
     if (elPraN) elPraN.textContent = sNoite.no_prazo || 0;
     if (elTmpN) elTmpN.textContent = sNoite.tempo_atraso_str || '00h 00m';
@@ -19460,7 +20013,7 @@ function renderDelaysDailyShifts(shifts, data) {
                 <span class="text-rose font-mono"><b>${h.atrasadas}</b> atraso</span>
                 <span class="text-emerald font-mono"><b>${h.no_prazo}</b> prazo</span>
                 <span class="text-amber font-mono">${h.tempo_atraso_str}</span>
-                <span class="font-mono text-rose" style="font-weight: 700;">${h.perda_financeira_str}</span>
+                ${!isGerente ? `<span class="font-mono text-rose" style="font-weight: 700;">${h.perda_financeira_str}</span>` : ''}
             </div>
         `).join('');
     }
@@ -20227,6 +20780,8 @@ function renderDelaysTopTeams(teams) {
         return;
     }
 
+    const isGerente = (authState.user && authState.user.role === 'gerente');
+
     list.innerHTML = teams.slice(0, 8).map((t, idx) => `
         <div class="delays-item-row" style="cursor: pointer;" onclick="openDelayJustificationModal('${t.team_code}', '${t.shift_code}', ${t.delay_minutes}, '${t.marcacao}')" title="Clique para justificar atraso">
             <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
@@ -20242,7 +20797,7 @@ function renderDelaysTopTeams(teams) {
                 </div>
             </div>
             <div style="text-align: right; flex-shrink: 0; margin-left: 10px;">
-                <strong class="text-rose font-mono" style="font-size: 0.85rem; display: block;">${t.financial_loss_str}</strong>
+                ${!isGerente ? `<strong class="text-rose font-mono" style="font-size: 0.85rem; display: block;">${t.financial_loss_str}</strong>` : ''}
                 <span class="text-amber font-mono" style="font-size: 0.72rem;">+${t.delay_minutes} min ${t.has_justification ? '<span class="delay-justified-icon">&#10003;</span>' : ''}</span>
             </div>
         </div>
@@ -20459,6 +21014,8 @@ function renderDelaysJustificationsList(containerId, justList) {
         return;
     }
 
+    const isGerente = (authState.user && authState.user.role === 'gerente');
+
     container.innerHTML = justList.map(j => {
         const pct = j.pct_perda || 0;
         const isUnjustified = !j.has_justification;
@@ -20479,7 +21036,7 @@ function renderDelaysJustificationsList(containerId, justList) {
                     </div>
                     <div style="text-align: right; display: flex; align-items: center; gap: 6px;">
                         <div>
-                            <strong class="delays-just-loss font-mono">${j.perda_reais_str}</strong>
+                            ${!isGerente ? `<strong class="delays-just-loss font-mono">${j.perda_reais_str}</strong>` : ''}
                             <div class="font-mono text-amber" style="font-size: 0.7rem;">${j.tempo_str}</div>
                         </div>
                         <span class="delays-just-btn-pill">
@@ -20488,7 +21045,7 @@ function renderDelaysJustificationsList(containerId, justList) {
                     </div>
                 </div>
                 <div class="delays-just-sub-row">
-                    <span>Impacto Contratual: <strong>${pct}%</strong> da perda</span>
+                    ${!isGerente ? `<span>Impacto Contratual: <strong>${pct}%</strong> da perda</span>` : `<span>Ocorrências: <strong>${j.qtd_equipes}</strong> equipes</span>`}
                 </div>
                 <div class="delays-just-bar-wrap">
                     <div class="delays-just-bar" style="width: ${Math.min(100, Math.max(4, pct))}%;"></div>
@@ -21071,6 +21628,7 @@ function saveDelaysVisibleColumns() {
 }
 
 function getDelaysActiveColumns() {
+    const isGerente = (authState.user && authState.user.role === 'gerente');
     const visCols = getDelaysVisibleColumns();
     const reorderOrder = getDelaysReorderableColumnsOrder();
     const colMap = new Map(DELAYS_TABLE_COLUMNS.map(c => [c.id, c]));
@@ -21080,7 +21638,11 @@ function getDelaysActiveColumns() {
         .filter(id => visCols.has(id) && colMap.has(id))
         .map(id => colMap.get(id));
 
-    return [...fixed, ...reordered];
+    let all = [...fixed, ...reordered];
+    if (isGerente) {
+        all = all.filter(c => c.id !== 'valor_hora' && c.id !== 'perda_financeira');
+    }
+    return all;
 }
 
 function updateDelaysColCountPill() {
@@ -21135,7 +21697,7 @@ function renderDelaysColPickerList() {
             <span style="font-size:0.6rem; color: #38bdf8;">Arraste e solte na posição desejada</span>
         </div>
         <div class="col-picker-dynamic-section" id="delaysColPickerDynamicList">
-            ${reorderOrder.map((colId, index) => {
+            ${reorderOrder.filter(id => !(authState.user && authState.user.role === 'gerente' && (id === 'valor_hora' || id === 'perda_financeira'))).map((colId, index) => {
         const c = reorderMap.get(colId);
         if (!c) return '';
         const isChecked = visCols.has(c.id);
@@ -21494,8 +22056,8 @@ function renderDelaysTable(teams) {
                 : `<span class="badge-status-login badge-status-programada">PROGRAMADA</span>`;
 
         const isMonthlyMode = delaysState.mode === 'monthly';
-        const rowClickAttr = isMonthlyMode 
-            ? `onclick="openMonthlyTeamDetailsModal('${t.team_code}')" title="Clique para abrir o Dossiê Analítico da equipe ${t.team_code} (Gráfico Diário & Pareto)"` 
+        const rowClickAttr = isMonthlyMode
+            ? `onclick="openMonthlyTeamDetailsModal('${t.team_code}')" title="Clique para abrir o Dossiê Analítico da equipe ${t.team_code} (Gráfico Diário & Pareto)"`
             : '';
         const rowClass = isMonthlyMode ? 'delays-table-clickable-row' : '';
 
@@ -21731,7 +22293,7 @@ function populateMonthlyTeamHeaderAndKpis(team) {
     if (elTotalLoss) elTotalLoss.textContent = team.financial_loss_str || 'R$ 0,00';
 }
 
-window.openMonthlyTeamDetailsModal = async function(teamCode) {
+window.openMonthlyTeamDetailsModal = async function (teamCode) {
     if (!teamCode) return;
     const modal = document.getElementById('monthlyTeamDetailsModal');
     if (!modal) return;
@@ -21797,7 +22359,7 @@ window.openMonthlyTeamDetailsModal = async function(teamCode) {
     if (window.lucide) lucide.createIcons();
 };
 
-window.closeMonthlyTeamDetailsModal = function() {
+window.closeMonthlyTeamDetailsModal = function () {
     const modal = document.getElementById('monthlyTeamDetailsModal');
     if (modal) {
         modal.classList.remove('active');
@@ -21812,7 +22374,7 @@ window.closeMonthlyTeamDetailsModal = function() {
     }
 };
 
-window.setMonthlyTeamChartView = function(viewType) {
+window.setMonthlyTeamChartView = function (viewType) {
     currentMonthlyTeamView = viewType;
     ['btnMTeamViewFinance', 'btnMTeamViewHours', 'btnMTeamViewCombined'].forEach(id => {
         const btn = document.getElementById(id);

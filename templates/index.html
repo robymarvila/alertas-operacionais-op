@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Alertas Operacionais OP - Equipes Brasil vs TRBOnet | CCO</title>
     
+    <!-- Blindagem Total contra Cache Stale em Navegadores e Proxies -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="app-version" content="{{ app_version }}">
+    <meta name="app-build-id" content="{{ build_id }}">
+    <script>
+        window.APP_VERSION = "{{ app_version }}";
+        window.APP_BUILD_ID = "{{ build_id }}";
+    </script>
+
     <!-- PWA & Mobile Web App Meta Tags -->
     <meta name="theme-color" content="#0B0F19" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#F8FAFC" media="(prefers-color-scheme: light)">
@@ -33,7 +44,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=5.9.13-tv-delays-balanced-bottom-grid">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v={{ app_version }}">
     <script>
         (function() {
             var hash = window.location.hash;
@@ -181,6 +192,25 @@
                     </div>
 
                     <div class="hub-header-actions-group">
+                        <!-- User Session Badge (quando logado) -->
+                        <div class="user-header-pill" id="hubUserHeaderPill" style="display: none;">
+                            <div class="user-header-avatar" id="hubUserAvatar">A</div>
+                            <span id="hubUserName" style="font-weight: 700;">ADMIN</span>
+                            <span id="hubUserRoleBadge" class="badge-role-administrador">ADMIN</span>
+                        </div>
+
+                        <!-- Botão de Gestão de Usuários (Visível para Gerente e Administrador) -->
+                        <button class="btn btn-primary btn-sm" id="btnHubManageUsers" onclick="openAdminUsersModal()" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px;">
+                            <i data-lucide="users" style="width: 15px; height: 15px; vertical-align: middle; margin-right: 4px;"></i>
+                            <span>Usuários</span>
+                        </button>
+
+                        <!-- Botão Logout / Sair -->
+                        <button class="btn btn-secondary btn-sm" id="btnHubLogout" onclick="handleLogout()" style="display: none; padding: 6px 12px; font-weight: 700; border-radius: 20px; color: #f43f5e;" title="Encerrar sessão e bloquear sistema">
+                            <i data-lucide="log-out" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 2px;"></i>
+                            <span>Sair</span>
+                        </button>
+
                         <!-- Botão de Autenticação / Cadeado no Hub Central -->
                         <button class="btn-auth-lock locked" id="btnAuthHub" onclick="openAuthModal()" title="Autenticação e Desbloqueio Operacional">
                             <div class="auth-lock-icon-wrap" id="authLockIconWrapHub">
@@ -1764,6 +1794,25 @@
 
                     <!-- Ações Rápidas do Cabeçalho -->
                     <div class="header-actions">
+                        <!-- User Session Badge (quando logado) -->
+                        <div class="user-header-pill" id="deliveryUserHeaderPill" style="display: none;">
+                            <div class="user-header-avatar" id="deliveryUserAvatar">A</div>
+                            <span id="deliveryUserName" style="font-weight: 700;">ADMIN</span>
+                            <span id="deliveryUserRoleBadge" class="badge-role-administrador">ADMIN</span>
+                        </div>
+
+                        <!-- Botão de Gestão de Usuários (Visível para Gerente e Administrador) -->
+                        <button class="btn btn-primary btn-sm" id="btnDeliveryManageUsers" onclick="openAdminUsersModal()" style="display: none; padding: 6px 12px; font-weight: 800; border-radius: 20px;">
+                            <i data-lucide="users" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i>
+                            <span>Usuários</span>
+                        </button>
+
+                        <!-- Botão Logout / Sair -->
+                        <button class="btn btn-secondary btn-sm" id="btnDeliveryLogout" onclick="handleLogout()" style="display: none; padding: 6px 12px; font-weight: 700; border-radius: 20px; color: #f43f5e;" title="Encerrar sessão">
+                            <i data-lucide="log-out" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 2px;"></i>
+                            <span>Sair</span>
+                        </button>
+
                         <!-- 0. Botão de Autenticação / Cadeado -->
                         <button class="btn btn-secondary btn-auth-lock locked" id="btnAuthDelivery" onclick="openAuthModal()" title="Autenticação e Desbloqueio Operacional">
                             <span id="authLockTextDelivery">BLOQUEADO</span>
@@ -3509,7 +3558,7 @@
                 <!-- 3. GRADE DE KPIS MONUMENTAIS (OPERACIONAL, HORAS & IMPACTO FINANCEIRO) -->
                 <div class="delays-kpi-grid">
                     <!-- KPI 1: Perda Financeira Estimada -->
-                    <div class="delays-kpi-card delays-kpi-card-financial">
+                    <div class="delays-kpi-card delays-kpi-card-financial gerente-hide-money" id="delaysKpiFinancialCard">
                         <div class="delays-kpi-header">
                             <div class="delays-kpi-title-row">
                                 <span class="delays-kpi-label">PERDA FINANCEIRA ESTIMADA</span>
@@ -5798,7 +5847,7 @@
                         <!-- MINI CARDS CONSOLIDADOS (5 CARDS: PERDA FINANCEIRA, ATRASADAS, HORAS PERDIDAS, PONTUAIS, TEMPO NO PRAZO) -->
                         <div class="tv-delays-kpis-grid">
                             <!-- Card 1: PERDA FINANCEIRA ESTIMADA DO DIA -->
-                            <div class="tv-kpi-card tv-kpi-loss-card">
+                            <div class="tv-kpi-card tv-kpi-loss-card gerente-hide-money" id="tvKpiFinancialCard">
                                 <div class="tv-kpi-card-header">
                                     <span class="tv-kpi-label">PERDA FINANCEIRA</span>
                                     <span class="tv-kpi-tag-tipo badge-tag-rose">OCIOSIDADE</span>
@@ -7690,8 +7739,317 @@
 <!-- Toast Notification Container -->
 <div class="toast-container" id="toastContainer"></div>
 
+<!-- ===================================================================== -->
+<!-- TELA FAKE INSTITUCIONAL: SISTEMA INDISPONÍVEL / MANUTENÇÃO PROGRAMADA -->
+<!-- ===================================================================== -->
+<div id="screenSystemMaintenance" class="system-maintenance-screen" style="display: flex;">
+    <div class="maint-stars-bg"></div>
+    <div class="maint-card glass-card">
+        <!-- Glowing Maintenance Graphic / Icon -->
+        <div class="maint-hero-graphic">
+            <div class="maint-halo-pulse"></div>
+            <div class="maint-icon-hex">
+                <i data-lucide="server" class="maint-icon-main"></i>
+                <div class="maint-icon-sub-badge">
+                    <i data-lucide="wrench" class="maint-icon-wrench"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Titles & Explanations -->
+        <h1 class="maint-title">SISTEMA TEMPORARIAMENTE INDISPONÍVEL</h1>
+        <p class="maint-lead-text" style="font-size: 1rem; font-weight: 700; color: #fbbf24; margin: 8px 0 0 0; letter-spacing: 0.03em;">
+            ESTAMOS PASSANDO POR MANUTENÇÃO SEM PREVISÃO PARA RETORNO
+        </p>
+    </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- CADEADO DISCRETO NO CANTO INFERIOR DIREITO DA TELA                    -->
+<!-- ===================================================================== -->
+<script>
+window.openSecureLoginModal = function() {
+    var modal = document.getElementById('modalSecureLogin');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.style.opacity = '1';
+        modal.style.pointerEvents = 'auto';
+        void modal.offsetWidth;
+        modal.classList.add('active');
+        var input = document.getElementById('secLoginIdentifier');
+        if (input) setTimeout(function() { input.focus(); }, 150);
+        if (window.lucide) lucide.createIcons();
+    }
+};
+window.closeModal = function(modalId) {
+    var modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+        modal.style.opacity = '0';
+        modal.style.pointerEvents = 'none';
+    }
+};
+</script>
+<button id="btnDiscreetLock" class="btn-discreet-lock" onclick="openSecureLoginModal()" title="Acesso Restrito CCO" aria-label="Acesso Restrito">
+    <i data-lucide="lock" class="discreet-lock-icon"></i>
+</button>
+
+<!-- ===================================================================== -->
+<!-- MODAL DE AUTENTICAÇÃO SEGURA CORPORATIVA (ZERO-KNOWLEDGE / E2EE)      -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="modalSecureLogin" style="z-index: 100005;" onclick="if(event.target===this) closeModal('modalSecureLogin')">
+    <div class="modal-card glass-card modal-auth-premium" style="max-width: 460px; width: 92%;">
+        <div class="modal-header auth-card-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.35);">
+                    <i data-lucide="shield-check"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Acesso Corporativo Seguro</h3>
+                    <p class="modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.8rem; color: #94a3b8;">Plataforma Operacional CCO • Alpitel Brasil</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" type="button" onclick="closeModal('modalSecureLogin')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body" style="padding: 24px;">
+            <form id="formSecureLogin" onsubmit="handleSecureLoginSubmit(event)">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label" style="font-size: 0.78rem; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                        <i data-lucide="user" style="width: 14px; height: 14px; color: #38bdf8;"></i> Matrícula, Usuário ou E-mail:
+                    </label>
+                    <input type="text" id="secLoginIdentifier" class="form-input" placeholder="Ex: administrado, m.bezerra ou BR0..." required autocomplete="username" style="font-size: 0.9rem;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label class="form-label" style="font-size: 0.78rem; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 6px; margin-bottom: 0;">
+                            <i data-lucide="key-round" style="width: 14px; height: 14px; color: #38bdf8;"></i> Senha de Acesso:
+                        </label>
+                        <button type="button" class="btn-text-xs" onclick="togglePasswordVisibility('secLoginPassword', 'iconToggleSecPass')" style="background: none; border: none; color: #94a3b8; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 0.72rem;">
+                            <i data-lucide="eye" id="iconToggleSecPass" style="width: 13px; height: 13px;"></i>
+                            <span>Mostrar</span>
+                        </button>
+                    </div>
+                    <input type="password" id="secLoginPassword" class="form-input" placeholder="Digite sua senha..." required autocomplete="current-password" style="font-size: 0.9rem;">
+                </div>
+
+                <div id="secLoginErrorBanner" class="auth-error-banner" style="display: none; margin-bottom: 16px; padding: 10px 14px; background: rgba(244, 63, 94, 0.12); border: 1px solid rgba(244, 63, 94, 0.35); border-radius: 8px; color: #f43f5e; font-size: 0.8rem; align-items: center; gap: 8px;">
+                    <i data-lucide="alert-circle" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+                    <span id="secLoginErrorMsg">Credenciais inválidas.</span>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block btn-lg" id="btnSubmitSecureLogin" style="height: 44px; font-size: 0.92rem; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i data-lucide="unlock" id="iconSecLoginBtn"></i>
+                    <span id="labelSecLoginBtn">Autenticar e Desbloquear Sistema</span>
+                </button>
+            </form>
+
+            <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.76rem; color: #94a3b8; text-align: center; line-height: 1.5;">
+                🔒 Criptografia ponta a ponta (E2EE/Zero-Knowledge).<br>
+                Usuários importados do Fleet utilizam senha provisória com troca obrigatória.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- MODAL DE TROCA OBRIGATÓRIA DE SENHA (PRIMEIRO ACESSO OU TEMPORÁRIA)   -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="modalForceChangePassword" style="z-index: 100010;">
+    <div class="modal-card glass-card modal-auth-premium" style="max-width: 460px; width: 92%;">
+        <div class="modal-header auth-card-header" style="background: rgba(245, 158, 11, 0.1); border-bottom-color: rgba(245, 158, 11, 0.25);">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);">
+                    <i data-lucide="key"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #f8fafc;">Troca Obrigatória de Senha</h3>
+                    <p class="modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.8rem; color: #fbbf24;">Primeiro Acesso ou Senha Provisória Redefinida</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-body" style="padding: 24px;">
+            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 12px 14px; margin-bottom: 18px; display: flex; align-items: flex-start; gap: 10px;">
+                <i data-lucide="shield-alert" style="width: 20px; height: 20px; color: #f59e0b; flex-shrink: 0; margin-top: 1px;"></i>
+                <div style="font-size: 0.78rem; color: #e2e8f0; line-height: 1.45;">
+                    Por diretriz corporativa de segurança da informação, você precisa cadastrar uma <strong>nova senha pessoal definitiva</strong> (mínimo de 6 caracteres) antes de prosseguir.
+                </div>
+            </div>
+
+            <form id="formForceChangePassword" onsubmit="handleForceChangePasswordSubmit(event)">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label" style="font-size: 0.78rem; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                        <i data-lucide="lock" style="width: 14px; height: 14px; color: #38bdf8;"></i> Nova Senha Definitiva:
+                    </label>
+                    <input type="password" id="forceNewPass" class="form-input" placeholder="Mínimo 6 caracteres..." required minlength="6" autocomplete="new-password">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label class="form-label" style="font-size: 0.78rem; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                        <i data-lucide="check-check" style="width: 14px; height: 14px; color: #10b981;"></i> Confirmar Nova Senha:
+                    </label>
+                    <input type="password" id="forceConfirmPass" class="form-input" placeholder="Repita a nova senha..." required minlength="6" autocomplete="new-password">
+                </div>
+
+                <div id="forcePassErrorBanner" class="auth-error-banner" style="display: none; margin-bottom: 16px; padding: 10px 14px; background: rgba(244, 63, 94, 0.12); border: 1px solid rgba(244, 63, 94, 0.35); border-radius: 8px; color: #f43f5e; font-size: 0.8rem; align-items: center; gap: 8px;">
+                    <i data-lucide="alert-circle" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+                    <span id="forcePassErrorMsg">As senhas não coincidem.</span>
+                </div>
+
+                <button type="submit" class="btn btn-warning btn-block btn-lg" id="btnSubmitForcePass" style="height: 44px; font-size: 0.92rem; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i data-lucide="check-circle" id="iconForcePassBtn"></i>
+                    <span id="labelForcePassBtn">Salvar Nova Senha e Acessar</span>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- MODAL ULTRA PREMIUM: GESTÃO E GOVERNANÇA DE USUÁRIOS E PERFIS RBAC    -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="modalAdminUsersManagement" style="z-index: 100005;">
+    <div class="modal-card glass-card" style="max-width: 1100px; width: 96%; max-height: 92vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.35);">
+                    <i data-lucide="users"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.18rem; font-weight: 800; color: #f8fafc;">Governança de Usuários & Perfis de Acesso (RBAC)</h3>
+                    <p class="modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.8rem; color: #94a3b8;">
+                        Administração de permissões, emissão de senhas provisórias e sincronização com Fleet
+                    </p>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="btn btn-primary btn-sm" id="btnImportFleetUsers" onclick="handleImportFleetUsersSubmit()" title="Sincronizar base de usuários do Fleet">
+                    <i data-lucide="refresh-cw" id="iconSyncFleet"></i>
+                    <span>Sincronizar Base Fleet</span>
+                </button>
+                <button class="btn-close-modal" type="button" onclick="closeModal('modalAdminUsersManagement')">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="modal-body" style="padding: 18px 24px; overflow-y: auto;">
+            <!-- Mini KPI Cards dos Usuários -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                <div class="admin-user-kpi-card">
+                    <span class="user-kpi-lbl">TOTAL USUÁRIOS</span>
+                    <strong class="user-kpi-val text-cyan font-mono" id="kpiUserTotal">--</strong>
+                </div>
+                <div class="admin-user-kpi-card">
+                    <span class="user-kpi-lbl">ADMINISTRADORES</span>
+                    <strong class="user-kpi-val text-purple font-mono" id="kpiUserAdmin">--</strong>
+                </div>
+                <div class="admin-user-kpi-card">
+                    <span class="user-kpi-lbl">GERENTES</span>
+                    <strong class="user-kpi-val text-emerald font-mono" id="kpiUserGerente">--</strong>
+                </div>
+                <div class="admin-user-kpi-card">
+                    <span class="user-kpi-lbl">COORDENADORES</span>
+                    <strong class="user-kpi-val text-blue font-mono" id="kpiUserCoord">--</strong>
+                </div>
+                <div class="admin-user-kpi-card">
+                    <span class="user-kpi-lbl">SUPERVISORES</span>
+                    <strong class="user-kpi-val text-amber font-mono" id="kpiUserSuper">--</strong>
+                </div>
+            </div>
+
+            <!-- Toolbar de Busca & Filtros -->
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; background: rgba(15, 23, 42, 0.4); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.06);">
+                <div style="flex: 1; min-width: 220px; position: relative;">
+                    <i data-lucide="search" style="position: absolute; left: 10px; top: 9px; width: 15px; height: 15px; color: #64748b;"></i>
+                    <input type="text" id="adminUserSearchInput" class="form-input" placeholder="Buscar por nome, e-mail, login ou matrícula..." style="padding-left: 32px; font-size: 0.82rem;" oninput="filterAdminUsersTable()">
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <select id="adminUserRoleFilter" class="form-select" style="font-size: 0.82rem; padding: 6px 10px;" onchange="filterAdminUsersTable()">
+                        <option value="ALL">Todos os Perfis</option>
+                        <option value="administrador">Administrador</option>
+                        <option value="gerente">Gerente</option>
+                        <option value="coordenador">Coordenador</option>
+                        <option value="supervisor">Supervisor</option>
+                    </select>
+                    <select id="adminUserStatusFilter" class="form-select" style="font-size: 0.82rem; padding: 6px 10px;" onchange="filterAdminUsersTable()">
+                        <option value="ALL">Todos os Status</option>
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                    </select>
+                    <button class="btn btn-secondary btn-sm" onclick="loadAllAdminUsers()" title="Recarregar Dados">
+                        <i data-lucide="refresh-cw" id="iconReloadAdminUsers"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabela dos Usuários -->
+            <div class="admin-users-table-wrap" style="max-height: 460px; overflow-y: auto; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px;">
+                <table class="table-premium admin-users-table" style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                    <thead>
+                        <tr style="background: rgba(15, 23, 42, 0.8); position: sticky; top: 0; z-index: 2;">
+                            <th style="padding: 10px 12px; text-align: left;">Colaborador</th>
+                            <th style="padding: 10px 12px; text-align: left;">Matrícula / Contato</th>
+                            <th style="padding: 10px 12px; text-align: left;">E-mail / Login</th>
+                            <th style="padding: 10px 12px; text-align: center;">Perfil RBAC</th>
+                            <th style="padding: 10px 12px; text-align: center;">Status</th>
+                            <th style="padding: 10px 12px; text-align: center; width: 190px;">Ações de Acesso</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminUsersManagementTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 24px; color: #94a3b8;">Carregando usuários cadastrados...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- MODAL AUXILIAR: DEFINIR SENHA PROVISÓRIA                              -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="modalSetTempPassword" style="z-index: 100020;">
+    <div class="modal-card glass-card" style="max-width: 440px; width: 92%;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">
+                    <i data-lucide="key-round"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #f8fafc;">Emitir Senha Provisória</h3>
+                    <p class="modal-subtitle" id="tempPassTargetUser" style="margin: 2px 0 0 0; font-size: 0.78rem; color: #94a3b8;">Para: Colaborador</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" type="button" onclick="closeModal('modalSetTempPassword')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <input type="hidden" id="tempPassUserId">
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label class="form-label" style="font-size: 0.78rem; font-weight: 700; color: #cbd5e1; margin-bottom: 6px;">Nova Senha Provisória:</label>
+                <input type="text" id="tempPassValue" class="form-input font-mono" value="Alpitel@2026" required minlength="6" style="font-size: 0.9rem;">
+                <small style="display: block; margin-top: 4px; color: #94a3b8; font-size: 0.72rem;">O usuário será forçado a trocar esta senha no primeiro login.</small>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modalSetTempPassword')">Cancelar</button>
+                <button type="button" class="btn btn-warning btn-sm" onclick="handleConfirmTempPasswordSubmit()">
+                    <i data-lucide="check"></i> Confirmar e Gravar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Scripts -->
-<script src="/static/js/app.js?v=5.9.15-forensic-duration-delay-bid-cross"></script>
+<script src="/static/js/app.js?v={{ app_version }}"></script>
 
 </body>
 </html>

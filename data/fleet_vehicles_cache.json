@@ -1,5 +1,5 @@
 {
-  "last_sync_time": "12/11/2026 10:57:57",
+  "last_sync_time": "12/11/2026 19:39:51",
   "total": 388,
   "vehicles": [
     {
@@ -897,7 +897,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -1231,7 +1231,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -1545,7 +1545,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "MANUTENÇÃO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -2161,7 +2161,7 @@
       "tipoOp": "Linha Viva",
       "marca": "VOLKS",
       "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -2254,7 +2254,7 @@
       "tipoOp": "Linha Viva",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "MANUTENÇÃO",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -2776,7 +2776,7 @@
       "tipoOp": "Linha Viva",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -4561,7 +4561,7 @@
       "tipoOp": "TMA",
       "marca": "MERCEDES",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -5800,7 +5800,7 @@
       "tipoOp": "TMA",
       "marca": "FIAT",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -8781,7 +8781,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -8838,7 +8838,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -8924,7 +8924,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "ANÁLISE FROTA",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -10621,8 +10621,8 @@
       "subTipo": "Cesto Aéreo",
       "tipoOp": "TMA",
       "marca": "VOLKS",
-      "situacao": "PARADO",
-      "status": "ANÁLISE FROTA",
+      "situacao": "RODANDO",
+      "status": "OFICINA INTERNA",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -10998,7 +10998,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "MANUTENÇÃO",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [
@@ -11802,7 +11802,7 @@
       "tipoOp": "TMA",
       "marca": "VOLKS",
       "situacao": "RODANDO",
-      "status": "OFICINA INTERNA",
+      "status": "DISPONIVEL",
       "fidelizacao": null,
       "equipes": [],
       "historicoModificacoes": [

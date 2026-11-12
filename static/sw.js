@@ -3,18 +3,12 @@
 // PWA Caching, Shell Offline & Background Network-First Synchronization
 // ==========================================================================
 
-const CACHE_NAME = 'alertas-cco-pwa-v5.9.1';
+const CACHE_NAME = 'alertas-cco-pwa-v6.1.0';
 
 // Core shell assets to pre-cache on install (recursos internos seguros)
 const PRECACHE_ASSETS = [
     '/',
-    '/static/css/dashboard.css?v=5.9.1-fix-footer-zindex',
-    '/static/js/app.js?v=5.9.1-fix-console-errors',
     '/manifest.webmanifest',
-    '/static/manifest.webmanifest',
-    '/static/icons/icon-192.png',
-    '/static/icons/icon-512.png',
-    '/static/icons/icon-maskable.png',
     '/static/icons/icon.svg',
     '/static/icons/favicon.svg'
 ];
@@ -29,6 +23,13 @@ self.addEventListener('install', (event) => {
             });
         }).catch(() => {})
     );
+});
+
+// Listener para forçar ativação e skip waiting
+self.addEventListener('message', (event) => {
+    if (event.data === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
 });
 
 // 2. Activate Event: Clean up legacy caches & claim clients immediately
@@ -109,10 +110,10 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // C. App Shell & Assets Estáticos: Stale-While-Revalidate
+    // C. App Shell & Assets Estáticos: Network-First com Fallback Offline
     event.respondWith(
-        caches.match(request).then((cachedResponse) => {
-            const fetchPromise = fetch(request).then((networkResponse) => {
+        fetch(request)
+            .then((networkResponse) => {
                 if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
                     try {
                         const responseClone = networkResponse.clone();
@@ -122,11 +123,10 @@ self.addEventListener('fetch', (event) => {
                     } catch (e) {}
                 }
                 return networkResponse;
-            }).catch(() => {
-                // Falha de rede silenciosa para assets em cache
-            });
-
-            return cachedResponse || fetchPromise;
-        })
+            })
+            .catch(async () => {
+                const cached = await caches.match(request);
+                if (cached) return cached;
+            })
     );
 });
