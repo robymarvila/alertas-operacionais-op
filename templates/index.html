@@ -199,10 +199,10 @@
                             <span id="hubUserRoleBadge" class="badge-role-administrador">ADMIN</span>
                         </div>
 
-                        <!-- Botão de Gestão de Usuários (Visível para Gerente e Administrador) -->
-                        <button class="btn btn-primary btn-sm" id="btnHubManageUsers" onclick="openAdminUsersModal()" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px;">
-                            <i data-lucide="users" style="width: 15px; height: 15px; vertical-align: middle; margin-right: 4px;"></i>
-                            <span>Usuários</span>
+                        <!-- Botão GERENCIAR (Hub de Configuração Master: Motores, Servidores e Usuários) -->
+                        <button class="btn btn-warning btn-sm" id="btnHubManage" onclick="navigateToView('admin')" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);">
+                            <i data-lucide="sliders" style="width: 15px; height: 15px; vertical-align: middle; margin-right: 4px;"></i>
+                            <span>GERENCIAR</span>
                         </button>
 
                         <!-- Botão Logout / Sair -->
@@ -212,17 +212,11 @@
                         </button>
 
                         <!-- Botão de Autenticação / Cadeado no Hub Central -->
-                        <button class="btn-auth-lock locked" id="btnAuthHub" onclick="openAuthModal()" title="Autenticação e Desbloqueio Operacional">
+                        <button class="btn-auth-lock locked" id="btnAuthHub" onclick="openSecureLoginModal()" title="Autenticação e Desbloqueio Operacional">
                             <div class="auth-lock-icon-wrap" id="authLockIconWrapHub">
                                 <i data-lucide="lock" id="authLockIconHub"></i>
                             </div>
                             <span id="authLockTextHub" class="auth-lock-label">Acesso Restrito</span>
-                        </button>
-
-                        <!-- Botão para Painel de Gerenciamento (Visível quando desbloqueado) -->
-                        <button class="btn btn-warning btn-sm" id="btnHubAdminPanel" onclick="navigateToView('admin')" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);">
-                            <i data-lucide="shield-alert" style="width: 15px; height: 15px; vertical-align: middle; margin-right: 4px;"></i>
-                            <span>Gerenciamento</span>
                         </button>
 
                         <!-- Botão para Painel TV CCO -->
@@ -724,6 +718,12 @@
                             </svg>
                             <span class="timer-seconds" id="timerSeconds">2:00</span>
                         </div>
+
+                        <!-- Botão GERENCIAR no Módulo TRBOnet -->
+                        <button class="btn btn-warning btn-sm" id="btnModuleManage" onclick="navigateToView('admin')" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);" title="Hub de Configuração: Motores, Servidores e Usuários">
+                            <i data-lucide="sliders" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i>
+                            <span>GERENCIAR</span>
+                        </button>
 
                         <!-- 0. Botão de Autenticação / Cadeado no Módulo -->
                         <button class="btn btn-secondary btn-with-icon btn-auth-lock locked" id="btnAuthModule" onclick="openAuthModal()" title="Autenticação e Desbloqueio Operacional">
@@ -1801,10 +1801,10 @@
                             <span id="deliveryUserRoleBadge" class="badge-role-administrador">ADMIN</span>
                         </div>
 
-                        <!-- Botão de Gestão de Usuários (Visível para Gerente e Administrador) -->
-                        <button class="btn btn-primary btn-sm" id="btnDeliveryManageUsers" onclick="openAdminUsersModal()" style="display: none; padding: 6px 12px; font-weight: 800; border-radius: 20px;">
-                            <i data-lucide="users" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i>
-                            <span>Usuários</span>
+                        <!-- Botão GERENCIAR no Módulo Entrega de Equipes -->
+                        <button class="btn btn-warning btn-sm" id="btnDeliveryManage" onclick="navigateToView('admin')" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);" title="Hub de Configuração: Motores, Servidores e Usuários">
+                            <i data-lucide="sliders" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i>
+                            <span>GERENCIAR</span>
                         </button>
 
                         <!-- Botão Logout / Sair -->
@@ -4055,6 +4055,12 @@
 
                     <!-- Ações Rápidas -->
                     <div class="header-actions">
+                        <!-- Botão GERENCIAR no Módulo Priorizador -->
+                        <button class="btn btn-warning btn-sm" id="btnPriorizadorManage" onclick="navigateToView('admin')" style="display: none; padding: 6px 14px; font-weight: 800; border-radius: 20px; box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);" title="Hub de Configuração: Motores, Servidores e Usuários">
+                            <i data-lucide="sliders" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i>
+                            <span>GERENCIAR</span>
+                        </button>
+
                         <!-- Badge Realtime Supabase -->
                         <div class="realtime-status-pill" id="realtimePriorizadorBadge" title="Status da Conexão em Tempo Real">
                             <span class="status-pulse-dot" id="realtimePriorizadorPulse" style="background: #10b981;"></span>
@@ -5086,28 +5092,31 @@
                     </button>
                     <div class="brand-badge">
                         <div class="brand-logo-icon" style="background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4);">
-                            <i data-lucide="shield-alert" style="color: #f59e0b;"></i>
+                            <i data-lucide="sliders" style="color: #f59e0b;"></i>
                         </div>
                         <div class="brand-info">
                             <div class="brand-title-row">
-                                <h1>GERENCIAMENTO & TELEMETRIA MASTER</h1>
+                                <h1>HUB DE CONFIGURAÇÃO & GERENCIAMENTO</h1>
                             </div>
-                            <p class="brand-subtitle">Monitoramento de Motores de Coleta, Diagnósticos de Falha e Auditoria de Sessões</p>
+                            <p class="brand-subtitle">Motores de Coleta, Cluster de Servidores, Governança de Usuários (RBAC) e Telemetria</p>
                         </div>
                     </div>
                 </div>
 
                 <div class="delivery-screen-switcher" style="padding: 4px;">
                     <button class="screen-switch-btn active" id="btnAdminTabEngines" onclick="switchAdminTab('engines')">
-                        <i data-lucide="cpu" style="width: 14px; height: 14px; margin-right: 4px;"></i> MOTORES DO SISTEMA
+                        <i data-lucide="cpu" style="width: 14px; height: 14px; margin-right: 4px;"></i> MOTORES & SERVIDORES
+                    </button>
+                    <button class="screen-switch-btn" id="btnAdminTabUsers" onclick="switchAdminTab('users')">
+                        <i data-lucide="users" style="width: 14px; height: 14px; margin-right: 4px;"></i> GESTÃO DE USUÁRIOS (RBAC)
                     </button>
                     <button class="screen-switch-btn" id="btnAdminTabTelemetry" onclick="switchAdminTab('telemetry')">
-                        <i data-lucide="users" style="width: 14px; height: 14px; margin-right: 4px;"></i> TELEMETRIA & SESSÕES
+                        <i data-lucide="activity" style="width: 14px; height: 14px; margin-right: 4px;"></i> TELEMETRIA & SESSÕES
                     </button>
                 </div>
 
                 <div class="header-right">
-                    <button class="btn btn-danger btn-sm" onclick="logoutAdminSession()" style="font-weight: 800; border-radius: 8px;">
+                    <button class="btn btn-danger btn-sm" onclick="handleLogout()" style="font-weight: 800; border-radius: 8px;">
                         <i data-lucide="log-out" style="width: 14px; height: 14px; margin-right: 4px;"></i> BLOQUEAR / SAIR
                     </button>
                     <button class="btn-theme-toggle" onclick="toggleTheme()" title="Alternar Tema">
@@ -5417,7 +5426,101 @@
                 </div>
             </div>
 
-            <!-- ABA 2: TELEMETRIA & AUDITORIA DE SESSÕES -->
+            <!-- ============================================================== -->
+            <!-- ABA 2: GESTÃO E GOVERNANÇA DE USUÁRIOS & PERFIS RBAC           -->
+            <!-- ============================================================== -->
+            <div id="adminTabUsersContent" style="display: none;">
+                <div class="admin-action-bar glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; margin-bottom: 24px; flex-wrap: wrap; gap: 14px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="shield-check" style="color: #38bdf8; width: 22px; height: 22px;"></i>
+                            <h3 style="font-size: 1.15rem; font-weight: 800; margin: 0; color: #fff;">GOVERNANÇA DE USUÁRIOS & PERFIS DE ACESSO (RBAC)</h3>
+                        </div>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 4px 0 0 0;">
+                            Administração de permissões corporativas, emissão de senhas provisórias e sincronização com a base Fleet.
+                        </p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-primary btn-sm" id="btnImportFleetUsers" onclick="handleImportFleetUsersSubmit()" title="Sincronizar base de usuários do Fleet" style="font-weight: 800; padding: 8px 14px; border-radius: 10px;">
+                            <i data-lucide="refresh-cw" id="iconSyncFleet"></i>
+                            <span>Sincronizar Base Fleet</span>
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="loadAllAdminUsers()" title="Recarregar Dados" style="font-weight: 800; padding: 8px 12px; border-radius: 10px;">
+                            <i data-lucide="refresh-cw" id="iconReloadAdminUsers"></i>
+                            <span>Atualizar</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mini KPI Cards dos Usuários -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                    <div class="admin-user-kpi-card">
+                        <span class="user-kpi-lbl">TOTAL USUÁRIOS</span>
+                        <strong class="user-kpi-val text-cyan font-mono" id="kpiUserTotal">--</strong>
+                    </div>
+                    <div class="admin-user-kpi-card">
+                        <span class="user-kpi-lbl">ADMINISTRADORES</span>
+                        <strong class="user-kpi-val text-purple font-mono" id="kpiUserAdmin">--</strong>
+                    </div>
+                    <div class="admin-user-kpi-card">
+                        <span class="user-kpi-lbl">GERENTES</span>
+                        <strong class="user-kpi-val text-emerald font-mono" id="kpiUserGerente">--</strong>
+                    </div>
+                    <div class="admin-user-kpi-card">
+                        <span class="user-kpi-lbl">COORDENADORES</span>
+                        <strong class="user-kpi-val text-blue font-mono" id="kpiUserCoord">--</strong>
+                    </div>
+                    <div class="admin-user-kpi-card">
+                        <span class="user-kpi-lbl">SUPERVISORES</span>
+                        <strong class="user-kpi-val text-amber font-mono" id="kpiUserSuper">--</strong>
+                    </div>
+                </div>
+
+                <!-- Toolbar de Busca & Filtros -->
+                <div class="glass-card" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 18px; border-radius: 12px;">
+                    <div style="flex: 1; min-width: 240px; position: relative;">
+                        <i data-lucide="search" style="position: absolute; left: 12px; top: 10px; width: 16px; height: 16px; color: #64748b;"></i>
+                        <input type="text" id="adminUserSearchInput" class="form-input" placeholder="Buscar por nome, e-mail, login ou matrícula..." style="padding-left: 36px; font-size: 0.85rem;" oninput="filterAdminUsersTable()">
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <select id="adminUserRoleFilter" class="form-select" style="font-size: 0.82rem; padding: 8px 12px;" onchange="filterAdminUsersTable()">
+                            <option value="ALL">Todos os Perfis</option>
+                            <option value="administrador">Administrador</option>
+                            <option value="gerente">Gerente</option>
+                            <option value="coordenador">Coordenador</option>
+                            <option value="supervisor">Supervisor</option>
+                        </select>
+                        <select id="adminUserStatusFilter" class="form-select" style="font-size: 0.82rem; padding: 8px 12px;" onchange="filterAdminUsersTable()">
+                            <option value="ALL">Todos os Status</option>
+                            <option value="ativo">Ativo</option>
+                            <option value="inativo">Inativo</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tabela dos Usuários -->
+                <div class="admin-users-table-wrap glass-card" style="max-height: 520px; overflow-y: auto; padding: 0; border-radius: 12px;">
+                    <table class="table-premium admin-users-table" style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+                        <thead>
+                            <tr style="background: rgba(15, 23, 42, 0.9); position: sticky; top: 0; z-index: 2;">
+                                <th style="padding: 12px 14px; text-align: left;">Colaborador</th>
+                                <th style="padding: 12px 14px; text-align: left;">Matrícula / Contato</th>
+                                <th style="padding: 12px 14px; text-align: left;">E-mail / Login</th>
+                                <th style="padding: 12px 14px; text-align: center;">Perfil RBAC</th>
+                                <th style="padding: 12px 14px; text-align: center;">Status</th>
+                                <th style="padding: 12px 14px; text-align: center; width: 190px;">Ações de Acesso</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminUsersManagementTableBody">
+                            <tr>
+                                <td colspan="6" style="text-align: center; padding: 28px; color: #94a3b8;">Carregando usuários cadastrados...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ABA 3: TELEMETRIA & AUDITORIA DE SESSÕES -->
             <div id="adminTabTelemetryContent" style="display: none;">
                 <!-- 4 Hero KPI Cards de Telemetria -->
                 <div class="delivery-dual-hero-grid" style="margin-bottom: 24px;">
@@ -7906,108 +8009,6 @@ window.closeModal = function(modalId) {
                     <span id="labelForcePassBtn">Salvar Nova Senha e Acessar</span>
                 </button>
             </form>
-        </div>
-    </div>
-</div>
-
-<!-- ===================================================================== -->
-<!-- MODAL ULTRA PREMIUM: GESTÃO E GOVERNANÇA DE USUÁRIOS E PERFIS RBAC    -->
-<!-- ===================================================================== -->
-<div class="modal-backdrop" id="modalAdminUsersManagement" style="z-index: 100005;">
-    <div class="modal-card glass-card" style="max-width: 1100px; width: 96%; max-height: 92vh; display: flex; flex-direction: column;">
-        <div class="modal-header">
-            <div class="modal-title-wrap">
-                <div class="auth-modal-icon-badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.35);">
-                    <i data-lucide="users"></i>
-                </div>
-                <div>
-                    <h3 style="margin: 0; font-size: 1.18rem; font-weight: 800; color: #f8fafc;">Governança de Usuários & Perfis de Acesso (RBAC)</h3>
-                    <p class="modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.8rem; color: #94a3b8;">
-                        Administração de permissões, emissão de senhas provisórias e sincronização com Fleet
-                    </p>
-                </div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <button class="btn btn-primary btn-sm" id="btnImportFleetUsers" onclick="handleImportFleetUsersSubmit()" title="Sincronizar base de usuários do Fleet">
-                    <i data-lucide="refresh-cw" id="iconSyncFleet"></i>
-                    <span>Sincronizar Base Fleet</span>
-                </button>
-                <button class="btn-close-modal" type="button" onclick="closeModal('modalAdminUsersManagement')">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-        </div>
-
-        <div class="modal-body" style="padding: 18px 24px; overflow-y: auto;">
-            <!-- Mini KPI Cards dos Usuários -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px;">
-                <div class="admin-user-kpi-card">
-                    <span class="user-kpi-lbl">TOTAL USUÁRIOS</span>
-                    <strong class="user-kpi-val text-cyan font-mono" id="kpiUserTotal">--</strong>
-                </div>
-                <div class="admin-user-kpi-card">
-                    <span class="user-kpi-lbl">ADMINISTRADORES</span>
-                    <strong class="user-kpi-val text-purple font-mono" id="kpiUserAdmin">--</strong>
-                </div>
-                <div class="admin-user-kpi-card">
-                    <span class="user-kpi-lbl">GERENTES</span>
-                    <strong class="user-kpi-val text-emerald font-mono" id="kpiUserGerente">--</strong>
-                </div>
-                <div class="admin-user-kpi-card">
-                    <span class="user-kpi-lbl">COORDENADORES</span>
-                    <strong class="user-kpi-val text-blue font-mono" id="kpiUserCoord">--</strong>
-                </div>
-                <div class="admin-user-kpi-card">
-                    <span class="user-kpi-lbl">SUPERVISORES</span>
-                    <strong class="user-kpi-val text-amber font-mono" id="kpiUserSuper">--</strong>
-                </div>
-            </div>
-
-            <!-- Toolbar de Busca & Filtros -->
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; background: rgba(15, 23, 42, 0.4); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.06);">
-                <div style="flex: 1; min-width: 220px; position: relative;">
-                    <i data-lucide="search" style="position: absolute; left: 10px; top: 9px; width: 15px; height: 15px; color: #64748b;"></i>
-                    <input type="text" id="adminUserSearchInput" class="form-input" placeholder="Buscar por nome, e-mail, login ou matrícula..." style="padding-left: 32px; font-size: 0.82rem;" oninput="filterAdminUsersTable()">
-                </div>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <select id="adminUserRoleFilter" class="form-select" style="font-size: 0.82rem; padding: 6px 10px;" onchange="filterAdminUsersTable()">
-                        <option value="ALL">Todos os Perfis</option>
-                        <option value="administrador">Administrador</option>
-                        <option value="gerente">Gerente</option>
-                        <option value="coordenador">Coordenador</option>
-                        <option value="supervisor">Supervisor</option>
-                    </select>
-                    <select id="adminUserStatusFilter" class="form-select" style="font-size: 0.82rem; padding: 6px 10px;" onchange="filterAdminUsersTable()">
-                        <option value="ALL">Todos os Status</option>
-                        <option value="ativo">Ativo</option>
-                        <option value="inativo">Inativo</option>
-                    </select>
-                    <button class="btn btn-secondary btn-sm" onclick="loadAllAdminUsers()" title="Recarregar Dados">
-                        <i data-lucide="refresh-cw" id="iconReloadAdminUsers"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Tabela dos Usuários -->
-            <div class="admin-users-table-wrap" style="max-height: 460px; overflow-y: auto; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px;">
-                <table class="table-premium admin-users-table" style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
-                    <thead>
-                        <tr style="background: rgba(15, 23, 42, 0.8); position: sticky; top: 0; z-index: 2;">
-                            <th style="padding: 10px 12px; text-align: left;">Colaborador</th>
-                            <th style="padding: 10px 12px; text-align: left;">Matrícula / Contato</th>
-                            <th style="padding: 10px 12px; text-align: left;">E-mail / Login</th>
-                            <th style="padding: 10px 12px; text-align: center;">Perfil RBAC</th>
-                            <th style="padding: 10px 12px; text-align: center;">Status</th>
-                            <th style="padding: 10px 12px; text-align: center; width: 190px;">Ações de Acesso</th>
-                        </tr>
-                    </thead>
-                    <tbody id="adminUsersManagementTableBody">
-                        <tr>
-                            <td colspan="6" style="text-align: center; padding: 24px; color: #94a3b8;">Carregando usuários cadastrados...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
         </div>
     </div>
 </div>

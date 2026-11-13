@@ -489,8 +489,13 @@ function navigateToView(viewName) {
 
     if (viewName === 'admin') {
         if (!authState.isAuthenticated) {
-            showToast('Acesso Restrito: Autentique-se com sua matrícula e senha para acessar esta funcionalidade.', 'warning');
-            openAuthModal();
+            showToast('Acesso Restrito: Autentique-se com sua matrícula e senha para acessar o Gerenciamento.', 'warning');
+            openSecureLoginModal();
+            return;
+        }
+        const userRole = (authState.user?.role || '').toLowerCase();
+        if (!['gerente', 'administrador'].includes(userRole)) {
+            showToast('Acesso Restrito: Apenas Gerentes e Administradores têm permissão para acessar o Gerenciamento.', 'warning');
             return;
         }
     }
@@ -559,8 +564,10 @@ function navigateToView(viewName) {
         applyDeliveryFilters();
         loadDeliveryData(false);
     } else if (viewName === 'admin') {
-        switchAdminTab('engines');
-        loadAdminEngineStatus();
+        if (!['engines', 'users', 'telemetry'].includes(window.__currentAdminTab)) {
+            window.__currentAdminTab = 'engines';
+        }
+        switchAdminTab(window.__currentAdminTab);
     } else if (viewName === 'tv') {
         if (typeof initTvDashboard === 'function') {
             initTvDashboard();
@@ -5285,7 +5292,6 @@ function updateAuthUI() {
     const hubName = document.getElementById('hubUserName');
     const hubRoleBadge = document.getElementById('hubUserRoleBadge');
     const hubLogout = document.getElementById('btnHubLogout');
-    const hubManageUsers = document.getElementById('btnHubManageUsers');
 
     if (hubPill) hubPill.style.display = isAuth ? 'inline-flex' : 'none';
     if (hubAvatar) hubAvatar.textContent = firstWord.charAt(0).toUpperCase();
@@ -5295,7 +5301,6 @@ function updateAuthUI() {
         hubRoleBadge.textContent = (role || 'SUPERVISOR').toUpperCase();
     }
     if (hubLogout) hubLogout.style.display = isAuth ? 'inline-flex' : 'none';
-    if (hubManageUsers) hubManageUsers.style.display = (isAuth && ['gerente', 'administrador'].includes(role)) ? 'inline-flex' : 'none';
 
     // 3. Delivery Session Header Pill
     const delivPill = document.getElementById('deliveryUserHeaderPill');
@@ -5303,7 +5308,6 @@ function updateAuthUI() {
     const delivName = document.getElementById('deliveryUserName');
     const delivRoleBadge = document.getElementById('deliveryUserRoleBadge');
     const delivLogout = document.getElementById('btnDeliveryLogout');
-    const delivManageUsers = document.getElementById('btnDeliveryManageUsers');
 
     if (delivPill) delivPill.style.display = isAuth ? 'inline-flex' : 'none';
     if (delivAvatar) delivAvatar.textContent = firstWord.charAt(0).toUpperCase();
@@ -5313,7 +5317,18 @@ function updateAuthUI() {
         delivRoleBadge.textContent = (role || 'SUPERVISOR').toUpperCase();
     }
     if (delivLogout) delivLogout.style.display = isAuth ? 'inline-flex' : 'none';
-    if (delivManageUsers) delivManageUsers.style.display = (isAuth && ['gerente', 'administrador'].includes(role)) ? 'inline-flex' : 'none';
+
+    // 4. Botões GERENCIAR (Hub de Configuração: Motores, Servidores e Usuários)
+    const canManage = isAuth && ['gerente', 'administrador'].includes(role);
+    const btnHubManage = document.getElementById('btnHubManage');
+    const btnModManage = document.getElementById('btnModuleManage');
+    const btnDelivManage = document.getElementById('btnDeliveryManage');
+    const btnPrioManage = document.getElementById('btnPriorizadorManage');
+
+    if (btnHubManage) btnHubManage.style.display = canManage ? 'inline-flex' : 'none';
+    if (btnModManage) btnModManage.style.display = canManage ? 'inline-flex' : 'none';
+    if (btnDelivManage) btnDelivManage.style.display = canManage ? 'inline-flex' : 'none';
+    if (btnPrioManage) btnPrioManage.style.display = canManage ? 'inline-flex' : 'none';
 
     // 4. Botões de Cadeado Legados (para sincronização suave de estado)
     const btns = [
@@ -5408,12 +5423,17 @@ function applyRbacPermissions(role) {
         if (mobSubBid) mobSubBid.style.display = 'inline-flex';
     }
 
-    // 2. Botões de Gestão de Usuários
-    const canManageUsers = ['gerente', 'administrador'].includes(userRole);
-    const btnHubUsers = document.getElementById('btnHubManageUsers');
-    const btnDelivUsers = document.getElementById('btnDeliveryManageUsers');
-    if (btnHubUsers) btnHubUsers.style.display = canManageUsers ? 'inline-flex' : 'none';
-    if (btnDelivUsers) btnDelivUsers.style.display = canManageUsers ? 'inline-flex' : 'none';
+    // 2. Botões GERENCIAR (Hub de Configuração: Motores, Servidores e Usuários)
+    const canManage = ['gerente', 'administrador'].includes(userRole);
+    const btnHubManage = document.getElementById('btnHubManage');
+    const btnModManage = document.getElementById('btnModuleManage');
+    const btnDelivManage = document.getElementById('btnDeliveryManage');
+    const btnPrioManage = document.getElementById('btnPriorizadorManage');
+
+    if (btnHubManage) btnHubManage.style.display = canManage ? 'inline-flex' : 'none';
+    if (btnModManage) btnModManage.style.display = canManage ? 'inline-flex' : 'none';
+    if (btnDelivManage) btnDelivManage.style.display = canManage ? 'inline-flex' : 'none';
+    if (btnPrioManage) btnPrioManage.style.display = canManage ? 'inline-flex' : 'none';
 
     // 3. Botão Sincronizar Fleet visível apenas para Administrador
     const btnSyncFleet = document.getElementById('btnImportFleetUsers');
@@ -5686,16 +5706,8 @@ function openAdminUsersModal() {
         showToast('Acesso Restrito: Apenas Gerentes e Administradores têm permissão.', 'warning');
         return;
     }
-    const modal = document.getElementById('modalAdminUsersManagement');
-    if (modal) {
-        modal.style.display = 'flex';
-        modal.style.opacity = '1';
-        modal.style.pointerEvents = 'auto';
-        void modal.offsetWidth;
-        modal.classList.add('active');
-        loadAllAdminUsers();
-        if (window.lucide) lucide.createIcons();
-    }
+    navigateToView('admin');
+    switchAdminTab('users');
 }
 window.openAdminUsersModal = openAdminUsersModal;
 
@@ -11378,26 +11390,34 @@ async function copyDaemonScriptToClipboard() {
 // ==========================================================================
 
 function switchAdminTab(tabName) {
+    window.__currentAdminTab = tabName;
     const btnEngines = document.getElementById('btnAdminTabEngines');
+    const btnUsers = document.getElementById('btnAdminTabUsers');
     const btnTelemetry = document.getElementById('btnAdminTabTelemetry');
+
     const contentEngines = document.getElementById('adminTabEnginesContent');
+    const contentUsers = document.getElementById('adminTabUsersContent');
     const contentTelemetry = document.getElementById('adminTabTelemetryContent');
 
+    if (btnEngines) btnEngines.classList.toggle('active', tabName === 'engines');
+    if (btnUsers) btnUsers.classList.toggle('active', tabName === 'users');
+    if (btnTelemetry) btnTelemetry.classList.toggle('active', tabName === 'telemetry');
+
+    if (contentEngines) contentEngines.style.display = (tabName === 'engines') ? 'block' : 'none';
+    if (contentUsers) contentUsers.style.display = (tabName === 'users') ? 'block' : 'none';
+    if (contentTelemetry) contentTelemetry.style.display = (tabName === 'telemetry') ? 'block' : 'none';
+
     if (tabName === 'engines') {
-        if (btnEngines) btnEngines.classList.add('active');
-        if (btnTelemetry) btnTelemetry.classList.remove('active');
-        if (contentEngines) contentEngines.style.display = 'block';
-        if (contentTelemetry) contentTelemetry.style.display = 'none';
         loadAdminEngineStatus();
-    } else {
-        if (btnEngines) btnEngines.classList.remove('active');
-        if (btnTelemetry) btnTelemetry.classList.add('active');
-        if (contentEngines) contentEngines.style.display = 'none';
-        if (contentTelemetry) contentTelemetry.style.display = 'block';
+    } else if (tabName === 'users') {
+        loadAllAdminUsers();
+    } else if (tabName === 'telemetry') {
         loadAdminTelemetry();
     }
+    if (window.lucide) lucide.createIcons();
     initIcons();
 }
+window.switchAdminTab = switchAdminTab;
 
 async function loadAdminEngineStatus() {
     try {

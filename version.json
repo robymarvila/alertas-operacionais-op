@@ -1,8 +1,8 @@
 {
-  "version": "6.1.0",
-  "build_id": "20261112-193000",
-  "updated_at": "2026-11-12T19:30:00-03:00",
+  "version": "6.2.0-config-hub",
+  "build_id": "20261113-075200",
+  "updated_at": "2026-11-13T07:52:00-03:00",
   "name": "CCO Alertas Operacionais",
-  "channel": "production"
+  "channel": "production",
+  "features": ["Hub de Configuração & Gerenciamento", "Motores & Servidores", "Gestão de Usuários RBAC"]
 }
-
