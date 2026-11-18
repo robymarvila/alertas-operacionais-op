@@ -286,7 +286,7 @@ def auth_login():
     """Autentica o usuário com Matrícula ou E-mail e Senha."""
     try:
         data = request.get_json(force=True, silent=True) or {}
-        login_id = data.get("login") or data.get("email") or data.get("matricula") or ""
+        login_id = data.get("login") or data.get("email") or data.get("matricula") or data.get("username") or ""
         password = data.get("password") or ""
         
         if not login_id or not password:
@@ -294,32 +294,50 @@ def auth_login():
             
         result = auth_manager.authenticate(login_id, password)
         status_code = 200 if result.get("status") == "success" else 401
-        return jsonify(result), status_code
+
+        resp = make_response(jsonify(result), status_code)
+        if result.get("status") == "success" and result.get("token"):
+            resp.set_cookie("auth_token", result["token"], max_age=86400, httponly=False, samesite="Lax", path="/")
+        return resp
     except Exception as e:
         return jsonify({"status": "error", "message": f"Erro interno de autenticação: {str(e)}"}), 500
 
+@app.route('/api/auth/logout', methods=['POST', 'GET'])
+def auth_logout():
+    """Finaliza a sessão ativa e revoga cookies."""
+    resp = make_response(jsonify({"status": "success", "message": "Sessão finalizada com sucesso."}))
+    resp.delete_cookie("auth_token", path="/")
+    return resp
+
 @app.route('/api/auth/register', methods=['POST'])
-def auth_register():
-    """Solicita novo acesso para um colaborador com validações estritas."""
+@app.route('/api/auth/request_access', methods=['POST'])
+def auth_register_or_request_access():
+    """Recebe solicitação de novo acesso ou cadastro de colaborador com validações estritas."""
     try:
         data = request.get_json(force=True, silent=True) or {}
         nome = data.get("nome", "")
         email = data.get("email", "")
         matricula = data.get("matricula", "")
-        password = data.get("password", "")
-        role = data.get("role", "operator")
+        role = data.get("role", "supervisor")
+        regional = data.get("regional", "")
+        setor = data.get("setor", "")
+        telefone = data.get("telefone", "")
+        justificativa = data.get("justificativa", "")
 
-        result = auth_manager.register_user(
+        result = auth_manager.request_access(
             nome=nome,
             email=email,
             matricula=matricula,
-            password=password,
-            role=role
+            role=role,
+            regional=regional,
+            setor=setor,
+            telefone=telefone,
+            justificativa=justificativa
         )
-        status_code = 200 if result.get("status") == "success" else 400
+        status_code = 200 if result.get("status") in ["success", "exists", "pending_exists"] else 400
         return jsonify(result), status_code
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Erro no cadastro: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": f"Erro ao processar solicitação: {str(e)}"}), 500
 
 @app.route('/api/auth/session', methods=['GET'])
 def auth_session():
@@ -328,9 +346,9 @@ def auth_session():
     if not user:
         return jsonify({"status": "unauthenticated", "authenticated": False}), 200
     
-    user_id = user.get("sub")
-    cached_u = auth_manager.users.get(user_id) if user_id else None
-    precisa_trocar = cached_u.get("precisa_trocar_senha", False) if cached_u else False
+    user_id = user.get("sub") or user.get("id") or user.get("email")
+    _, cached_u = auth_manager._find_user(user_id) if user_id else (None, None)
+    precisa_trocar = bool(cached_u.get("precisa_trocar_senha", False)) if cached_u else False
     role = cached_u.get("role", user.get("role")) if cached_u else user.get("role")
     nome = cached_u.get("nome", user.get("nome")) if cached_u else user.get("nome")
     email = cached_u.get("email", user.get("email")) if cached_u else user.get("email")
@@ -341,7 +359,7 @@ def auth_session():
         "status": "success",
         "authenticated": True,
         "user": {
-            "id": user_id,
+            "id": str(cached_u.get("id", user_id) if cached_u else user_id),
             "nome": nome,
             "email": email,
             "username": username,
@@ -359,9 +377,10 @@ def auth_change_password():
         return jsonify({"status": "error", "message": "Usuário não autenticado."}), 401
     
     data = request.get_json(force=True, silent=True) or {}
-    new_password = data.get("new_password") or ""
+    new_password = data.get("new_password") or data.get("password") or ""
+    user_id = user.get("sub") or user.get("id") or user.get("email")
     
-    result = auth_manager.change_password(user.get("sub"), new_password)
+    result = auth_manager.change_password(user_id, new_password)
     status_code = 200 if result.get("status") == "success" else 400
     return jsonify(result), status_code
 
@@ -384,7 +403,7 @@ def admin_update_user_role():
         return jsonify({"status": "forbidden", "message": "Apenas o Administrador Geral pode alterar perfis."}), 403
     
     data = request.get_json(force=True, silent=True) or {}
-    target_id = data.get("user_id")
+    target_id = data.get("user_id") or data.get("id") or data.get("userId")
     new_role = data.get("role")
 
     result = auth_manager.update_user_role(target_id, new_role, user)
@@ -399,8 +418,8 @@ def admin_set_temp_password():
         return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
     
     data = request.get_json(force=True, silent=True) or {}
-    target_id = data.get("user_id")
-    temp_password = data.get("temp_password")
+    target_id = data.get("user_id") or data.get("id") or data.get("userId")
+    temp_password = data.get("temp_password") or data.get("password") or data.get("new_password") or "Alpitel@2026"
 
     result = auth_manager.set_temporary_password(target_id, temp_password, user)
     status_code = 200 if result.get("status") == "success" else 400
@@ -436,13 +455,67 @@ def admin_import_fleet_users():
 def auth_list_users():
     """Alias compatível para lista de usuários."""
     return admin_list_users()
-    if not user or user.get("role") != "admin":
-        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores."}), 403
+
+@app.route('/api/admin/access_requests', methods=['GET'])
+def admin_list_access_requests():
+    """Retorna lista de solicitações de acesso de colaboradores para análise gerencial."""
+    user = get_current_user()
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
+    
+    reqs = auth_manager.list_access_requests()
+    return jsonify({
+        "status": "success",
+        "requests": reqs,
+        "total": len(reqs),
+        "pendentes": len([r for r in reqs if r.get("status") == "pendente"])
+    })
+
+@app.route('/api/admin/access_requests/approve', methods=['POST'])
+def admin_approve_access_request():
+    """Aprova solicitação de acesso e cria o usuário com senha provisória."""
+    user = get_current_user()
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
     
     data = request.get_json(force=True, silent=True) or {}
-    user_id = data.get("user_id")
-    result = auth_manager.delete_user(user_id)
-    return jsonify(result)
+    req_id = data.get("request_id")
+    initial_password = data.get("initial_password")
+    assigned_role = data.get("role")
+    
+    if not req_id:
+        return jsonify({"status": "error", "message": "Identificador da solicitação não informado."}), 400
+        
+    result = auth_manager.approve_access_request(
+        request_id=req_id,
+        operator_user=user,
+        initial_password=initial_password,
+        assigned_role=assigned_role
+    )
+    status_code = 200 if result.get("status") == "success" else 400
+    return jsonify(result), status_code
+
+@app.route('/api/admin/access_requests/reject', methods=['POST'])
+def admin_reject_access_request():
+    """Recusa uma solicitação de acesso."""
+    user = get_current_user()
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
+    
+    data = request.get_json(force=True, silent=True) or {}
+    req_id = data.get("request_id")
+    reason = data.get("reason", "Solicitação recusada pela administração.")
+    
+    if not req_id:
+        return jsonify({"status": "error", "message": "Identificador da solicitação não informado."}), 400
+        
+    result = auth_manager.reject_access_request(
+        request_id=req_id,
+        reason=reason,
+        operator_user=user
+    )
+    status_code = 200 if result.get("status") == "success" else 400
+    return jsonify(result), status_code
 
 @app.route('/api/reset', methods=['POST'])
 def reset_data():

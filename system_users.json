@@ -8,7 +8,8 @@
     "role": "administrador",
     "status": "approved",
     "created_at": "2026-09-01T10:57:00.183029+00:00",
-    "last_login": "2026-11-13T07:51:10.779246"
+    "last_login": "2026-11-18T15:53:01.150053",
+    "precisa_trocar_senha": false
   },
   "b70feec316ecf18d115bcaef5e812952": {
     "id": "b70feec316ecf18d115bcaef5e812952",
@@ -30,7 +31,8 @@
     "role": "supervisor",
     "status": "approved",
     "created_at": "2026-09-01T08:10:24.581854+00:00",
-    "last_login": null
+    "last_login": null,
+    "precisa_trocar_senha": false
   },
   "c791c63c-cfd7-2cf2-b8fd-c213b25001bc": {
     "id": "c791c63c-cfd7-2cf2-b8fd-c213b25001bc",
@@ -41,7 +43,8 @@
     "role": "supervisor",
     "status": "pending",
     "created_at": "2026-09-25T10:56:07.360983+00:00",
-    "last_login": null
+    "last_login": null,
+    "precisa_trocar_senha": false
   },
   "8e3fcc64-c05a-0505-a91d-5d3a69b13536": {
     "id": "8e3fcc64-c05a-0505-a91d-5d3a69b13536",
@@ -52,7 +55,8 @@
     "role": "supervisor",
     "status": "pending",
     "created_at": "2026-09-26T09:22:21.022183+00:00",
-    "last_login": null
+    "last_login": null,
+    "precisa_trocar_senha": false
   },
   "357e59e7-2887-2aa4-2c59-8f5761882e8b": {
     "id": "357e59e7-2887-2aa4-2c59-8f5761882e8b",
@@ -63,7 +67,8 @@
     "role": "supervisor",
     "status": "pending",
     "created_at": "2026-11-12T16:58:02.125663+00:00",
-    "last_login": null
+    "last_login": null,
+    "precisa_trocar_senha": false
   },
   "1780059909125": {
     "id": "1780059909125",
@@ -74,14 +79,15 @@
     "telefone": "",
     "regional": "Global",
     "setor": "Operações",
-    "password_hash": "pbkdf2:sha256:100000$f01606bceccfc16dbf859818e29860db$da2083687a9f7882ae5e3b6373d412a162a271d41bf8eefcd9abae10a22612ac",
+    "password_hash": "pbkdf2:sha256:100000$0c4a676d0cc6c8b1a18b0254a8b3fcd2$c538e5429d33e530d26056be53b7251c691d97a3d54f9a51a149d85b96a5ec81",
     "role": "coordenador",
     "status": "ativo",
     "precisa_trocar_senha": false,
     "origem": "importado_fleet",
     "created_at": "2026-11-12T16:30:21.721231",
-    "last_login": "2026-11-12T16:49:30.878145",
-    "updated_at": "2026-11-12T16:49:30.370750"
+    "last_login": "2026-11-18T15:19:52.047734",
+    "updated_at": "2026-11-18T15:19:51.578602",
+    "senha_alterada_por": "ADMINISTRADOR CCO"
   },
   "1783291451493": {
     "id": "1783291451493",
@@ -92,13 +98,15 @@
     "telefone": "",
     "regional": "Norte",
     "setor": "Frota",
-    "password_hash": "pbkdf2:sha256:100000$9088bda19c8fe583c42e92d206cc880c$08e0cd6dce20473ef5189dfb44961711686680cbddf00f36b13631d4581f9e16",
+    "password_hash": "pbkdf2:sha256:100000$ef71b9135280ef056103d8fdbc02a041$47d9451854dcb226cafe413ffea86ed92ded263167624d26f392868b44aa706e",
     "role": "supervisor",
     "status": "ativo",
-    "precisa_trocar_senha": true,
+    "precisa_trocar_senha": false,
     "origem": "importado_fleet",
     "created_at": "2026-11-12T16:30:21.721260",
-    "last_login": "2026-11-12T16:51:23.011844"
+    "last_login": "2026-11-18T15:39:56.017314",
+    "updated_at": "2026-11-18T15:39:54.675590",
+    "senha_alterada_por": "ADMINISTRADOR CCO"
   },
   "1783633288274": {
     "id": "1783633288274",
@@ -179,13 +187,15 @@
     "telefone": "",
     "regional": "Leste",
     "setor": "Operações",
-    "password_hash": "pbkdf2:sha256:100000$9088bda19c8fe583c42e92d206cc880c$08e0cd6dce20473ef5189dfb44961711686680cbddf00f36b13631d4581f9e16",
+    "password_hash": "pbkdf2:sha256:100000$3e4834a86c00ab3554343e6a9c22fa1c$f94f6ca967e1949524e45905a0b3dba5263f1b70056d152d29f75cd2f25ae520",
     "role": "supervisor",
     "status": "ativo",
-    "precisa_trocar_senha": true,
+    "precisa_trocar_senha": false,
     "origem": "importado_fleet",
     "created_at": "2026-11-12T16:30:21.721298",
-    "last_login": null
+    "last_login": "2026-11-18T15:28:42.918103",
+    "updated_at": "2026-11-18T15:28:42.384479",
+    "senha_alterada_por": "ADMINISTRADOR CCO"
   },
   "1782769130921": {
     "id": "1782769130921",
@@ -689,13 +699,15 @@
     "telefone": "",
     "regional": "Global",
     "setor": "Operações",
-    "password_hash": "pbkdf2:sha256:100000$9088bda19c8fe583c42e92d206cc880c$08e0cd6dce20473ef5189dfb44961711686680cbddf00f36b13631d4581f9e16",
+    "password_hash": "pbkdf2:sha256:100000$e616757cff06c741072e032e396ee150$e69609f57da09891cd3c59f0a71b197635d47ff03cb4e510d21af0fae8576565",
     "role": "supervisor",
     "status": "ativo",
-    "precisa_trocar_senha": true,
+    "precisa_trocar_senha": false,
     "origem": "importado_fleet",
     "created_at": "2026-11-12T16:30:21.721595",
-    "last_login": null
+    "last_login": "2026-11-18T15:59:05.535758",
+    "updated_at": "2026-11-18T15:52:09.416201",
+    "senha_alterada_por": "ADMINISTRADOR CCO"
   },
   "1785519169740": {
     "id": "1785519169740",
@@ -1308,5 +1320,23 @@
     "origem": "importado_fleet",
     "created_at": "2026-11-12T16:30:21.722239",
     "last_login": null
+  },
+  "56ab0cf437808cc6d4bb1461ac8e3ff5": {
+    "id": "56ab0cf437808cc6d4bb1461ac8e3ff5",
+    "nome": "TESTE COLABORADOR CCO",
+    "email": "teste.cco@alpitelbrasil.com.br",
+    "username": "teste.cco",
+    "matricula": "BR999888",
+    "telefone": "11 98888-7777",
+    "regional": "Leste",
+    "setor": "",
+    "password_hash": "pbkdf2:sha256:100000$bd32d971af11ae1a4a905f7a03ec8c53$2ac24dd0ebc7c404ae8a0aacde4a6c2bff25b811e20c36e9c2fa517f5ed2abc8",
+    "role": "supervisor",
+    "status": "ativo",
+    "precisa_trocar_senha": true,
+    "origem": "solicitacao_aprovada",
+    "created_at": "2026-11-18T15:02:43.059337",
+    "aprovado_por": "ADMINISTRADOR CCO",
+    "last_login": "2026-11-18T15:02:45.210628"
   }
 }

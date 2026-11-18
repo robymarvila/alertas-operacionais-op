@@ -1,8 +1,13 @@
 {
-  "version": "6.2.0-config-hub",
-  "build_id": "20261113-075200",
-  "updated_at": "2026-11-13T07:52:00-03:00",
+  "version": "6.3.2-supervisor-checklist",
+  "build_id": "20261118-160000",
+  "updated_at": "2026-11-18T16:00:00-03:00",
   "name": "CCO Alertas Operacionais",
   "channel": "production",
-  "features": ["Hub de Configuração & Gerenciamento", "Motores & Servidores", "Gestão de Usuários RBAC"]
+  "features": [
+    "Habilitação da Aba EQUIPES LOGADAS x CHECKLIST para Perfil de Supervisor",
+    "Resolução de Registro e Sincronização de Senhas Provisórias Fleet",
+    "Sincronização Bidirecional com Base Supabase do Fleet",
+    "Tela de Login Ultra Premium CCO com Hot-Reload Zero-Cache"
+  ]
 }

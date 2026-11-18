@@ -5229,7 +5229,7 @@ window.exportAuditTableCSV = exportAuditTableCSV;
 // ==========================================================================
 
 async function initAuth() {
-    const maintScreen = document.getElementById('screenSystemMaintenance');
+    const maintScreen = document.getElementById('screenCorporateLogin') || document.getElementById('screenSystemMaintenance');
     const storedToken = localStorage.getItem('cco_auth_token') || sessionStorage.getItem('cco_auth_token') || authState.token;
 
     if (storedToken) {
@@ -5358,8 +5358,8 @@ function updateAuthUI() {
         }
     });
 
-    // 6. Controle de tela fake
-    const maintScreen = document.getElementById('screenSystemMaintenance');
+    // 6. Controle da Tela de Login Ultra Premium
+    const maintScreen = document.getElementById('screenCorporateLogin') || document.getElementById('screenSystemMaintenance');
     if (maintScreen) {
         maintScreen.style.display = isAuth ? 'none' : 'flex';
     }
@@ -5386,14 +5386,14 @@ function applyRbacPermissions(role) {
     const mobSubHist = document.getElementById('mobSubDeliveryHistory');
 
     if (userRole === 'supervisor') {
-        // Supervisor: apenas ONLINE e AUDITORIA & HISTÓRICO
+        // Supervisor: ONLINE, EQUIPES LOGADAS x CHECKLIST e AUDITORIA & HISTÓRICO (ATRASOS E TURNOS bloqueado)
         if (btnOnline) btnOnline.style.display = 'inline-flex';
+        if (btnOnlineBid) btnOnlineBid.style.display = 'inline-flex';
         if (btnHist) btnHist.style.display = 'inline-flex';
-        if (btnOnlineBid) btnOnlineBid.style.display = 'none';
         if (btnDelays) btnDelays.style.display = 'none';
-        if (mobSubBid) mobSubBid.style.display = 'none';
+        if (mobSubBid) mobSubBid.style.display = 'inline-flex';
 
-        if (deliveryState && (deliveryState.currentScreen === 'online_bid' || deliveryState.currentScreen === 'delays')) {
+        if (deliveryState && deliveryState.currentScreen === 'delays') {
             switchDeliveryScreen('online');
         }
     } else if (userRole === 'coordenador') {
@@ -5444,14 +5444,48 @@ function applyRbacPermissions(role) {
     if (window.lucide) lucide.createIcons();
 }
 
+function switchLoginScreenTab(tab) {
+    const tabLogin = document.getElementById('tabBtnLogin');
+    const tabReq = document.getElementById('tabBtnRequest');
+    const paneLogin = document.getElementById('paneLoginSection');
+    const paneReq = document.getElementById('paneRequestSection');
+
+    if (tab === 'request') {
+        if (tabLogin) tabLogin.classList.remove('active');
+        if (tabReq) tabReq.classList.add('active');
+        if (paneLogin) paneLogin.style.display = 'none';
+        if (paneReq) paneReq.style.display = 'block';
+        const reqNome = document.getElementById('reqNome');
+        if (reqNome) setTimeout(() => reqNome.focus(), 120);
+    } else {
+        if (tabReq) tabReq.classList.remove('active');
+        if (tabLogin) tabLogin.classList.add('active');
+        if (paneReq) paneReq.style.display = 'none';
+        if (paneLogin) paneLogin.style.display = 'block';
+        const secId = document.getElementById('secLoginIdentifier');
+        if (secId) setTimeout(() => secId.focus(), 120);
+    }
+    if (window.lucide) lucide.createIcons();
+}
+window.switchLoginScreenTab = switchLoginScreenTab;
+
 function openSecureLoginModal() {
     const modal = document.getElementById('modalSecureLogin');
     const input = document.getElementById('secLoginIdentifier');
     const pass = document.getElementById('secLoginPassword');
     const errBanner = document.getElementById('secLoginErrorBanner');
+    const corpScreen = document.getElementById('screenCorporateLogin') || document.getElementById('screenSystemMaintenance');
 
     if (pass) pass.value = '';
     if (errBanner) errBanner.style.display = 'none';
+
+    if (corpScreen && !authState.isAuthenticated) {
+        corpScreen.style.display = 'flex';
+        switchLoginScreenTab('login');
+        if (input) setTimeout(() => input.focus(), 150);
+        if (window.lucide) lucide.createIcons();
+        return;
+    }
 
     if (modal) {
         modal.style.display = 'flex';
@@ -5518,11 +5552,12 @@ async function handleSecureLoginSubmit(event) {
                 secModal.style.pointerEvents = 'none';
             }
 
+            const maintScreen = document.getElementById('screenCorporateLogin') || document.getElementById('screenSystemMaintenance');
+            if (maintScreen) maintScreen.style.display = 'none';
+
             if (res.precisa_trocar_senha || res.user.precisa_trocar_senha) {
                 openForceChangePasswordModal();
             } else {
-                const maintScreen = document.getElementById('screenSystemMaintenance');
-                if (maintScreen) maintScreen.style.display = 'none';
                 applyRbacPermissions(res.user.role);
                 updateAuthUI();
                 showToast(res.message || `Bem-vindo(a), ${res.user.nome}!`, 'success');
@@ -5542,12 +5577,113 @@ async function handleSecureLoginSubmit(event) {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = `<i data-lucide="unlock"></i> <span>Autenticar e Desbloquear Sistema</span>`;
+            btn.innerHTML = `<i data-lucide="unlock"></i> <span>Entrar na Plataforma CCO</span>`;
             if (window.lucide) lucide.createIcons();
         }
     }
 }
 window.handleSecureLoginSubmit = handleSecureLoginSubmit;
+
+async function handleRequestAccessSubmit(event) {
+    if (event) event.preventDefault();
+    const nomeInput = document.getElementById('reqNome');
+    const matInput = document.getElementById('reqMatricula');
+    const emailInput = document.getElementById('reqEmail');
+    const telInput = document.getElementById('reqTelefone');
+    const regInput = document.getElementById('reqRegional');
+    const roleInput = document.getElementById('reqRole');
+    const justInput = document.getElementById('reqJustificativa');
+    const btn = document.getElementById('btnSubmitRequestAccess');
+    const errBanner = document.getElementById('requestAccessErrorBanner');
+    const errMsg = document.getElementById('requestAccessErrorMsg');
+    const successBanner = document.getElementById('requestAccessSuccessBanner');
+    const protocolEl = document.getElementById('reqSuccessProtocol');
+
+    const nome = (nomeInput?.value || '').trim();
+    const matricula = (matInput?.value || '').trim();
+    const email = (emailInput?.value || '').trim();
+    const telefone = (telInput?.value || '').trim();
+    const regional = (regInput?.value || '').trim();
+    const role = (roleInput?.value || 'supervisor').trim();
+    const justificativa = (justInput?.value || '').trim();
+
+    if (!nome) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'Informe seu Nome Completo.';
+        }
+        return;
+    }
+    if (!email && !matricula) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'Informe sua Matrícula ou E-mail corporativo.';
+        }
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Registrando solicitação...</span>`;
+        if (window.lucide) lucide.createIcons();
+    }
+    if (errBanner) errBanner.style.display = 'none';
+    if (successBanner) successBanner.style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/auth/request_access', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nome: nome,
+                matricula: matricula,
+                email: email,
+                telefone: telefone,
+                regional: regional,
+                role: role,
+                justificativa: justificativa
+            })
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            if (successBanner) {
+                successBanner.style.display = 'flex';
+                if (protocolEl) protocolEl.textContent = res.protocolo || 'CCO-REQ';
+            }
+            if (nomeInput) nomeInput.value = '';
+            if (matInput) matInput.value = '';
+            if (emailInput) emailInput.value = '';
+            if (telInput) telInput.value = '';
+            if (justInput) justInput.value = '';
+            showToast(`Solicitação #${res.protocolo} enviada com sucesso aos gestores!`, 'success');
+        } else if (res.status === 'exists' || res.status === 'pending_exists') {
+            if (errBanner) {
+                errBanner.style.display = 'flex';
+                if (errMsg) errMsg.textContent = res.message;
+            }
+            showToast(res.message, 'warning');
+        } else {
+            if (errBanner) {
+                errBanner.style.display = 'flex';
+                if (errMsg) errMsg.textContent = res.message || 'Falha ao registrar solicitação.';
+            }
+            showToast(res.message || 'Falha na solicitação.', 'danger');
+        }
+    } catch (e) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = `Erro de conexão: ${e.message}`;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="send"></i> <span>Enviar Solicitação de Acesso</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+}
+window.handleRequestAccessSubmit = handleRequestAccessSubmit;
 
 function openForceChangePasswordModal() {
     const modal = document.getElementById('modalForceChangePassword');
@@ -5602,12 +5738,14 @@ async function handleForceChangePasswordSubmit(event) {
         if (window.lucide) lucide.createIcons();
     }
 
+    const token = authState.token || localStorage.getItem('cco_auth_token') || sessionStorage.getItem('cco_auth_token') || '';
+
     try {
         const resp = await fetch('/api/auth/change_password', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authState.token || ''}`
+                'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ new_password: p1 })
         });
@@ -5626,7 +5764,7 @@ async function handleForceChangePasswordSubmit(event) {
                 forceModal.style.opacity = '0';
                 forceModal.style.pointerEvents = 'none';
             }
-            const maintScreen = document.getElementById('screenSystemMaintenance');
+            const maintScreen = document.getElementById('screenCorporateLogin') || document.getElementById('screenSystemMaintenance');
             if (maintScreen) maintScreen.style.display = 'none';
             applyRbacPermissions(authState.user?.role);
             updateAuthUI();
@@ -5676,8 +5814,11 @@ function handleLogout(showNotification = true) {
     sessionStorage.removeItem('cco_auth_token');
     sessionStorage.removeItem('cco_auth_user');
 
-    const maintScreen = document.getElementById('screenSystemMaintenance');
-    if (maintScreen) maintScreen.style.display = 'flex';
+    const maintScreen = document.getElementById('screenCorporateLogin') || document.getElementById('screenSystemMaintenance');
+    if (maintScreen) {
+        maintScreen.style.display = 'flex';
+        switchLoginScreenTab('login');
+    }
 
     applyRbacPermissions(null);
     updateAuthUI();
@@ -5872,10 +6013,18 @@ function openSetTempPasswordModal(userId, encodedName) {
     const uInput = document.getElementById('tempPassUserId');
     const lbl = document.getElementById('tempPassTargetUser');
     const val = document.getElementById('tempPassValue');
+    const errBanner = document.getElementById('tempPassErrorBanner');
 
-    if (uInput) uInput.value = userId;
+    if (uInput) uInput.value = String(userId || '');
     if (lbl) lbl.textContent = `Para: ${name}`;
-    if (val) val.value = 'Alpitel@2026';
+    if (val) {
+        val.value = 'Alpitel@2026';
+        val.type = 'password';
+    }
+    const iconEye = document.getElementById('iconToggleTempPass');
+    const txtEye = document.getElementById('textToggleTempPass');
+    if (txtEye) txtEye.textContent = 'Mostrar';
+    if (errBanner) errBanner.style.display = 'none';
 
     if (modal) {
         modal.style.display = 'flex';
@@ -5883,27 +6032,44 @@ function openSetTempPasswordModal(userId, encodedName) {
         modal.style.pointerEvents = 'auto';
         void modal.offsetWidth;
         modal.classList.add('active');
-        if (val) setTimeout(() => val.select(), 150);
+        if (val) setTimeout(() => { val.focus(); val.select(); }, 150);
         if (window.lucide) lucide.createIcons();
     }
 }
 window.openSetTempPasswordModal = openSetTempPasswordModal;
 
-async function handleConfirmTempPasswordSubmit() {
+async function handleConfirmTempPasswordSubmit(event) {
+    if (event) event.preventDefault();
     const userId = document.getElementById('tempPassUserId')?.value;
     const tempPass = document.getElementById('tempPassValue')?.value?.trim();
+    const btn = document.getElementById('btnSubmitTempPass');
+    const errBanner = document.getElementById('tempPassErrorBanner');
+    const errMsg = document.getElementById('tempPassErrorMsg');
 
     if (!userId || !tempPass || tempPass.length < 6) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'A senha provisória deve conter no mínimo 6 caracteres.';
+        }
         showToast('A senha provisória deve conter no mínimo 6 caracteres.', 'warning');
         return;
     }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Gravando...</span>`;
+        if (window.lucide) lucide.createIcons();
+    }
+    if (errBanner) errBanner.style.display = 'none';
+
+    const token = authState.token || localStorage.getItem('cco_auth_token') || sessionStorage.getItem('cco_auth_token') || '';
 
     try {
         const resp = await fetch('/api/admin/users/set_temp_password', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authState.token || ''}`
+                'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ user_id: userId, temp_password: tempPass })
         });
@@ -5921,10 +6087,24 @@ async function handleConfirmTempPasswordSubmit() {
             showToast(res.message, 'success');
             await loadAllAdminUsers();
         } else {
+            if (errBanner) {
+                errBanner.style.display = 'flex';
+                if (errMsg) errMsg.textContent = res.message || 'Falha ao gravar senha provisória.';
+            }
             showToast(res.message || 'Falha ao gravar senha provisória.', 'danger');
         }
     } catch (e) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = `Erro: ${e.message}`;
+        }
         showToast(`Erro: ${e.message}`, 'danger');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="check"></i> <span>Confirmar e Gravar</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
     }
 }
 window.handleConfirmTempPasswordSubmit = handleConfirmTempPasswordSubmit;
@@ -6010,6 +6190,251 @@ async function handleImportFleetUsersSubmit() {
     }
 }
 window.handleImportFleetUsersSubmit = handleImportFleetUsersSubmit;
+
+// ==============================================================================
+// GESTÃO DE SOLICITAÇÕES DE ACESSO AO SISTEMA (ADMIN & GERENTE)
+// ==============================================================================
+let adminRequestsCache = [];
+
+function switchUserGovernanceSubView(subView) {
+    const btnUsers = document.getElementById('btnToggleSubViewUsers');
+    const btnReqs = document.getElementById('btnToggleSubViewRequests');
+    const viewUsers = document.getElementById('userSubViewCadastrados');
+    const viewReqs = document.getElementById('userSubViewSolicitacoes');
+
+    if (subView === 'requests') {
+        if (btnUsers) {
+            btnUsers.style.background = 'transparent';
+            btnUsers.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            btnUsers.style.color = '#cbd5e1';
+        }
+        if (btnReqs) {
+            btnReqs.style.background = 'rgba(14, 165, 233, 0.2)';
+            btnReqs.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+            btnReqs.style.color = '#fff';
+        }
+        if (viewUsers) viewUsers.style.display = 'none';
+        if (viewReqs) viewReqs.style.display = 'block';
+        loadAllAdminRequests();
+    } else {
+        if (btnReqs) {
+            btnReqs.style.background = 'transparent';
+            btnReqs.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            btnReqs.style.color = '#cbd5e1';
+        }
+        if (btnUsers) {
+            btnUsers.style.background = 'rgba(14, 165, 233, 0.2)';
+            btnUsers.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+            btnUsers.style.color = '#fff';
+        }
+        if (viewReqs) viewReqs.style.display = 'none';
+        if (viewUsers) viewUsers.style.display = 'block';
+        loadAllAdminUsers();
+    }
+    if (window.lucide) lucide.createIcons();
+}
+window.switchUserGovernanceSubView = switchUserGovernanceSubView;
+
+async function reloadUserGovernanceData() {
+    await Promise.all([loadAllAdminUsers(), loadAllAdminRequests()]);
+}
+window.reloadUserGovernanceData = reloadUserGovernanceData;
+
+async function loadAllAdminRequests() {
+    const tbody = document.getElementById('adminAccessRequestsTableBody');
+    const badge = document.getElementById('badgeAdminPendingReqs');
+
+    try {
+        const resp = await fetch('/api/admin/access_requests', {
+            headers: { 'Authorization': `Bearer ${authState.token || ''}` }
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success' && Array.isArray(res.requests)) {
+            adminRequestsCache = res.requests;
+            const pendentesCount = res.pendentes || res.requests.filter(r => r.status === 'pendente').length;
+            if (badge) {
+                if (pendentesCount > 0) {
+                    badge.style.display = 'inline-block';
+                    badge.textContent = pendentesCount;
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+            filterAdminRequestsTable();
+        } else {
+            if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f43f5e; padding: 24px;">${res.message || 'Erro ao consultar solicitações.'}</td></tr>`;
+        }
+    } catch (e) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f43f5e; padding: 24px;">Falha: ${e.message}</td></tr>`;
+    } finally {
+        if (window.lucide) lucide.createIcons();
+    }
+}
+window.loadAllAdminRequests = loadAllAdminRequests;
+
+function filterAdminRequestsTable() {
+    const searchVal = (document.getElementById('adminReqSearchInput')?.value || '').toLowerCase().trim();
+    const statusVal = document.getElementById('adminReqStatusFilter')?.value || 'ALL';
+
+    let filtered = adminRequestsCache.filter(r => {
+        if (statusVal !== 'ALL' && r.status !== statusVal) return false;
+        if (searchVal) {
+            const nome = (r.nome || '').toLowerCase();
+            const proto = (r.protocolo || '').toLowerCase();
+            const email = (r.email || '').toLowerCase();
+            const mat = (r.matricula || '').toLowerCase();
+            if (!nome.includes(searchVal) && !proto.includes(searchVal) && !email.includes(searchVal) && !mat.includes(searchVal)) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    renderAdminAccessRequestsTable(filtered);
+}
+window.filterAdminRequestsTable = filterAdminRequestsTable;
+
+function renderAdminAccessRequestsTable(requests) {
+    const tbody = document.getElementById('adminAccessRequestsTableBody');
+    if (!tbody) return;
+
+    if (!requests || requests.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 28px;">Nenhuma solicitação de acesso encontrada para este filtro.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = requests.map(r => {
+        const isPendente = r.status === 'pendente';
+        const isAprovado = r.status === 'aprovado';
+        const isRecusado = r.status === 'recusado';
+
+        let statusBadge = '';
+        if (isPendente) {
+            statusBadge = `<span style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.72rem;">PENDENTE</span>`;
+        } else if (isAprovado) {
+            statusBadge = `<span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.72rem;">APROVADO</span>`;
+        } else {
+            statusBadge = `<span style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.4); padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.72rem;">RECUSADO</span>`;
+        }
+
+        const roleBadgeClass = `badge-role-${r.role || 'supervisor'}`;
+        const createdDate = r.created_at ? new Date(r.created_at).toLocaleString('pt-BR') : '--';
+
+        let actionsHtml = '';
+        if (isPendente) {
+            actionsHtml = `
+                <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                    <button class="btn btn-success btn-xs" onclick="handleApproveRequest('${r.id}', '${encodeURIComponent(r.nome)}', '${r.role}')" title="Aprovar acesso e criar usuário" style="font-size: 0.72rem; padding: 4px 8px; font-weight: 800;">
+                        <i data-lucide="check" style="width: 12px; height: 12px;"></i> Aprovar
+                    </button>
+                    <button class="btn btn-danger btn-xs" onclick="handleRejectRequest('${r.id}', '${encodeURIComponent(r.nome)}')" title="Recusar solicitação" style="font-size: 0.72rem; padding: 4px 8px; font-weight: 800;">
+                        <i data-lucide="x" style="width: 12px; height: 12px;"></i> Recusar
+                    </button>
+                </div>
+            `;
+        } else if (isAprovado) {
+            actionsHtml = `<span style="font-size: 0.7rem; color: #10b981;">Aprovado por: ${r.approved_by || 'Gestor'}</span>`;
+        } else {
+            actionsHtml = `<span style="font-size: 0.7rem; color: #f43f5e;" title="${r.rejection_reason || ''}">Recusado: ${r.rejection_reason || 'Pela gerência'}</span>`;
+        }
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                <td style="padding: 10px 12px;">
+                    <strong style="color: #38bdf8; font-family: monospace; font-size: 0.78rem;">#${r.protocolo || r.id.substring(0, 8)}</strong>
+                    <div style="font-size: 0.68rem; color: #64748b; margin-top: 2px;">${createdDate}</div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <strong style="color: #f8fafc; font-size: 0.82rem; display: block;">${r.nome}</strong>
+                    <span class="badge-tag badge-matricula">${r.matricula || '--'}</span>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <div style="color: #cbd5e1; font-size: 0.78rem;">${r.email}</div>
+                    <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">${r.telefone || '--'}</div>
+                </td>
+                <td style="padding: 10px 12px;">
+                    <span style="color: #e2e8f0; font-size: 0.78rem; font-weight: 600;">${r.regional || 'Global'}</span>
+                    <div style="font-size: 0.68rem; color: #64748b;">${r.setor || '--'}</div>
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    <span class="${roleBadgeClass}">${(r.role || 'supervisor').toUpperCase()}</span>
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    ${statusBadge}
+                </td>
+                <td style="padding: 10px 12px; text-align: center;">
+                    ${actionsHtml}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+async function handleApproveRequest(reqId, encodedName, defaultRole) {
+    const nome = decodeURIComponent(encodedName || 'Colaborador');
+    const confirmPrompt = confirm(`Deseja aprovar o acesso corporativo para ${nome} com o perfil ${defaultRole.toUpperCase()}?\n\nSerá gerada a senha provisória padrão 'Alpitel@2026' com troca obrigatória no 1º login.`);
+    if (!confirmPrompt) return;
+
+    try {
+        const resp = await fetch('/api/admin/access_requests/approve', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            },
+            body: JSON.stringify({
+                request_id: reqId,
+                initial_password: 'Alpitel@2026',
+                role: defaultRole
+            })
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            showToast(res.message, 'success');
+            await reloadUserGovernanceData();
+        } else {
+            showToast(res.message || 'Erro ao aprovar solicitação.', 'danger');
+        }
+    } catch (e) {
+        showToast(`Erro: ${e.message}`, 'danger');
+    }
+}
+window.handleApproveRequest = handleApproveRequest;
+
+async function handleRejectRequest(reqId, encodedName) {
+    const nome = decodeURIComponent(encodedName || 'Colaborador');
+    const reason = prompt(`Informe a justificativa da recusa para a solicitação de ${nome}:`, 'Critérios operacionais de acesso não atendidos.');
+    if (reason === null) return;
+
+    try {
+        const resp = await fetch('/api/admin/access_requests/reject', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authState.token || ''}`
+            },
+            body: JSON.stringify({
+                request_id: reqId,
+                reason: reason
+            })
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            showToast(res.message, 'info');
+            await reloadUserGovernanceData();
+        } else {
+            showToast(res.message || 'Erro ao recusar solicitação.', 'danger');
+        }
+    } catch (e) {
+        showToast(`Erro: ${e.message}`, 'danger');
+    }
+}
+window.handleRejectRequest = handleRejectRequest;
 
 function openAuthModal() {
     if (!authState.isAuthenticated) {
@@ -6115,8 +6540,8 @@ async function switchDeliveryScreen(screenName) {
 
     // Validação estrita de perfil RBAC
     const userRole = (authState.user?.role || '').toLowerCase();
-    if (userRole === 'supervisor' && (screenName === 'online_bid' || screenName === 'delays')) {
-        showToast('Acesso Restrito: Seu perfil de Supervisor não tem permissão para este módulo.', 'warning');
+    if (userRole === 'supervisor' && screenName === 'delays') {
+        showToast('Acesso Restrito: Seu perfil de Supervisor não tem permissão para o módulo de Atrasos e Turnos.', 'warning');
         screenName = 'online';
     } else if (userRole === 'coordenador' && screenName === 'delays') {
         showToast('Acesso Restrito: Seu perfil de Coordenador não tem permissão para o módulo de Atrasos e Turnos.', 'warning');
@@ -11411,6 +11836,7 @@ function switchAdminTab(tabName) {
         loadAdminEngineStatus();
     } else if (tabName === 'users') {
         loadAllAdminUsers();
+        loadAllAdminRequests();
     } else if (tabName === 'telemetry') {
         loadAdminTelemetry();
     }
