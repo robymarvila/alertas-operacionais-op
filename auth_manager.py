@@ -121,6 +121,7 @@ class AuthManager:
         self._load_access_requests()
         self._ensure_built_in_admin()
         self._sync_with_supabase()
+        self._sync_access_requests_from_cloud()
 
     def _ensure_built_in_admin(self):
         """Garante a existência do usuário mestre obrigatório 'administrado' com acesso irrestrito."""
@@ -145,13 +146,19 @@ class AuthManager:
         self._save_local_users()
 
     def _load_local_users(self):
-        """Carrega usuários persistidos no cache JSON local."""
+        """Carrega usuários persistidos no cache JSON local (apenas base oficial CCO, descartando legados do Fleet)."""
         if os.path.exists(LOCAL_USERS_FILE):
             try:
                 with open(LOCAL_USERS_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     if isinstance(data, dict):
+                        cleaned = {}
                         for k, v in data.items():
+                            k_str = str(k)
+                            # Descarta cadastros antigos importados do Fleet com IDs numéricos longos
+                            if v.get("origem") in ["importado_fleet", "fleet"] or (k_str.isdigit() and len(k_str) > 10):
+                                continue
+
                             # Normaliza role legada se necessário
                             r = str(v.get("role") or "").lower()
                             if r in ["admin", "administrador"]:
@@ -173,7 +180,8 @@ class AuthManager:
                             else:
                                 v["status"] = "ativo"
 
-                            self.users[k] = v
+                            cleaned[k_str] = v
+                        self.users = cleaned
             except Exception as e:
                 print(f"[AUTH] Falha ao carregar cache local de usuários: {e}")
 
@@ -219,6 +227,10 @@ class AuthManager:
                         uid = u.get("id")
                         if uid:
                             uid_str = str(uid)
+                            # Usuários pendentes pertencem à fila de solicitações e não aos usuários ativos
+                            if u.get("status") in ["pending", "pendente"]:
+                                continue
+
                             # Converte role legada se necessário
                             r = str(u.get("role") or "").lower()
                             if r in ["admin", "administrador"]:
@@ -230,6 +242,18 @@ class AuthManager:
                             else:
                                 u["role"] = "supervisor"
                             
+                            if uid_str == "00000000-0000-0000-0000-000000000001":
+                                u["username"] = "administrado"
+                                u["is_master"] = True
+                                u["role"] = "administrador"
+                                u["status"] = "ativo"
+
+                            if not u.get("username"):
+                                if u.get("email"):
+                                    u["username"] = u["email"].split("@")[0].lower()
+                                elif u.get("matricula"):
+                                    u["username"] = u["matricula"].lower()
+
                             # Preserva precisa_trocar_senha se já presente localmente
                             local_existing = self.users.get(uid_str)
                             if local_existing and "precisa_trocar_senha" in local_existing:
@@ -290,6 +314,9 @@ class AuthManager:
             u_mat = str(u.get("matricula") or "").strip().upper()
             u_nome = str(u.get("nome") or "").strip().upper()
 
+            if (u.get("is_master") or u_id == "00000000-0000-0000-0000-000000000001") and id_lower in ["administrado", "admin"]:
+                return k, u
+
             if u_id == id_str:
                 return k, u
             if u_email and u_email == id_lower:
@@ -304,39 +331,6 @@ class AuthManager:
                 return k, u
 
         return None, None
-
-    def _sync_fleet_user_password(self, target_user: dict, plain_password: str, precisa_trocar: bool = True):
-        """Sincroniza senha provisória ou definitiva diretamente no banco do Fleet (Supabase Fleet) se aplicável."""
-        try:
-            import requests
-            fleet_url = "https://dbamnuezlbmmxhxpxtiu.supabase.co/rest/v1/usuarios"
-            fleet_headers = {
-                "apikey": "sb_publishable_NArb5o1nWAQcPcen4pwzJQ_KG7Vb6hd",
-                "Authorization": "Bearer sb_publishable_NArb5o1nWAQcPcen4pwzJQ_KG7Vb6hd"
-            }
-            user_id = target_user.get("id")
-            email = (target_user.get("email") or target_user.get("login") or "").strip().lower()
-            fleet_hash = hash_password_fleet(plain_password)
-
-            payload = {
-                "senha": fleet_hash,
-                "precisa_trocar_senha": precisa_trocar
-            }
-
-            # Tenta atualizar por ID se for numérico do Fleet
-            if user_id and str(user_id).isdigit():
-                resp = requests.patch(f"{fleet_url}?id=eq.{user_id}", headers=fleet_headers, json=payload, timeout=5)
-                if resp.status_code in [200, 204]:
-                    return True
-
-            # Tenta atualizar por login/email
-            if email:
-                resp = requests.patch(f"{fleet_url}?login=eq.{email}", headers=fleet_headers, json=payload, timeout=5)
-                if resp.status_code in [200, 204]:
-                    return True
-        except Exception as e:
-            print(f"[AUTH] Aviso sincronização Fleet: {e}")
-        return False
 
     def authenticate(self, login_identifier: str, password: str) -> dict:
         """
@@ -467,9 +461,6 @@ class AuthManager:
         except Exception:
             pass
 
-        # Sincroniza também no Fleet Supabase se o usuário pertencer ao Fleet
-        self._sync_fleet_user_password(u, new_password, precisa_trocar=False)
-
         return {
             "status": "success",
             "message": "Senha atualizada com sucesso! Acesso integral liberado."
@@ -510,9 +501,6 @@ class AuthManager:
             }, timeout=5)
         except Exception:
             pass
-
-        # Sincroniza diretamente no Fleet Supabase para garantir que tanto o login web quanto Fleet reconheçam a senha
-        self._sync_fleet_user_password(target, temp_password, precisa_trocar=True)
 
         return {
             "status": "success",
@@ -589,120 +577,166 @@ class AuthManager:
             "message": f"Usuário {target.get('nome')} definido como {new_status.upper()}!"
         }
 
-    def import_fleet_users(self) -> dict:
+    def update_user(self, user_id: str, operator_user: dict, update_data: dict) -> dict:
         """
-        Importa os 75 usuários da tabela 'usuarios' do sistema Fleet (Supabase Fleet)
-        para o nosso sistema com perfis mapeados, senha provisória padrão e troca obrigatória.
+        Permite que Administradores e Gerentes editem os dados cadastrais de um colaborador.
+        Sincroniza atomicamente no banco local e no Supabase em tempo real.
         """
-        import requests
-        fleet_url = "https://dbamnuezlbmmxhxpxtiu.supabase.co/rest/v1/usuarios"
-        fleet_headers = {
-            "apikey": "sb_publishable_NArb5o1nWAQcPcen4pwzJQ_KG7Vb6hd",
-            "Authorization": "Bearer sb_publishable_NArb5o1nWAQcPcen4pwzJQ_KG7Vb6hd"
+        op_role = str(operator_user.get("role") or "").lower()
+        if op_role not in ["administrador", "gerente"]:
+            return {"status": "error", "message": "Apenas Gerentes e Administradores podem editar colaboradores."}
+
+        target_key, target = self._find_user(user_id)
+        if not target:
+            return {"status": "error", "message": "Colaborador não localizado."}
+
+        is_master = target.get("is_master") or str(target.get("id")) == "00000000-0000-0000-0000-000000000001" or target.get("username") == "administrado"
+
+        # Gerente não pode alterar perfil nem dados de Administradores
+        target_role = str(target.get("role") or "").lower()
+        if op_role == "gerente" and (is_master or target_role == "administrador"):
+            return {"status": "error", "message": "Gerente não possui permissão para editar contas de Administrador."}
+
+        # Valida perfil pretendido
+        nova_role = str(update_data.get("role") or target.get("role") or "supervisor").strip().lower()
+        if nova_role not in VALID_ROLES:
+            nova_role = "supervisor"
+
+        if is_master:
+            nova_role = "administrador"
+            novo_status = "ativo"
+        else:
+            if op_role == "gerente" and nova_role == "administrador":
+                return {"status": "error", "message": "Gerente não possui permissão para definir o perfil Administrador."}
+            novo_status = str(update_data.get("status") or target.get("status") or "ativo").strip().lower()
+            if novo_status not in ["ativo", "inativo"]:
+                novo_status = "ativo"
+
+        # Atualiza campos cadastrais
+        if "nome" in update_data and str(update_data["nome"]).strip():
+            target["nome"] = str(update_data["nome"]).strip().upper()
+        if "email" in update_data and str(update_data["email"]).strip():
+            target["email"] = str(update_data["email"]).strip().lower()
+        if "matricula" in update_data:
+            target["matricula"] = str(update_data["matricula"]).strip().upper()
+        if "telefone" in update_data:
+            target["telefone"] = str(update_data["telefone"]).strip()
+        if "regional" in update_data:
+            target["regional"] = str(update_data["regional"]).strip()
+        if "setor" in update_data:
+            target["setor"] = str(update_data["setor"]).strip()
+
+        target["role"] = nova_role
+        target["status"] = novo_status
+        target["updated_at"] = datetime.now().isoformat()
+        target["updated_by"] = operator_user.get("nome", "Gestor")
+
+        # Se fornecida nova senha
+        nova_senha = str(update_data.get("nova_senha") or update_data.get("password") or "").strip()
+        if nova_senha:
+            if len(nova_senha) < 4:
+                return {"status": "error", "message": "A nova senha deve ter no mínimo 4 caracteres."}
+            target["password_hash"] = hash_password_pbkdf2(nova_senha)
+            target["precisa_trocar_senha"] = bool(update_data.get("forcar_troca_senha", False))
+
+        self._save_local_users()
+
+        # Sincroniza atomicamente no Supabase
+        try:
+            from supabase_client import BASE_REST_URL, get_headers
+            import requests
+            requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=target, timeout=5)
+        except Exception as e:
+            print(f"[AUTH] Falha ao persistir usuário editado no Supabase: {e}")
+
+        return {
+            "status": "success",
+            "message": f"Dados de {target['nome']} atualizados com sucesso!",
+            "user": {
+                "id": target["id"],
+                "nome": target["nome"],
+                "email": target["email"],
+                "matricula": target.get("matricula", ""),
+                "role": target["role"],
+                "status": target["status"],
+                "regional": target.get("regional", ""),
+                "setor": target.get("setor", "")
+            }
         }
 
+    def create_user(self, operator_user: dict, user_data: dict) -> dict:
+        """
+        Permite ao Administrador ou Gerente cadastrar diretamente um colaborador no sistema.
+        Criação atômica com PBKDF2-HMAC-SHA256 e sincronização em tempo real.
+        """
+        op_role = str(operator_user.get("role") or "").lower()
+        if op_role not in ["administrador", "gerente"]:
+            return {"status": "error", "message": "Apenas Gerentes e Administradores podem cadastrar usuários."}
+
+        nome = str(user_data.get("nome") or "").strip().upper()
+        email = str(user_data.get("email") or "").strip().lower()
+        matricula = str(user_data.get("matricula") or "").strip().upper()
+        role = str(user_data.get("role") or "supervisor").strip().lower()
+        senha = str(user_data.get("password") or user_data.get("senha") or "Alpitel@2026").strip()
+        precisa_trocar = bool(user_data.get("precisa_trocar_senha", True))
+
+        if not nome:
+            return {"status": "error", "message": "Informe o Nome Completo do colaborador."}
+        if not email and not matricula:
+            return {"status": "error", "message": "Informe ao menos a Matrícula ou E-mail corporativo."}
+        if len(senha) < 4:
+            return {"status": "error", "message": "A senha deve conter no mínimo 4 caracteres."}
+        if role not in VALID_ROLES:
+            role = "supervisor"
+
+        if op_role == "gerente" and role == "administrador":
+            return {"status": "error", "message": "Gerente não possui permissão para cadastrar Administradores."}
+
+        # Checa duplicidade
+        for u in self.users.values():
+            if email and str(u.get("email") or "").lower() == email:
+                return {"status": "error", "message": f"O e-mail '{email}' já está em uso por outro colaborador ({u.get('nome')})."}
+            if matricula and str(u.get("matricula") or "").upper() == matricula:
+                return {"status": "error", "message": f"A matrícula '{matricula}' já está cadastrada para {u.get('nome')}."}
+
+        new_uid = str(secrets.token_hex(16))
+        username = email.split("@")[0] if "@" in email else matricula.lower()
+
+        novo_u = {
+            "id": new_uid,
+            "nome": nome,
+            "email": email or f"{matricula.lower()}@alpitelbrasil.com.br",
+            "username": username,
+            "matricula": matricula,
+            "telefone": str(user_data.get("telefone") or "").strip(),
+            "regional": str(user_data.get("regional") or "").strip(),
+            "setor": str(user_data.get("setor") or "").strip(),
+            "password_hash": hash_password_pbkdf2(senha),
+            "role": role,
+            "status": "ativo",
+            "precisa_trocar_senha": precisa_trocar,
+            "origem": "cadastro_direto",
+            "created_at": datetime.now().isoformat(),
+            "created_by": operator_user.get("nome", "Gestor"),
+            "last_login": None
+        }
+
+        self.users[new_uid] = novo_u
+        self._save_local_users()
+
+        # Sincroniza atomicamente no Supabase
         try:
-            resp = requests.get(fleet_url, headers=fleet_headers, timeout=10)
-            if resp.status_code != 200:
-                return {"status": "error", "message": f"Falha ao conectar no Fleet: HTTP {resp.status_code}"}
-            
-            fleet_users = resp.json() or []
-            if not isinstance(fleet_users, list):
-                return {"status": "error", "message": "Formato inválido de retorno do Fleet."}
-
-            imported_count = 0
-            updated_count = 0
-
-            # Senha provisória padrão para todos os importados: Alpitel@2026
-            default_temp_hash = hash_password_pbkdf2("Alpitel@2026")
-
-            for fu in fleet_users:
-                email = str(fu.get("login") or fu.get("email") or "").strip().lower()
-                nome = str(fu.get("nome") or "").strip().upper()
-                if not email or not nome:
-                    continue
-
-                username = email.split("@")[0] if "@" in email else email.lower()
-                matricula = str(fu.get("matricula") or "").strip().upper()
-                telefone = str(fu.get("telefone") or "").strip()
-                regional = str(fu.get("regional") or "").strip()
-                setor = str(fu.get("setor") or "").strip()
-
-                fleet_perfil = str(fu.get("perfil") or "").strip().upper()
-                # Mapeia perfil inicial compatível
-                if "COORDENADOR" in fleet_perfil:
-                    role = "coordenador"
-                elif "GERENTE" in fleet_perfil:
-                    role = "gerente"
-                elif "ADMINISTRADOR" in fleet_perfil:
-                    role = "administrador"
-                else:
-                    role = "supervisor"
-
-                # Procura se já existe pelo e-mail ou username
-                existing_uid = None
-                for uid, u in self.users.items():
-                    if u.get("is_master"):
-                        continue
-                    if (u.get("email") or "").lower() == email or (u.get("username") or "").lower() == username:
-                        existing_uid = uid
-                        break
-
-                if existing_uid:
-                    # Atualiza dados cadastrais sem sobrescrever senha se já personalizada
-                    u = self.users[existing_uid]
-                    u["nome"] = nome
-                    u["matricula"] = matricula or u.get("matricula", "")
-                    u["telefone"] = telefone or u.get("telefone", "")
-                    u["regional"] = regional or u.get("regional", "")
-                    u["setor"] = setor or u.get("setor", "")
-                    updated_count += 1
-                else:
-                    new_id = str(fu.get("id") or secrets.token_hex(16))
-                    self.users[new_id] = {
-                        "id": new_id,
-                        "nome": nome,
-                        "email": email,
-                        "username": username,
-                        "matricula": matricula,
-                        "telefone": telefone,
-                        "regional": regional,
-                        "setor": setor,
-                        "password_hash": default_temp_hash,
-                        "role": role,
-                        "status": "ativo",
-                        "precisa_trocar_senha": True,
-                        "origem": "importado_fleet",
-                        "created_at": datetime.now().isoformat(),
-                        "last_login": None
-                    }
-                    imported_count += 1
-
-            self._save_local_users()
-
-            # Tenta sincronizar lote no Supabase em background de forma silenciosa
-            try:
-                from supabase_client import BASE_REST_URL, get_headers
-                payload_batch = [u for u in self.users.values() if not u.get("is_master")]
-                if payload_batch:
-                    # Envia em blocos de até 50 registros com prefer=resolution=merge-duplicates
-                    headers_upsert = get_headers().copy()
-                    headers_upsert["Prefer"] = "resolution=merge-duplicates"
-                    for i in range(0, len(payload_batch), 50):
-                        chunk = payload_batch[i:i+50]
-                        requests.post(f"{BASE_REST_URL}/system_users", headers=headers_upsert, json=chunk, timeout=5)
-            except Exception:
-                pass
-
-            return {
-                "status": "success",
-                "message": f"Importação concluída com sucesso! {imported_count} novos usuários importados do Fleet e {updated_count} cadastros atualizados. Senha provisória padrão: 'Alpitel@2026' (com troca obrigatória no 1º login).",
-                "imported": imported_count,
-                "updated": updated_count,
-                "total": len(self.users)
-            }
+            from supabase_client import BASE_REST_URL, get_headers
+            import requests
+            requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=novo_u, timeout=5)
         except Exception as e:
-            return {"status": "error", "message": f"Erro durante a importação do Fleet: {str(e)}"}
+            print(f"[AUTH] Falha ao persistir novo usuário no Supabase: {e}")
+
+        return {
+            "status": "success",
+            "message": f"Colaborador {nome} ({role.upper()}) cadastrado com sucesso! Senha: '{senha}'",
+            "user": novo_u
+        }
 
     def list_users(self) -> list:
         """Retorna lista pública de usuários sanitizada (Zero-Knowledge: sem hashes de senha)."""
@@ -730,11 +764,170 @@ class AuthManager:
             x.get("nome") or ""
         ))
 
+    def _push_access_request_to_cloud(self, req: dict):
+        """Envia solicitação para a tabela 'system_commands' no Supabase para sincronização atômica entre todos os servidores e instâncias."""
+        try:
+            from supabase_client import BASE_REST_URL, get_headers
+            import requests
+            cmd_payload = dict(req)
+            requests.post(f"{BASE_REST_URL}/system_commands", headers=get_headers(), json={
+                "command": "ACCESS_REQUEST",
+                "status": "PENDING",
+                "payload": cmd_payload
+            }, timeout=5)
+        except Exception as e:
+            print(f"[AUTH] Falha ao enviar solicitação para o Supabase: {e}")
+
+    def _update_cloud_request_status(self, req: dict, cloud_status: str, result_dict: dict):
+        """Atualiza o status de uma solicitação no Supabase (system_commands e system_users)."""
+        try:
+            from supabase_client import BASE_REST_URL, get_headers
+            import requests
+            cmd_id = req.get("cloud_command_id")
+            if cmd_id:
+                requests.patch(f"{BASE_REST_URL}/system_commands?id=eq.{cmd_id}", headers=get_headers(), json={
+                    "status": cloud_status,
+                    "result": result_dict,
+                    "updated_at": datetime.now().isoformat()
+                }, timeout=5)
+            else:
+                proto = req.get("protocolo")
+                if proto:
+                    requests.patch(f"{BASE_REST_URL}/system_commands?payload->>protocolo=eq.{proto}", headers=get_headers(), json={
+                        "status": cloud_status,
+                        "result": result_dict,
+                        "updated_at": datetime.now().isoformat()
+                    }, timeout=5)
+            
+            # Se houver usuário correspondente em system_users no Supabase, atualiza status
+            u_id = req.get("user_id") or req.get("id")
+            if u_id:
+                new_u_status = "approved" if cloud_status == "COMPLETED" else "rejected"
+                requests.patch(f"{BASE_REST_URL}/system_users?id=eq.{u_id}", headers=get_headers(), json={
+                    "status": new_u_status
+                }, timeout=5)
+        except Exception as e:
+            print(f"[AUTH] Falha ao atualizar status da solicitação na nuvem: {e}")
+
+    def _sync_access_requests_from_cloud(self):
+        """
+        Sincroniza solicitações de acesso de todas as fontes:
+        1. Comandos 'ACCESS_REQUEST' em 'system_commands' no Supabase
+        2. Usuários com status 'pending' em 'system_users' no Supabase
+        3. Usuários locais pendentes
+        """
+        try:
+            from supabase_client import BASE_REST_URL, get_headers
+            import requests
+
+            # 1. Busca solicitações registradas em system_commands
+            endpoint_cmd = f"{BASE_REST_URL}/system_commands?command=eq.ACCESS_REQUEST&order=created_at.desc&limit=150"
+            resp_cmd = requests.get(endpoint_cmd, headers=get_headers(), timeout=5)
+            if resp_cmd.status_code == 200:
+                cmds = resp_cmd.json() or []
+                for c in cmds:
+                    payload = c.get("payload") or {}
+                    if not payload.get("nome") and not payload.get("matricula") and not payload.get("email"):
+                        continue
+                    cmd_id = c.get("id")
+                    req_id = str(payload.get("id") or cmd_id)
+                    c_status = c.get("status")
+
+                    mapped_status = "pendente"
+                    if c_status == "COMPLETED":
+                        mapped_status = "aprovado"
+                    elif c_status == "FAILED":
+                        mapped_status = "recusado"
+                    elif payload.get("status"):
+                        mapped_status = payload.get("status")
+
+                    payload["id"] = req_id
+                    payload["cloud_command_id"] = cmd_id
+                    payload["status"] = mapped_status
+                    if not payload.get("protocolo"):
+                        payload["protocolo"] = f"CCO-{str(req_id)[:8].upper()}"
+
+                    # Se já constar localmente como aprovado/recusado, não sobrescreve com pendente
+                    local_existing = self.access_requests.get(req_id)
+                    if local_existing and local_existing.get("status") in ["aprovado", "recusado"] and mapped_status == "pendente":
+                        continue
+
+                    self.access_requests[req_id] = payload
+
+            # 2. Busca usuários com status 'pending' no Supabase
+            endpoint_u = f"{BASE_REST_URL}/system_users?status=eq.pending&limit=100"
+            resp_u = requests.get(endpoint_u, headers=get_headers(), timeout=5)
+            if resp_u.status_code == 200:
+                pending_cloud_users = resp_u.json() or []
+                for pu in pending_cloud_users:
+                    pu_id = str(pu.get("id"))
+                    pu_email = str(pu.get("email") or "").lower()
+                    pu_mat = str(pu.get("matricula") or "").upper()
+                    
+                    # Verifica se já está mapeado em access_requests
+                    already_present = pu_id in self.access_requests or any(
+                        (pu_email and r.get("email") and r.get("email").lower() == pu_email) or
+                        (pu_mat and r.get("matricula") and r.get("matricula").upper() == pu_mat)
+                        for r in self.access_requests.values()
+                    )
+                    if not already_present:
+                        proto = f"CCO-PEND-{pu_mat[-6:] if len(pu_mat) >= 6 else pu_id[:6].upper()}"
+                        self.access_requests[pu_id] = {
+                            "id": pu_id,
+                            "protocolo": proto,
+                            "nome": pu.get("nome", "COLABORADOR"),
+                            "email": pu.get("email", ""),
+                            "matricula": pu_mat,
+                            "role": pu.get("role", "supervisor"),
+                            "regional": pu.get("regional", "Global"),
+                            "setor": pu.get("setor", "Operações"),
+                            "telefone": pu.get("telefone", ""),
+                            "justificativa": "Colaborador aguardando liberação de acesso pelo gestor",
+                            "tipo": "NOVO_COLABORADOR",
+                            "status": "pendente",
+                            "user_id": pu_id,
+                            "created_at": pu.get("created_at") or datetime.now().isoformat()
+                        }
+
+            # 3. Varre self.users por pendentes locais
+            for uid, u in self.users.items():
+                if u.get("status") in ["pending", "pendente"]:
+                    uid_str = str(uid)
+                    u_email = str(u.get("email") or "").lower()
+                    u_mat = str(u.get("matricula") or "").upper()
+                    already_present = uid_str in self.access_requests or any(
+                        (u_email and r.get("email") and r.get("email").lower() == u_email) or
+                        (u_mat and r.get("matricula") and r.get("matricula").upper() == u_mat)
+                        for r in self.access_requests.values()
+                    )
+                    if not already_present:
+                        proto = f"CCO-PEND-{u_mat[-6:] if len(u_mat) >= 6 else uid_str[:6].upper()}"
+                        self.access_requests[uid_str] = {
+                            "id": uid_str,
+                            "protocolo": proto,
+                            "nome": u.get("nome", "COLABORADOR"),
+                            "email": u.get("email", ""),
+                            "matricula": u_mat,
+                            "role": u.get("role", "supervisor"),
+                            "regional": u.get("regional", "Global"),
+                            "setor": u.get("setor", "Operações"),
+                            "telefone": u.get("telefone", ""),
+                            "justificativa": "Colaborador com cadastro pendente de aprovação",
+                            "tipo": "NOVO_COLABORADOR",
+                            "status": "pendente",
+                            "user_id": uid_str,
+                            "created_at": u.get("created_at") or datetime.now().isoformat()
+                        }
+
+            self._save_access_requests()
+        except Exception as e:
+            print(f"[AUTH] Falha ao sincronizar solicitações com a nuvem: {e}")
+
     def request_access(self, nome: str, email: str, matricula: str, role: str = "supervisor",
                        regional: str = "", setor: str = "", telefone: str = "", justificativa: str = "") -> dict:
         """
-        Registra uma solicitação de acesso para colaborador que ainda não possui credenciais.
-        Cria protocolo único e armazena para aprovação de Gerentes/Administradores.
+        Registra uma solicitação de acesso para colaborador (novo ou já cadastrado na base Fleet).
+        Cria protocolo único e armazena na nuvem (Supabase) e local para aprovação de Gerentes/Administradores.
         """
         nome_clean = str(nome or "").strip().upper()
         email_clean = str(email or "").strip().lower()
@@ -748,17 +941,19 @@ class AuthManager:
         if not email_clean and not mat_clean:
             return {"status": "error", "message": "Informe ao menos a Matrícula ou o E-mail corporativo."}
 
-        # 1. Checa se o colaborador já possui cadastro ativo no sistema
+        # 1. Carrega dados mais recentes da nuvem e do disco antes de validar
+        self._load_access_requests()
+
+        # 2. Checa se o colaborador já possui cadastro no sistema (ex: importado do Fleet)
+        existing_user = None
         for u in self.users.values():
             u_email = str(u.get("email") or "").lower()
             u_mat = str(u.get("matricula") or "").upper()
             if (email_clean and email_clean == u_email) or (mat_clean and mat_clean == u_mat):
-                return {
-                    "status": "exists",
-                    "message": f"O colaborador '{u.get('nome')}' já possui cadastro no sistema ({u.get('email')}). Caso não lembre sua senha, solicite uma senha provisória ao Gerente ou Administrador."
-                }
+                existing_user = u
+                break
 
-        # 2. Checa se já existe solicitação pendente para esse e-mail ou matrícula
+        # 3. Checa se já existe solicitação pendente para esse e-mail ou matrícula
         for req in self.access_requests.values():
             if req.get("status") == "pendente":
                 req_email = str(req.get("email") or "").lower()
@@ -770,7 +965,15 @@ class AuthManager:
                         "message": f"Já existe uma solicitação pendente de análise para este colaborador sob o Protocolo #{req.get('protocolo')}."
                     }
 
-        # 3. Cria protocolo e solicitação
+        # 4. Define o tipo e mensagem da solicitação
+        if existing_user:
+            tipo_solicitacao = "REDEFINICAO_SENHA"
+            msg_feedback = "Solicitação de redefinição de senha registrada com sucesso! O Gerente ou Administrador CCO foi notificado para gerar uma nova senha provisória."
+        else:
+            tipo_solicitacao = "NOVO_COLABORADOR"
+            msg_feedback = "Solicitação de acesso registrada com sucesso! O Gerente ou Administrador CCO avaliará o pedido para liberação das credenciais."
+
+        # 5. Cria protocolo único e estrutura da solicitação
         req_id = secrets.token_hex(16)
         date_str = datetime.now().strftime("%Y%m%d")
         rand_suffix = secrets.token_hex(2).upper()
@@ -780,13 +983,15 @@ class AuthManager:
             "id": req_id,
             "protocolo": protocolo,
             "nome": nome_clean,
-            "email": email_clean or f"{mat_clean.lower()}@alpitelbrasil.com.br",
-            "matricula": mat_clean,
+            "email": email_clean or (existing_user.get("email") if existing_user else f"{mat_clean.lower()}@alpitelbrasil.com.br"),
+            "matricula": mat_clean or (existing_user.get("matricula") if existing_user else ""),
             "role": role_clean,
-            "regional": str(regional or "").strip(),
-            "setor": str(setor or "").strip(),
-            "telefone": str(telefone or "").strip(),
+            "regional": str(regional or (existing_user.get("regional") if existing_user else "")).strip(),
+            "setor": str(setor or (existing_user.get("setor") if existing_user else "")).strip(),
+            "telefone": str(telefone or (existing_user.get("telefone") if existing_user else "")).strip(),
             "justificativa": str(justificativa or "").strip(),
+            "tipo": tipo_solicitacao,
+            "user_id": str(existing_user.get("id")) if existing_user else None,
             "status": "pendente",
             "created_at": datetime.now().isoformat(),
             "approved_by": None,
@@ -799,14 +1004,20 @@ class AuthManager:
         self.access_requests[req_id] = nova_req
         self._save_access_requests()
 
+        # 6. Sincroniza imediatamente com o Supabase em tempo real
+        self._push_access_request_to_cloud(nova_req)
+
         return {
             "status": "success",
             "protocolo": protocolo,
-            "message": f"Solicitação de acesso registrada com sucesso sob o Protocolo #{protocolo}! O Gerente ou Administrador CCO avaliará o pedido para liberação das credenciais."
+            "message": f"{msg_feedback} Protocolo: #{protocolo}"
         }
 
-    def list_access_requests(self) -> list:
-        """Retorna lista de todas as solicitações de acesso (pendentes primeiro)."""
+    def list_access_requests(self, force_sync: bool = True) -> list:
+        """Retorna lista de todas as solicitações de acesso (pendentes primeiro), sincronizada em tempo real com a nuvem."""
+        self._load_access_requests()
+        if force_sync:
+            self._sync_access_requests_from_cloud()
         reqs = list(self.access_requests.values())
         return sorted(reqs, key=lambda x: (
             0 if x.get("status") == "pendente" else 1,
@@ -814,12 +1025,15 @@ class AuthManager:
         ), reverse=True)
 
     def approve_access_request(self, request_id: str, operator_user: dict, initial_password: str = None, assigned_role: str = None) -> dict:
-        """Aprova uma solicitação de acesso e cadastra o colaborador com senha provisória."""
+        """Aprova uma solicitação de acesso e cadastra/ativa o colaborador com senha provisória sincronizada."""
         op_role = str(operator_user.get("role") or "").lower()
         if op_role not in ["administrador", "gerente"]:
             return {"status": "error", "message": "Apenas Gerentes e Administradores podem aprovar solicitações de acesso."}
 
         req = self.access_requests.get(request_id)
+        if not req:
+            self._sync_access_requests_from_cloud()
+            req = self.access_requests.get(request_id)
         if not req:
             return {"status": "error", "message": "Solicitação não localizada."}
         if req.get("status") != "pendente":
@@ -829,56 +1043,86 @@ class AuthManager:
         if final_role not in VALID_ROLES:
             final_role = "supervisor"
 
-        # Gerente só pode aprovar até o nível de coordenador ou supervisor, não administrador
         if op_role == "gerente" and final_role == "administrador":
             return {"status": "error", "message": "Gerente não possui permissão para aprovar acessos como Administrador."}
 
         temp_pwd = str(initial_password or "Alpitel@2026").strip()
-        new_uid = str(secrets.token_hex(16))
-        username = req["email"].split("@")[0] if "@" in req["email"] else req["matricula"].lower()
 
-        novo_usuario = {
-            "id": new_uid,
-            "nome": req["nome"],
-            "email": req["email"],
-            "username": username,
-            "matricula": req["matricula"],
-            "telefone": req.get("telefone", ""),
-            "regional": req.get("regional", ""),
-            "setor": req.get("setor", ""),
-            "password_hash": hash_password_pbkdf2(temp_pwd),
-            "role": final_role,
-            "status": "ativo",
-            "precisa_trocar_senha": True,
-            "origem": "solicitacao_aprovada",
-            "created_at": datetime.now().isoformat(),
-            "aprovado_por": operator_user.get("nome", "Gestor"),
-            "last_login": None
-        }
+        # 1. Verifica se já é um colaborador cadastrado (ex: importado do Fleet ou base legada)
+        target_uid, existing_u = None, None
+        if req.get("user_id"):
+            target_uid, existing_u = self._find_user(req["user_id"])
+        if not existing_u and req.get("matricula"):
+            target_uid, existing_u = self._find_user(req["matricula"])
+        if not existing_u and req.get("email"):
+            target_uid, existing_u = self._find_user(req["email"])
 
-        self.users[new_uid] = novo_usuario
-        self._save_local_users()
+        if existing_u:
+            existing_u["password_hash"] = hash_password_pbkdf2(temp_pwd)
+            existing_u["precisa_trocar_senha"] = True
+            existing_u["status"] = "ativo"
+            existing_u["role"] = final_role
+            existing_u["aprovado_por"] = operator_user.get("nome", "Gestor")
+            existing_u["aprovado_em"] = datetime.now().isoformat()
+            self._save_local_users()
+
+            try:
+                from supabase_client import BASE_REST_URL, get_headers
+                import requests
+                requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=existing_u, timeout=5)
+            except Exception:
+                pass
+            user_res_id = str(existing_u.get("id"))
+        else:
+            new_uid = str(secrets.token_hex(16))
+            username = req["email"].split("@")[0] if "@" in req["email"] else req["matricula"].lower()
+            novo_usuario = {
+                "id": new_uid,
+                "nome": req["nome"],
+                "email": req["email"],
+                "username": username,
+                "matricula": req["matricula"],
+                "telefone": req.get("telefone", ""),
+                "regional": req.get("regional", ""),
+                "setor": req.get("setor", ""),
+                "password_hash": hash_password_pbkdf2(temp_pwd),
+                "role": final_role,
+                "status": "ativo",
+                "precisa_trocar_senha": True,
+                "origem": "solicitacao_aprovada",
+                "created_at": datetime.now().isoformat(),
+                "aprovado_por": operator_user.get("nome", "Gestor"),
+                "last_login": None
+            }
+            self.users[new_uid] = novo_usuario
+            self._save_local_users()
+
+            try:
+                from supabase_client import BASE_REST_URL, get_headers
+                import requests
+                requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=novo_usuario, timeout=5)
+            except Exception:
+                pass
+            user_res_id = new_uid
 
         req["status"] = "aprovado"
         req["approved_by"] = operator_user.get("nome", "Gestor")
         req["approved_at"] = datetime.now().isoformat()
-        req["assigned_user_id"] = new_uid
+        req["assigned_user_id"] = user_res_id
         req["assigned_role"] = final_role
         self._save_access_requests()
 
-        # Sincroniza no Supabase se possível
-        try:
-            from supabase_client import BASE_REST_URL, get_headers
-            import requests
-            requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=novo_usuario, timeout=5)
-        except Exception:
-            pass
+        # Atualiza status na nuvem Supabase
+        self._update_cloud_request_status(req, "COMPLETED", {
+            "approved_by": operator_user.get("nome"),
+            "approved_at": req["approved_at"]
+        })
 
         return {
             "status": "success",
             "message": f"Acesso aprovado para {req['nome']} ({final_role.upper()})! Senha provisória: '{temp_pwd}' com troca obrigatória no 1º acesso.",
             "user": {
-                "id": new_uid,
+                "id": user_res_id,
                 "nome": req["nome"],
                 "email": req["email"],
                 "role": final_role,
@@ -887,12 +1131,15 @@ class AuthManager:
         }
 
     def reject_access_request(self, request_id: str, reason: str, operator_user: dict) -> dict:
-        """Rejeita uma solicitação de acesso com justificativa."""
+        """Rejeita uma solicitação de acesso com justificativa registrada e sincronizada."""
         op_role = str(operator_user.get("role") or "").lower()
         if op_role not in ["administrador", "gerente"]:
             return {"status": "error", "message": "Apenas Gerentes e Administradores podem recusar solicitações de acesso."}
 
         req = self.access_requests.get(request_id)
+        if not req:
+            self._sync_access_requests_from_cloud()
+            req = self.access_requests.get(request_id)
         if not req:
             return {"status": "error", "message": "Solicitação não localizada."}
         if req.get("status") != "pendente":
@@ -903,6 +1150,12 @@ class AuthManager:
         req["rejected_at"] = datetime.now().isoformat()
         req["rejection_reason"] = str(reason or "Critérios operacionais não atendidos").strip()
         self._save_access_requests()
+
+        # Atualiza status na nuvem Supabase
+        self._update_cloud_request_status(req, "FAILED", {
+            "rejected_by": operator_user.get("nome"),
+            "reason": req["rejection_reason"]
+        })
 
         return {
             "status": "success",

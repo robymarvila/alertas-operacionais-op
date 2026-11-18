@@ -440,16 +440,43 @@ def admin_toggle_user_status():
     status_code = 200 if result.get("status") == "success" else 400
     return jsonify(result), status_code
 
-@app.route('/api/admin/import_fleet_users', methods=['POST'])
-def admin_import_fleet_users():
-    """Importa ou sincroniza usuários a partir da base do sistema Fleet."""
+@app.route('/api/admin/users/update', methods=['POST'])
+def admin_update_user():
+    """Atualiza dados cadastrais, perfil, status ou senha de um colaborador."""
     user = get_current_user()
     if not user or user.get("role") not in ["administrador", "gerente"]:
         return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
-    
-    result = auth_manager.import_fleet_users()
-    status_code = 200 if result.get("status") == "success" else 500
+
+    data = request.get_json(force=True, silent=True) or {}
+    user_id = data.get("user_id")
+    if not user_id:
+        return jsonify({"status": "error", "message": "ID do colaborador não informado."}), 400
+
+    result = auth_manager.update_user(user_id=user_id, operator_user=user, update_data=data)
+    status_code = 200 if result.get("status") == "success" else 400
     return jsonify(result), status_code
+
+@app.route('/api/admin/users/create', methods=['POST'])
+def admin_create_user():
+    """Cadastra diretamente um colaborador no sistema CCO com criptografia PBKDF2."""
+    user = get_current_user()
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
+
+    data = request.get_json(force=True, silent=True) or {}
+    result = auth_manager.create_user(operator_user=user, user_data=data)
+    status_code = 200 if result.get("status") == "success" else 400
+    return jsonify(result), status_code
+
+@app.route('/api/admin/import_fleet_users', methods=['POST'])
+def admin_import_fleet_users():
+    """Endpoint legado mantido para compatibilidade, com retorno de transição para o banco nativo."""
+    return jsonify({
+        "status": "success",
+        "message": "Banco de dados operando em modo 100% nativo com criptografia de ponta a ponta (E2EE/Zero-Knowledge). Não é mais necessária importação externa.",
+        "imported": 0,
+        "updated": 0
+    }), 200
 
 @app.route('/api/auth/users', methods=['GET'])
 def auth_list_users():
@@ -463,7 +490,8 @@ def admin_list_access_requests():
     if not user or user.get("role") not in ["administrador", "gerente"]:
         return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
     
-    reqs = auth_manager.list_access_requests()
+    force_sync = request.args.get("sync", "true").lower() in ["true", "1"]
+    reqs = auth_manager.list_access_requests(force_sync=force_sync)
     return jsonify({
         "status": "success",
         "requests": reqs,

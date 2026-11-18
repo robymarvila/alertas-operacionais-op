@@ -5441,6 +5441,24 @@ function applyRbacPermissions(role) {
         btnSyncFleet.style.display = (userRole === 'administrador') ? 'inline-flex' : 'none';
     }
 
+    // 4. Polling contínuo de solicitações de acesso (zero atraso para gestores)
+    if (canManage) {
+        loadAllAdminRequests(true);
+        if (!window._accessRequestsInterval) {
+            window._accessRequestsInterval = setInterval(() => {
+                const curRole = (authState.user?.role || '').toLowerCase();
+                if (['administrador', 'gerente'].includes(curRole)) {
+                    loadAllAdminRequests(true);
+                }
+            }, 10000);
+        }
+    } else {
+        if (window._accessRequestsInterval) {
+            clearInterval(window._accessRequestsInterval);
+            window._accessRequestsInterval = null;
+        }
+    }
+
     if (window.lucide) lucide.createIcons();
 }
 
@@ -5961,10 +5979,21 @@ function renderAdminUsersManagementTable(users) {
 
         let actionsHtml = '';
         if (isMaster) {
-            actionsHtml = `<span style="color: #c084fc; font-weight: 700; font-size: 0.74rem;">★ Administrador Master</span>`;
+            actionsHtml = `
+                <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                    <span style="color: #c084fc; font-weight: 700; font-size: 0.74rem;">★ Administrador Master</span>
+                    ${isMasterAdmin ? `
+                    <button class="btn btn-primary btn-xs" onclick="openEditUserModal('${u.id}')" title="Editar dados cadastrais" style="font-size: 0.72rem; padding: 3px 8px;">
+                        <i data-lucide="edit-3" style="width: 12px; height: 12px;"></i> Editar
+                    </button>` : ''}
+                </div>
+            `;
         } else {
             actionsHtml = `
                 <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                    <button class="btn btn-primary btn-xs" onclick="openEditUserModal('${u.id}')" title="Editar dados cadastrais" style="font-size: 0.72rem; padding: 3px 8px;">
+                        <i data-lucide="edit-3" style="width: 12px; height: 12px;"></i> Editar
+                    </button>
                     <button class="btn btn-secondary btn-xs" onclick="openSetTempPasswordModal('${u.id}', '${encodeURIComponent(u.nome || '')}')" title="Emitir nova senha provisória" style="font-size: 0.72rem; padding: 3px 8px;">
                         <i data-lucide="key" style="width: 12px; height: 12px;"></i> Senha
                     </button>
@@ -6192,6 +6221,340 @@ async function handleImportFleetUsersSubmit() {
 window.handleImportFleetUsersSubmit = handleImportFleetUsersSubmit;
 
 // ==============================================================================
+// GESTÃO NATIVA DE COLABORADORES: EDIÇÃO E CADASTRO DIRETO
+// ==============================================================================
+function openEditUserModal(userId) {
+    if (!adminUsersCache || !Array.isArray(adminUsersCache)) return;
+    const u = adminUsersCache.find(x => String(x.id) === String(userId));
+    if (!u) {
+        showToast('Colaborador não localizado na lista de usuários.', 'danger');
+        return;
+    }
+
+    const modal = document.getElementById('modalEditUser');
+    if (!modal) return;
+
+    const currentRole = (authState.user?.role || '').toLowerCase();
+    const isMasterAdmin = currentRole === 'administrador';
+
+    // Gerente não pode editar Administrador
+    if (!isMasterAdmin && (u.role || '').toLowerCase() === 'administrador') {
+        showToast('Apenas Administradores podem editar dados de um Administrador.', 'warning');
+        return;
+    }
+
+    const inputId = document.getElementById('editUserId');
+    if (inputId) inputId.value = u.id || '';
+
+    const subtitle = document.getElementById('editUserSubtitle');
+    if (subtitle) {
+        subtitle.textContent = `${u.nome || 'Colaborador'} (@${u.username || u.matricula || ''})`;
+    }
+
+    const inputNome = document.getElementById('editUserNome');
+    if (inputNome) inputNome.value = u.nome || '';
+
+    const inputMatricula = document.getElementById('editUserMatricula');
+    if (inputMatricula) inputMatricula.value = u.matricula || '';
+
+    const inputEmail = document.getElementById('editUserEmail');
+    if (inputEmail) inputEmail.value = u.email || '';
+
+    const inputTel = document.getElementById('editUserTelefone');
+    if (inputTel) inputTel.value = u.telefone || '';
+
+    const selectRegional = document.getElementById('editUserRegional');
+    if (selectRegional) selectRegional.value = u.regional || 'Global';
+
+    const inputSetor = document.getElementById('editUserSetor');
+    if (inputSetor) inputSetor.value = u.setor || '';
+
+    const roleSelect = document.getElementById('editUserRole');
+    if (roleSelect) {
+        roleSelect.value = u.role || 'supervisor';
+        const adminOpt = roleSelect.querySelector('option[value="administrador"]');
+        if (adminOpt) {
+            adminOpt.disabled = !isMasterAdmin;
+        }
+        roleSelect.disabled = !!(u.is_master || u.username === 'administrado');
+    }
+
+    const statusSelect = document.getElementById('editUserStatus');
+    if (statusSelect) {
+        statusSelect.value = u.status || 'ativo';
+        statusSelect.disabled = !!(u.is_master || u.username === 'administrado');
+    }
+
+    const passInput = document.getElementById('editUserNovaSenha');
+    if (passInput) passInput.value = '';
+
+    const chkForce = document.getElementById('editUserForcarTroca');
+    if (chkForce) chkForce.checked = (u.precisa_trocar_senha !== undefined) ? !!u.precisa_trocar_senha : true;
+
+    const errBanner = document.getElementById('editUserErrorBanner');
+    if (errBanner) errBanner.style.display = 'none';
+
+    modal.style.display = 'flex';
+    modal.style.opacity = '1';
+    modal.style.pointerEvents = 'auto';
+    void modal.offsetWidth;
+    modal.classList.add('active');
+    if (window.lucide) lucide.createIcons();
+}
+window.openEditUserModal = openEditUserModal;
+
+async function submitEditUserForm(event) {
+    if (event) event.preventDefault();
+
+    const userId = document.getElementById('editUserId')?.value;
+    const nome = document.getElementById('editUserNome')?.value?.trim();
+    const matricula = document.getElementById('editUserMatricula')?.value?.trim();
+    const email = document.getElementById('editUserEmail')?.value?.trim();
+    const telefone = document.getElementById('editUserTelefone')?.value?.trim();
+    const regional = document.getElementById('editUserRegional')?.value;
+    const setor = document.getElementById('editUserSetor')?.value?.trim();
+    const role = document.getElementById('editUserRole')?.value;
+    const status = document.getElementById('editUserStatus')?.value;
+    const novaSenha = document.getElementById('editUserNovaSenha')?.value?.trim();
+    const precisaTrocar = document.getElementById('editUserForcarTroca')?.checked;
+
+    const btn = document.getElementById('btnSubmitEditUser');
+    const errBanner = document.getElementById('editUserErrorBanner');
+    const errMsg = document.getElementById('editUserErrorMsg');
+
+    if (!userId) {
+        showToast('ID do colaborador ausente.', 'danger');
+        return;
+    }
+    if (!nome) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'O nome completo é obrigatório.';
+        }
+        showToast('O nome completo é obrigatório.', 'warning');
+        return;
+    }
+    if (novaSenha && novaSenha.length < 4) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'A nova senha deve ter no mínimo 4 caracteres.';
+        }
+        showToast('A nova senha deve ter no mínimo 4 caracteres.', 'warning');
+        return;
+    }
+
+    if (errBanner) errBanner.style.display = 'none';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Salvando...</span>`;
+        if (window.lucide) lucide.createIcons();
+    }
+
+    const token = authState.token || localStorage.getItem('cco_auth_token') || sessionStorage.getItem('cco_auth_token') || '';
+
+    try {
+        const payload = {
+            user_id: userId,
+            nome,
+            matricula,
+            email,
+            telefone,
+            regional,
+            setor,
+            role,
+            status,
+            precisa_trocar_senha: !!precisaTrocar
+        };
+        if (novaSenha) {
+            payload.nova_senha = novaSenha;
+        }
+
+        const resp = await fetch('/api/admin/users/update', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            closeModal('modalEditUser');
+            showToast(res.message || 'Cadastro atualizado com sucesso!', 'success');
+            await loadAllAdminUsers();
+        } else {
+            if (errBanner) {
+                errBanner.style.display = 'flex';
+                if (errMsg) errMsg.textContent = res.message || 'Falha ao atualizar dados.';
+            }
+            showToast(res.message || 'Falha ao atualizar dados.', 'danger');
+        }
+    } catch (e) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = `Erro de comunicação: ${e.message}`;
+        }
+        showToast(`Erro: ${e.message}`, 'danger');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="save"></i> <span>Salvar Alterações</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+}
+window.submitEditUserForm = submitEditUserForm;
+
+function openCreateUserModal() {
+    const modal = document.getElementById('modalCreateUser');
+    if (!modal) return;
+
+    const currentRole = (authState.user?.role || '').toLowerCase();
+    const isMasterAdmin = currentRole === 'administrador';
+
+    const inputNome = document.getElementById('createUserNome');
+    if (inputNome) inputNome.value = '';
+
+    const inputMat = document.getElementById('createUserMatricula');
+    if (inputMat) inputMat.value = '';
+
+    const inputEmail = document.getElementById('createUserEmail');
+    if (inputEmail) inputEmail.value = '';
+
+    const inputTel = document.getElementById('createUserTelefone');
+    if (inputTel) inputTel.value = '';
+
+    const selectReg = document.getElementById('createUserRegional');
+    if (selectReg) selectReg.value = 'Global';
+
+    const inputSetor = document.getElementById('createUserSetor');
+    if (inputSetor) inputSetor.value = 'Operações CCO';
+
+    const roleSelect = document.getElementById('createUserRole');
+    if (roleSelect) {
+        roleSelect.value = 'supervisor';
+        const adminOpt = roleSelect.querySelector('option[value="administrador"]');
+        if (adminOpt) {
+            adminOpt.disabled = !isMasterAdmin;
+        }
+    }
+
+    const passInput = document.getElementById('createUserPassword');
+    if (passInput) passInput.value = 'Alpitel@2026';
+
+    const chkForce = document.getElementById('createUserForcarTroca');
+    if (chkForce) chkForce.checked = true;
+
+    const errBanner = document.getElementById('createUserErrorBanner');
+    if (errBanner) errBanner.style.display = 'none';
+
+    modal.style.display = 'flex';
+    modal.style.opacity = '1';
+    modal.style.pointerEvents = 'auto';
+    void modal.offsetWidth;
+    modal.classList.add('active');
+    setTimeout(() => {
+        if (inputNome) inputNome.focus();
+    }, 150);
+    if (window.lucide) lucide.createIcons();
+}
+window.openCreateUserModal = openCreateUserModal;
+
+async function submitCreateUserForm(event) {
+    if (event) event.preventDefault();
+
+    const nome = document.getElementById('createUserNome')?.value?.trim();
+    const matricula = document.getElementById('createUserMatricula')?.value?.trim();
+    const email = document.getElementById('createUserEmail')?.value?.trim();
+    const telefone = document.getElementById('createUserTelefone')?.value?.trim();
+    const regional = document.getElementById('createUserRegional')?.value;
+    const setor = document.getElementById('createUserSetor')?.value?.trim();
+    const role = document.getElementById('createUserRole')?.value;
+    const password = document.getElementById('createUserPassword')?.value?.trim();
+    const precisaTrocar = document.getElementById('createUserForcarTroca')?.checked;
+
+    const btn = document.getElementById('btnSubmitCreateUser');
+    const errBanner = document.getElementById('createUserErrorBanner');
+    const errMsg = document.getElementById('createUserErrorMsg');
+
+    if (!nome) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'O nome completo é obrigatório.';
+        }
+        showToast('O nome completo é obrigatório.', 'warning');
+        return;
+    }
+    if (!password || password.length < 4) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'A senha provisória deve ter no mínimo 4 caracteres.';
+        }
+        showToast('A senha provisória deve ter no mínimo 4 caracteres.', 'warning');
+        return;
+    }
+
+    if (errBanner) errBanner.style.display = 'none';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Cadastrando...</span>`;
+        if (window.lucide) lucide.createIcons();
+    }
+
+    const token = authState.token || localStorage.getItem('cco_auth_token') || sessionStorage.getItem('cco_auth_token') || '';
+
+    try {
+        const payload = {
+            nome,
+            matricula,
+            email,
+            telefone,
+            regional,
+            setor,
+            role,
+            password,
+            precisa_trocar_senha: !!precisaTrocar
+        };
+
+        const resp = await fetch('/api/admin/users/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            closeModal('modalCreateUser');
+            showToast(res.message || 'Colaborador cadastrado com sucesso!', 'success');
+            await loadAllAdminUsers();
+        } else {
+            if (errBanner) {
+                errBanner.style.display = 'flex';
+                if (errMsg) errMsg.textContent = res.message || 'Falha ao cadastrar colaborador.';
+            }
+            showToast(res.message || 'Falha ao cadastrar colaborador.', 'danger');
+        }
+    } catch (e) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = `Erro de comunicação: ${e.message}`;
+        }
+        showToast(`Erro: ${e.message}`, 'danger');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="check"></i> <span>Cadastrar Colaborador</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+}
+window.submitCreateUserForm = submitCreateUserForm;
+
+// ==============================================================================
 // GESTÃO DE SOLICITAÇÕES DE ACESSO AO SISTEMA (ADMIN & GERENTE)
 // ==============================================================================
 let adminRequestsCache = [];
@@ -6235,24 +6598,55 @@ function switchUserGovernanceSubView(subView) {
 }
 window.switchUserGovernanceSubView = switchUserGovernanceSubView;
 
+function updateManageButtonsPendingBadge(count) {
+    const manageBtnIds = ['btnHubManage', 'btnModuleManage', 'btnDeliveryManage', 'btnPriorizadorManage'];
+    manageBtnIds.forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        let badgeEl = btn.querySelector('.badge-manage-pending');
+        if (count > 0) {
+            if (!badgeEl) {
+                badgeEl = document.createElement('span');
+                badgeEl.className = 'badge-manage-pending';
+                badgeEl.style.cssText = 'display: inline-block; padding: 1px 6px; background: #ef4444; color: #fff; font-size: 0.65rem; font-weight: 900; border-radius: 999px; margin-left: 6px; box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);';
+                btn.appendChild(badgeEl);
+            }
+            badgeEl.textContent = count;
+            badgeEl.style.display = 'inline-block';
+        } else if (badgeEl) {
+            badgeEl.style.display = 'none';
+        }
+    });
+}
+window.updateManageButtonsPendingBadge = updateManageButtonsPendingBadge;
+
 async function reloadUserGovernanceData() {
-    await Promise.all([loadAllAdminUsers(), loadAllAdminRequests()]);
+    const icon = document.getElementById('iconReloadAdminUsers');
+    if (icon) icon.classList.add('spin-animation');
+    try {
+        await Promise.all([loadAllAdminUsers(), loadAllAdminRequests(false)]);
+        showToast('Dados e solicitações sincronizados em tempo real com a nuvem!', 'success');
+    } catch (e) {
+        showToast('Falha ao sincronizar: ' + e.message, 'error');
+    } finally {
+        if (icon) icon.classList.remove('spin-animation');
+    }
 }
 window.reloadUserGovernanceData = reloadUserGovernanceData;
 
-async function loadAllAdminRequests() {
+async function loadAllAdminRequests(silent = false) {
     const tbody = document.getElementById('adminAccessRequestsTableBody');
     const badge = document.getElementById('badgeAdminPendingReqs');
 
     try {
-        const resp = await fetch('/api/admin/access_requests', {
+        const resp = await fetch(`/api/admin/access_requests?sync=true&_t=${Date.now()}`, {
             headers: { 'Authorization': `Bearer ${authState.token || ''}` }
         });
         const res = await resp.json();
 
         if (res.status === 'success' && Array.isArray(res.requests)) {
             adminRequestsCache = res.requests;
-            const pendentesCount = res.pendentes || res.requests.filter(r => r.status === 'pendente').length;
+            const pendentesCount = res.pendentes !== undefined ? res.pendentes : res.requests.filter(r => r.status === 'pendente').length;
             if (badge) {
                 if (pendentesCount > 0) {
                     badge.style.display = 'inline-block';
@@ -6261,12 +6655,13 @@ async function loadAllAdminRequests() {
                     badge.style.display = 'none';
                 }
             }
+            updateManageButtonsPendingBadge(pendentesCount);
             filterAdminRequestsTable();
-        } else {
+        } else if (!silent) {
             if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f43f5e; padding: 24px;">${res.message || 'Erro ao consultar solicitações.'}</td></tr>`;
         }
     } catch (e) {
-        if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f43f5e; padding: 24px;">Falha: ${e.message}</td></tr>`;
+        if (!silent && tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f43f5e; padding: 24px;">Falha: ${e.message}</td></tr>`;
     } finally {
         if (window.lucide) lucide.createIcons();
     }
@@ -6318,6 +6713,15 @@ function renderAdminAccessRequestsTable(requests) {
             statusBadge = `<span style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.4); padding: 3px 8px; border-radius: 6px; font-weight: 800; font-size: 0.72rem;">RECUSADO</span>`;
         }
 
+        let tipoBadge = '';
+        if (r.tipo === 'SOLICITACAO_ACESSO_FLEET') {
+            tipoBadge = `<span style="background: rgba(14, 165, 233, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-left: 6px;">BASE FLEET</span>`;
+        } else if (r.tipo === 'REDEFINICAO_SENHA') {
+            tipoBadge = `<span style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.35); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-left: 6px;">REDEFINIÇÃO</span>`;
+        } else if (r.tipo === 'NOVO_COLABORADOR') {
+            tipoBadge = `<span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.35); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-left: 6px;">NOVO CADASTRO</span>`;
+        }
+
         const roleBadgeClass = `badge-role-${r.role || 'supervisor'}`;
         const createdDate = r.created_at ? new Date(r.created_at).toLocaleString('pt-BR') : '--';
 
@@ -6325,7 +6729,7 @@ function renderAdminAccessRequestsTable(requests) {
         if (isPendente) {
             actionsHtml = `
                 <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
-                    <button class="btn btn-success btn-xs" onclick="handleApproveRequest('${r.id}', '${encodeURIComponent(r.nome)}', '${r.role}')" title="Aprovar acesso e criar usuário" style="font-size: 0.72rem; padding: 4px 8px; font-weight: 800;">
+                    <button class="btn btn-success btn-xs" onclick="handleApproveRequest('${r.id}', '${encodeURIComponent(r.nome)}', '${r.role}')" title="Aprovar acesso e definir senha provisória" style="font-size: 0.72rem; padding: 4px 8px; font-weight: 800;">
                         <i data-lucide="check" style="width: 12px; height: 12px;"></i> Aprovar
                     </button>
                     <button class="btn btn-danger btn-xs" onclick="handleRejectRequest('${r.id}', '${encodeURIComponent(r.nome)}')" title="Recusar solicitação" style="font-size: 0.72rem; padding: 4px 8px; font-weight: 800;">
@@ -6346,8 +6750,11 @@ function renderAdminAccessRequestsTable(requests) {
                     <div style="font-size: 0.68rem; color: #64748b; margin-top: 2px;">${createdDate}</div>
                 </td>
                 <td style="padding: 10px 12px;">
-                    <strong style="color: #f8fafc; font-size: 0.82rem; display: block;">${r.nome}</strong>
-                    <span class="badge-tag badge-matricula">${r.matricula || '--'}</span>
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
+                        <strong style="color: #f8fafc; font-size: 0.82rem;">${r.nome}</strong>
+                        ${tipoBadge}
+                    </div>
+                    <span class="badge-tag badge-matricula" style="margin-top: 3px; display: inline-block;">${r.matricula || '--'}</span>
                 </td>
                 <td style="padding: 10px 12px;">
                     <div style="color: #cbd5e1; font-size: 0.78rem;">${r.email}</div>
@@ -15164,15 +15571,31 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 function triggerNativePwaInstall() {
     if (window.deferredPwaPrompt) {
-        window.deferredPwaPrompt.prompt();
-        window.deferredPwaPrompt.userChoice.then((choiceResult) => {
-            if (choiceResult.outcome === 'accepted') {
-                showToast('Aplicativo instalado com sucesso!', 'success');
+        try {
+            const promptPromise = window.deferredPwaPrompt.prompt();
+            if (promptPromise && typeof promptPromise.catch === 'function') {
+                promptPromise.catch(err => {
+                    console.warn('PWA prompt warning:', err);
+                });
             }
+            if (window.deferredPwaPrompt.userChoice) {
+                window.deferredPwaPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult && choiceResult.outcome === 'accepted') {
+                        showToast('Aplicativo instalado com sucesso!', 'success');
+                    }
+                    window.deferredPwaPrompt = null;
+                    const btnWrapper = document.getElementById('pwaInstallNativeBtnWrapper');
+                    if (btnWrapper) btnWrapper.style.display = 'none';
+                }).catch(err => {
+                    console.warn('PWA userChoice warning:', err);
+                    window.deferredPwaPrompt = null;
+                });
+            }
+        } catch (err) {
+            console.warn('PWA prompt execution safe caught:', err);
             window.deferredPwaPrompt = null;
-            const btnWrapper = document.getElementById('pwaInstallNativeBtnWrapper');
-            if (btnWrapper) btnWrapper.style.display = 'none';
-        });
+            openBottomSheet('sheetPwaInstallGuide');
+        }
     } else {
         openBottomSheet('sheetPwaInstallGuide');
     }

@@ -1,13 +1,14 @@
 {
-  "version": "6.3.2-supervisor-checklist",
-  "build_id": "20261118-160000",
-  "updated_at": "2026-11-18T16:00:00-03:00",
+  "version": "6.3.4-native-user-governance",
+  "build_id": "20261118-173500",
+  "updated_at": "2026-11-18T17:35:00-03:00",
   "name": "CCO Alertas Operacionais",
   "channel": "production",
   "features": [
-    "Habilitação da Aba EQUIPES LOGADAS x CHECKLIST para Perfil de Supervisor",
-    "Resolução de Registro e Sincronização de Senhas Provisórias Fleet",
-    "Sincronização Bidirecional com Base Supabase do Fleet",
-    "Tela de Login Ultra Premium CCO com Hot-Reload Zero-Cache"
+    "Resolução do erro 500 na aprovação de solicitações de acesso (desacoplamento total de sincronização externa)",
+    "Novo banco de colaboradores nativo criado do zero com criptografia PBKDF2-HMAC-SHA256 (100.000 iterações)",
+    "Módulo de Edição Cadastral de Colaboradores para Administrador e Gerente",
+    "Cadastro Direto de Novos Colaboradores (+ Novo Colaborador) com sincronização em tempo real",
+    "Tratamento defensivo do banner de instalação PWA para supressão de warnings no console"
   ]
 }

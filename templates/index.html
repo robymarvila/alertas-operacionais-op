@@ -5437,7 +5437,7 @@
                             <h3 style="font-size: 1.15rem; font-weight: 800; margin: 0; color: #fff;">GOVERNANÇA DE USUÁRIOS & PERFIS DE ACESSO (RBAC)</h3>
                         </div>
                         <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 4px 0 0 0;">
-                            Administração de permissões corporativas, emissão de senhas provisórias e sincronização com a base Fleet.
+                            Administração de permissões corporativas, controle de acesso RBAC, edição cadastral e emissão de credenciais E2EE.
                         </p>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
@@ -5450,9 +5450,9 @@
                             <span>Solicitações de Acesso</span>
                             <span id="badgeAdminPendingReqs" style="display: none; padding: 2px 7px; background: #f43f5e; color: #fff; font-size: 0.68rem; font-weight: 900; border-radius: 999px; margin-left: 4px;">0</span>
                         </button>
-                        <button class="btn btn-primary btn-sm" id="btnImportFleetUsers" onclick="handleImportFleetUsersSubmit()" title="Sincronizar base de usuários do Fleet" style="font-weight: 800; padding: 8px 14px; border-radius: 10px;">
-                            <i data-lucide="refresh-cw" id="iconSyncFleet"></i>
-                            <span>Sincronizar Base Fleet</span>
+                        <button class="btn btn-success btn-sm" id="btnOpenCreateUserModal" onclick="openCreateUserModal()" title="Cadastrar novo colaborador diretamente" style="font-weight: 800; padding: 8px 14px; border-radius: 10px; background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #34d399;">
+                            <i data-lucide="user-plus"></i>
+                            <span>+ Novo Colaborador</span>
                         </button>
                         <button class="btn btn-secondary btn-sm" onclick="reloadUserGovernanceData()" title="Recarregar Dados" style="font-weight: 800; padding: 8px 12px; border-radius: 10px;">
                             <i data-lucide="refresh-cw" id="iconReloadAdminUsers"></i>
@@ -8219,6 +8219,215 @@
                     <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modalSetTempPassword')">Cancelar</button>
                     <button type="submit" class="btn btn-warning btn-sm" id="btnSubmitTempPass" style="font-weight: 700;">
                         <i data-lucide="check"></i> Confirmar e Gravar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- MODAL: EDITAR DADOS DO COLABORADOR (GESTÃO DE ACESSO RBAC)             -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="modalEditUser" style="z-index: 100020;">
+    <div class="modal-card glass-card" style="max-width: 540px; width: 94%;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(14, 165, 233, 0.2); color: #38bdf8;">
+                    <i data-lucide="user-cog"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #f8fafc;">Editar Cadastro de Colaborador</h3>
+                    <p class="modal-subtitle" id="editUserSubtitle" style="margin: 2px 0 0 0; font-size: 0.78rem; color: #94a3b8;">Atualização cadastral e permissões RBAC</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" type="button" onclick="closeModal('modalEditUser')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <form id="formEditUser" onsubmit="submitEditUserForm(event)">
+                <input type="hidden" id="editUserId">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Nome Completo:</label>
+                        <input type="text" id="editUserNome" class="form-input" required style="font-size: 0.85rem;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Matrícula:</label>
+                        <input type="text" id="editUserMatricula" class="form-input font-mono" style="font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">E-mail Corporativo:</label>
+                        <input type="email" id="editUserEmail" class="form-input" style="font-size: 0.85rem;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Telefone / WhatsApp:</label>
+                        <input type="text" id="editUserTelefone" class="form-input" placeholder="(11) 99999-9999" style="font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Regional Operacional:</label>
+                        <select id="editUserRegional" class="form-select" style="font-size: 0.85rem;">
+                            <option value="Global">Global / Central</option>
+                            <option value="Região Norte Alpitel">Região Norte Alpitel</option>
+                            <option value="Região Leste Alpitel">Região Leste Alpitel</option>
+                            <option value="São Paulo Capital">São Paulo Capital</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Setor / Departamento:</label>
+                        <input type="text" id="editUserSetor" class="form-input" placeholder="Ex: Operações CCO" style="font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Perfil de Acesso RBAC:</label>
+                        <select id="editUserRole" class="form-select" style="font-size: 0.85rem;">
+                            <option value="supervisor">Supervisor</option>
+                            <option value="coordenador">Coordenador</option>
+                            <option value="gerente">Gerente</option>
+                            <option value="administrador">Administrador</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Status da Conta:</label>
+                        <select id="editUserStatus" class="form-select" style="font-size: 0.85rem;">
+                            <option value="ativo">Ativo (Acesso Liberado)</option>
+                            <option value="inativo">Inativo (Bloqueado)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Seção Opcional: Redefinição de Senha -->
+                <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 12px; margin-top: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #38bdf8; margin: 0;">
+                            <i data-lucide="key" style="width: 13px; height: 13px; vertical-align: middle;"></i> Redefinir Senha (Opcional):
+                        </label>
+                        <small style="color: #64748b; font-size: 0.7rem;">Deixe vazio para manter a senha atual</small>
+                    </div>
+                    <div class="login-input-wrap" style="position: relative; margin-bottom: 8px;">
+                        <input type="password" id="editUserNovaSenha" class="form-input font-mono" placeholder="Digite uma nova senha caso queira redefinir..." style="font-size: 0.85rem;" autocomplete="new-password">
+                    </div>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer;">
+                        <input type="checkbox" id="editUserForcarTroca" checked style="accent-color: #0ea5e9;">
+                        <span>Exigir troca obrigatória de senha no próximo acesso do colaborador</span>
+                    </label>
+                </div>
+
+                <div id="editUserErrorBanner" class="auth-error-banner" style="display: none; margin-top: 14px; padding: 8px 12px; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); border-radius: 6px; color: #f43f5e; font-size: 0.78rem; align-items: center; gap: 6px;">
+                    <i data-lucide="alert-circle" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+                    <span id="editUserErrorMsg">Falha ao salvar dados.</span>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modalEditUser')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btnSubmitEditUser" style="font-weight: 700;">
+                        <i data-lucide="save"></i> Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- MODAL: CADASTRAR NOVO COLABORADOR                                      -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="modalCreateUser" style="z-index: 100020;">
+    <div class="modal-card glass-card" style="max-width: 540px; width: 94%;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">
+                    <i data-lucide="user-plus"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #f8fafc;">Novo Colaborador</h3>
+                    <p class="modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.78rem; color: #94a3b8;">Cadastro direto na Plataforma CCO com criptografia E2EE</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" type="button" onclick="closeModal('modalCreateUser')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <form id="formCreateUser" onsubmit="submitCreateUserForm(event)">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Nome Completo: *</label>
+                        <input type="text" id="createUserNome" class="form-input" required placeholder="Ex: JOAO SILVA" style="font-size: 0.85rem;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Matrícula:</label>
+                        <input type="text" id="createUserMatricula" class="form-input font-mono" placeholder="BR0123456789" style="font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">E-mail Corporativo:</label>
+                        <input type="email" id="createUserEmail" class="form-input" placeholder="colaborador@alpitelbrasil.com.br" style="font-size: 0.85rem;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Telefone / WhatsApp:</label>
+                        <input type="text" id="createUserTelefone" class="form-input" placeholder="(11) 99999-9999" style="font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Regional:</label>
+                        <select id="createUserRegional" class="form-select" style="font-size: 0.85rem;">
+                            <option value="Global">Global / Central</option>
+                            <option value="Região Norte Alpitel">Região Norte Alpitel</option>
+                            <option value="Região Leste Alpitel">Região Leste Alpitel</option>
+                            <option value="São Paulo Capital">São Paulo Capital</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Setor:</label>
+                        <input type="text" id="createUserSetor" class="form-input" value="Operações CCO" style="font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Perfil RBAC:</label>
+                        <select id="createUserRole" class="form-select" style="font-size: 0.85rem;">
+                            <option value="supervisor" selected>Supervisor</option>
+                            <option value="coordenador">Coordenador</option>
+                            <option value="gerente">Gerente</option>
+                            <option value="administrador">Administrador</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Senha Provisória:</label>
+                        <input type="text" id="createUserPassword" class="form-input font-mono" value="Alpitel@2026" required minlength="4" style="font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer; margin-bottom: 14px;">
+                    <input type="checkbox" id="createUserForcarTroca" checked style="accent-color: #10b981;">
+                    <span>Exigir que o colaborador defina sua senha pessoal no primeiro acesso</span>
+                </label>
+
+                <div id="createUserErrorBanner" class="auth-error-banner" style="display: none; margin-bottom: 14px; padding: 8px 12px; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); border-radius: 6px; color: #f43f5e; font-size: 0.78rem; align-items: center; gap: 6px;">
+                    <i data-lucide="alert-circle" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+                    <span id="createUserErrorMsg">Falha ao cadastrar.</span>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modalCreateUser')">Cancelar</button>
+                    <button type="submit" class="btn btn-success btn-sm" id="btnSubmitCreateUser" style="font-weight: 700;">
+                        <i data-lucide="check"></i> Cadastrar Colaborador
                     </button>
                 </div>
             </form>
