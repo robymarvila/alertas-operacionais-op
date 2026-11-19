@@ -1,10 +1,11 @@
 {
   "version": "6.3.8-delivery-delays-realtime-parity",
-  "build_id": "20261118-233500",
-  "updated_at": "2026-11-18T23:35:00-03:00",
+  "build_id": "20261119-053000",
+  "updated_at": "2026-11-19T05:30:00-03:00",
   "name": "CCO Alertas Operacionais",
   "channel": "production",
   "features": [
+    "Exportação de escopo global antecipada para funções essenciais de navegação (window.navigateToView)",
     "Filtro Status Login multi-select no módulo Online/Tempo Real: permite combinar LOGADA e DESLOGADA simultaneamente ou qualquer outra combinação",
     "Paridade operacional de Turnos e Entregas: Módulo Online/Tempo Real com Hero Cards interativos e alternância suave entre Ativas e Total Acumulado do Dia",
     "Módulo Atrasos e Turnos (Tempo Real): suporte pleno ao filtro Deslogado (Turno Concluído) e validação estrita de marcação",

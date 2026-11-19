@@ -599,6 +599,7 @@ function navigateToView(viewName) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setTimeout(initIcons, 50);
 }
+window.navigateToView = navigateToView;
 
 function updateHubCard() {
     const summary = appState.summary || {};
