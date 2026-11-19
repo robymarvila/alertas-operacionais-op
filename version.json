@@ -1,16 +1,16 @@
 {
-  "version": "6.3.8-delivery-delays-realtime-parity",
-  "build_id": "20261119-053000",
-  "updated_at": "2026-11-19T05:30:00-03:00",
+  "version": "6.3.9-rbac-access-requests-and-password-governance",
+  "build_id": "20261119-094000",
+  "updated_at": "2026-11-19T09:40:00-03:00",
   "name": "CCO Alertas Operacionais",
   "channel": "production",
   "features": [
-    "Exportação de escopo global antecipada para funções essenciais de navegação (window.navigateToView)",
-    "Filtro Status Login multi-select no módulo Online/Tempo Real: permite combinar LOGADA e DESLOGADA simultaneamente ou qualquer outra combinação",
-    "Paridade operacional de Turnos e Entregas: Módulo Online/Tempo Real com Hero Cards interativos e alternância suave entre Ativas e Total Acumulado do Dia",
-    "Módulo Atrasos e Turnos (Tempo Real): suporte pleno ao filtro Deslogado (Turno Concluído) e validação estrita de marcação",
-    "Regra de negócio consolidada: sem marcação = Desprogramada/Sem Login; com marcação em campo = Logada; com marcação e fim de jornada = Deslogada",
-    "Preservação do histórico matutino no boot e fallback com Supabase",
-    "Higienização visual da tela de login: remoção do rodapé de instrução provisória de acesso"
+    "Sincronização atômica de troca de senha no Supabase (resolução do status Troca Pendente persistente)",
+    "Upsert atômico de metadados ricos em system_commands com Prefer: resolution=merge-duplicates",
+    "Funcionalidade e endpoint de exclusão definitiva de solicitações de acesso (DELETE /api/admin/access_requests/<id>)",
+    "Botão de exclusão com confirmação na tabela de gestão de solicitações de acesso (painel do gestor)",
+    "Blindagem anti-duplicidade em nuvem no envio de solicitações de acesso (consulta direta em tempo real no Supabase)",
+    "Bloqueio defensivo no frontend impedindo duplo clique/reenvio imediato de solicitações de acesso",
+    "Limpeza e higienização de cadastros órfãos e solicitações duplicadas"
   ]
 }

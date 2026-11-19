@@ -295,7 +295,9 @@ class AuthManager:
                 "last_login": user_dict.get("last_login")
             }
 
-            resp = requests.post(f"{BASE_REST_URL}/system_users?on_conflict=email", headers=get_headers(), json=clean_row, timeout=5)
+            u_headers = get_headers()
+            u_headers["Prefer"] = "resolution=merge-duplicates"
+            resp = requests.post(f"{BASE_REST_URL}/system_users?on_conflict=email", headers=u_headers, json=clean_row, timeout=5)
 
             # Persiste os metadados ricos em system_commands (JSONB)
             meta_payload = {
@@ -310,7 +312,9 @@ class AuthManager:
                 "updated_at": datetime.now().isoformat()
             }
             meta_cmd_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"meta_{u_id}"))
-            requests.post(f"{BASE_REST_URL}/system_commands?on_conflict=id", headers=get_headers(), json={
+            m_headers = get_headers()
+            m_headers["Prefer"] = "resolution=merge-duplicates"
+            requests.post(f"{BASE_REST_URL}/system_commands?on_conflict=id", headers=m_headers, json={
                 "id": meta_cmd_id,
                 "command": "USER_METADATA",
                 "status": "COMPLETED",
@@ -660,17 +664,11 @@ class AuthManager:
         u["updated_at"] = datetime.now().isoformat()
         self._save_local_users()
 
-        # Atualiza no Supabase interno se couber (UUIDs)
+        # Atualiza no Supabase atomicamente (tanto system_users quanto USER_METADATA)
         try:
-            from supabase_client import BASE_REST_URL, get_headers
-            import requests
-            requests.patch(f"{BASE_REST_URL}/system_users?id=eq.{u.get('id')}", headers=get_headers(), json={
-                "password_hash": u["password_hash"],
-                "precisa_trocar_senha": False,
-                "updated_at": u["updated_at"]
-            }, timeout=5)
-        except Exception:
-            pass
+            self._push_user_to_supabase(u)
+        except Exception as e:
+            print(f"[AUTH] Falha ao persistir troca de senha no Supabase: {e}")
 
         return {
             "status": "success",
@@ -701,17 +699,11 @@ class AuthManager:
         target["senha_alterada_por"] = operator_user.get("nome", "Gestor")
         self._save_local_users()
 
-        # Tenta atualizar no Supabase interno
+        # Atualiza no Supabase atomicamente (tanto system_users quanto USER_METADATA)
         try:
-            from supabase_client import BASE_REST_URL, get_headers
-            import requests
-            requests.patch(f"{BASE_REST_URL}/system_users?id=eq.{target.get('id')}", headers=get_headers(), json={
-                "password_hash": target["password_hash"],
-                "precisa_trocar_senha": True,
-                "updated_at": target["updated_at"]
-            }, timeout=5)
-        except Exception:
-            pass
+            self._push_user_to_supabase(target)
+        except Exception as e:
+            print(f"[AUTH] Falha ao persistir senha provisória no Supabase: {e}")
 
         return {
             "status": "success",
@@ -859,13 +851,20 @@ class AuthManager:
         target["updated_at"] = datetime.now().isoformat()
         target["updated_by"] = operator_user.get("nome", "Gestor")
 
+        # Atualização do flag de exigência de troca de senha (independente de alteração de senha)
+        if "precisa_trocar_senha" in update_data:
+            target["precisa_trocar_senha"] = bool(update_data["precisa_trocar_senha"])
+        elif "forcar_troca_senha" in update_data:
+            target["precisa_trocar_senha"] = bool(update_data["forcar_troca_senha"])
+
         # Se fornecida nova senha
         nova_senha = str(update_data.get("nova_senha") or update_data.get("password") or "").strip()
         if nova_senha:
             if len(nova_senha) < 4:
                 return {"status": "error", "message": "A nova senha deve ter no mínimo 4 caracteres."}
             target["password_hash"] = hash_password_pbkdf2(nova_senha)
-            target["precisa_trocar_senha"] = bool(update_data.get("forcar_troca_senha", False))
+            if "precisa_trocar_senha" not in update_data and "forcar_troca_senha" not in update_data:
+                target["precisa_trocar_senha"] = True
 
         self._save_local_users()
 
@@ -1123,6 +1122,9 @@ class AuthManager:
                     req_id = str(payload.get("id") or cmd_id)
                     c_status = c.get("status")
 
+                    if c_status in ["DELETED", "CANCELLED"]:
+                        continue
+
                     mapped_status = "pendente"
                     if c_status == "COMPLETED":
                         mapped_status = "aprovado"
@@ -1273,6 +1275,10 @@ class AuthManager:
 
         # 1. Carrega dados mais recentes da nuvem e do disco antes de validar
         self._load_access_requests()
+        try:
+            self._sync_access_requests_from_cloud()
+        except Exception:
+            pass
 
         # 2. Checa se o colaborador já possui cadastro no sistema
         existing_uid, existing_user = self._find_duplicate_user(
@@ -1281,7 +1287,32 @@ class AuthManager:
             nome=nome_clean
         )
 
-        # 3. Checa se já existe solicitação pendente para esse e-mail, matrícula ou nome completo
+        # 3. Consulta direta no Supabase para garantir anti-duplicidade em ambientes serverless (Vercel)
+        try:
+            from supabase_client import BASE_REST_URL, get_headers
+            import requests
+            resp = requests.get(
+                f"{BASE_REST_URL}/system_commands?command=eq.ACCESS_REQUEST&status=in.(PROCESSING,PENDING)&order=created_at.desc&limit=50",
+                headers=get_headers(),
+                timeout=4
+            )
+            if resp.status_code == 200:
+                for c in resp.json() or []:
+                    p = c.get("payload") or {}
+                    c_email = str(p.get("email") or "").lower()
+                    c_mat = str(p.get("matricula") or "").upper()
+                    c_nome = " ".join(str(p.get("nome") or "").upper().split())
+                    if (email_clean and email_clean == c_email) or (mat_clean and mat_clean == c_mat) or (nome_clean and len(nome_clean.split()) >= 2 and nome_clean == c_nome):
+                        proto = p.get("protocolo") or f"CCO-{c.get('id', '')[:8].upper()}"
+                        return {
+                            "status": "pending_exists",
+                            "protocolo": proto,
+                            "message": f"Já existe uma solicitação pendente de análise para este colaborador sob o Protocolo #{proto}."
+                        }
+        except Exception as e:
+            print(f"[AUTH] Verificação de comandos em nuvem ignorada: {e}")
+
+        # 4. Checa se já existe solicitação pendente na memória local para esse e-mail, matrícula ou nome completo
         for req in self.access_requests.values():
             if req.get("status") == "pendente":
                 req_email = str(req.get("email") or "").lower()
@@ -1500,6 +1531,71 @@ class AuthManager:
         return {
             "status": "success",
             "message": f"Solicitação #{req.get('protocolo')} recusada com sucesso."
+        }
+
+    def delete_access_request(self, request_id: str, operator_user: dict) -> dict:
+        """
+        Exclui permanentemente uma solicitação de acesso.
+        Restrito a Administradores e Gerentes.
+        Remove do arquivo local, de system_commands e de system_users no Supabase se aplicável.
+        """
+        op_role = str(operator_user.get("role") or "").lower()
+        if op_role not in ["administrador", "gerente"]:
+            return {"status": "error", "message": "Apenas Gerentes e Administradores possuem permissão para excluir solicitações de acesso."}
+
+        req = self.access_requests.get(request_id)
+        if not req:
+            self._sync_access_requests_from_cloud()
+            req = self.access_requests.get(request_id)
+        if not req:
+            # Tenta buscar por protocolo, user_id ou chave parcial
+            for k, r in list(self.access_requests.items()):
+                if r.get("protocolo") == request_id or r.get("user_id") == request_id or r.get("id") == request_id or k == request_id:
+                    request_id = k
+                    req = r
+                    break
+
+        if not req:
+            return {"status": "error", "message": "Solicitação não localizada para exclusão."}
+
+        proto = req.get("protocolo")
+        nome = req.get("nome", "Colaborador")
+        cmd_id = req.get("cloud_command_id")
+        user_id = req.get("user_id") or req.get("assigned_user_id") or (req.get("id") if len(str(req.get("id"))) == 36 else None)
+        target_id_str = str(req.get("id") or request_id)
+
+        # 1. Remove da memória local e persiste
+        if request_id in self.access_requests:
+            del self.access_requests[request_id]
+        # Remove eventuais duplicados que tenham o mesmo id ou protocolo
+        for k, r in list(self.access_requests.items()):
+            if r.get("id") == target_id_str or (proto and r.get("protocolo") == proto):
+                del self.access_requests[k]
+        self._save_access_requests()
+
+        # 2. Exclui comando no Supabase (system_commands)
+        try:
+            from supabase_client import BASE_REST_URL, get_headers
+            import requests
+            headers = get_headers()
+            if cmd_id:
+                requests.delete(f"{BASE_REST_URL}/system_commands?id=eq.{cmd_id}", headers=headers, timeout=5)
+            if proto:
+                requests.delete(f"{BASE_REST_URL}/system_commands?payload->>protocolo=eq.{proto}", headers=headers, timeout=5)
+            if target_id_str:
+                requests.delete(f"{BASE_REST_URL}/system_commands?payload->>id=eq.{target_id_str}", headers=headers, timeout=5)
+
+            # 3. Se houver registro órfão pendente/rejeitado em system_users (como Jailson), exclui
+            if user_id:
+                requests.delete(f"{BASE_REST_URL}/system_users?id=eq.{user_id}&status=in.(pending,rejected)", headers=headers, timeout=5)
+            if req.get("matricula"):
+                requests.delete(f"{BASE_REST_URL}/system_users?matricula=eq.{req.get('matricula')}&status=in.(pending,rejected)", headers=headers, timeout=5)
+        except Exception as e:
+            print(f"[AUTH] Falha ao sincronizar exclusão da solicitação no Supabase: {e}")
+
+        return {
+            "status": "success",
+            "message": f"Solicitação #{proto or target_id_str[:8]} de {nome} excluída com sucesso."
         }
 
     def register_user(self, nome: str, email: str, matricula: str, password: str = "", role: str = "supervisor") -> dict:

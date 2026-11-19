@@ -5708,11 +5708,17 @@ async function handleRequestAccessSubmit(event) {
                 successBanner.style.display = 'flex';
                 if (protocolEl) protocolEl.textContent = res.protocolo || 'CCO-REQ';
             }
-            if (nomeInput) nomeInput.value = '';
-            if (matInput) matInput.value = '';
-            if (emailInput) emailInput.value = '';
-            if (telInput) telInput.value = '';
-            if (justInput) justInput.value = '';
+            if (nomeInput) { nomeInput.value = ''; nomeInput.disabled = true; }
+            if (matInput) { matInput.value = ''; matInput.disabled = true; }
+            if (emailInput) { emailInput.value = ''; emailInput.disabled = true; }
+            if (telInput) { telInput.value = ''; telInput.disabled = true; }
+            if (justInput) { justInput.value = ''; justInput.disabled = true; }
+            if (btn) {
+                btn.dataset.submitted = 'true';
+                btn.disabled = true;
+                btn.innerHTML = `<i data-lucide="check-circle" style="color: #10b981;"></i> <span>Solicitação #${res.protocolo} Registrada</span>`;
+                if (window.lucide) lucide.createIcons();
+            }
             showToast(`Solicitação #${res.protocolo} enviada com sucesso aos gestores!`, 'success');
         } else if (res.status === 'exists' || res.status === 'pending_exists') {
             if (errBanner) {
@@ -5733,7 +5739,7 @@ async function handleRequestAccessSubmit(event) {
             if (errMsg) errMsg.textContent = `Erro de conexão: ${e.message}`;
         }
     } finally {
-        if (btn) {
+        if (btn && !btn.dataset.submitted) {
             btn.disabled = false;
             btn.innerHTML = `<i data-lucide="send"></i> <span>Enviar Solicitação de Acesso</span>`;
             if (window.lucide) lucide.createIcons();
@@ -6883,15 +6889,32 @@ function renderAdminAccessRequestsTable(requests) {
                     <button class="btn-action-pill" onclick="openApproveRequestModal('${r.id}')" title="Aprovar acesso e emitir credenciais" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">
                         <i data-lucide="check" style="width: 12px; height: 12px;"></i> Aprovar
                     </button>
-                    <button class="btn-action-pill btn-action-delete" onclick="openRejectRequestModal('${r.id}')" title="Recusar solicitação">
+                    <button class="btn-action-pill" onclick="openRejectRequestModal('${r.id}')" title="Recusar solicitação" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.35);">
                         <i data-lucide="x" style="width: 12px; height: 12px;"></i> Recusar
+                    </button>
+                    <button class="btn-action-pill btn-action-delete" onclick="handleDeleteAccessRequest('${r.id}', '${r.protocolo || ''}', '${encodeURIComponent(r.nome || '')}')" title="Excluir solicitação permanentemente">
+                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i> Excluir
                     </button>
                 </div>
             `;
         } else if (isAprovado) {
-            actionsHtml = `<span style="font-size: 0.7rem; color: #10b981; font-weight: 700;">✓ Aprovado por: ${r.approved_by || 'Gestor'}</span>`;
+            actionsHtml = `
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <span style="font-size: 0.7rem; color: #10b981; font-weight: 700;">✓ Aprovado por: ${r.approved_by || 'Gestor'}</span>
+                    <button class="btn-action-pill btn-action-delete" onclick="handleDeleteAccessRequest('${r.id}', '${r.protocolo || ''}', '${encodeURIComponent(r.nome || '')}')" title="Excluir do histórico" style="padding: 2px 6px;">
+                        <i data-lucide="trash-2" style="width: 11px; height: 11px;"></i>
+                    </button>
+                </div>
+            `;
         } else {
-            actionsHtml = `<span style="font-size: 0.7rem; color: #f43f5e;" title="${r.rejection_reason || ''}">✗ Recusado: ${r.rejection_reason || 'Pela gerência'}</span>`;
+            actionsHtml = `
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <span style="font-size: 0.7rem; color: #f43f5e;" title="${r.rejection_reason || ''}">✗ Recusado: ${r.rejection_reason || 'Pela gerência'}</span>
+                    <button class="btn-action-pill btn-action-delete" onclick="handleDeleteAccessRequest('${r.id}', '${r.protocolo || ''}', '${encodeURIComponent(r.nome || '')}')" title="Excluir do histórico" style="padding: 2px 6px;">
+                        <i data-lucide="trash-2" style="width: 11px; height: 11px;"></i>
+                    </button>
+                </div>
+            `;
         }
 
         return `
@@ -7185,6 +7208,34 @@ window.submitRejectRequestModal = submitRejectRequestModal;
 // Alias de retrocompatibilidade
 window.handleApproveRequest = function(reqId) { openApproveRequestModal(reqId); };
 window.handleRejectRequest = function(reqId) { openRejectRequestModal(reqId); };
+
+async function handleDeleteAccessRequest(reqId, protocolo, encodedNome) {
+    const nome = decodeURIComponent(encodedNome || 'Colaborador');
+    const protoLabel = protocolo ? `#${protocolo}` : '';
+    const confirmed = confirm(`ATENÇÃO: Deseja realmente EXCLUIR permanentemente a solicitação de acesso ${protoLabel} de "${nome}"?\n\nEsta operação remove o registro do banco de dados e do painel.`);
+    if (!confirmed) return;
+
+    try {
+        const token = authState.token || localStorage.getItem('cco_auth_token') || sessionStorage.getItem('cco_auth_token') || '';
+        const resp = await fetch(`/api/admin/access_requests/${reqId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        const res = await resp.json();
+        if (res.status === 'success') {
+            showToast(res.message || 'Solicitação excluída com sucesso!', 'success');
+            await loadAllAdminAccessRequests();
+        } else {
+            showToast(res.message || 'Falha ao excluir solicitação.', 'danger');
+        }
+    } catch (e) {
+        showToast(`Erro de comunicação: ${e.message}`, 'danger');
+    }
+}
+window.handleDeleteAccessRequest = handleDeleteAccessRequest;
 
 function openAuthModal() {
     if (!authState.isAuthenticated) {

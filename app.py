@@ -561,6 +561,28 @@ def admin_reject_access_request():
     status_code = 200 if result.get("status") == "success" else 400
     return jsonify(result), status_code
 
+@app.route('/api/admin/access_requests/<request_id>', methods=['DELETE'])
+@app.route('/api/admin/access_requests/delete', methods=['POST'])
+def admin_delete_access_request(request_id=None):
+    """Exclui permanentemente uma solicitação de acesso."""
+    user = get_current_user()
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
+
+    if not request_id:
+        data = request.get_json(force=True, silent=True) or {}
+        request_id = data.get("request_id") or data.get("id")
+
+    if not request_id:
+        return jsonify({"status": "error", "message": "Identificador da solicitação não informado."}), 400
+
+    result = auth_manager.delete_access_request(
+        request_id=request_id,
+        operator_user=user
+    )
+    status_code = 200 if result.get("status") == "success" else 400
+    return jsonify(result), status_code
+
 @app.route('/api/reset', methods=['POST'])
 def reset_data():
     """Zera e limpa todos os dados operacionais no Supabase e na memória local."""

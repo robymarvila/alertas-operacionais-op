@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-11-19T05:27:13.224234",
-  "total_cadastrados": 1450,
-  "total_online": 118,
-  "total_desligados": 1348,
+  "updated_at": "2026-11-19T09:37:29.544006",
+  "total_cadastrados": 1448,
+  "total_online": 166,
+  "total_desligados": 1291,
   "codes": [
     "COD001",
     "COD002",
@@ -1217,9 +1217,7 @@
     "EVL142",
     "EVL143",
     "EVL144",
-    "EVL200",
     "EVL210",
-    "EVL211",
     "EVL214",
     "EVL215",
     "EVL219",
