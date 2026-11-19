@@ -1858,7 +1858,7 @@
                 <!-- DECK DE DESTAQUE DUPLO: EQUIPES ATIVAS vs TOTAL DO DIA + 4 TIPOLOGIAS -->
                 <div class="delivery-dual-hero-grid">
                     <!-- Card 1: Equipes Ativas Agora -->
-                    <div class="hero-liquid-card hero-card-active">
+                    <div class="hero-liquid-card hero-card-active active-view-card" id="heroCardDeliveryActive" onclick="setRegionalViewMode('active', true)" style="cursor: pointer;" title="Clique para filtrar e exibir equipes ativas em campo">
                         <span class="hero-tag"><span class="live-status-dot"></span> EQUIPES ATIVAS</span>
                         <div class="hero-number-row">
                             <span class="hero-big-number text-emerald" id="delHeroActive">0</span>
@@ -1868,7 +1868,7 @@
                     </div>
 
                     <!-- Card 2: Equipes Total Entregue no Dia -->
-                    <div class="hero-liquid-card hero-card-total">
+                    <div class="hero-liquid-card hero-card-total" id="heroCardDeliveryTotal" onclick="setRegionalViewMode('total', true)" style="cursor: pointer;" title="Clique para filtrar e exibir o total acumulado do dia (ativas + encerradas)">
                         <span class="hero-tag">TOTAL ENTREGUE (DIA)</span>
                         <div class="hero-number-row">
                             <span class="hero-big-number text-cyan" id="delHeroTotalDay">0</span>
@@ -2015,13 +2015,14 @@
                             </div>
                         </div>
 
-                        <!-- Filtro de Status Login (TODAS / LOGADA / PROGRAMADA) -->
+                        <!-- Filtro de Status Login (TODAS / LOGADA / DESLOGADA / PROGRAMADA - Multi-Select) -->
                         <div class="filter-group-pill">
                             <span class="filter-group-label">STATUS LOGIN:</span>
                             <div class="pill-options-wrap" id="deliveryStatusLoginPills">
-                                <button class="pill-chip active" data-status-login="ALL" onclick="setDeliveryStatusLoginFilter('ALL', this)">TODAS</button>
-                                <button class="pill-chip" data-status-login="LOGADA" onclick="setDeliveryStatusLoginFilter('LOGADA', this)">LOGADA</button>
-                                <button class="pill-chip" data-status-login="PROGRAMADA" onclick="setDeliveryStatusLoginFilter('PROGRAMADA', this)">PROGRAMADA</button>
+                                <button class="pill-chip active" data-status-login="ALL" onclick="setDeliveryStatusLoginFilter('ALL', this)" title="Exibir todas as equipes (logadas, deslogadas e programadas)">TODAS</button>
+                                <button class="pill-chip" data-status-login="LOGADA" onclick="setDeliveryStatusLoginFilter('LOGADA', this)" title="Multi-seleção: Equipes com marcação ativas em campo">LOGADA</button>
+                                <button class="pill-chip" data-status-login="DESLOGADA" onclick="setDeliveryStatusLoginFilter('DESLOGADA', this)" title="Multi-seleção: Equipes com marcação com turno concluído">DESLOGADA</button>
+                                <button class="pill-chip" data-status-login="PROGRAMADA" onclick="setDeliveryStatusLoginFilter('PROGRAMADA', this)" title="Multi-seleção: Equipes sem marcação de ponto">PROGRAMADA</button>
                             </div>
                         </div>
 
@@ -3526,8 +3527,9 @@
                                     <button type="button" class="popover-action-btn" onclick="selectAllDelaysMulti('Status', false)">Limpar</button>
                                 </div>
                                 <div class="popover-items-list">
-                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Logado" onchange="onDelaysMultiChange('Status')"> <span>Logado</span></label>
-                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Programado" onchange="onDelaysMultiChange('Status')"> <span>Programado</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Logado" onchange="onDelaysMultiChange('Status')"> <span>Logado (Em Campo)</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Deslogado" onchange="onDelaysMultiChange('Status')"> <span>Deslogado (Turno Concluído)</span></label>
+                                    <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Programado" onchange="onDelaysMultiChange('Status')"> <span>Programado (Sem Login)</span></label>
                                     <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="Em Atraso" onchange="onDelaysMultiChange('Status')"> <span>Em Atraso</span></label>
                                     <label class="popover-item-label"><input type="checkbox" class="popover-checkbox" value="No Prazo" onchange="onDelaysMultiChange('Status')"> <span>No Prazo</span></label>
                                 </div>
@@ -7984,21 +7986,6 @@
                         <span id="labelSecLoginBtn">Entrar na Plataforma CCO</span>
                     </button>
                 </form>
-
-                <div class="login-card-footer-info">
-                    <div class="footer-info-row">
-                        <i data-lucide="info" style="width: 14px; height: 14px; color: #38bdf8; flex-shrink: 0; margin-top: 2px;"></i>
-                        <span>
-                            <strong>Colaboradores do Controle Operacional (Fleet):</strong> Acesso liberado com sua matrícula ou e-mail. Utilize a senha provisória <code>Alpitel@2026</code> (troca exigida no primeiro acesso).
-                        </span>
-                    </div>
-                    <div class="footer-action-prompt">
-                        <span>Ainda não possui cadastro ativo?</span>
-                        <a href="javascript:void(0)" onclick="switchLoginScreenTab('request')" class="link-switch-tab">
-                            Solicitar Acesso ao Sistema &rarr;
-                        </a>
-                    </div>
-                </div>
             </div>
 
             <!-- PANE 2: FORMULÁRIO DE SOLICITAÇÃO DE ACESSO AO SISTEMA -->

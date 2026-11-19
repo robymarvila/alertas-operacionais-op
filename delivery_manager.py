@@ -975,9 +975,9 @@ class DeliveryManager:
             if len(self.daily_accumulated_teams) < 50:
                 cloud_recs = fetch_delivery_records_by_date(current_op_date)
                 if cloud_recs and len(cloud_recs) >= len(self.daily_accumulated_teams):
-                    valid_cloud_recs = [r for r in cloud_recs if r.get("is_active", False)]
+                    valid_cloud_recs = [r for r in cloud_recs if r.get("is_active", False) or (r.get("marcacao") and str(r.get("marcacao")).strip() not in ["--", "-", "", "None", "nan", "--:--"])]
                     if valid_cloud_recs:
-                        print(f"[DELIVERY] Boot sync: Hidratando {len(valid_cloud_recs)} equipes ativas do Supabase...", flush=True)
+                        print(f"[DELIVERY] Boot sync: Hidratando {len(valid_cloud_recs)} equipes (ativas e concluídas com marcação) do Supabase...", flush=True)
                         self.process_raw_enel_records(valid_cloud_recs, source_label="Nuvem Supabase (Boot)")
                         self.save_local_cache()
             else:
@@ -3877,9 +3877,9 @@ class DeliveryManager:
                     ss_u = ss.upper()
                     if ss_u in ["LOGADA", "LOGADO"] and has_marc and is_active:
                         status_matched = True; break
-                    elif ss_u in ["DESLOGADA", "DESLOGADO", "CONCLUIDO", "CONCLUÍDO"] and not is_active:
+                    elif ss_u in ["DESLOGADA", "DESLOGADO", "CONCLUIDO", "CONCLUÍDO"] and has_marc and not is_active:
                         status_matched = True; break
-                    elif ss_u in ["PROGRAMADA", "PROGRAMADO", "SEM_LOGIN"] and not has_marc:
+                    elif ss_u in ["PROGRAMADA", "PROGRAMADO", "SEM_LOGIN", "DESPROGRAMADA", "DESPROGRAMADO"] and not has_marc:
                         status_matched = True; break
                     elif ss_u in ["ATRASADA", "EM ATRASO", "EM_ATRASO"] and is_delay:
                         status_matched = True; break
@@ -4446,8 +4446,9 @@ class DeliveryManager:
                     supa_recs = fetch_delivery_records_by_date(today_op) or []
                     for r in supa_recs:
                         c = str(r.get("team_code") or "").strip().upper()
-                        # No modo realtime, apenas carregar equipes ativas para não ressuscitar inativas de dias anteriores
-                        if c and r.get("is_active", False):
+                        # No modo realtime, carregar equipes ativas ou que possuem marcação válida no dia
+                        has_m = bool(r.get("marcacao") and str(r.get("marcacao")).strip() not in ["--", "-", "None", "nan", "", "--:--"])
+                        if c and (r.get("is_active", False) or has_m):
                             teams_dict[c] = r
                 except Exception as e_sup:
                     logger.warning(f"[Delays Analytics] Erro ao carregar registros do Supabase para {today_op}: {e_sup}")

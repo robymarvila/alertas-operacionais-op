@@ -7253,7 +7253,7 @@ const deliveryState = {
         bases: new Set(),
         shifts: new Set(),
         vehicles: new Set(),
-        statusLogin: 'ALL',
+        statusLogin: new Set(),
         search: ''
     },
     regionalViewMode: 'active', // 'active' (Equipes Ativas) | 'total' (Total do Dia)
@@ -7535,7 +7535,7 @@ function updateDeliveryHubCard() {
 window.updateDeliveryHubCard = updateDeliveryHubCard;
 
 // Alternador do Modo de Visualização dos Cards Regionais (Ativas vs Total do Dia)
-function setRegionalViewMode(mode) {
+function setRegionalViewMode(mode, shouldScroll = false) {
     deliveryState.regionalViewMode = mode; // 'active' | 'total'
 
     // Atualiza todos os botões seletores da tela
@@ -7547,6 +7547,19 @@ function setRegionalViewMode(mode) {
         }
     });
 
+    // Atualiza destaque visual nos Hero Cards
+    const heroActive = document.getElementById('heroCardDeliveryActive');
+    const heroTotal = document.getElementById('heroCardDeliveryTotal');
+    if (heroActive && heroTotal) {
+        if (mode === 'active') {
+            heroActive.classList.add('active-view-card');
+            heroTotal.classList.remove('active-view-card');
+        } else {
+            heroActive.classList.remove('active-view-card');
+            heroTotal.classList.add('active-view-card');
+        }
+    }
+
     const hintEl = document.getElementById('regionalModeStatusHint');
     if (hintEl) {
         hintEl.textContent = mode === 'active'
@@ -7554,7 +7567,15 @@ function setRegionalViewMode(mode) {
             : 'Mostrando total acumulado do dia (ativas + encerradas)';
     }
 
+    ensureDeliveryTableExpanded();
     applyDeliveryFilters();
+
+    if (shouldScroll) {
+        const tableContainer = document.getElementById('deliveryTableCardWrapper') || document.getElementById('deliveryMainTable');
+        if (tableContainer) {
+            tableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
 }
 window.setRegionalViewMode = setRegionalViewMode;
 
@@ -7564,12 +7585,28 @@ function checkTeamMatchesDeliveryFilters(t, filters, q) {
     if (!t) return false;
     const { regions, bases, shifts, vehicles, statusLogin } = filters || {};
 
-    // 1. Filtro por Status Login (TODAS / LOGADA / PROGRAMADA)
-    const sLoginFilter = statusLogin || 'ALL';
-    if (sLoginFilter !== 'ALL') {
-        const hasMarc = Boolean(t.marcacao && t.marcacao !== '--' && t.marcacao !== '-' && t.marcacao !== 'None');
-        const teamStatusLogin = hasMarc ? 'LOGADA' : 'PROGRAMADA';
-        if (teamStatusLogin !== sLoginFilter) return false;
+    // 1. Filtro por Status Login com Multi-Seleção (TODAS / LOGADA / DESLOGADA / PROGRAMADA)
+    if (statusLogin) {
+        const hasMarc = Boolean(t.marcacao && t.marcacao !== '--' && t.marcacao !== '-' && t.marcacao !== 'None' && t.marcacao !== '--:--');
+        const isAct = Boolean(t.is_active);
+        let teamStatusLogin = 'PROGRAMADA';
+        if (hasMarc && isAct) {
+            teamStatusLogin = 'LOGADA';
+        } else if (hasMarc && !isAct) {
+            teamStatusLogin = 'DESLOGADA';
+        } else {
+            teamStatusLogin = 'PROGRAMADA';
+        }
+
+        if (statusLogin instanceof Set) {
+            if (statusLogin.size > 0 && !statusLogin.has('ALL') && !statusLogin.has(teamStatusLogin)) {
+                return false;
+            }
+        } else if (typeof statusLogin === 'string' && statusLogin !== 'ALL') {
+            if (teamStatusLogin !== statusLogin) {
+                return false;
+            }
+        }
     }
 
     // 2. Filtro por Turnos Múltiplos
@@ -7724,7 +7761,8 @@ function renderDeliveryKPIs(filteredActive, filteredTotalDay) {
 
     // Feedback no subtítulo dos cards Hero quando houver filtros aplicados
     const { regions, bases, shifts, vehicles, search, statusLogin } = deliveryState.filters || {};
-    const hasAnyFilter = (regions && regions.size > 0) || (bases && bases.size > 0) || (shifts && shifts.size > 0) || (vehicles && vehicles.size > 0) || (search && search.trim()) || (statusLogin && statusLogin !== 'ALL');
+    const hasStatusFilter = statusLogin && (statusLogin instanceof Set ? (statusLogin.size > 0 && !statusLogin.has('ALL')) : statusLogin !== 'ALL');
+    const hasAnyFilter = (regions && regions.size > 0) || (bases && bases.size > 0) || (shifts && shifts.size > 0) || (vehicles && vehicles.size > 0) || (search && search.trim()) || hasStatusFilter;
     const elHeroActiveSub = document.getElementById('delHeroActiveSub');
     const elHeroTotalSub = document.getElementById('delHeroTotalSub');
     if (elHeroActiveSub) {
@@ -8157,20 +8195,37 @@ function setDeliveryVehicleFilter(vehicle, el) {
     applyDeliveryFilters();
 }
 
-// Filtro por Status Login (TODAS > LOGADA > PROGRAMADA)
+// Filtros por Status Login com Multi-Seleção Interativa (TODAS / LOGADA / DESLOGADA / PROGRAMADA)
 function setDeliveryStatusLoginFilter(status, el) {
     const container = document.getElementById('deliveryStatusLoginPills');
-    if (container) {
-        container.querySelectorAll('.pill-chip').forEach(c => c.classList.remove('active'));
-    }
-    if (el) {
-        el.classList.add('active');
-    } else if (container) {
-        const btn = container.querySelector(`[data-status-login="${status}"]`);
-        if (btn) btn.classList.add('active');
+    const allBtn = container ? container.querySelector('[data-status-login="ALL"]') : null;
+
+    if (!deliveryState.filters.statusLogin || !(deliveryState.filters.statusLogin instanceof Set)) {
+        deliveryState.filters.statusLogin = new Set();
     }
 
-    deliveryState.filters.statusLogin = status || 'ALL';
+    if (status === 'ALL') {
+        deliveryState.filters.statusLogin.clear();
+        if (container) {
+            container.querySelectorAll('.pill-chip').forEach(c => c.classList.remove('active'));
+        }
+        if (allBtn) allBtn.classList.add('active');
+    } else {
+        if (allBtn) allBtn.classList.remove('active');
+        if (deliveryState.filters.statusLogin.has(status)) {
+            deliveryState.filters.statusLogin.delete(status);
+            if (el) el.classList.remove('active');
+        } else {
+            deliveryState.filters.statusLogin.add(status);
+            if (el) el.classList.add('active');
+        }
+
+        // Se nenhum status estiver selecionado, volta para TODAS
+        if (deliveryState.filters.statusLogin.size === 0) {
+            if (allBtn) allBtn.classList.add('active');
+        }
+    }
+
     ensureDeliveryTableExpanded();
     applyDeliveryFilters();
 }
@@ -9521,6 +9576,10 @@ function renderDeliveryTable() {
         if (deliveryState.filters.bases.size > 0) parts.push(`Base: ${Array.from(deliveryState.filters.bases).join(', ')}`);
         if (deliveryState.filters.shifts.size > 0) parts.push(`Turno: ${Array.from(deliveryState.filters.shifts).join(', ')}`);
         if (deliveryState.filters.vehicles.size > 0) parts.push(`Frota: ${Array.from(deliveryState.filters.vehicles).join(', ')}`);
+        if (deliveryState.filters.statusLogin) {
+            const stArr = deliveryState.filters.statusLogin instanceof Set ? Array.from(deliveryState.filters.statusLogin) : (deliveryState.filters.statusLogin !== 'ALL' ? [deliveryState.filters.statusLogin] : []);
+            if (stArr.length > 0) parts.push(`Status Login: ${stArr.join(', ')}`);
+        }
         if (deliveryState.filters.search) parts.push(`Busca: "${deliveryState.filters.search}"`);
         subEl.textContent = `Exibindo ${list.length} equipes | ${parts.join(' | ')}`;
     }
@@ -9534,7 +9593,8 @@ function renderDeliveryTable() {
     const visCols = getDeliveryVisibleColumns();
 
     if (!list || list.length === 0) {
-        const hasAnyFilter = deliveryState.filters.regions.size > 0 || deliveryState.filters.bases.size > 0 || deliveryState.filters.shifts.size > 0 || deliveryState.filters.vehicles.size > 0 || deliveryState.filters.search;
+        const hasStatusFilter = deliveryState.filters.statusLogin && (deliveryState.filters.statusLogin instanceof Set ? (deliveryState.filters.statusLogin.size > 0 && !deliveryState.filters.statusLogin.has('ALL')) : deliveryState.filters.statusLogin !== 'ALL');
+        const hasAnyFilter = deliveryState.filters.regions.size > 0 || deliveryState.filters.bases.size > 0 || deliveryState.filters.shifts.size > 0 || deliveryState.filters.vehicles.size > 0 || deliveryState.filters.search || hasStatusFilter;
         tbody.innerHTML = `
             <tr>
                 <td colspan="${visCols.size}" style="text-align: center; padding: 36px 20px; color: var(--text-secondary);">

@@ -8,7 +8,7 @@
     "role": "administrador",
     "status": "ativo",
     "created_at": "2026-09-01T10:57:00.183029+00:00",
-    "last_login": "2026-11-18T21:09:27.370755",
+    "last_login": "2026-11-18T23:33:43.429596",
     "regional": "Global",
     "setor": "Operações CCO",
     "telefone": "",
@@ -21,18 +21,16 @@
     "nome": "TESTE DA SILVA",
     "email": "teste.teste@alpitelbrasil.com.br",
     "matricula": "BR0123456789",
-    "password_hash": "pbkdf2:sha256:100000$fd125bfb4f14134b69d55eb29dceb3d4$973c45ed01027368a1cff60935caecbf7b843b8214e074b2d1d5a22ecef648c4",
+    "password_hash": "pbkdf2:sha256:100000$d83a9a0abe2f41b7aaeee3b85b5a32e6$b70250be39c578af9867006d5033d260fa879fb4b5b2302b91c3c09430fa5605",
     "role": "operador_cco",
     "status": "ativo",
     "created_at": "2026-09-01T08:10:24.581854+00:00",
-    "last_login": "2026-11-18T21:18:02.750418",
+    "last_login": null,
     "regional": "Global",
     "setor": "Operações CCO",
     "telefone": "",
     "precisa_trocar_senha": false,
-    "username": "teste.teste",
-    "updated_at": "2026-11-18T21:18:09.369896",
-    "senha_alterada_por": "ADMINISTRADOR CCO"
+    "username": "teste.teste"
   },
   "bc4a22e2-845a-7669-8255-4f67debaec98": {
     "id": "bc4a22e2-845a-7669-8255-4f67debaec98",
@@ -72,7 +70,7 @@
     "email": "g.sales@alpitelbrasil.com.br",
     "matricula": "BR0402423308",
     "password_hash": "pbkdf2:sha256:100000$addf87e9a8227946e18e75a6ac881dc8$87aaebc6497965bf40abbd09923df1b6f616b81a6c22be9e7e8df18396e91fe8",
-    "role": "operador_cco",
+    "role": "supervisor",
     "status": "ativo",
     "created_at": "2026-11-18T20:20:00.805729+00:00",
     "last_login": "2026-11-18T20:33:45.72988+00:00",
@@ -80,8 +78,7 @@
     "setor": "Operações CCO",
     "telefone": "1199612-4009",
     "precisa_trocar_senha": true,
-    "username": "g.sales",
-    "updated_at": "2026-11-18T21:09:57.763912"
+    "username": "g.sales"
   },
   "a72ba6ed-fed7-cb41-2d6f-5317a9d614df": {
     "id": "a72ba6ed-fed7-cb41-2d6f-5317a9d614df",
@@ -89,7 +86,7 @@
     "email": "kethellynoliveiranascimento87@gmail.com",
     "matricula": "0501000856",
     "password_hash": "pbkdf2:sha256:100000$1a8d253d8085eeff384d2f0e5d0e5884$2b267ab737b9ddf16f2e0ed23ebdeada8baefe594febab8f37d8b677b046b8fe",
-    "role": "operador_cco",
+    "role": "supervisor",
     "status": "ativo",
     "created_at": "2026-11-18T20:20:14.913352+00:00",
     "last_login": null,
@@ -97,8 +94,7 @@
     "setor": "Operações CCO",
     "telefone": "11 94806-0252",
     "precisa_trocar_senha": true,
-    "username": "kethellynoliveiranascimento87",
-    "updated_at": "2026-11-18T21:10:09.945187"
+    "username": "kethellynoliveiranascimento87"
   },
   "5146e725-00ab-eed6-076f-afebbcf6166f": {
     "id": "5146e725-00ab-eed6-076f-afebbcf6166f",
@@ -106,7 +102,7 @@
     "email": "larissa.melo@alpitelbrasil.com.br",
     "matricula": "BR0501291768",
     "password_hash": "pbkdf2:sha256:100000$354bc52765030e4d68d2a41ebe576a35$5a81b819f81ac0615e8f901b7c5caa51ae7c2307d678ebab909d7ea1ed3f245b",
-    "role": "operador_cco",
+    "role": "supervisor",
     "status": "ativo",
     "created_at": "2026-11-18T20:20:43.737039+00:00",
     "last_login": "2026-11-18T20:33:45.730977+00:00",
@@ -114,8 +110,7 @@
     "setor": "Operações CCO",
     "telefone": "(11) 93287-5043",
     "precisa_trocar_senha": true,
-    "username": "larissa.melo",
-    "updated_at": "2026-11-18T21:10:13.795990"
+    "username": "larissa.melo"
   },
   "c25b086e-f4c9-9f09-3408-d78043a7fe1f": {
     "id": "c25b086e-f4c9-9f09-3408-d78043a7fe1f",
@@ -123,7 +118,7 @@
     "email": "kayo.vidella@alpitelbrasil.com.br",
     "matricula": "BR0447954828",
     "password_hash": "pbkdf2:sha256:100000$3e9ba0e6e38aaf631c5fc4880ec618b0$f0ee6f9040581d287fa8c052edfe2e543e1b5299180ab03e93044e60d94bb058",
-    "role": "operador_cco",
+    "role": "supervisor",
     "status": "ativo",
     "created_at": "2026-11-18T20:21:25.245417+00:00",
     "last_login": null,
@@ -131,8 +126,7 @@
     "setor": "Operações CCO",
     "telefone": "11 99773-1269",
     "precisa_trocar_senha": true,
-    "username": "kayo.vidella",
-    "updated_at": "2026-11-18T21:10:05.799613"
+    "username": "kayo.vidella"
   },
   "dcf6cd44-2e62-9c43-cf54-f35d9cefccb6": {
     "id": "dcf6cd44-2e62-9c43-cf54-f35d9cefccb6",
@@ -140,7 +134,7 @@
     "email": "a.morais@alpitelbrasil.com.br",
     "matricula": "0501002335",
     "password_hash": "pbkdf2:sha256:100000$64162e2c862ee490f8c0fd24dd51d96e$7541aeb90f0b1fdeac7b5edf45b01ec20a4eb8ad4d74d02a459ad5c49da4b2ce",
-    "role": "operador_cco",
+    "role": "supervisor",
     "status": "ativo",
     "created_at": "2026-11-18T23:32:57.828803+00:00",
     "last_login": null,
@@ -148,8 +142,7 @@
     "setor": "Operações CCO",
     "telefone": "",
     "precisa_trocar_senha": false,
-    "username": "a.morais",
-    "updated_at": "2026-11-18T21:09:43.436028"
+    "username": "a.morais"
   },
   "088e09aa-f98b-781e-1380-c799ffcecb3d": {
     "id": "088e09aa-f98b-781e-1380-c799ffcecb3d",
@@ -157,7 +150,7 @@
     "email": "j.silverio@alpitelbrasil.com.br",
     "matricula": "2308",
     "password_hash": "pbkdf2:sha256:100000$80aa449f7b7b0af6d70682daab3321cf$f18ec54827958af6bbe3aff281f94448656bae96166093fa51f137f10069ee03",
-    "role": "operador_cco",
+    "role": "supervisor",
     "status": "ativo",
     "created_at": "2026-11-18T23:33:02.491776+00:00",
     "last_login": null,
@@ -165,7 +158,6 @@
     "setor": "Operações CCO",
     "telefone": "",
     "precisa_trocar_senha": false,
-    "username": "j.silverio",
-    "updated_at": "2026-11-18T21:10:02.178712"
+    "username": "j.silverio"
   }
 }

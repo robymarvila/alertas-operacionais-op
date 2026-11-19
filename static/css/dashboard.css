@@ -6356,6 +6356,22 @@ html.route-hub #portalHubView {
     border-left: 4px solid #00f2fe;
 }
 
+.hero-liquid-card.active-view-card {
+    border-color: rgba(56, 189, 248, 0.65) !important;
+    box-shadow: 0 0 25px rgba(56, 189, 248, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+    transform: translateY(-2px);
+}
+
+.hero-liquid-card.hero-card-active.active-view-card {
+    border-color: rgba(16, 185, 129, 0.75) !important;
+    box-shadow: 0 0 25px rgba(16, 185, 129, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+}
+
+.hero-liquid-card.hero-card-total.active-view-card {
+    border-color: rgba(0, 242, 254, 0.75) !important;
+    box-shadow: 0 0 25px rgba(0, 242, 254, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+}
+
 .hero-tag {
     font-family: 'Plus Jakarta Sans', sans-serif;
     font-size: 0.72rem;

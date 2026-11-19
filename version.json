@@ -1,15 +1,15 @@
 {
-  "version": "6.3.7-rbac-tv-wall-restriction",
-  "build_id": "20261118-212500",
-  "updated_at": "2026-11-18T21:25:00-03:00",
+  "version": "6.3.8-delivery-delays-realtime-parity",
+  "build_id": "20261118-233500",
+  "updated_at": "2026-11-18T23:35:00-03:00",
   "name": "CCO Alertas Operacionais",
   "channel": "production",
   "features": [
-    "Restrição de acesso RBAC: Módulo MODO MONITORAMENTO CCO / PAINEL TV CCO (VIDEO WALL) desativado para os perfis Operador CCO e Supervisor",
-    "Acesso ao Painel TV CCO liberado exclusivamente para Coordenador, Gerente e Administrador",
-    "Refatoração visual Ultra Premium da Governança de Usuários e RBAC (Material Design 3 Expressive + Apple Liquid Glass)",
-    "Cards de KPI interativos com filtro dinâmico por perfil (Total, Administrador, Gerente, Coordenador, Supervisor, Operador CCO)",
-    "Modais nativos do sistema de alta fidelidade para Aprovação e Recusa de Solicitações (sem prompts de navegador)",
-    "Restrição de regionais padronizadas: Global, Regional Norte e Regional Leste"
+    "Filtro Status Login multi-select no módulo Online/Tempo Real: permite combinar LOGADA e DESLOGADA simultaneamente ou qualquer outra combinação",
+    "Paridade operacional de Turnos e Entregas: Módulo Online/Tempo Real com Hero Cards interativos e alternância suave entre Ativas e Total Acumulado do Dia",
+    "Módulo Atrasos e Turnos (Tempo Real): suporte pleno ao filtro Deslogado (Turno Concluído) e validação estrita de marcação",
+    "Regra de negócio consolidada: sem marcação = Desprogramada/Sem Login; com marcação em campo = Logada; com marcação e fim de jornada = Deslogada",
+    "Preservação do histórico matutino no boot e fallback com Supabase",
+    "Higienização visual da tela de login: remoção do rodapé de instrução provisória de acesso"
   ]
 }
