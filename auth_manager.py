@@ -8,6 +8,7 @@ import os
 import re
 import json
 import time
+import uuid
 import hmac
 import hashlib
 import secrets
@@ -19,7 +20,60 @@ LOCAL_USERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sys
 LOCAL_ACCESS_REQUESTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_access_requests.json")
 FLEET_SALT = "alpitel_fleet_salt_2026"
 
-VALID_ROLES = ["supervisor", "coordenador", "gerente", "administrador"]
+VALID_ROLES = ["operador_cco", "supervisor", "coordenador", "gerente", "administrador"]
+
+def format_as_uuid(raw_id: str) -> str:
+    """Garante que qualquer identificador de usuário seja um UUID válido com hífens exigido pelo PostgreSQL."""
+    if not raw_id:
+        return str(uuid.uuid4())
+    raw_str = str(raw_id).strip()
+    try:
+        return str(uuid.UUID(raw_str))
+    except Exception:
+        pass
+    if len(raw_str) == 32:
+        try:
+            return str(uuid.UUID(hex=raw_str))
+        except Exception:
+            pass
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, raw_str))
+
+def normalize_role(role_name: str) -> str:
+    """Normaliza o nome do perfil RBAC para a chave interna da aplicação."""
+    r = str(role_name or "supervisor").strip().lower()
+    if r in ["admin", "administrador"]:
+        return "administrador"
+    elif r == "gerente":
+        return "gerente"
+    elif r == "coordenador":
+        return "coordenador"
+    elif r in ["operador", "operador_cco", "operator"]:
+        return "operador_cco"
+    elif r == "supervisor":
+        return "supervisor"
+    return "supervisor"
+
+def map_role_for_supabase(role_name: str) -> str:
+    """Mapeia o perfil para os valores aceitos pela check constraint de system_users no Supabase."""
+    r = normalize_role(role_name)
+    if r in ["administrador", "gerente"]:
+        return "admin"
+    elif r in ["coordenador", "supervisor"]:
+        return "supervisor"
+    elif r == "operador_cco":
+        return "operator"
+    return "supervisor"
+
+def map_status_for_supabase(status_name: str) -> str:
+    """Mapeia o status da aplicação para a check constraint de system_users no Supabase."""
+    s = str(status_name or "ativo").strip().lower()
+    if s in ["ativo", "approved", "active"]:
+        return "approved"
+    elif s in ["inativo", "rejected"]:
+        return "rejected"
+    elif s in ["pendente", "pending"]:
+        return "pending"
+    return "approved"
 
 def hash_password_pbkdf2(password: str) -> str:
     """Gera hash criptográfico seguro com salt aleatório usando PBKDF2-HMAC-SHA256 (100.000 iterações)."""
@@ -180,7 +234,9 @@ class AuthManager:
                             else:
                                 v["status"] = "ativo"
 
-                            cleaned[k_str] = v
+                            u_uuid = format_as_uuid(v.get("id") or k_str)
+                            v["id"] = u_uuid
+                            cleaned[u_uuid] = v
                         self.users = cleaned
             except Exception as e:
                 print(f"[AUTH] Falha ao carregar cache local de usuários: {e}")
@@ -212,12 +268,84 @@ class AuthManager:
         except Exception as e:
             print(f"[AUTH] Falha ao salvar solicitações de acesso: {e}")
 
-    def _sync_with_supabase(self):
-        """Sincroniza usuários com a tabela 'system_users' no Supabase."""
+    def _push_user_to_supabase(self, user_dict: dict) -> bool:
+        """
+        Persiste o usuário no Supabase respeitando estritamente o schema do PostgreSQL:
+        1. ID formatado como UUID válido com hífens
+        2. Status mapeado para 'approved' / 'rejected' / 'pending'
+        3. Role mapeada para 'admin' / 'supervisor' / 'operator'
+        4. Metadados ricos (role real, regional, setor, telefone, precisa_trocar_senha) persistidos em system_commands
+        """
         try:
             from supabase_client import BASE_REST_URL, get_headers
             import requests
 
+            u_id = format_as_uuid(user_dict.get("id"))
+            user_dict["id"] = u_id
+
+            clean_row = {
+                "id": u_id,
+                "nome": str(user_dict.get("nome") or "COLABORADOR").strip().upper(),
+                "email": str(user_dict.get("email") or "").strip().lower(),
+                "matricula": str(user_dict.get("matricula") or "").strip().upper(),
+                "password_hash": str(user_dict.get("password_hash") or ""),
+                "role": map_role_for_supabase(user_dict.get("role")),
+                "status": map_status_for_supabase(user_dict.get("status")),
+                "created_at": user_dict.get("created_at") or datetime.now().isoformat(),
+                "last_login": user_dict.get("last_login")
+            }
+
+            resp = requests.post(f"{BASE_REST_URL}/system_users?on_conflict=email", headers=get_headers(), json=clean_row, timeout=5)
+
+            # Persiste os metadados ricos em system_commands (JSONB)
+            meta_payload = {
+                "user_id": u_id,
+                "email": clean_row["email"],
+                "role": normalize_role(user_dict.get("role")),
+                "regional": str(user_dict.get("regional") or "Global").strip(),
+                "setor": str(user_dict.get("setor") or "Operações CCO").strip(),
+                "telefone": str(user_dict.get("telefone") or "").strip(),
+                "username": str(user_dict.get("username") or clean_row["email"].split("@")[0]).strip(),
+                "precisa_trocar_senha": bool(user_dict.get("precisa_trocar_senha", False)),
+                "updated_at": datetime.now().isoformat()
+            }
+            meta_cmd_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"meta_{u_id}"))
+            requests.post(f"{BASE_REST_URL}/system_commands?on_conflict=id", headers=get_headers(), json={
+                "id": meta_cmd_id,
+                "command": "USER_METADATA",
+                "status": "COMPLETED",
+                "payload": meta_payload,
+                "result": {"synced": True}
+            }, timeout=5)
+
+            return resp.status_code in [200, 201]
+        except Exception as e:
+            print(f"[AUTH] Falha ao persistir usuário no Supabase: {e}")
+            return False
+
+    def _sync_with_supabase(self):
+        """Sincroniza usuários com a tabela 'system_users' e hidrata metadados do Supabase."""
+        try:
+            from supabase_client import BASE_REST_URL, get_headers
+            import requests
+
+            # 1. Carrega metadados ricos de system_commands (role granular, regional, setor, etc.)
+            user_meta_map = {}
+            try:
+                resp_meta = requests.get(f"{BASE_REST_URL}/system_commands?command=eq.USER_METADATA&limit=300", headers=get_headers(), timeout=5)
+                if resp_meta.status_code == 200:
+                    for c in resp_meta.json() or []:
+                        p = c.get("payload") or {}
+                        uid = p.get("user_id")
+                        em = str(p.get("email") or "").lower()
+                        if uid:
+                            user_meta_map[str(uid)] = p
+                        if em:
+                            user_meta_map[em] = p
+            except Exception:
+                pass
+
+            # 2. Carrega usuários da tabela oficial system_users
             endpoint = f"{BASE_REST_URL}/system_users?select=*"
             resp = requests.get(endpoint, headers=get_headers(), timeout=5)
             if resp.status_code == 200:
@@ -225,51 +353,83 @@ class AuthManager:
                 if isinstance(cloud_users, list) and len(cloud_users) > 0:
                     for u in cloud_users:
                         uid = u.get("id")
-                        if uid:
-                            uid_str = str(uid)
-                            # Usuários pendentes pertencem à fila de solicitações e não aos usuários ativos
-                            if u.get("status") in ["pending", "pendente"]:
-                                continue
+                        if not uid:
+                            continue
+                        uid_str = format_as_uuid(uid)
+                        u["id"] = uid_str
 
-                            # Converte role legada se necessário
+                        # Usuários pendentes pertencem à fila de solicitações e não aos usuários ativos
+                        if u.get("status") in ["pending", "pendente"]:
+                            continue
+
+                        # Hidrata metadados ricos se existirem
+                        meta = user_meta_map.get(uid_str) or user_meta_map.get(str(u.get("email") or "").lower()) or {}
+
+                        # Converte role de volta para o perfil exato
+                        if meta.get("role"):
+                            u["role"] = normalize_role(meta["role"])
+                        else:
                             r = str(u.get("role") or "").lower()
                             if r in ["admin", "administrador"]:
                                 u["role"] = "administrador"
-                            elif r == "gerente":
-                                u["role"] = "gerente"
-                            elif r == "coordenador":
-                                u["role"] = "coordenador"
+                            elif r in ["operator", "operador_cco"]:
+                                u["role"] = "operador_cco"
                             else:
                                 u["role"] = "supervisor"
-                            
-                            if uid_str == "00000000-0000-0000-0000-000000000001":
-                                u["username"] = "administrado"
-                                u["is_master"] = True
-                                u["role"] = "administrador"
-                                u["status"] = "ativo"
 
-                            if not u.get("username"):
-                                if u.get("email"):
-                                    u["username"] = u["email"].split("@")[0].lower()
-                                elif u.get("matricula"):
-                                    u["username"] = u["matricula"].lower()
+                        u["regional"] = meta.get("regional") or u.get("regional") or "Global"
+                        u["setor"] = meta.get("setor") or u.get("setor") or "Operações CCO"
+                        u["telefone"] = meta.get("telefone") or u.get("telefone") or ""
+                        if "precisa_trocar_senha" in meta:
+                            u["precisa_trocar_senha"] = bool(meta["precisa_trocar_senha"])
+                        elif "precisa_trocar_senha" not in u:
+                            u["precisa_trocar_senha"] = False
 
-                            # Preserva precisa_trocar_senha se já presente localmente
-                            local_existing = self.users.get(uid_str)
-                            if local_existing and "precisa_trocar_senha" in local_existing:
-                                u["precisa_trocar_senha"] = local_existing["precisa_trocar_senha"]
-                            elif "precisa_trocar_senha" not in u:
-                                u["precisa_trocar_senha"] = False
+                        # Normaliza status para padrão interno
+                        if u.get("status") in ["approved", "active", "ativo"]:
+                            u["status"] = "ativo"
+                        else:
+                            u["status"] = "inativo"
 
-                            self.users[uid_str] = u
+                        if uid_str == "00000000-0000-0000-0000-000000000001":
+                            u["username"] = "administrado"
+                            u["is_master"] = True
+                            u["role"] = "administrador"
+                            u["status"] = "ativo"
+
+                        if not u.get("username"):
+                            if meta.get("username"):
+                                u["username"] = meta["username"]
+                            elif u.get("email"):
+                                u["username"] = u["email"].split("@")[0].lower()
+                            elif u.get("matricula"):
+                                u["username"] = u["matricula"].lower()
+
+                        # Deduplicação preventiva contra duplicatas na nuvem
+                        dup_key, existing_local = self._find_duplicate_user(
+                            email=u.get("email"),
+                            matricula=u.get("matricula"),
+                            nome=u.get("nome"),
+                            exclude_user_id=uid_str
+                        )
+                        if existing_local:
+                            if str(dup_key).replace('-', '').lower() == uid_str.replace('-', '').lower():
+                                # É o mesmo usuário com chave UUID unificada
+                                self.users[uid_str] = u
+                                continue
+                            print(f"[AUTH] Duplicata detectada no Supabase ({uid_str} vs {dup_key} para {u.get('nome')}). Purgando {uid_str}...")
+                            try:
+                                requests.delete(f"{BASE_REST_URL}/system_users?id=eq.{uid_str}", headers=get_headers(), timeout=5)
+                            except Exception:
+                                pass
+                            continue
+
+                        self.users[uid_str] = u
                     self._save_local_users()
-            # Garante que o administrador mestre esteja salvo no Supabase
-            admin = self.users.get("00000000-0000-0000-0000-000000000001")
-            if admin:
-                try:
-                    requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=admin, timeout=5)
-                except Exception:
-                    pass
+
+            # 3. Garante que todos os colaboradores legítimos locais estejam persistidos no Supabase
+            for uid_local, u_data in list(self.users.items()):
+                self._push_user_to_supabase(u_data)
         except Exception as e:
             print(f"[AUTH] Aviso sincronização Supabase: {e}")
 
@@ -329,6 +489,57 @@ class AuthManager:
                 return k, u
             if u_nome and u_nome == id_upper:
                 return k, u
+
+        return None, None
+
+    def _find_duplicate_user(self, email: str = None, matricula: str = None, username: str = None, nome: str = None, exclude_user_id: str = None):
+        """
+        Verifica com rigor se já existe algum usuário no sistema com dados coincidentes:
+        - E-mail corporativo (case-insensitive)
+        - Matrícula (case-insensitive)
+        - Login / Username (case-insensitive)
+        - Nome completo idêntico (case-insensitive, quando contiver nome e sobrenome)
+        Desconsidera o ID fornecido em exclude_user_id (essencial para edição).
+        Retorna (user_id, user_dict) ou (None, None).
+        """
+        excl_str = str(exclude_user_id).strip() if exclude_user_id else None
+
+        email_clean = str(email or "").strip().lower()
+        mat_clean = str(matricula or "").strip().upper()
+        user_clean = str(username or "").strip().lower()
+        nome_clean = " ".join(str(nome or "").strip().upper().split())
+
+        for uid, u in self.users.items():
+            if not isinstance(u, dict):
+                continue
+            uid_str = str(uid).strip()
+            u_id_field = str(u.get("id") or "").strip()
+
+            if excl_str:
+                excl_norm = excl_str.replace('-', '').lower()
+                if uid_str.replace('-', '').lower() == excl_norm or u_id_field.replace('-', '').lower() == excl_norm:
+                    continue
+
+            u_email = str(u.get("email") or "").strip().lower()
+            u_mat = str(u.get("matricula") or "").strip().upper()
+            u_user = str(u.get("username") or u.get("login") or "").strip().lower()
+            u_nome = " ".join(str(u.get("nome") or "").strip().upper().split())
+
+            # 1. Checagem por e-mail
+            if email_clean and u_email and email_clean == u_email:
+                return uid_str, u
+
+            # 2. Checagem por matrícula
+            if mat_clean and u_mat and mat_clean == u_mat:
+                return uid_str, u
+
+            # 3. Checagem por login/username
+            if user_clean and u_user and user_clean == u_user:
+                return uid_str, u
+
+            # 4. Checagem por nome completo idêntico
+            if nome_clean and u_nome and len(nome_clean.split()) >= 2 and nome_clean == u_nome:
+                return uid_str, u
 
         return None, None
 
@@ -612,6 +823,23 @@ class AuthManager:
             if novo_status not in ["ativo", "inativo"]:
                 novo_status = "ativo"
 
+        # Prevenção contra duplicidades ao alterar Nome, E-mail ou Matrícula
+        cand_email = str(update_data.get("email") or target.get("email") or "").strip().lower()
+        cand_mat = str(update_data.get("matricula") or target.get("matricula") or "").strip().upper()
+        cand_nome = str(update_data.get("nome") or target.get("nome") or "").strip().upper()
+
+        dup_id, dup_user = self._find_duplicate_user(
+            email=cand_email,
+            matricula=cand_mat,
+            nome=cand_nome,
+            exclude_user_id=target.get("id") or target_key
+        )
+        if dup_user:
+            return {
+                "status": "error",
+                "message": f"Conflito de duplicidade: já existe outro colaborador registrado com estes dados: '{dup_user.get('nome')}' (Matrícula: {dup_user.get('matricula') or '--'}, E-mail: {dup_user.get('email')})."
+            }
+
         # Atualiza campos cadastrais
         if "nome" in update_data and str(update_data["nome"]).strip():
             target["nome"] = str(update_data["nome"]).strip().upper()
@@ -643,9 +871,7 @@ class AuthManager:
 
         # Sincroniza atomicamente no Supabase
         try:
-            from supabase_client import BASE_REST_URL, get_headers
-            import requests
-            requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=target, timeout=5)
+            self._push_user_to_supabase(target)
         except Exception as e:
             print(f"[AUTH] Falha ao persistir usuário editado no Supabase: {e}")
 
@@ -692,15 +918,21 @@ class AuthManager:
         if op_role == "gerente" and role == "administrador":
             return {"status": "error", "message": "Gerente não possui permissão para cadastrar Administradores."}
 
-        # Checa duplicidade
-        for u in self.users.values():
-            if email and str(u.get("email") or "").lower() == email:
-                return {"status": "error", "message": f"O e-mail '{email}' já está em uso por outro colaborador ({u.get('nome')})."}
-            if matricula and str(u.get("matricula") or "").upper() == matricula:
-                return {"status": "error", "message": f"A matrícula '{matricula}' já está cadastrada para {u.get('nome')}."}
-
-        new_uid = str(secrets.token_hex(16))
+        # Checa duplicidade rigorosa (E-mail, Matrícula, Login ou Nome Completo)
         username = email.split("@")[0] if "@" in email else matricula.lower()
+        dup_id, dup_user = self._find_duplicate_user(
+            email=email,
+            matricula=matricula,
+            username=username,
+            nome=nome
+        )
+        if dup_user:
+            return {
+                "status": "error",
+                "message": f"Não é permitido cadastrar colaboradores duplicados! Já existe um registro no sistema com dados coincidentes para '{dup_user.get('nome')}' (Matrícula: {dup_user.get('matricula') or '--'}, E-mail: {dup_user.get('email')}, Perfil: {str(dup_user.get('role')).upper()})."
+            }
+
+        new_uid = format_as_uuid(secrets.token_hex(16))
 
         novo_u = {
             "id": new_uid,
@@ -726,9 +958,7 @@ class AuthManager:
 
         # Sincroniza atomicamente no Supabase
         try:
-            from supabase_client import BASE_REST_URL, get_headers
-            import requests
-            requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=novo_u, timeout=5)
+            self._push_user_to_supabase(novo_u)
         except Exception as e:
             print(f"[AUTH] Falha ao persistir novo usuário no Supabase: {e}")
 
@@ -736,6 +966,66 @@ class AuthManager:
             "status": "success",
             "message": f"Colaborador {nome} ({role.upper()}) cadastrado com sucesso! Senha: '{senha}'",
             "user": novo_u
+        }
+
+    def delete_user(self, target_user_id: str, operator_user: dict) -> dict:
+        """
+        Exclui permanentemente o cadastro de um colaborador.
+        Restrito a Administradores e Gerentes.
+        Protege o Administrador Master e impede auto-exclusão.
+        Sincroniza a exclusão imediatamente no Supabase e no arquivo JSON local.
+        """
+        op_role = str(operator_user.get("role") or "").lower()
+        if op_role not in ["administrador", "gerente"]:
+            return {"status": "error", "message": "Apenas Administradores e Gerentes possuem permissão para excluir colaboradores."}
+
+        target_key, target = self._find_user(target_user_id)
+        if not target:
+            return {"status": "error", "message": "Colaborador não localizado."}
+
+        # 1. Proteção absoluta do Administrador Master
+        is_master = target.get("is_master") or str(target.get("id")) == "00000000-0000-0000-0000-000000000001" or target.get("username") == "administrado"
+        if is_master:
+            return {"status": "error", "message": "O Administrador Master não pode ser excluído."}
+
+        # 2. Impede auto-exclusão
+        op_id = str(operator_user.get("id") or "")
+        target_id_str = str(target.get("id") or target_key)
+        if op_id and (op_id == target_id_str or op_id == str(target_key)):
+            return {"status": "error", "message": "Operação não permitida: Você não pode excluir a sua própria conta de usuário."}
+
+        # 3. Gerente não pode excluir Administrador
+        target_role = str(target.get("role") or "").lower()
+        if op_role != "administrador" and target_role == "administrador":
+            return {"status": "error", "message": "Gerente não possui permissão para excluir um Administrador."}
+
+        user_nome = target.get("nome", "Colaborador")
+
+        # 4. Remove do dicionário local e persiste
+        if target_key in self.users:
+            del self.users[target_key]
+        if target_id_str in self.users and target_id_str != target_key:
+            del self.users[target_id_str]
+
+        self._save_local_users()
+
+        # 5. Remove do Supabase em tempo real
+        try:
+            from supabase_client import BASE_REST_URL, get_headers
+            import requests
+            requests.delete(f"{BASE_REST_URL}/system_users?id=eq.{target_id_str}", headers=get_headers(), timeout=5)
+        except Exception as e:
+            print(f"[AUTH] Falha ao sincronizar exclusão no Supabase: {e}")
+
+        # 6. Atualiza solicitações vinculadas se existirem
+        for req in self.access_requests.values():
+            if str(req.get("assigned_user_id")) == target_id_str:
+                req["assigned_user_id"] = None
+        self._save_access_requests()
+
+        return {
+            "status": "success",
+            "message": f"Colaborador {user_nome} excluído com sucesso do sistema CCO."
         }
 
     def list_users(self) -> list:
@@ -919,6 +1209,46 @@ class AuthManager:
                             "created_at": u.get("created_at") or datetime.now().isoformat()
                         }
 
+            # 4. Auto-cura: Verifica solicitações com status 'aprovado'. Se o colaborador não estiver em self.users ou ativo, cria/recupera
+            for req_id, req in list(self.access_requests.items()):
+                if req.get("status") == "aprovado":
+                    matched_k, matched_u = self._find_duplicate_user(
+                        email=req.get("email"),
+                        matricula=req.get("matricula"),
+                        nome=req.get("nome")
+                    )
+                    if not matched_u and req.get("user_id"):
+                        matched_k, matched_u = self._find_user(req["user_id"])
+                    
+                    if not matched_u:
+                        new_u_id = format_as_uuid(req.get("assigned_user_id") or req.get("user_id") or req.get("id"))
+                        final_r = normalize_role(req.get("assigned_role") or req.get("role") or "supervisor")
+                        novo_u = {
+                            "id": new_u_id,
+                            "nome": str(req.get("nome") or "COLABORADOR").strip().upper(),
+                            "email": str(req.get("email") or "").strip().lower(),
+                            "username": str(req.get("email") or "").split("@")[0].lower() if "@" in str(req.get("email") or "") else str(req.get("matricula") or "").lower(),
+                            "matricula": str(req.get("matricula") or "").strip().upper(),
+                            "telefone": str(req.get("telefone") or "").strip(),
+                            "regional": str(req.get("regional") or "Global").strip(),
+                            "setor": str(req.get("setor") or "Operações CCO").strip(),
+                            "password_hash": hash_password_pbkdf2("Alpitel@2026"),
+                            "role": final_r,
+                            "status": "ativo",
+                            "precisa_trocar_senha": True,
+                            "origem": "auto_cura_solicitacao",
+                            "created_at": req.get("created_at") or datetime.now().isoformat(),
+                            "aprovado_por": req.get("approved_by") or "Gestor CCO",
+                            "aprovado_em": req.get("approved_at") or datetime.now().isoformat(),
+                            "last_login": None
+                        }
+                        self.users[new_u_id] = novo_u
+                        req["assigned_user_id"] = new_u_id
+                        self._save_local_users()
+                        self._push_user_to_supabase(novo_u)
+                    elif not req.get("assigned_user_id"):
+                        req["assigned_user_id"] = str(matched_u.get("id"))
+
             self._save_access_requests()
         except Exception as e:
             print(f"[AUTH] Falha ao sincronizar solicitações com a nuvem: {e}")
@@ -933,7 +1263,7 @@ class AuthManager:
         email_clean = str(email or "").strip().lower()
         mat_clean = str(matricula or "").strip().upper()
         role_clean = str(role or "supervisor").strip().lower()
-        if role_clean not in ["supervisor", "coordenador", "gerente"]:
+        if role_clean not in ["operador_cco", "supervisor", "coordenador", "gerente"]:
             role_clean = "supervisor"
 
         if not nome_clean:
@@ -944,21 +1274,20 @@ class AuthManager:
         # 1. Carrega dados mais recentes da nuvem e do disco antes de validar
         self._load_access_requests()
 
-        # 2. Checa se o colaborador já possui cadastro no sistema (ex: importado do Fleet)
-        existing_user = None
-        for u in self.users.values():
-            u_email = str(u.get("email") or "").lower()
-            u_mat = str(u.get("matricula") or "").upper()
-            if (email_clean and email_clean == u_email) or (mat_clean and mat_clean == u_mat):
-                existing_user = u
-                break
+        # 2. Checa se o colaborador já possui cadastro no sistema
+        existing_uid, existing_user = self._find_duplicate_user(
+            email=email_clean,
+            matricula=mat_clean,
+            nome=nome_clean
+        )
 
-        # 3. Checa se já existe solicitação pendente para esse e-mail ou matrícula
+        # 3. Checa se já existe solicitação pendente para esse e-mail, matrícula ou nome completo
         for req in self.access_requests.values():
             if req.get("status") == "pendente":
                 req_email = str(req.get("email") or "").lower()
                 req_mat = str(req.get("matricula") or "").upper()
-                if (email_clean and email_clean == req_email) or (mat_clean and mat_clean == req_mat):
+                req_nome = " ".join(str(req.get("nome") or "").upper().split())
+                if (email_clean and email_clean == req_email) or (mat_clean and mat_clean == req_mat) or (nome_clean and len(nome_clean.split()) >= 2 and nome_clean == req_nome):
                     return {
                         "status": "pending_exists",
                         "protocolo": req.get("protocolo"),
@@ -1036,10 +1365,10 @@ class AuthManager:
             req = self.access_requests.get(request_id)
         if not req:
             return {"status": "error", "message": "Solicitação não localizada."}
-        if req.get("status") != "pendente":
-            return {"status": "error", "message": f"Esta solicitação já foi {req.get('status')} anteriormente."}
+        if req.get("status") == "recusado":
+            return {"status": "error", "message": "Esta solicitação foi recusada anteriormente. Para conceder acesso, o colaborador deve efetuar um novo pedido ou ser cadastrado diretamente."}
 
-        final_role = str(assigned_role or req.get("role") or "supervisor").lower()
+        final_role = normalize_role(str(assigned_role or req.get("role") or "supervisor").lower())
         if final_role not in VALID_ROLES:
             final_role = "supervisor"
 
@@ -1048,14 +1377,22 @@ class AuthManager:
 
         temp_pwd = str(initial_password or "Alpitel@2026").strip()
 
-        # 1. Verifica se já é um colaborador cadastrado (ex: importado do Fleet ou base legada)
+        # 1. Verifica se já é um colaborador cadastrado (evita qualquer duplicidade)
         target_uid, existing_u = None, None
-        if req.get("user_id"):
+        if req.get("assigned_user_id"):
+            target_uid, existing_u = self._find_user(req["assigned_user_id"])
+        if not existing_u and req.get("user_id"):
             target_uid, existing_u = self._find_user(req["user_id"])
         if not existing_u and req.get("matricula"):
             target_uid, existing_u = self._find_user(req["matricula"])
         if not existing_u and req.get("email"):
             target_uid, existing_u = self._find_user(req["email"])
+        if not existing_u:
+            target_uid, existing_u = self._find_duplicate_user(
+                email=req.get("email"),
+                matricula=req.get("matricula"),
+                nome=req.get("nome")
+            )
 
         if existing_u:
             existing_u["password_hash"] = hash_password_pbkdf2(temp_pwd)
@@ -1064,18 +1401,22 @@ class AuthManager:
             existing_u["role"] = final_role
             existing_u["aprovado_por"] = operator_user.get("nome", "Gestor")
             existing_u["aprovado_em"] = datetime.now().isoformat()
+            if req.get("telefone") and not existing_u.get("telefone"):
+                existing_u["telefone"] = req["telefone"]
+            if req.get("regional") and not existing_u.get("regional"):
+                existing_u["regional"] = req["regional"]
+            if req.get("setor") and not existing_u.get("setor"):
+                existing_u["setor"] = req["setor"]
             self._save_local_users()
 
             try:
-                from supabase_client import BASE_REST_URL, get_headers
-                import requests
-                requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=existing_u, timeout=5)
-            except Exception:
-                pass
+                self._push_user_to_supabase(existing_u)
+            except Exception as e:
+                print(f"[AUTH] Falha ao persistir usuário aprovado no Supabase: {e}")
             user_res_id = str(existing_u.get("id"))
         else:
-            new_uid = str(secrets.token_hex(16))
-            username = req["email"].split("@")[0] if "@" in req["email"] else req["matricula"].lower()
+            new_uid = format_as_uuid(req.get("assigned_user_id") or req.get("user_id") or req.get("id") or secrets.token_hex(16))
+            username = req["email"].split("@")[0] if "@" in str(req.get("email") or "") else req["matricula"].lower()
             novo_usuario = {
                 "id": new_uid,
                 "nome": req["nome"],
@@ -1092,17 +1433,16 @@ class AuthManager:
                 "origem": "solicitacao_aprovada",
                 "created_at": datetime.now().isoformat(),
                 "aprovado_por": operator_user.get("nome", "Gestor"),
+                "aprovado_em": datetime.now().isoformat(),
                 "last_login": None
             }
             self.users[new_uid] = novo_usuario
             self._save_local_users()
 
             try:
-                from supabase_client import BASE_REST_URL, get_headers
-                import requests
-                requests.post(f"{BASE_REST_URL}/system_users?on_conflict=id", headers=get_headers(), json=novo_usuario, timeout=5)
-            except Exception:
-                pass
+                self._push_user_to_supabase(novo_usuario)
+            except Exception as e:
+                print(f"[AUTH] Falha ao persistir novo usuário aprovado no Supabase: {e}")
             user_res_id = new_uid
 
         req["status"] = "aprovado"

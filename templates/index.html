@@ -5463,45 +5463,50 @@
 
                 <!-- SUB-VIEW 1: USUÁRIOS CADASTRADOS -->
                 <div id="userSubViewCadastrados" style="display: block;">
-                    <!-- Mini KPI Cards dos Usuários -->
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px;">
-                        <div class="admin-user-kpi-card">
-                            <span class="user-kpi-lbl">TOTAL USUÁRIOS</span>
+                    <!-- Interactive KPI Filter Cards dos Usuários -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px;">
+                        <div class="admin-user-kpi-card filter-card-kpi active-kpi active-kpi-all" id="cardKpiRoleAll" onclick="applyUserRoleKpiFilter('ALL')" title="Clique para filtrar todos os usuários">
+                            <span class="user-kpi-lbl"><span class="kpi-indicator-dot" style="background: #38bdf8;"></span>TOTAL USUÁRIOS</span>
                             <strong class="user-kpi-val text-cyan font-mono" id="kpiUserTotal">--</strong>
                         </div>
-                        <div class="admin-user-kpi-card">
-                            <span class="user-kpi-lbl">ADMINISTRADORES</span>
+                        <div class="admin-user-kpi-card filter-card-kpi" id="cardKpiRoleAdmin" onclick="applyUserRoleKpiFilter('administrador')" title="Clique para filtrar Administradores">
+                            <span class="user-kpi-lbl"><span class="kpi-indicator-dot" style="background: #c084fc;"></span>ADMINISTRADORES</span>
                             <strong class="user-kpi-val text-purple font-mono" id="kpiUserAdmin">--</strong>
                         </div>
-                        <div class="admin-user-kpi-card">
-                            <span class="user-kpi-lbl">GERENTES</span>
+                        <div class="admin-user-kpi-card filter-card-kpi" id="cardKpiRoleGerente" onclick="applyUserRoleKpiFilter('gerente')" title="Clique para filtrar Gerentes">
+                            <span class="user-kpi-lbl"><span class="kpi-indicator-dot" style="background: #34d399;"></span>GERENTES</span>
                             <strong class="user-kpi-val text-emerald font-mono" id="kpiUserGerente">--</strong>
                         </div>
-                        <div class="admin-user-kpi-card">
-                            <span class="user-kpi-lbl">COORDENADORES</span>
+                        <div class="admin-user-kpi-card filter-card-kpi" id="cardKpiRoleCoord" onclick="applyUserRoleKpiFilter('coordenador')" title="Clique para filtrar Coordenadores">
+                            <span class="user-kpi-lbl"><span class="kpi-indicator-dot" style="background: #60a5fa;"></span>COORDENADORES</span>
                             <strong class="user-kpi-val text-blue font-mono" id="kpiUserCoord">--</strong>
                         </div>
-                        <div class="admin-user-kpi-card">
-                            <span class="user-kpi-lbl">SUPERVISORES</span>
+                        <div class="admin-user-kpi-card filter-card-kpi" id="cardKpiRoleSuper" onclick="applyUserRoleKpiFilter('supervisor')" title="Clique para filtrar Supervisores">
+                            <span class="user-kpi-lbl"><span class="kpi-indicator-dot" style="background: #fbbf24;"></span>SUPERVISORES</span>
                             <strong class="user-kpi-val text-amber font-mono" id="kpiUserSuper">--</strong>
+                        </div>
+                        <div class="admin-user-kpi-card filter-card-kpi" id="cardKpiRoleOperador" onclick="applyUserRoleKpiFilter('operador_cco')" title="Clique para filtrar Operadores CCO">
+                            <span class="user-kpi-lbl"><span class="kpi-indicator-dot" style="background: #06b6d4;"></span>OPERADORES CCO</span>
+                            <strong class="user-kpi-val font-mono" style="color: #22d3ee;" id="kpiUserOperador">--</strong>
                         </div>
                     </div>
 
-                    <!-- Toolbar de Busca & Filtros -->
+                    <!-- Toolbar de Busca & Filtros Ultra Premium -->
                     <div class="glass-card" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 18px; border-radius: 12px;">
                         <div style="flex: 1; min-width: 240px; position: relative;">
                             <i data-lucide="search" style="position: absolute; left: 12px; top: 10px; width: 16px; height: 16px; color: #64748b;"></i>
                             <input type="text" id="adminUserSearchInput" class="form-input" placeholder="Buscar por nome, e-mail, login ou matrícula..." style="padding-left: 36px; font-size: 0.85rem;" oninput="filterAdminUsersTable()">
                         </div>
                         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                            <select id="adminUserRoleFilter" class="form-select" style="font-size: 0.82rem; padding: 8px 12px;" onchange="filterAdminUsersTable()">
+                            <select id="adminUserRoleFilter" class="form-select-premium" onchange="filterAdminUsersTable()">
                                 <option value="ALL">Todos os Perfis</option>
                                 <option value="administrador">Administrador</option>
                                 <option value="gerente">Gerente</option>
                                 <option value="coordenador">Coordenador</option>
                                 <option value="supervisor">Supervisor</option>
+                                <option value="operador_cco">Operador CCO</option>
                             </select>
-                            <select id="adminUserStatusFilter" class="form-select" style="font-size: 0.82rem; padding: 8px 12px;" onchange="filterAdminUsersTable()">
+                            <select id="adminUserStatusFilter" class="form-select-premium" onchange="filterAdminUsersTable()">
                                 <option value="ALL">Todos os Status</option>
                                 <option value="ativo">Ativo</option>
                                 <option value="inativo">Inativo</option>
@@ -5539,7 +5544,7 @@
                             <input type="text" id="adminReqSearchInput" class="form-input" placeholder="Filtrar por nome, protocolo, matrícula ou e-mail..." style="padding-left: 36px; font-size: 0.85rem;" oninput="filterAdminRequestsTable()">
                         </div>
                         <div>
-                            <select id="adminReqStatusFilter" class="form-select" style="font-size: 0.82rem; padding: 8px 12px;" onchange="filterAdminRequestsTable()">
+                            <select id="adminReqStatusFilter" class="form-select-premium" onchange="filterAdminRequestsTable()">
                                 <option value="ALL">Todos os Status</option>
                                 <option value="pendente" selected>Pendentes de Análise</option>
                                 <option value="aprovado">Aprovados</option>
@@ -8042,21 +8047,9 @@
                                 <span>Regional / Base:</span>
                             </label>
                             <select id="reqRegional" class="login-select">
-                                <option value="Global">Global / Central CCO</option>
-                                <option value="Leste">Regional Leste</option>
-                                <option value="Norte">Regional Norte</option>
-                                <option value="Oeste">Regional Oeste</option>
-                                <option value="Sul">Regional Sul</option>
-                                <option value="Centro">Regional Centro</option>
-                                <option value="STC Leste">STC Leste</option>
-                                <option value="STC Sul">STC Sul</option>
-                                <option value="Fagundes Filho">Base Fagundes Filho</option>
-                                <option value="Catumbi">Base Catumbi</option>
-                                <option value="Aricanduva">Base Aricanduva</option>
-                                <option value="Vila Medeiros">Base Vila Medeiros</option>
-                                <option value="Monte Santo">Base Monte Santo</option>
-                                <option value="Santo André">Base Santo André</option>
-                                <option value="Cajati">Base Cajati</option>
+                                <option value="Global">Global</option>
+                                <option value="Regional Norte">Regional Norte</option>
+                                <option value="Regional Leste">Regional Leste</option>
                             </select>
                         </div>
 
@@ -8066,9 +8059,10 @@
                                 <span>Perfil Solicitado: *</span>
                             </label>
                             <select id="reqRole" class="login-select" required>
-                                <option value="supervisor">Supervisor (TRBOnet + Entrega Online/Histórico + Priorizador)</option>
-                                <option value="coordenador">Coordenador (TRBOnet + Entrega Total + Priorizador)</option>
-                                <option value="gerente">Gerente (Visão Executiva Gerencial + Hub de Configuração)</option>
+                                <option value="operador_cco">Operador CCO</option>
+                                <option value="supervisor">Supervisor</option>
+                                <option value="coordenador">Coordenador</option>
+                                <option value="gerente">Gerente</option>
                             </select>
                         </div>
                     </div>
@@ -8229,8 +8223,8 @@
 <!-- ===================================================================== -->
 <!-- MODAL: EDITAR DADOS DO COLABORADOR (GESTÃO DE ACESSO RBAC)             -->
 <!-- ===================================================================== -->
-<div class="modal-backdrop" id="modalEditUser" style="z-index: 100020;">
-    <div class="modal-card glass-card" style="max-width: 540px; width: 94%;">
+<div class="modal-backdrop" id="modalEditUser">
+    <div class="modal-card glass-card" style="max-width: 560px; width: 94%;">
         <div class="modal-header">
             <div class="modal-title-wrap">
                 <div class="auth-modal-icon-badge" style="background: rgba(14, 165, 233, 0.2); color: #38bdf8;">
@@ -8238,20 +8232,20 @@
                 </div>
                 <div>
                     <h3 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #f8fafc;">Editar Cadastro de Colaborador</h3>
-                    <p class="modal-subtitle" id="editUserSubtitle" style="margin: 2px 0 0 0; font-size: 0.78rem; color: #94a3b8;">Atualização cadastral e permissões RBAC</p>
+                    <p class="modal-subtitle" id="editUserSubtitle" style="margin: 2px 0 0 0; font-size: 0.78rem; color: #94a3b8;">Atualização cadastral e governança RBAC</p>
                 </div>
             </div>
             <button class="btn-close-modal" type="button" onclick="closeModal('modalEditUser')">
                 <i data-lucide="x"></i>
             </button>
         </div>
-        <div class="modal-body" style="padding: 20px;">
+        <div class="modal-body" style="padding: 22px;">
             <form id="formEditUser" onsubmit="submitEditUserForm(event)">
                 <input type="hidden" id="editUserId">
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div class="form-group">
-                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Nome Completo:</label>
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Nome Completo: *</label>
                         <input type="text" id="editUserNome" class="form-input" required style="font-size: 0.85rem;">
                     </div>
                     <div class="form-group">
@@ -8274,11 +8268,10 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div class="form-group">
                         <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Regional Operacional:</label>
-                        <select id="editUserRegional" class="form-select" style="font-size: 0.85rem;">
-                            <option value="Global">Global / Central</option>
-                            <option value="Região Norte Alpitel">Região Norte Alpitel</option>
-                            <option value="Região Leste Alpitel">Região Leste Alpitel</option>
-                            <option value="São Paulo Capital">São Paulo Capital</option>
+                        <select id="editUserRegional" class="form-select-premium" style="width: 100%;">
+                            <option value="Global">Global</option>
+                            <option value="Regional Norte">Regional Norte</option>
+                            <option value="Regional Leste">Regional Leste</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -8290,7 +8283,8 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                     <div class="form-group">
                         <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Perfil de Acesso RBAC:</label>
-                        <select id="editUserRole" class="form-select" style="font-size: 0.85rem;">
+                        <select id="editUserRole" class="form-select-premium" style="width: 100%;">
+                            <option value="operador_cco">Operador CCO</option>
                             <option value="supervisor">Supervisor</option>
                             <option value="coordenador">Coordenador</option>
                             <option value="gerente">Gerente</option>
@@ -8299,7 +8293,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Status da Conta:</label>
-                        <select id="editUserStatus" class="form-select" style="font-size: 0.85rem;">
+                        <select id="editUserStatus" class="form-select-premium" style="width: 100%;">
                             <option value="ativo">Ativo (Acesso Liberado)</option>
                             <option value="inativo">Inativo (Bloqueado)</option>
                         </select>
@@ -8307,10 +8301,10 @@
                 </div>
 
                 <!-- Seção Opcional: Redefinição de Senha -->
-                <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 12px; margin-top: 6px;">
+                <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 14px; margin-top: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #38bdf8; margin: 0;">
-                            <i data-lucide="key" style="width: 13px; height: 13px; vertical-align: middle;"></i> Redefinir Senha (Opcional):
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #38bdf8; margin: 0; display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="key" style="width: 14px; height: 14px;"></i> Redefinir Senha (Opcional):
                         </label>
                         <small style="color: #64748b; font-size: 0.7rem;">Deixe vazio para manter a senha atual</small>
                     </div>
@@ -8328,11 +8322,16 @@
                     <span id="editUserErrorMsg">Falha ao salvar dados.</span>
                 </div>
 
-                <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px;">
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modalEditUser')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary btn-sm" id="btnSubmitEditUser" style="font-weight: 700;">
-                        <i data-lucide="save"></i> Salvar Alterações
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; flex-wrap: wrap; gap: 8px;">
+                    <button type="button" class="btn btn-danger btn-sm" id="btnDeleteUserFromModal" onclick="handleDeleteUserFromEditModal()" style="font-weight: 700; background: rgba(244, 63, 94, 0.15); border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
+                        <i data-lucide="trash-2"></i> Excluir Colaborador
                     </button>
+                    <div style="display: flex; gap: 8px; margin-left: auto;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modalEditUser')">Cancelar</button>
+                        <button type="submit" class="btn btn-primary btn-sm" id="btnSubmitEditUser" style="font-weight: 700;">
+                            <i data-lucide="save"></i> Salvar Alterações
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -8342,8 +8341,8 @@
 <!-- ===================================================================== -->
 <!-- MODAL: CADASTRAR NOVO COLABORADOR                                      -->
 <!-- ===================================================================== -->
-<div class="modal-backdrop" id="modalCreateUser" style="z-index: 100020;">
-    <div class="modal-card glass-card" style="max-width: 540px; width: 94%;">
+<div class="modal-backdrop" id="modalCreateUser">
+    <div class="modal-card glass-card" style="max-width: 560px; width: 94%;">
         <div class="modal-header">
             <div class="modal-title-wrap">
                 <div class="auth-modal-icon-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">
@@ -8358,7 +8357,7 @@
                 <i data-lucide="x"></i>
             </button>
         </div>
-        <div class="modal-body" style="padding: 20px;">
+        <div class="modal-body" style="padding: 22px;">
             <form id="formCreateUser" onsubmit="submitCreateUserForm(event)">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div class="form-group">
@@ -8385,11 +8384,10 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div class="form-group">
                         <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Regional:</label>
-                        <select id="createUserRegional" class="form-select" style="font-size: 0.85rem;">
-                            <option value="Global">Global / Central</option>
-                            <option value="Região Norte Alpitel">Região Norte Alpitel</option>
-                            <option value="Região Leste Alpitel">Região Leste Alpitel</option>
-                            <option value="São Paulo Capital">São Paulo Capital</option>
+                        <select id="createUserRegional" class="form-select-premium" style="width: 100%;">
+                            <option value="Global">Global</option>
+                            <option value="Regional Norte">Regional Norte</option>
+                            <option value="Regional Leste">Regional Leste</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -8401,7 +8399,8 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
                     <div class="form-group">
                         <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Perfil RBAC:</label>
-                        <select id="createUserRole" class="form-select" style="font-size: 0.85rem;">
+                        <select id="createUserRole" class="form-select-premium" style="width: 100%;">
+                            <option value="operador_cco">Operador CCO</option>
                             <option value="supervisor" selected>Supervisor</option>
                             <option value="coordenador">Coordenador</option>
                             <option value="gerente">Gerente</option>
@@ -8428,6 +8427,148 @@
                     <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modalCreateUser')">Cancelar</button>
                     <button type="submit" class="btn btn-success btn-sm" id="btnSubmitCreateUser" style="font-weight: 700;">
                         <i data-lucide="check"></i> Cadastrar Colaborador
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- MODAL: APROVAR SOLICITAÇÃO DE ACESSO (ULTRA PREMIUM RBAC)             -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="modalApproveAccessRequest">
+    <div class="modal-card glass-card" style="max-width: 520px; width: 94%;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">
+                    <i data-lucide="user-check"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #f8fafc;">Aprovar Solicitação de Acesso</h3>
+                    <p class="modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.78rem; color: #94a3b8;">Validação de credenciais e liberação de acesso</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" type="button" onclick="closeModal('modalApproveAccessRequest')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 22px;">
+            <form id="formApproveAccessRequest" onsubmit="submitApproveRequestModal(event)">
+                <input type="hidden" id="approveReqId">
+
+                <!-- Applicant Summary Card -->
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <div>
+                            <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; letter-spacing: 0.05em; text-transform: uppercase;">SOLICITANTE</span>
+                            <h4 id="approveReqApplicantName" style="margin: 2px 0 0 0; font-size: 0.95rem; font-weight: 800; color: #f8fafc;">NOME DO COLABORADOR</h4>
+                        </div>
+                        <span id="approveReqProtocolBadge" class="badge font-mono" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 0.72rem; padding: 3px 8px; border-radius: 6px;">CCO-PROTO</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.78rem; color: #cbd5e1; border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 8px; margin-top: 6px;">
+                        <div><strong style="color: #94a3b8;">Matrícula:</strong> <span id="approveReqMatricula" class="font-mono">--</span></div>
+                        <div><strong style="color: #94a3b8;">Regional:</strong> <span id="approveReqRegional">Global</span></div>
+                        <div style="grid-column: span 2;"><strong style="color: #94a3b8;">E-mail:</strong> <span id="approveReqEmail">--</span></div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Perfil RBAC Definitivo: *</label>
+                        <select id="approveReqRole" class="form-select-premium" style="width: 100%;">
+                            <option value="operador_cco">Operador CCO</option>
+                            <option value="supervisor">Supervisor</option>
+                            <option value="coordenador">Coordenador</option>
+                            <option value="gerente">Gerente</option>
+                            <option value="administrador">Administrador</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1;">Senha Provisória: *</label>
+                        <input type="text" id="approveReqPassword" class="form-input font-mono" value="Alpitel@2026" required minlength="4" style="font-size: 0.85rem;">
+                    </div>
+                </div>
+
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: #cbd5e1; cursor: pointer; margin-bottom: 14px;">
+                    <input type="checkbox" id="approveReqForceChange" checked style="accent-color: #10b981;">
+                    <span>Exigir troca obrigatória de senha no primeiro login do colaborador</span>
+                </label>
+
+                <div id="approveReqErrorBanner" class="auth-error-banner" style="display: none; margin-bottom: 14px; padding: 8px 12px; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); border-radius: 6px; color: #f43f5e; font-size: 0.78rem; align-items: center; gap: 6px;">
+                    <i data-lucide="alert-circle" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+                    <span id="approveReqErrorMsg">Falha ao aprovar solicitação.</span>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modalApproveAccessRequest')">Cancelar</button>
+                    <button type="submit" class="btn btn-success btn-sm" id="btnSubmitApproveReq" style="font-weight: 700;">
+                        <i data-lucide="check-circle"></i> Confirmar Aprovação
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===================================================================== -->
+<!-- MODAL: RECUSAR SOLICITAÇÃO DE ACESSO (ULTRA PREMIUM RBAC)             -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="modalRejectAccessRequest">
+    <div class="modal-card glass-card" style="max-width: 500px; width: 94%;">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <div class="auth-modal-icon-badge" style="background: rgba(244, 63, 94, 0.2); color: #f43f5e;">
+                    <i data-lucide="user-x"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #f8fafc;">Recusar Solicitação de Acesso</h3>
+                    <p class="modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.78rem; color: #94a3b8;">Registro de indeferimento com justificativa</p>
+                </div>
+            </div>
+            <button class="btn-close-modal" type="button" onclick="closeModal('modalRejectAccessRequest')">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body" style="padding: 22px;">
+            <form id="formRejectAccessRequest" onsubmit="submitRejectRequestModal(event)">
+                <input type="hidden" id="rejectReqId">
+
+                <!-- Applicant Summary -->
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px;">
+                    <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; letter-spacing: 0.05em; text-transform: uppercase;">SOLICITANTE</span>
+                    <h4 id="rejectReqApplicantName" style="margin: 2px 0 4px 0; font-size: 0.92rem; font-weight: 800; color: #f8fafc;">NOME DO COLABORADOR</h4>
+                    <div style="font-size: 0.76rem; color: #94a3b8;">
+                        <span id="rejectReqMatricula" class="font-mono">--</span> &bull; <span id="rejectReqEmail">--</span>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1; margin-bottom: 6px;">
+                        Selecione um motivo rápido:
+                    </label>
+                    <div class="quick-reject-chips-wrap">
+                        <button type="button" class="quick-reject-chip" onclick="selectQuickRejectReason('Matrícula não localizada no RH Alpitel')">Matrícula não localizada</button>
+                        <button type="button" class="quick-reject-chip" onclick="selectQuickRejectReason('Perfil solicitado incompatível com a função')">Perfil incompatível</button>
+                        <button type="button" class="quick-reject-chip" onclick="selectQuickRejectReason('E-mail corporativo inválido ou incorreto')">E-mail corporativo inválido</button>
+                        <button type="button" class="quick-reject-chip" onclick="selectQuickRejectReason('Solicitação em duplicidade com cadastro existente')">Solicitação em duplicidade</button>
+                    </div>
+
+                    <label class="form-label" style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1; margin-bottom: 4px;">
+                        Justificativa da Recusa: *
+                    </label>
+                    <textarea id="rejectReqReason" class="form-input" rows="3" required placeholder="Digite ou selecione o motivo da recusa..." style="resize: vertical; font-size: 0.82rem; line-height: 1.4;"></textarea>
+                </div>
+
+                <div id="rejectReqErrorBanner" class="auth-error-banner" style="display: none; margin-bottom: 14px; padding: 8px 12px; background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); border-radius: 6px; color: #f43f5e; font-size: 0.78rem; align-items: center; gap: 6px;">
+                    <i data-lucide="alert-circle" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+                    <span id="rejectReqErrorMsg">Falha ao recusar solicitação.</span>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('modalRejectAccessRequest')">Cancelar</button>
+                    <button type="submit" class="btn btn-danger btn-sm" id="btnSubmitRejectReq" style="font-weight: 700; background: rgba(244, 63, 94, 0.2); border-color: rgba(244, 63, 94, 0.5); color: #f43f5e;">
+                        <i data-lucide="x-circle"></i> Confirmar Recusa
                     </button>
                 </div>
             </form>

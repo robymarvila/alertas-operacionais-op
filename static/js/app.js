@@ -5370,7 +5370,7 @@ function updateAuthUI() {
 function applyRbacPermissions(role) {
     const userRole = (role || (authState.user && authState.user.role) || '').toLowerCase();
 
-    document.body.classList.remove('role-supervisor', 'role-coordenador', 'role-gerente', 'role-administrador');
+    document.body.classList.remove('role-supervisor', 'role-coordenador', 'role-gerente', 'role-administrador', 'role-operador_cco');
     if (userRole) {
         document.body.classList.add(`role-${userRole}`);
     }
@@ -5385,8 +5385,8 @@ function applyRbacPermissions(role) {
     const mobSubBid = document.getElementById('mobSubDeliveryBid');
     const mobSubHist = document.getElementById('mobSubDeliveryHistory');
 
-    if (userRole === 'supervisor') {
-        // Supervisor: ONLINE, EQUIPES LOGADAS x CHECKLIST e AUDITORIA & HISTÓRICO (ATRASOS E TURNOS bloqueado)
+    if (userRole === 'supervisor' || userRole === 'operador_cco') {
+        // Supervisor e Operador CCO: ONLINE, EQUIPES LOGADAS x CHECKLIST e AUDITORIA & HISTÓRICO (ATRASOS E TURNOS bloqueado)
         if (btnOnline) btnOnline.style.display = 'inline-flex';
         if (btnOnlineBid) btnOnlineBid.style.display = 'inline-flex';
         if (btnHist) btnHist.style.display = 'inline-flex';
@@ -5898,29 +5898,75 @@ async function loadAllAdminUsers() {
 window.loadAllAdminUsers = loadAllAdminUsers;
 
 function updateAdminUsersKpis(users) {
+    if (!users || !Array.isArray(users)) return;
+
     const total = users.length;
     const admin = users.filter(u => u.role === 'administrador').length;
     const gerente = users.filter(u => u.role === 'gerente').length;
     const coord = users.filter(u => u.role === 'coordenador').length;
     const superv = users.filter(u => u.role === 'supervisor').length;
+    const operador = users.filter(u => u.role === 'operador_cco').length;
 
     const elTot = document.getElementById('kpiUserTotal');
     const elAdm = document.getElementById('kpiUserAdmin');
     const elGer = document.getElementById('kpiUserGerente');
     const elCoo = document.getElementById('kpiUserCoord');
     const elSup = document.getElementById('kpiUserSuper');
+    const elOpe = document.getElementById('kpiUserOperador');
 
     if (elTot) elTot.textContent = total;
     if (elAdm) elAdm.textContent = admin;
     if (elGer) elGer.textContent = gerente;
     if (elCoo) elCoo.textContent = coord;
     if (elSup) elSup.textContent = superv;
+    if (elOpe) elOpe.textContent = operador;
+}
+
+let currentKpiRoleFilter = 'ALL';
+
+function applyUserRoleKpiFilter(role) {
+    const roleSelect = document.getElementById('adminUserRoleFilter');
+    if (!roleSelect) return;
+
+    if (currentKpiRoleFilter === role && role !== 'ALL') {
+        currentKpiRoleFilter = 'ALL';
+    } else {
+        currentKpiRoleFilter = role;
+    }
+
+    roleSelect.value = currentKpiRoleFilter;
+    syncKpiCardsVisualState(currentKpiRoleFilter);
+    filterAdminUsersTable();
+}
+window.applyUserRoleKpiFilter = applyUserRoleKpiFilter;
+
+function syncKpiCardsVisualState(roleVal) {
+    currentKpiRoleFilter = roleVal || 'ALL';
+    const cardMap = {
+        'ALL': 'cardKpiRoleAll',
+        'administrador': 'cardKpiRoleAdmin',
+        'gerente': 'cardKpiRoleGerente',
+        'coordenador': 'cardKpiRoleCoord',
+        'supervisor': 'cardKpiRoleSuper',
+        'operador_cco': 'cardKpiRoleOperador'
+    };
+
+    Object.keys(cardMap).forEach(k => {
+        const el = document.getElementById(cardMap[k]);
+        if (!el) return;
+        el.classList.remove('active-kpi', 'active-kpi-all', 'active-kpi-administrador', 'active-kpi-gerente', 'active-kpi-coordenador', 'active-kpi-supervisor', 'active-kpi-operador_cco');
+        if (k === currentKpiRoleFilter) {
+            el.classList.add('active-kpi', `active-kpi-${k.toLowerCase()}`);
+        }
+    });
 }
 
 function filterAdminUsersTable() {
     const searchVal = (document.getElementById('adminUserSearchInput')?.value || '').toLowerCase().trim();
     const roleVal = document.getElementById('adminUserRoleFilter')?.value || 'ALL';
     const statusVal = document.getElementById('adminUserStatusFilter')?.value || 'ALL';
+
+    syncKpiCardsVisualState(roleVal);
 
     let filtered = adminUsersCache.filter(u => {
         if (roleVal !== 'ALL' && u.role !== roleVal) return false;
@@ -5955,13 +6001,15 @@ function renderAdminUsersManagementTable(users) {
 
     tbody.innerHTML = users.map(u => {
         const isMaster = u.is_master || u.username === 'administrado';
-        const roleBadgeClass = `badge-role-${u.role || 'supervisor'}`;
+        const roleBadgeClass = u.role === 'operador_cco' ? 'badge-role-operador_cco' : `badge-role-${u.role || 'supervisor'}`;
+        const roleDisplay = u.role === 'operador_cco' ? 'OPERADOR CCO' : (u.role || 'supervisor').toUpperCase();
         const isPendingPass = u.precisa_trocar_senha;
 
         let roleColHtml = '';
         if (isMasterAdmin && !isMaster) {
             roleColHtml = `
-                <select class="form-select" style="font-size: 0.76rem; padding: 4px 8px; border-radius: 6px;" onchange="handleUserRoleChange('${u.id}', this.value)">
+                <select class="form-select-premium" style="font-size: 0.74rem; padding: 3px 8px; border-radius: 6px;" onchange="handleUserRoleChange('${u.id}', this.value)">
+                    <option value="operador_cco" ${u.role === 'operador_cco' ? 'selected' : ''}>Operador CCO</option>
                     <option value="supervisor" ${u.role === 'supervisor' ? 'selected' : ''}>Supervisor</option>
                     <option value="coordenador" ${u.role === 'coordenador' ? 'selected' : ''}>Coordenador</option>
                     <option value="gerente" ${u.role === 'gerente' ? 'selected' : ''}>Gerente</option>
@@ -5969,7 +6017,7 @@ function renderAdminUsersManagementTable(users) {
                 </select>
             `;
         } else {
-            roleColHtml = `<span class="${roleBadgeClass}">${(u.role || 'supervisor').toUpperCase()}</span>`;
+            roleColHtml = `<span class="${roleBadgeClass}">${roleDisplay}</span>`;
         }
 
         const isAtivo = u.status === 'ativo';
@@ -5980,25 +6028,28 @@ function renderAdminUsersManagementTable(users) {
         let actionsHtml = '';
         if (isMaster) {
             actionsHtml = `
-                <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
-                    <span style="color: #c084fc; font-weight: 700; font-size: 0.74rem;">★ Administrador Master</span>
+                <div class="action-btn-group">
+                    <span style="color: #c084fc; font-weight: 700; font-size: 0.74rem; margin-right: 4px;">★ Master</span>
                     ${isMasterAdmin ? `
-                    <button class="btn btn-primary btn-xs" onclick="openEditUserModal('${u.id}')" title="Editar dados cadastrais" style="font-size: 0.72rem; padding: 3px 8px;">
+                    <button class="btn-action-pill btn-action-edit" onclick="openEditUserModal('${u.id}')" title="Editar dados cadastrais">
                         <i data-lucide="edit-3" style="width: 12px; height: 12px;"></i> Editar
                     </button>` : ''}
                 </div>
             `;
         } else {
             actionsHtml = `
-                <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
-                    <button class="btn btn-primary btn-xs" onclick="openEditUserModal('${u.id}')" title="Editar dados cadastrais" style="font-size: 0.72rem; padding: 3px 8px;">
+                <div class="action-btn-group">
+                    <button class="btn-action-pill btn-action-edit" onclick="openEditUserModal('${u.id}')" title="Editar dados cadastrais">
                         <i data-lucide="edit-3" style="width: 12px; height: 12px;"></i> Editar
                     </button>
-                    <button class="btn btn-secondary btn-xs" onclick="openSetTempPasswordModal('${u.id}', '${encodeURIComponent(u.nome || '')}')" title="Emitir nova senha provisória" style="font-size: 0.72rem; padding: 3px 8px;">
+                    <button class="btn-action-pill btn-action-pwd" onclick="openSetTempPasswordModal('${u.id}', '${encodeURIComponent(u.nome || '')}')" title="Emitir nova senha provisória">
                         <i data-lucide="key" style="width: 12px; height: 12px;"></i> Senha
                     </button>
-                    <button class="btn ${isAtivo ? 'btn-danger' : 'btn-success'} btn-xs" onclick="handleToggleUserStatus('${u.id}', '${isAtivo ? 'inativo' : 'ativo'}')" title="${isAtivo ? 'Inativar usuário' : 'Ativar usuário'}" style="font-size: 0.72rem; padding: 3px 8px;">
-                        ${isAtivo ? 'Inativar' : 'Ativar'}
+                    <button class="btn-action-pill btn-action-status" onclick="handleToggleUserStatus('${u.id}', '${isAtivo ? 'inativo' : 'ativo'}')" title="${isAtivo ? 'Inativar usuário' : 'Ativar usuário'}">
+                        <i data-lucide="${isAtivo ? 'pause-circle' : 'play-circle'}" style="width: 12px; height: 12px;"></i> ${isAtivo ? 'Inativar' : 'Ativar'}
+                    </button>
+                    <button class="btn-action-pill btn-action-delete" onclick="handleDeleteUser('${u.id}', '${encodeURIComponent(u.nome || '')}')" title="Excluir colaborador permanentemente">
+                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i> Excluir
                     </button>
                 </div>
             `;
@@ -6264,7 +6315,13 @@ function openEditUserModal(userId) {
     if (inputTel) inputTel.value = u.telefone || '';
 
     const selectRegional = document.getElementById('editUserRegional');
-    if (selectRegional) selectRegional.value = u.regional || 'Global';
+    if (selectRegional) {
+        let reg = u.regional || 'Global';
+        if (reg.includes('Norte')) reg = 'Regional Norte';
+        else if (reg.includes('Leste')) reg = 'Regional Leste';
+        else reg = 'Global';
+        selectRegional.value = reg;
+    }
 
     const inputSetor = document.getElementById('editUserSetor');
     if (inputSetor) inputSetor.value = u.setor || '';
@@ -6293,6 +6350,18 @@ function openEditUserModal(userId) {
 
     const errBanner = document.getElementById('editUserErrorBanner');
     if (errBanner) errBanner.style.display = 'none';
+
+    const btnDelete = document.getElementById('btnDeleteUserFromModal');
+    if (btnDelete) {
+        const isMaster = !!(u.is_master || u.username === 'administrado' || String(u.id) === '00000000-0000-0000-0000-000000000001');
+        const isSelf = String(u.id) === String(authState.user?.id);
+        const isDisallowedAdmin = !isMasterAdmin && (u.role || '').toLowerCase() === 'administrador';
+        if (isMaster || isSelf || isDisallowedAdmin) {
+            btnDelete.style.display = 'none';
+        } else {
+            btnDelete.style.display = 'inline-flex';
+        }
+    }
 
     modal.style.display = 'flex';
     modal.style.opacity = '1';
@@ -6405,6 +6474,48 @@ async function submitEditUserForm(event) {
     }
 }
 window.submitEditUserForm = submitEditUserForm;
+
+async function handleDeleteUser(userId, encodedName) {
+    const nome = decodeURIComponent(encodedName || 'Colaborador');
+    const confirmed = confirm(`ATENÇÃO: Deseja realmente EXCLUIR permanentemente o cadastro de "${nome}"?\n\nEsta ação é irreversível e removerá todos os acessos e permissões do colaborador no sistema CCO.`);
+    if (!confirmed) return;
+
+    const token = authState.token || localStorage.getItem('cco_auth_token') || sessionStorage.getItem('cco_auth_token') || '';
+
+    try {
+        const resp = await fetch('/api/admin/users/delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ user_id: userId })
+        });
+        const res = await resp.json();
+
+        if (res.status === 'success') {
+            closeModal('modalEditUser');
+            showToast(res.message || `Colaborador ${nome} excluído com sucesso!`, 'success');
+            await loadAllAdminUsers();
+        } else {
+            showToast(res.message || 'Falha ao excluir colaborador.', 'danger');
+        }
+    } catch (e) {
+        showToast(`Erro de comunicação: ${e.message}`, 'danger');
+    }
+}
+window.handleDeleteUser = handleDeleteUser;
+
+function handleDeleteUserFromEditModal() {
+    const userId = document.getElementById('editUserId')?.value;
+    const nome = document.getElementById('editUserNome')?.value || 'Colaborador';
+    if (!userId) {
+        showToast('ID do colaborador não encontrado.', 'warning');
+        return;
+    }
+    handleDeleteUser(userId, encodeURIComponent(nome));
+}
+window.handleDeleteUserFromEditModal = handleDeleteUserFromEditModal;
 
 function openCreateUserModal() {
     const modal = document.getElementById('modalCreateUser');
@@ -6722,25 +6833,26 @@ function renderAdminAccessRequestsTable(requests) {
             tipoBadge = `<span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.35); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-left: 6px;">NOVO CADASTRO</span>`;
         }
 
-        const roleBadgeClass = `badge-role-${r.role || 'supervisor'}`;
+        const roleBadgeClass = r.role === 'operador_cco' ? 'badge-role-operador_cco' : `badge-role-${r.role || 'supervisor'}`;
+        const roleDisplay = r.role === 'operador_cco' ? 'OPERADOR CCO' : (r.role || 'supervisor').toUpperCase();
         const createdDate = r.created_at ? new Date(r.created_at).toLocaleString('pt-BR') : '--';
 
         let actionsHtml = '';
         if (isPendente) {
             actionsHtml = `
-                <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">
-                    <button class="btn btn-success btn-xs" onclick="handleApproveRequest('${r.id}', '${encodeURIComponent(r.nome)}', '${r.role}')" title="Aprovar acesso e definir senha provisória" style="font-size: 0.72rem; padding: 4px 8px; font-weight: 800;">
+                <div class="action-btn-group">
+                    <button class="btn-action-pill" onclick="openApproveRequestModal('${r.id}')" title="Aprovar acesso e emitir credenciais" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">
                         <i data-lucide="check" style="width: 12px; height: 12px;"></i> Aprovar
                     </button>
-                    <button class="btn btn-danger btn-xs" onclick="handleRejectRequest('${r.id}', '${encodeURIComponent(r.nome)}')" title="Recusar solicitação" style="font-size: 0.72rem; padding: 4px 8px; font-weight: 800;">
+                    <button class="btn-action-pill btn-action-delete" onclick="openRejectRequestModal('${r.id}')" title="Recusar solicitação">
                         <i data-lucide="x" style="width: 12px; height: 12px;"></i> Recusar
                     </button>
                 </div>
             `;
         } else if (isAprovado) {
-            actionsHtml = `<span style="font-size: 0.7rem; color: #10b981;">Aprovado por: ${r.approved_by || 'Gestor'}</span>`;
+            actionsHtml = `<span style="font-size: 0.7rem; color: #10b981; font-weight: 700;">✓ Aprovado por: ${r.approved_by || 'Gestor'}</span>`;
         } else {
-            actionsHtml = `<span style="font-size: 0.7rem; color: #f43f5e;" title="${r.rejection_reason || ''}">Recusado: ${r.rejection_reason || 'Pela gerência'}</span>`;
+            actionsHtml = `<span style="font-size: 0.7rem; color: #f43f5e;" title="${r.rejection_reason || ''}">✗ Recusado: ${r.rejection_reason || 'Pela gerência'}</span>`;
         }
 
         return `
@@ -6765,7 +6877,7 @@ function renderAdminAccessRequestsTable(requests) {
                     <div style="font-size: 0.68rem; color: #64748b;">${r.setor || '--'}</div>
                 </td>
                 <td style="padding: 10px 12px; text-align: center;">
-                    <span class="${roleBadgeClass}">${(r.role || 'supervisor').toUpperCase()}</span>
+                    <span class="${roleBadgeClass}">${roleDisplay}</span>
                 </td>
                 <td style="padding: 10px 12px; text-align: center;">
                     ${statusBadge}
@@ -6780,10 +6892,95 @@ function renderAdminAccessRequestsTable(requests) {
     if (window.lucide) lucide.createIcons();
 }
 
-async function handleApproveRequest(reqId, encodedName, defaultRole) {
-    const nome = decodeURIComponent(encodedName || 'Colaborador');
-    const confirmPrompt = confirm(`Deseja aprovar o acesso corporativo para ${nome} com o perfil ${defaultRole.toUpperCase()}?\n\nSerá gerada a senha provisória padrão 'Alpitel@2026' com troca obrigatória no 1º login.`);
-    if (!confirmPrompt) return;
+// ==============================================================================
+// MODAIS NATIVOS ULTRA PREMIUM: APROVAÇÃO E RECUSA DE SOLICITAÇÃO DE ACESSO
+// ==============================================================================
+
+function openApproveRequestModal(reqId) {
+    const req = adminRequestsCache.find(r => String(r.id) === String(reqId));
+    if (!req) {
+        showToast('Solicitação não localizada na lista.', 'warning');
+        return;
+    }
+    const modal = document.getElementById('modalApproveAccessRequest');
+    if (!modal) return;
+
+    const inpId = document.getElementById('approveReqId');
+    if (inpId) inpId.value = req.id;
+
+    const elName = document.getElementById('approveReqApplicantName');
+    if (elName) elName.textContent = req.nome || 'Colaborador';
+
+    const elProto = document.getElementById('approveReqProtocolBadge');
+    if (elProto) elProto.textContent = '#' + (req.protocolo || String(req.id).substring(0, 8));
+
+    const elMat = document.getElementById('approveReqMatricula');
+    if (elMat) elMat.textContent = req.matricula || '--';
+
+    const elReg = document.getElementById('approveReqRegional');
+    if (elReg) elReg.textContent = req.regional || 'Global';
+
+    const elEmail = document.getElementById('approveReqEmail');
+    if (elEmail) elEmail.textContent = req.email || '--';
+
+    const roleSelect = document.getElementById('approveReqRole');
+    if (roleSelect) {
+        const curRole = (authState.user?.role || '').toLowerCase();
+        const isMasterAdmin = curRole === 'administrador';
+        const adminOpt = roleSelect.querySelector('option[value="administrador"]');
+        if (adminOpt) adminOpt.disabled = !isMasterAdmin;
+
+        let targetRole = (req.role || 'supervisor').toLowerCase();
+        if (targetRole === 'administrador' && !isMasterAdmin) {
+            targetRole = 'gerente';
+        }
+        roleSelect.value = targetRole;
+    }
+
+    const pwdInput = document.getElementById('approveReqPassword');
+    if (pwdInput) pwdInput.value = 'Alpitel@2026';
+
+    const chkForce = document.getElementById('approveReqForceChange');
+    if (chkForce) chkForce.checked = true;
+
+    const errBanner = document.getElementById('approveReqErrorBanner');
+    if (errBanner) errBanner.style.display = 'none';
+
+    modal.style.display = 'flex';
+    modal.style.opacity = '1';
+    modal.style.pointerEvents = 'auto';
+    void modal.offsetWidth;
+    modal.classList.add('active');
+    if (window.lucide) lucide.createIcons();
+}
+window.openApproveRequestModal = openApproveRequestModal;
+
+async function submitApproveRequestModal(event) {
+    if (event) event.preventDefault();
+    const reqId = document.getElementById('approveReqId')?.value;
+    const role = document.getElementById('approveReqRole')?.value;
+    const initialPassword = document.getElementById('approveReqPassword')?.value?.trim();
+    const forceChange = document.getElementById('approveReqForceChange')?.checked;
+
+    const btn = document.getElementById('btnSubmitApproveReq');
+    const errBanner = document.getElementById('approveReqErrorBanner');
+    const errMsg = document.getElementById('approveReqErrorMsg');
+
+    if (!reqId) return;
+    if (!initialPassword || initialPassword.length < 4) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'A senha provisória deve conter ao menos 4 caracteres.';
+        }
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Aprovando...</span>`;
+        if (window.lucide) lucide.createIcons();
+    }
+    if (errBanner) errBanner.style.display = 'none';
 
     try {
         const resp = await fetch('/api/admin/access_requests/approve', {
@@ -6794,28 +6991,117 @@ async function handleApproveRequest(reqId, encodedName, defaultRole) {
             },
             body: JSON.stringify({
                 request_id: reqId,
-                initial_password: 'Alpitel@2026',
-                role: defaultRole
+                initial_password: initialPassword,
+                role: role,
+                precisa_trocar_senha: !!forceChange
             })
         });
         const res = await resp.json();
-
         if (res.status === 'success') {
+            closeModal('modalApproveAccessRequest');
             showToast(res.message, 'success');
             await reloadUserGovernanceData();
         } else {
-            showToast(res.message || 'Erro ao aprovar solicitação.', 'danger');
+            if (errBanner) {
+                errBanner.style.display = 'flex';
+                if (errMsg) errMsg.textContent = res.message || 'Falha ao aprovar solicitação.';
+            }
+            showToast(res.message || 'Falha ao aprovar solicitação.', 'danger');
         }
     } catch (e) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = `Erro: ${e.message}`;
+        }
         showToast(`Erro: ${e.message}`, 'danger');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="check-circle"></i> <span>Confirmar Aprovação</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
     }
 }
-window.handleApproveRequest = handleApproveRequest;
+window.submitApproveRequestModal = submitApproveRequestModal;
 
-async function handleRejectRequest(reqId, encodedName) {
-    const nome = decodeURIComponent(encodedName || 'Colaborador');
-    const reason = prompt(`Informe a justificativa da recusa para a solicitação de ${nome}:`, 'Critérios operacionais de acesso não atendidos.');
-    if (reason === null) return;
+function openRejectRequestModal(reqId) {
+    const req = adminRequestsCache.find(r => String(r.id) === String(reqId));
+    if (!req) {
+        showToast('Solicitação não localizada.', 'warning');
+        return;
+    }
+    const modal = document.getElementById('modalRejectAccessRequest');
+    if (!modal) return;
+
+    const inpId = document.getElementById('rejectReqId');
+    if (inpId) inpId.value = req.id;
+
+    const elName = document.getElementById('rejectReqApplicantName');
+    if (elName) elName.textContent = req.nome || 'Colaborador';
+
+    const elMat = document.getElementById('rejectReqMatricula');
+    if (elMat) elMat.textContent = req.matricula || '--';
+
+    const elEmail = document.getElementById('rejectReqEmail');
+    if (elEmail) elEmail.textContent = req.email || '--';
+
+    const reasonText = document.getElementById('rejectReqReason');
+    if (reasonText) reasonText.value = '';
+
+    document.querySelectorAll('#modalRejectAccessRequest .quick-reject-chip').forEach(c => c.classList.remove('selected'));
+
+    const errBanner = document.getElementById('rejectReqErrorBanner');
+    if (errBanner) errBanner.style.display = 'none';
+
+    modal.style.display = 'flex';
+    modal.style.opacity = '1';
+    modal.style.pointerEvents = 'auto';
+    void modal.offsetWidth;
+    modal.classList.add('active');
+    if (window.lucide) lucide.createIcons();
+}
+window.openRejectRequestModal = openRejectRequestModal;
+
+function selectQuickRejectReason(reasonText) {
+    const reasonInput = document.getElementById('rejectReqReason');
+    if (reasonInput) {
+        reasonInput.value = reasonText;
+        reasonInput.focus();
+    }
+    document.querySelectorAll('#modalRejectAccessRequest .quick-reject-chip').forEach(c => {
+        if (c.getAttribute('onclick')?.includes(reasonText) || c.textContent.trim().toLowerCase() === reasonText.substring(0, 15).toLowerCase()) {
+            c.classList.add('selected');
+        } else {
+            c.classList.remove('selected');
+        }
+    });
+}
+window.selectQuickRejectReason = selectQuickRejectReason;
+
+async function submitRejectRequestModal(event) {
+    if (event) event.preventDefault();
+    const reqId = document.getElementById('rejectReqId')?.value;
+    const reason = document.getElementById('rejectReqReason')?.value?.trim();
+
+    const btn = document.getElementById('btnSubmitRejectReq');
+    const errBanner = document.getElementById('rejectReqErrorBanner');
+    const errMsg = document.getElementById('rejectReqErrorMsg');
+
+    if (!reqId) return;
+    if (!reason) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = 'Informe a justificativa da recusa.';
+        }
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="spin-animation"></i> <span>Recusando...</span>`;
+        if (window.lucide) lucide.createIcons();
+    }
+    if (errBanner) errBanner.style.display = 'none';
 
     try {
         const resp = await fetch('/api/admin/access_requests/reject', {
@@ -6830,18 +7116,36 @@ async function handleRejectRequest(reqId, encodedName) {
             })
         });
         const res = await resp.json();
-
         if (res.status === 'success') {
+            closeModal('modalRejectAccessRequest');
             showToast(res.message, 'info');
             await reloadUserGovernanceData();
         } else {
-            showToast(res.message || 'Erro ao recusar solicitação.', 'danger');
+            if (errBanner) {
+                errBanner.style.display = 'flex';
+                if (errMsg) errMsg.textContent = res.message || 'Falha ao recusar solicitação.';
+            }
+            showToast(res.message || 'Falha ao recusar solicitação.', 'danger');
         }
     } catch (e) {
+        if (errBanner) {
+            errBanner.style.display = 'flex';
+            if (errMsg) errMsg.textContent = `Erro: ${e.message}`;
+        }
         showToast(`Erro: ${e.message}`, 'danger');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="x-circle"></i> <span>Confirmar Recusa</span>`;
+            if (window.lucide) lucide.createIcons();
+        }
     }
 }
-window.handleRejectRequest = handleRejectRequest;
+window.submitRejectRequestModal = submitRejectRequestModal;
+
+// Alias de retrocompatibilidade
+window.handleApproveRequest = function(reqId) { openApproveRequestModal(reqId); };
+window.handleRejectRequest = function(reqId) { openRejectRequestModal(reqId); };
 
 function openAuthModal() {
     if (!authState.isAuthenticated) {

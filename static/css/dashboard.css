@@ -21407,14 +21407,22 @@ body.role-gerente .gerente-hide-money {
 #modalSecureLogin,
 #modalForceChangePassword,
 #modalAdminUsersManagement,
-#modalSetTempPassword {
-    z-index: 100005 !important;
+#modalSetTempPassword,
+#modalEditUser,
+#modalCreateUser,
+#modalApproveAccessRequest,
+#modalRejectAccessRequest {
+    z-index: 100025 !important;
 }
 
 #modalSecureLogin.active,
 #modalForceChangePassword.active,
 #modalAdminUsersManagement.active,
-#modalSetTempPassword.active {
+#modalSetTempPassword.active,
+#modalEditUser.active,
+#modalCreateUser.active,
+#modalApproveAccessRequest.active,
+#modalRejectAccessRequest.active {
     display: flex !important;
     opacity: 1 !important;
     pointer-events: auto !important;
@@ -21423,8 +21431,227 @@ body.role-gerente .gerente-hide-money {
 #modalSecureLogin:not(.active),
 #modalForceChangePassword:not(.active),
 #modalAdminUsersManagement:not(.active),
-#modalSetTempPassword:not(.active) {
+#modalSetTempPassword:not(.active),
+#modalEditUser:not(.active),
+#modalCreateUser:not(.active),
+#modalApproveAccessRequest:not(.active),
+#modalRejectAccessRequest:not(.active) {
     display: none !important;
     opacity: 0 !important;
     pointer-events: none !important;
+}
+
+/* ========================================================================== */
+/* ULTRA PREMIUM RBAC GOVERNANCE - APPLE LIQUID GLASS & MATERIAL 3 EXPRESSIVE */
+/* ========================================================================== */
+
+.filter-card-kpi {
+    cursor: pointer !important;
+    user-select: none !important;
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.filter-card-kpi:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    background: rgba(30, 41, 59, 0.8) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.filter-card-kpi.active-kpi {
+    border-width: 1.5px !important;
+    transform: translateY(-1px);
+}
+
+.filter-card-kpi.active-kpi-all {
+    border-color: #38bdf8 !important;
+    background: rgba(56, 189, 248, 0.12) !important;
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.25) !important;
+}
+
+.filter-card-kpi.active-kpi-administrador {
+    border-color: #c084fc !important;
+    background: rgba(192, 132, 252, 0.12) !important;
+    box-shadow: 0 0 20px rgba(192, 132, 252, 0.25) !important;
+}
+
+.filter-card-kpi.active-kpi-gerente {
+    border-color: #34d399 !important;
+    background: rgba(52, 211, 153, 0.12) !important;
+    box-shadow: 0 0 20px rgba(52, 211, 153, 0.25) !important;
+}
+
+.filter-card-kpi.active-kpi-coordenador {
+    border-color: #60a5fa !important;
+    background: rgba(96, 165, 250, 0.12) !important;
+    box-shadow: 0 0 20px rgba(96, 165, 250, 0.25) !important;
+}
+
+.filter-card-kpi.active-kpi-supervisor {
+    border-color: #fbbf24 !important;
+    background: rgba(251, 191, 36, 0.12) !important;
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.25) !important;
+}
+
+.filter-card-kpi.active-kpi-operador_cco {
+    border-color: #06b6d4 !important;
+    background: rgba(6, 182, 212, 0.12) !important;
+    box-shadow: 0 0 20px rgba(6, 182, 212, 0.25) !important;
+}
+
+.filter-card-kpi .kpi-indicator-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+}
+
+/* Premium Form Select & Input */
+.form-select-premium {
+    background: rgba(15, 23, 42, 0.85) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 10px !important;
+    padding: 8px 14px !important;
+    color: #f8fafc !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    outline: none !important;
+    transition: all 0.2s ease !important;
+}
+
+.form-select-premium:focus {
+    border-color: #38bdf8 !important;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2) !important;
+}
+
+.form-select-premium option {
+    background: #0f172a !important;
+    color: #f8fafc !important;
+}
+
+/* Role Badges */
+.badge-role-operador_cco {
+    background: rgba(6, 182, 212, 0.15) !important;
+    color: #22d3ee !important;
+    border: 1px solid rgba(6, 182, 212, 0.35) !important;
+    padding: 3px 9px !important;
+    border-radius: 6px !important;
+    font-weight: 700 !important;
+    font-size: 0.72rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+}
+
+/* Action Button Group in Users & Requests Tables */
+.action-btn-group {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+}
+
+.btn-action-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 5px 9px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    user-select: none;
+    line-height: 1;
+}
+
+.btn-action-edit {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.3);
+}
+
+.btn-action-edit:hover {
+    background: rgba(56, 189, 248, 0.25);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.btn-action-pwd {
+    background: rgba(251, 191, 36, 0.12);
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.3);
+}
+
+.btn-action-pwd:hover {
+    background: rgba(251, 191, 36, 0.25);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.btn-action-status {
+    background: rgba(148, 163, 184, 0.12);
+    color: #cbd5e1;
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+.btn-action-status:hover {
+    background: rgba(148, 163, 184, 0.25);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.btn-action-delete {
+    background: rgba(244, 63, 94, 0.12);
+    color: #f43f5e;
+    border-color: rgba(244, 63, 94, 0.3);
+}
+
+.btn-action-delete:hover {
+    background: rgba(244, 63, 94, 0.25);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+/* Quick Rejection Chips */
+.quick-reject-chips-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.quick-reject-chip {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    user-select: none;
+}
+
+.quick-reject-chip:hover {
+    background: rgba(244, 63, 94, 0.15);
+    border-color: rgba(244, 63, 94, 0.4);
+    color: #fda4af;
+    transform: translateY(-1px);
+}
+
+.quick-reject-chip.selected {
+    background: rgba(244, 63, 94, 0.25);
+    border-color: #f43f5e;
+    color: #fff;
+    font-weight: 700;
 }

@@ -468,6 +468,22 @@ def admin_create_user():
     status_code = 200 if result.get("status") == "success" else 400
     return jsonify(result), status_code
 
+@app.route('/api/admin/users/delete', methods=['POST'])
+def admin_delete_user():
+    """Exclui permanentemente o cadastro de um colaborador."""
+    user = get_current_user()
+    if not user or user.get("role") not in ["administrador", "gerente"]:
+        return jsonify({"status": "forbidden", "message": "Acesso exclusivo para Administradores e Gerentes."}), 403
+
+    data = request.get_json(force=True, silent=True) or {}
+    user_id = data.get("user_id") or data.get("id") or data.get("userId")
+    if not user_id:
+        return jsonify({"status": "error", "message": "ID do colaborador não informado."}), 400
+
+    result = auth_manager.delete_user(target_user_id=user_id, operator_user=user)
+    status_code = 200 if result.get("status") == "success" else 400
+    return jsonify(result), status_code
+
 @app.route('/api/admin/import_fleet_users', methods=['POST'])
 def admin_import_fleet_users():
     """Endpoint legado mantido para compatibilidade, com retorno de transição para o banco nativo."""
