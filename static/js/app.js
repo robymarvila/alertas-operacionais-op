@@ -500,6 +500,19 @@ function navigateToView(viewName) {
         }
     }
 
+    if (viewName === 'tv') {
+        const curRole = (authState.user?.role || '').toLowerCase();
+        if (['operador_cco', 'supervisor'].includes(curRole)) {
+            if (typeof showToast === 'function') {
+                showToast('Acesso Restrito: O Modo Monitoramento / Painel TV CCO (Video Wall) está indisponível para o seu perfil.', 'warning');
+            }
+            if (appState.currentView !== 'hub') {
+                navigateToView('hub');
+            }
+            return;
+        }
+    }
+
     appState.currentView = viewName;
     if (window.location.hash !== `#${viewName}`) {
         window.history.replaceState(null, '', `#${viewName}`);
@@ -528,7 +541,6 @@ function navigateToView(viewName) {
         document.body.classList.add('route-hub');
     }
 
-    appState.currentView = viewName;
     const portalHub = document.getElementById('portalHubView');
     const moduleView = document.getElementById('moduleAuditView');
     const deliveryView = document.getElementById('moduleDeliveryView');
@@ -5358,7 +5370,18 @@ function updateAuthUI() {
         }
     });
 
-    // 6. Controle da Tela de Login Ultra Premium
+    // 6. Módulo Modo Monitoramento CCO / Painel TV CCO (Video Wall)
+    // Bloqueado para Operador CCO e Supervisor; liberado para Coordenador, Gerente e Administrador
+    const canAccessTv = isAuth && ['coordenador', 'gerente', 'administrador'].includes(role);
+    const btnHubTv = document.getElementById('btnHubTvPanel');
+    const cardHubTv = document.getElementById('cardHubTvPanel');
+    const btnModalTv = document.getElementById('btnGoToTvPanel');
+
+    if (btnHubTv) btnHubTv.style.display = canAccessTv ? 'inline-flex' : 'none';
+    if (cardHubTv) cardHubTv.style.display = canAccessTv ? 'flex' : 'none';
+    if (btnModalTv) btnModalTv.style.display = canAccessTv ? 'inline-flex' : 'none';
+
+    // 7. Controle da Tela de Login Ultra Premium
     const maintScreen = document.getElementById('screenCorporateLogin') || document.getElementById('screenSystemMaintenance');
     if (maintScreen) {
         maintScreen.style.display = isAuth ? 'none' : 'flex';
@@ -5457,6 +5480,21 @@ function applyRbacPermissions(role) {
             clearInterval(window._accessRequestsInterval);
             window._accessRequestsInterval = null;
         }
+    }
+
+    // 5. Módulo MODO MONITORAMENTO CCO / PAINEL TV CCO (VIDEO WALL)
+    // Desativado estritamente para Operador CCO e Supervisor; liberado para Coordenador, Gerente e Administrador
+    const canAccessTv = ['coordenador', 'gerente', 'administrador'].includes(userRole);
+    const btnHubTv = document.getElementById('btnHubTvPanel');
+    const cardHubTv = document.getElementById('cardHubTvPanel');
+    const btnModalTv = document.getElementById('btnGoToTvPanel');
+
+    if (btnHubTv) btnHubTv.style.display = canAccessTv ? 'inline-flex' : 'none';
+    if (cardHubTv) cardHubTv.style.display = canAccessTv ? 'flex' : 'none';
+    if (btnModalTv) btnModalTv.style.display = canAccessTv ? 'inline-flex' : 'none';
+
+    if (!canAccessTv && appState.currentView === 'tv') {
+        navigateToView('hub');
     }
 
     if (window.lucide) lucide.createIcons();

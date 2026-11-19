@@ -21376,6 +21376,16 @@ body.role-gerente .gerente-hide-money {
     display: none !important;
 }
 
+/* Bloqueio do Modo Monitoramento CCO / Painel TV CCO (Video Wall) para Supervisor e Operador CCO */
+body.role-supervisor #btnHubTvPanel,
+body.role-supervisor #cardHubTvPanel,
+body.role-supervisor #btnGoToTvPanel,
+body.role-operador_cco #btnHubTvPanel,
+body.role-operador_cco #cardHubTvPanel,
+body.role-operador_cco #btnGoToTvPanel {
+    display: none !important;
+}
+
 /* User Session Badge in Header */
 .user-header-pill {
     display: inline-flex;

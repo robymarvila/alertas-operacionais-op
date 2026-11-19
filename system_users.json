@@ -21,16 +21,18 @@
     "nome": "TESTE DA SILVA",
     "email": "teste.teste@alpitelbrasil.com.br",
     "matricula": "BR0123456789",
-    "password_hash": "pbkdf2:sha256:100000$d83a9a0abe2f41b7aaeee3b85b5a32e6$b70250be39c578af9867006d5033d260fa879fb4b5b2302b91c3c09430fa5605",
+    "password_hash": "pbkdf2:sha256:100000$fd125bfb4f14134b69d55eb29dceb3d4$973c45ed01027368a1cff60935caecbf7b843b8214e074b2d1d5a22ecef648c4",
     "role": "operador_cco",
     "status": "ativo",
     "created_at": "2026-09-01T08:10:24.581854+00:00",
-    "last_login": null,
+    "last_login": "2026-11-18T21:18:02.750418",
     "regional": "Global",
     "setor": "Operações CCO",
     "telefone": "",
     "precisa_trocar_senha": false,
-    "username": "teste.teste"
+    "username": "teste.teste",
+    "updated_at": "2026-11-18T21:18:09.369896",
+    "senha_alterada_por": "ADMINISTRADOR CCO"
   },
   "bc4a22e2-845a-7669-8255-4f67debaec98": {
     "id": "bc4a22e2-845a-7669-8255-4f67debaec98",

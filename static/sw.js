@@ -3,7 +3,7 @@
 // PWA Caching, Shell Offline & Background Network-First Synchronization
 // ==========================================================================
 
-const CACHE_NAME = 'alertas-cco-pwa-v6.3.6';
+const CACHE_NAME = 'alertas-cco-pwa-v6.3.7';
 
 // Core shell assets to pre-cache on install (recursos internos seguros)
 const PRECACHE_ASSETS = [

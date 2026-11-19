@@ -1,15 +1,15 @@
 {
-  "version": "6.3.6-ultra-rbac-design",
-  "build_id": "20261118-205000",
-  "updated_at": "2026-11-18T20:50:00-03:00",
+  "version": "6.3.7-rbac-tv-wall-restriction",
+  "build_id": "20261118-212500",
+  "updated_at": "2026-11-18T21:25:00-03:00",
   "name": "CCO Alertas Operacionais",
   "channel": "production",
   "features": [
+    "Restrição de acesso RBAC: Módulo MODO MONITORAMENTO CCO / PAINEL TV CCO (VIDEO WALL) desativado para os perfis Operador CCO e Supervisor",
+    "Acesso ao Painel TV CCO liberado exclusivamente para Coordenador, Gerente e Administrador",
     "Refatoração visual Ultra Premium da Governança de Usuários e RBAC (Material Design 3 Expressive + Apple Liquid Glass)",
     "Cards de KPI interativos com filtro dinâmico por perfil (Total, Administrador, Gerente, Coordenador, Supervisor, Operador CCO)",
-    "Segmentação de perfil Operador CCO com acessos idênticos ao Supervisor",
-    "Modais nativos do sistema de alta fidelidade para Aprovação e Recusa de Solicitações (substituição total de prompts do navegador)",
-    "Restrição de regionais padronizadas: Global, Regional Norte e Regional Leste",
-    "Correção e auto-cura na sincronização e aprovação de colaboradores entre Nuvem Supabase e cache local"
+    "Modais nativos do sistema de alta fidelidade para Aprovação e Recusa de Solicitações (sem prompts de navegador)",
+    "Restrição de regionais padronizadas: Global, Regional Norte e Regional Leste"
   ]
 }
